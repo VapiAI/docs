@@ -1,2 +1,46 @@
-# vapi-fern-config
-The Fern Configuration for generating Vapi's SDKs
+# VAPI Fern Configuration
+
+This repository contains our Fern Configuration:
+
+- [OpenAPI spec](./openapi.json)
+- [OpenAPI Overrides](./openapi-overrides.yml)
+- [SDK generator config](./fern/generators.yml)
+
+## Setup
+
+```sh
+npm install -g fern-api
+```
+
+## Validating your OpenAPI Specs
+
+To validate your API, run:
+
+```sh
+fern check
+```
+
+## Managing SDKs
+
+### Deploying your SDKs
+
+To deploy your SDKs, simply run the `Release Python SDK` GitHub Action with the 
+desired version for the release. Under the hood, this leverages the Fern CLI:
+
+```sh
+fern generate --group python-sdk
+```
+
+### Developing SDKs
+
+You can also regenerate the SDKs locally by running:
+
+```sh
+fern generate --group python-sdk --preview --log-level debug
+```
+
+This will generate the SDK and download it to a local folder that can be pip installed.
+
+```sh
+pip install -e /fern/.preview/fern-python-sdk
+```
