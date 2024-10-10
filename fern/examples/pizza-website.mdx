@@ -1,0 +1,165 @@
+---
+title: Pizza Website Example 🍕
+subtitle: Let's build a pizza ordering assistant for our website.
+slug: examples/pizza-website
+---
+
+
+In this example, we'll be using the [Web SDK](https://github.com/VapiAI/web) to create an assistant that can take a pizza order. Since all the [Client SDKs](/sdks) have equivalent functionality, you can use this example as a guide for any Vapi client.
+
+We want to add a button to the page to start a call, update our UI with the call status, and display what the user's saying while they say it. When the user mentions a topping, we should add it to the pizza. When they're done, we should redirect them to checkout.
+
+<Steps>
+  <Step title="Create an assistant">
+    We'll start by taking a look at the [Assistant API
+    reference](/api-reference/assistants/create-assistant) and define our
+    assistant:
+
+    ```json
+    {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4",
+        "messages": [
+          {
+              "role": "system",
+              "content": "You're a pizza ordering assistant. The user will ask for toppings, you'll add them. When they're done, you'll redirect them to checkout."
+          }
+        ],
+        "functions": [
+          {
+            "name": "addTopping",
+            "description": "Used to add a topping to the pizza.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "topping": {
+                  "type": "string",
+                  "description": "The name of the topping. For example, 'pepperoni'."
+                }
+              }
+            }
+          },
+           {
+            "name": "goToCheckout",
+            "description": "Redirects the user to checkout and order their pizza.",
+            "parameters": {"type": "object", "properties": {}}
+          }
+        ]
+      },
+      "firstMessage": "Hi, I'm the pizza ordering assistant. What toppings would you like?",
+    }
+    ```
+    Let's break this down:
+    - `model` - We're using the OpenAI GPT-4 model, which is better at function calling.
+    - `messages` - We're defining the assistant's instructions for how to run the call.
+    - `functions` - We're providing a addTopping function with a topping parameter. The assistant can call this during the conversation to add a topping. We're also adding goToCheckout, with an empty parameters object. The assistant can call this to redirect the user to checkout.
+    - `firstMessage` - This is the first message the assistant will say when the user starts the call.
+
+    We'll then make a POST request to the [Create Assistant](/api-reference/assistants/create-assistant) endpoint to create the assistant.
+
+  </Step>
+  <Step title="Set up the Web SDK">
+    We'll follow the `README` for the [Web SDK](https://github.com/VapiAI/web) to get it installed.
+
+    We'll then get our **Public Key** from the [Vapi Dashboard](https://dashboard.vapi.ai) and initialize the SDK:
+
+    ```js
+    import Vapi from '@vapi-ai/web';
+
+    const vapi = new Vapi('your-web-token');
+    ```
+
+  </Step>
+  <Step title="Add the call buttons">
+    We'll add a button to the page that starts the call when clicked:
+
+    ```html
+    <button id="start-call">Start Call</button>
+    <button id="stop-call">Stop Call</button>
+    ```
+
+    ```js
+    const startCallButton = document.getElementById('start-call');
+
+    startCallButton.addEventListener('click', async () => {
+      await vapi.start('your-assistant-id');
+    });
+
+    const stopCallButton = document.getElementById('stop-call');
+
+    stopCallButton.addEventListener('click', async () => {
+      await vapi.stop();
+    });
+    ```
+
+  </Step>
+  <Step title="Handle call status events">
+    ```js
+    vapi.on('call-start', () => {
+      // Update UI to show that the call has started
+    });
+
+    vapi.on('call-end', () => {
+      // Update UI to show that the call has ended
+    });
+    ```
+
+  </Step>
+
+<Step title="Handle speaking events">
+  ```js
+  vapi.on('speech-start', () => {
+    // Update UI to show that the assistant is speaking
+  });
+
+vapi.on('speech-end', () => {
+// Update UI to show that the assistant is done speaking
+});
+
+````
+
+</Step>
+
+<Step title="Handle transcription events">
+  All messages send to the [Server URL](/server-url), including `transcript` and `function-call` messages, are also sent to the client as `message` events. We'll need to check the `type` of the message to see what type it is.
+
+```js
+vapi.on("message", (msg) => {
+  if (msg.type !== "transcript") return;
+
+  if (msg.transcriptType === "partial") {
+    // Update UI to show the live partial transcript
+  }
+
+  if (msg.transcriptType === "final") {
+    // Update UI to show the final transcript
+  }
+});
+````
+
+</Step>
+
+<Step title="Handle function call events">
+```javascript
+vapi.on('message', (msg) => {
+  if (msg.type !== "function-call") return;
+
+if (msg.functionCall.name === "addTopping") {
+const topping = msg.functionCall.parameters.topping;
+// Add the topping to the pizza
+}
+
+if (msg.functionCall.name === "goToCheckout") {
+// Redirect the user to checkout
+}
+});
+
+```
+</Step>
+<Step title="Order your pizza!">
+You should now have a working pizza ordering assistant! 🍕
+</Step></Steps>
+
+
+```

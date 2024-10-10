@@ -1,0 +1,114 @@
+---
+title: Live Call Control
+slug: calls/call-features
+---
+
+Vapi offers two main features that provide enhanced control over live calls:
+
+1. **Call Control**: This feature allows you to inject conversation elements dynamically during an ongoing call.
+2. **Call Listen**: This feature enables real-time audio data streaming using WebSocket connections.
+
+To use these features, you first need to obtain the URLs specific to the live call. These URLs can be retrieved by triggering a `/call` endpoint, which returns the `listenUrl` and `controlUrl` within the `monitor` object.
+
+## Obtaining URLs for Call Control and Listen
+
+To initiate a call and retrieve the `listenUrl` and `controlUrl`, send a POST request to the `/call` endpoint.
+
+### Sample Request
+
+```bash
+curl 'https://api.vapi.ai/call/phone' 
+-H 'authorization: Bearer YOUR_API_KEY' 
+-H 'content-type: application/json' 
+--data-raw '{
+  "assistantId": "5b0a4a08-133c-4146-9315-0984f8c6be80",
+  "customer": {
+    "number": "+12345678913"
+  },
+  "phoneNumberId": "42b4b25d-031e-4786-857f-63b346c9580f"
+}'
+
+```
+
+### Sample Response
+
+```json
+{
+  "id": "7420f27a-30fd-4f49-a995-5549ae7cc00d",
+  "assistantId": "5b0a4a08-133c-4146-9315-0984f8c6be80",
+  "phoneNumberId": "42b4b25d-031e-4786-857f-63b346c9580f",
+  "type": "outboundPhoneCall",
+  "createdAt": "2024-09-10T11:14:12.339Z",
+  "updatedAt": "2024-09-10T11:14:12.339Z",
+  "orgId": "eb166faa-7145-46ef-8044-589b47ae3b56",
+  "cost": 0,
+  "customer": {
+    "number": "+12345678913"
+  },
+  "status": "queued",
+  "phoneCallProvider": "twilio",
+  "phoneCallProviderId": "CA4c6793d069ef42f4ccad69a0957451ec",
+  "phoneCallTransport": "pstn",
+  "monitor": {
+    "listenUrl": "wss://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/transport",
+    "controlUrl": "<https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control>"
+  }
+}
+
+```
+
+## Call Control Feature
+
+Once you have the `controlUrl`, you can inject a message into the live call using a POST request. This can be done by sending a JSON payload to the `controlUrl`.
+
+### Example: Injecting a Message
+
+```bash
+curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' 
+-H 'content-type: application/json' 
+--data-raw '{
+  "type": "say",
+  "message": "Welcome to Vapi, this message was injected during the call."
+}'
+
+```
+
+The message will be spoken in real-time during the ongoing call.
+
+## Call Listen Feature
+
+The `listenUrl` allows you to connect to a WebSocket and stream the audio data in real-time. You can either process the audio directly or save the binary data to analyze or replay later.
+
+### Example: Saving Audio Data from a Live Call
+
+Here is a simple implementation for saving the audio buffer from a live call using Node.js:
+
+```jsx
+const WebSocket = require('ws');
+const fs = require('fs');
+
+let pcmBuffer = Buffer.alloc(0);
+
+const ws = new WebSocket("wss://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/transport");
+
+ws.on('open', () => console.log('WebSocket connection established'));
+
+ws.on('message', (data, isBinary) => {
+  if (isBinary) {
+    pcmBuffer = Buffer.concat([pcmBuffer, data]);
+    console.log(`Received PCM data, buffer size: ${pcmBuffer.length}`);
+  } else {
+    console.log('Received message:', JSON.parse(data.toString()));
+  }
+});
+
+ws.on('close', () => {
+  if (pcmBuffer.length > 0) {
+    fs.writeFileSync('audio.pcm', pcmBuffer);
+    console.log('Audio data saved to audio.pcm');
+  }
+});
+
+ws.on('error', (error) => console.error('WebSocket error:', error));
+
+```
