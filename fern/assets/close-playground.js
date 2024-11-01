@@ -11,7 +11,16 @@ document.addEventListener('click', function () {
     }
   }
 
-  const fernHeaderButtons = document.querySelectorAll('.fern-header-container button');
+  const playgroundEndpoint = document.querySelector('.fern-header-container .fern-button');
+  fernHeaderButtons.forEach(button => {
+    button.addEventListener('click', function () {
+      if (isPlaygroundEndpointButtonVisible()) {
+        clickPlaygroundEndpointButton();
+      }
+    });
+  });
+
+  const fernHeaderButtons = document.querySelectorAll('.fern-header .fern-button');
   fernHeaderButtons.forEach(button => {
     button.addEventListener('click', function () {
       if (isPlaygroundEndpointButtonVisible()) {
