@@ -1,3 +1,8 @@
+const searchButtonContainerIds = [
+    "fern-search-bar",
+    "fern-search-button",
+];
+
 // Define the base settings
 const inkeepSettings = {
   isOpen: true,
@@ -31,11 +36,6 @@ const inkeepSettings = {
 
 // Function to initialize search containers
 function initializeSearchContainers() {
-  const searchButtonContainerIds = [
-      "search-bar-entry",
-      "search-bar-entry-mobile",
-  ];
-
   // Clone and replace search buttons to remove existing listeners
   // Only process elements that exist
   const clonedSearchButtonContainers = searchButtonContainerIds
@@ -107,7 +107,7 @@ function initializeInkeep() {
       (event) => {
           if (
               (event.metaKey || event.ctrlKey) &&
-              (event.key === "k" || event.key === "K")
+              (event.key === "/")
           ) {
               event.stopPropagation();
               inkeepSearchModal.render({ isOpen: true });
