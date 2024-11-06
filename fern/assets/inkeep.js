@@ -1,11 +1,10 @@
 const searchButtonContainerIds = [
-    "fern-search-bar",
     "fern-search-button",
+    "fern-search-bar"
 ];
 
 // Define the base settings
 const inkeepSettings = {
-  isOpen: true,
   baseSettings: {
       apiKey: "a58574ddc0e41c75990d1c0e890ad3c8725dc9e7c8ee3d3e",
       integrationId: "clthv1rgg000sdjil26l2vg03",
@@ -33,26 +32,6 @@ const inkeepSettings = {
       ]
   }
 };
-
-// Function to initialize search containers
-function initializeSearchContainers() {
-  // Clone and replace search buttons to remove existing listeners
-  // Only process elements that exist
-  const clonedSearchButtonContainers = searchButtonContainerIds
-      .map((id) => {
-          const originalElement = document.getElementById(id);
-          if (!originalElement) {
-              console.log(`Search container ${id} not found, skipping...`);
-              return null;
-          }
-          const clonedElement = originalElement.cloneNode(true);
-          originalElement.parentNode.replaceChild(clonedElement, originalElement);
-          return clonedElement;
-      })
-      .filter(Boolean); // Remove null entries
-
-  return clonedSearchButtonContainers;
-}
 
 // Function to initialize Inkeep
 function initializeInkeep() {
@@ -88,13 +67,23 @@ function initializeInkeep() {
           },
       },
   });
-
-  // Get search containers after DOM is ready
-  const clonedSearchButtonContainers = initializeSearchContainers();
+  
+  const clonedSearchButtonContainers = searchButtonContainerIds
+      .map((id) => {
+          const originalElement = document.getElementById(id); 
+          if (!originalElement) {
+            console.log(`Search container ${id} not found, skipping...`);
+            return null;
+        }
+        originalElement.disabled = false;
+        return originalElement
+      }).filter(Boolean);
 
   // Add click listeners to search buttons
   clonedSearchButtonContainers.forEach((trigger) => {
+      console.log("adding trigger")
       trigger.addEventListener("click", function () {
+          console.log("clicked")
           inkeepSearchModal.render({
               isOpen: true,
           });
@@ -106,7 +95,6 @@ function initializeInkeep() {
       "keydown",
       (event) => {
           if (
-              (event.metaKey || event.ctrlKey) &&
               (event.key === "/")
           ) {
               event.stopPropagation();
