@@ -1,46 +1,31 @@
-# VAPI Fern Configuration
+# VAPI API Documentation
 
-This repository contains our Fern Configuration:
+This repository contains the source files for the documentation found at [docs.vapi.ai](https://docs.vapi.ai/). 
 
-- [OpenAPI spec](./openapi.json)
-- [OpenAPI Overrides](./openapi-overrides.yml)
-- [SDK generator config](./fern/generators.yml)
+## How can I contribute to these docs?
 
-## Setup
+You can suggest edits by making a pull request.
 
-```sh
-npm install -g fern-api
-```
+## How to update documentation?
 
-## Validating your OpenAPI Specs
+### Local Development server
 
-To validate your API, run:
+To run a local development server with hot-reloading you can run the following command
 
 ```sh
-fern check
+fern docs dev
 ```
 
-## Managing SDKs
+#### Hosted URL
 
-### Deploying your SDKs
-
-To deploy your SDKs, simply run the `Release Python SDK` GitHub Action with the 
-desired version for the release. Under the hood, this leverages the Fern CLI:
-
-```sh
-fern generate --group python-sdk
+To update your documentation on a hosted URL, run
 ```
-
-### Developing SDKs
-
-You can also regenerate the SDKs locally by running:
-
-```sh
-fern generate --group python-sdk --preview --log-level debug
+# npm install -g fern-api
+fern generate --docs
 ```
-
-This will generate the SDK and download it to a local folder that can be pip installed.
-
-```sh
-pip install -e /fern/.preview/fern-python-sdk
+To preview your documentation, run
 ```
+# npm install -g fern-api
+fern generate --docs --preview
+```
+The repository contains GitHub workflows that will automatically run these commands for you. For example, when you make a PR a preview link will be auto-generated and when you merge to main the docs site will update.

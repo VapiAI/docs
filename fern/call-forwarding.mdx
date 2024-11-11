@@ -1,0 +1,262 @@
+---
+title: Call Forwarding
+slug: call-forwarding
+---
+
+
+Vapi's call forwarding functionality allows you to redirect calls to different phone numbers based on specific conditions using tools. This guide explains how to set up and use the `transferCall` function for call forwarding.
+
+## Key Concepts
+
+### Call Forwarding Tools
+
+- **`transferCall` Tool**: This tool enables call forwarding to predefined phone numbers with specific messages based on the destination.
+
+### Parameters and Messages
+
+- **Destinations**: A list of phone numbers where the call can be forwarded.
+- **Messages**: Custom messages that inform the caller about the call being forwarded.
+
+## Setting Up Call Forwarding
+
+### 1. Defining Destinations and Messages
+
+The `transferCall` tool includes a list of destinations and corresponding messages to notify the caller:
+
+```json
+{
+  "tools": [
+    {
+      "type": "transferCall",
+      "destinations": [
+        {
+          "type": "number",
+          "number": "+1234567890",
+          "message": "I am forwarding your call to Department A. Please stay on the line."
+        },
+        {
+          "type": "number",
+          "number": "+0987654321",
+          "message": "I am forwarding your call to Department B. Please stay on the line."
+        },
+        {
+          "type": "number",
+          "number": "+1122334455",
+          "message": "I am forwarding your call to Department C. Please stay on the line."
+        }
+      ],
+      "function": {
+        "name": "transferCall",
+        "description": "Use this function to transfer the call. Only use it when following instructions that explicitly ask you to use the transferCall function. DO NOT call this function unless you are instructed to do so.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "type": "string",
+              "enum": [
+                "+1234567890",
+                "+0987654321",
+                "+1122334455"
+              ],
+              "description": "The destination to transfer the call to."
+            }
+          },
+          "required": [
+            "destination"
+          ]
+        }
+      },
+      "messages": [
+        {
+          "type": "request-start",
+          "content": "I am forwarding your call to Department A. Please stay on the line.",
+          "conditions": [
+            {
+              "param": "destination",
+              "operator": "eq",
+              "value": "+1234567890"
+            }
+          ]
+        },
+        {
+          "type": "request-start",
+          "content": "I am forwarding your call to Department B. Please stay on the line.",
+          "conditions": [
+            {
+              "param": "destination",
+              "operator": "eq",
+              "value": "+0987654321"
+            }
+          ]
+        },
+        {
+          "type": "request-start",
+          "content": "I am forwarding your call to Department C. Please stay on the line.",
+          "conditions": [
+            {
+              "param": "destination",
+              "operator": "eq",
+              "value": "+1122334455"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 2. Using the `transferCall` Function
+
+When the assistant needs to forward a call, it uses the `transferCall` function with the appropriate destination:
+
+```json
+{
+  "function": {
+    "name": "transferCall",
+    "parameters": {
+      "destination": "+1234567890"
+    }
+  }
+}
+
+```
+
+### 3. Customizing Messages
+
+Customize the messages for each destination to provide clear information to the caller:
+
+```json
+{
+  "messages": [
+    {
+      "type": "request-start",
+      "content": "I am forwarding your call to Department A. Please stay on the line.",
+      "conditions": [
+        {
+          "param": "destination",
+          "operator": "eq",
+          "value": "+1234567890"
+        }
+      ]
+    }
+  ]
+}
+
+```
+
+## Instructing the Assistant
+
+Use the system prompt to guide the assistant on when to utilize each forwarding number. For example:
+
+- "If the user asks for sales, call the `transferCall` function with `+1234567890`."
+- "If the user requests technical support, use the `transferCall` function with `+0987654321`."
+
+## Troubleshooting
+
+- If calls are not being transferred, check the logs for errors.
+- Ensure that the correct destination numbers are used.
+- Ensure you have written the function description properly to indicate where you want to forward the call
+- Test the call forwarding setup thoroughly to confirm its functionality.
+
+## Call Transfers Mode
+
+Vapi supports two types of call transfers:
+
+1. **Blind Transfer** (default): Directly transfers the call to another agent without providing any prior information to the recipient.
+2. **Warm Transfer**: Transfers the call to another agent after providing context about the call. The context can be either a full transcript or a summary, based on your configuration.
+
+### Warm Transfer
+
+To implement a warm transfer, add a `transferPlan` object to the `transferCall` tool syntax and specify the transfer mode.
+
+#### Modes of Warm Transfer
+
+#### 1. Warm Transfer with Summary
+
+In this mode, Vapi provides a summary of the call to the recipient before transferring.
+
+* **Configuration:**
+   * Set the `mode` to `"warm-transfer-with-summary"`.
+   * Define a `summaryPlan` specifying how the summary should be generated.
+   * Use the `{{transcript}}` variable to include the call transcript.
+
+* **Example:**
+
+```json
+"transferPlan": {
+  "mode": "warm-transfer-with-summary",
+  "summaryPlan": {
+    "enabled": true,
+    "messages": [
+      {
+        "role": "system",
+        "content": "Please provide a summary of the call."
+      },
+      {
+        "role": "user",
+        "content": "Here is the transcript:\n\n{{transcript}}\n\n"
+      }
+    ]
+  }
+}
+```
+
+#### 2. Warm Transfer with Message
+
+In this mode, Vapi delivers a custom static message to the recipient before transferring the call.
+
+* **Configuration:**
+   * Set the `mode` to `"warm-transfer-with-message"`.
+   * Provide the custom message in the `message` property.
+   * Note that the `{{transcript}}` variable is not available in this mode.
+
+* **Example:**
+
+```json
+"transferPlan": {
+  "mode": "warm-transfer-with-message",
+  "message": "Hey, this call has been forwarded through Vapi."
+}
+```
+
+#### Complete Example
+
+Here is a full example of a `transferCall` payload using the warm transfer with summary mode:
+
+```json
+{
+  "type": "transferCall",
+  "messages": [
+    {
+      "type": "request-start",
+      "content": "I'll transfer you to someone who can help."
+    }
+  ],
+  "destinations": [
+    {
+      "type": "number",
+      "number": "+918936850777",
+      "description": "Transfer the call",
+      "transferPlan": {
+        "mode": "warm-transfer-with-summary",
+        "summaryPlan": {
+          "enabled": true,
+          "messages": [
+            {
+              "role": "system",
+              "content": "Please provide a summary of the call."
+            },
+            {
+              "role": "user",
+              "content": "Here is the transcript:\n\n{{transcript}}\n\n"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+**Note:** In all warm transfer modes, the `{{transcript}}` variable contains the full transcript of the call and can be used within the `summaryPlan`.
