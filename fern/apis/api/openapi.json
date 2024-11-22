@@ -2662,7 +2662,7 @@
             "type": "number",
             "description": "This is the timeout in seconds for the request to your server. Defaults to 20 seconds.\n\n@default 20",
             "minimum": 1,
-            "maximum": 60,
+            "maximum": 120,
             "example": 20
           },
           "url": {
@@ -3538,7 +3538,7 @@
           "timingMilliseconds": {
             "type": "number",
             "minimum": 100,
-            "maximum": 20000,
+            "maximum": 120000,
             "example": 1000,
             "description": "The number of milliseconds to wait for the server response before saying this message."
           },
@@ -4186,9 +4186,10 @@
         "properties": {
           "mode": {
             "type": "string",
-            "description": "This configures how transfer is executed and the experience of the destination party receiving the call.\n\nUsage:\n- `blind-transfer`: The assistant forwards the call to the destination without any message or summary.\n- `warm-transfer-say-message`: The assistant dials the destination, delivers the `message` to the destination party, connects the customer, and leaves the call.\n- `warm-transfer-say-summary`: The assistant dials the destination, provides a summary of the call to the destination party, connects the customer, and leaves the call.\n- `warm-transfer-wait-for-operator-to-speak-first-and-then-say-message`: The assistant dials the destination, waits for the operator to speak, delivers the `message` to the destination party, and then connects the customer.\n- `warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary`: The assistant dials the destination, waits for the operator to speak, provides a summary of the call to the destination party, and then connects the customer.\n\n@default 'blind-transfer'",
+            "description": "This configures how transfer is executed and the experience of the destination party receiving the call.\n\nUsage:\n- `blind-transfer`: The assistant forwards the call to the destination without any message or summary.\n- `blind-transfer-add-summary-to-sip-header`: The assistant forwards the call to the destination and adds a SIP header X-Transfer-Summary to the call to include the summary.\n- `warm-transfer-say-message`: The assistant dials the destination, delivers the `message` to the destination party, connects the customer, and leaves the call.\n- `warm-transfer-say-summary`: The assistant dials the destination, provides a summary of the call to the destination party, connects the customer, and leaves the call.\n- `warm-transfer-wait-for-operator-to-speak-first-and-then-say-message`: The assistant dials the destination, waits for the operator to speak, delivers the `message` to the destination party, and then connects the customer.\n- `warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary`: The assistant dials the destination, waits for the operator to speak, provides a summary of the call to the destination party, and then connects the customer.\n\n@default 'blind-transfer'",
             "enum": [
               "blind-transfer",
+              "blind-transfer-add-summary-to-sip-header",
               "warm-transfer-say-message",
               "warm-transfer-say-summary",
               "warm-transfer-wait-for-operator-to-speak-first-and-then-say-message",
@@ -4310,6 +4311,10 @@
                 "$ref": "#/components/schemas/TransferPlan"
               }
             ]
+          },
+          "sipHeaders": {
+            "type": "object",
+            "description": "These are custom headers to be added to SIP refer during transfer call."
           },
           "description": {
             "type": "string",
@@ -5942,6 +5947,75 @@
           }
         }
       },
+      "FallbackPlan": {
+        "type": "object",
+        "properties": {
+          "voices": {
+            "type": "array",
+            "items": {
+              "required": true,
+              "description": "This is the list of voices to fallback to in the event that the primary voice provider fails.",
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FallbackAzureVoice",
+                  "title": "Azure"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackCartesiaVoice",
+                  "title": "Cartesia"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackCustomVoice",
+                  "title": "CustomVoice"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackDeepgramVoice",
+                  "title": "Deepgram"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackElevenLabsVoice",
+                  "title": "ElevenLabs"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackLMNTVoice",
+                  "title": "LMNT"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackNeetsVoice",
+                  "title": "Neets"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackOpenAIVoice",
+                  "title": "OpenAI"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackPlayHTVoice",
+                  "title": "PlayHT"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackRimeAIVoice",
+                  "title": "RimeAI"
+                },
+                {
+                  "$ref": "#/components/schemas/FallbackTavusVoice",
+                  "title": "TavusVoice"
+                }
+              ],
+              "default": {
+                "provider": "playht",
+                "voiceId": "jennifer"
+              },
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "required": [
+          "voices"
+        ]
+      },
       "AzureVoice": {
         "type": "object",
         "properties": {
@@ -5975,17 +6049,25 @@
               }
             ]
           },
+          "chunkPlan": {
+            "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
           "speed": {
             "type": "number",
             "description": "This is the speed multiplier that will be used.",
             "minimum": 0.5,
             "maximum": 2
           },
-          "chunkPlan": {
-            "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/ChunkPlan"
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -6041,15 +6123,23 @@
             ],
             "example": "en"
           },
-          "voiceId": {
-            "type": "string",
-            "description": "This is the provider-specific ID that will be used."
-          },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
+          "voiceId": {
+            "type": "string",
+            "description": "This is the provider-specific ID that will be used."
+          },
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -6074,6 +6164,14 @@
               "custom-voice"
             ]
           },
+          "chunkPlan": {
+            "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
           "server": {
             "description": "This is where the voice request will be sent.\n\nRequest Example:\n\nPOST https://{server.url}\nContent-Type: application/json\n\n{\n  \"message\": {\n    \"type\": \"voice-request\",\n    \"text\": \"Hello, world!\",\n    \"sampleRate\": 24000,\n    ...other metadata about the call...\n  }\n}\n\nResponse Expected: 1-channel 16-bit raw PCM audio at the sample rate specified in the request. Here is how the response will be piped to the transport:\n```\nresponse.on('data', (chunk: Buffer) => {\n  outputStream.write(chunk);\n});\n```",
             "allOf": [
@@ -6082,11 +6180,11 @@
               }
             ]
           },
-          "chunkPlan": {
-            "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/ChunkPlan"
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -6143,6 +6241,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -6246,15 +6352,23 @@
             ],
             "example": "eleven_turbo_v2_5"
           },
-          "language": {
-            "type": "string",
-            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5 supports language enforcement. For other models, an error will be returned if language code is provided."
-          },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
+          "language": {
+            "type": "string",
+            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5 supports language enforcement. For other models, an error will be returned if language code is provided."
+          },
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -6310,6 +6424,14 @@
                 "$ref": "#/components/schemas/ChunkPlan"
               }
             ]
+          },
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FallbackPlan"
+              }
+            ]
           }
         },
         "required": [
@@ -6354,6 +6476,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -6424,6 +6554,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -6541,6 +6679,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -6683,6 +6829,14 @@
                 "$ref": "#/components/schemas/ChunkPlan"
               }
             ]
+          },
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FallbackPlan"
+              }
+            ]
           }
         },
         "required": [
@@ -6766,6 +6920,14 @@
               }
             ]
           },
+          "chunkPlan": {
+            "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChunkPlan"
+              }
+            ]
+          },
           "personaId": {
             "type": "string",
             "description": "This is the unique identifier for the persona that the replica will use in the conversation."
@@ -6794,11 +6956,11 @@
               }
             ]
           },
-          "chunkPlan": {
-            "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
+          "fallbackPlan": {
+            "description": "This is the plan for voice provider fallbacks in the event that the primary voice provider fails.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/ChunkPlan"
+                "$ref": "#/components/schemas/FallbackPlan"
               }
             ]
           }
@@ -7696,7 +7858,7 @@
             }
           },
           "server": {
-            "description": "/**\nThis is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server.url\n2. phoneNumber.serverUrl\n3. org.serverUrl",
+            "description": "This is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server.url\n2. phoneNumber.serverUrl\n3. org.serverUrl",
             "allOf": [
               {
                 "$ref": "#/components/schemas/Server"
@@ -8001,7 +8163,7 @@
           },
           "variableValues": {
             "type": "object",
-            "description": "These are values that will be used to replace the template variables in the assistant messages and other text-based fields.\nThis uses LiquidJS syntax. https://liquidjs.com/tutorials/intro-to-liquid.html\n\nSo for example, `{{ name }}` will be replaced with the value of `name` in `variableValues`.\n`{{\"now\" | date: \"%b %d, %Y, %I:%M %p\", \"America/New_York\"}}` will be replaced with the current date and time in New York."
+            "description": "These are values that will be used to replace the template variables in the assistant messages and other text-based fields.\nThis uses LiquidJS syntax. https://liquidjs.com/tutorials/intro-to-liquid.html\n\nSo for example, `{{ name }}` will be replaced with the value of `name` in `variableValues`.\n`{{\"now\" | date: \"%b %d, %Y, %I:%M %p\", \"America/New_York\"}}` will be replaced with the current date and time in New York.\n Some VAPI reserved defaults:\n - *customer* - the customer object"
           },
           "name": {
             "type": "string",
@@ -8100,7 +8262,7 @@
             }
           },
           "server": {
-            "description": "/**\nThis is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server.url\n2. phoneNumber.serverUrl\n3. org.serverUrl",
+            "description": "This is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server.url\n2. phoneNumber.serverUrl\n3. org.serverUrl",
             "allOf": [
               {
                 "$ref": "#/components/schemas/Server"
@@ -8625,6 +8787,15 @@
             "type": "string",
             "description": "This is the explanation for how the call ended.",
             "enum": [
+              "pipeline-error-openai-voice-failed",
+              "pipeline-error-cartesia-voice-failed",
+              "pipeline-error-deepgram-voice-failed",
+              "pipeline-error-eleven-labs-voice-failed",
+              "pipeline-error-playht-voice-failed",
+              "pipeline-error-lmnt-voice-failed",
+              "pipeline-error-azure-voice-failed",
+              "pipeline-error-rime-ai-voice-failed",
+              "pipeline-error-neets-voice-failed",
               "db-error",
               "assistant-not-found",
               "license-check-failed",
@@ -8647,17 +8818,9 @@
               "vapifault-web-call-worker-setup-failed",
               "vapifault-transport-connected-but-call-not-active",
               "vapifault-call-started-but-connection-to-transport-missing",
-              "pipeline-error-openai-voice-failed",
-              "pipeline-error-cartesia-voice-failed",
               "pipeline-error-deepgram-transcriber-failed",
-              "pipeline-error-deepgram-voice-failed",
               "pipeline-error-gladia-transcriber-failed",
-              "pipeline-error-eleven-labs-voice-failed",
-              "pipeline-error-playht-voice-failed",
-              "pipeline-error-lmnt-voice-failed",
-              "pipeline-error-azure-voice-failed",
-              "pipeline-error-rime-ai-voice-failed",
-              "pipeline-error-neets-voice-failed",
+              "pipeline-error-assembly-ai-transcriber-failed",
               "pipeline-error-openai-llm-failed",
               "pipeline-error-azure-openai-llm-failed",
               "pipeline-error-groq-llm-failed",
@@ -8757,12 +8920,12 @@
               "pipeline-error-custom-llm-429-exceeded-quota",
               "pipeline-error-custom-llm-500-server-error",
               "pipeline-error-custom-llm-llm-failed",
+              "pipeline-error-custom-voice-failed",
               "pipeline-error-cartesia-socket-hang-up",
               "pipeline-error-cartesia-requested-payment",
               "pipeline-error-cartesia-500-server-error",
               "pipeline-error-cartesia-503-server-error",
               "pipeline-error-cartesia-522-server-error",
-              "pipeline-error-custom-voice-failed",
               "pipeline-error-eleven-labs-voice-not-found",
               "pipeline-error-eleven-labs-quota-exceeded",
               "pipeline-error-eleven-labs-unauthorized-access",
@@ -9519,7 +9682,7 @@
             }
           },
           "server": {
-            "description": "/**\nThis is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server.url\n2. phoneNumber.serverUrl\n3. org.serverUrl",
+            "description": "This is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server.url\n2. phoneNumber.serverUrl\n3. org.serverUrl",
             "allOf": [
               {
                 "$ref": "#/components/schemas/Server"
@@ -9943,7 +10106,7 @@
             }
           },
           "server": {
-            "description": "/**\nThis is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server.url\n2. phoneNumber.serverUrl\n3. org.serverUrl",
+            "description": "This is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server.url\n2. phoneNumber.serverUrl\n3. org.serverUrl",
             "allOf": [
               {
                 "$ref": "#/components/schemas/Server"
@@ -12755,7 +12918,8 @@
           "name": {
             "type": "string",
             "description": "This is the name of the file. This is just for your own reference.",
-            "maxLength": 100
+            "minLength": 1,
+            "maxLength": 40
           }
         }
       },
@@ -13321,6 +13485,47 @@
           "updatedAt"
         ]
       },
+      "AssemblyAICredential": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "assembly-ai"
+            ]
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "This is not returned in the API."
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the credential."
+          },
+          "orgId": {
+            "type": "string",
+            "description": "This is the unique identifier for the org that this credential belongs to."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the credential was created."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the assistant was last updated."
+          }
+        },
+        "required": [
+          "provider",
+          "apiKey",
+          "id",
+          "orgId",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "AzureOpenAICredential": {
         "type": "object",
         "properties": {
@@ -13340,6 +13545,7 @@
               "france",
               "india",
               "japan",
+              "uaenorth",
               "northcentralus",
               "norway",
               "southcentralus",
@@ -13558,6 +13764,16 @@
           "outboundLeadingPlusEnabled": {
             "type": "boolean",
             "description": "This ensures the outbound origination attempts have a leading plus. Defaults to false to match conventional telecom behavior.\n\nUsage:\n- Vonage/Twilio requires leading plus for all outbound calls. Set this to true.\n\n@default false"
+          },
+          "techPrefix": {
+            "type": "string",
+            "description": "This can be used to configure the tech prefix on outbound calls. This is an advanced property.",
+            "maxLength": 10000
+          },
+          "sipDiversionHeader": {
+            "type": "string",
+            "description": "This can be used to enable the SIP diversion header for authenticating the calling number if the SIP trunk supports it. This is an advanced property.",
+            "maxLength": 10000
           },
           "sbcConfiguration": {
             "description": "This is an advanced configuration for enterprise deployments. This uses the onprem SBC to trunk into the SIP trunk's `gateways`, rather than the managed SBC provided by Vapi.",
@@ -14824,6 +15040,25 @@
           "apiKey"
         ]
       },
+      "CreateAssemblyAICredentialDTO": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "assembly-ai"
+            ]
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "This is not returned in the API."
+          }
+        },
+        "required": [
+          "provider",
+          "apiKey"
+        ]
+      },
       "CreateAzureOpenAICredentialDTO": {
         "type": "object",
         "properties": {
@@ -14843,6 +15078,7 @@
               "france",
               "india",
               "japan",
+              "uaenorth",
               "northcentralus",
               "norway",
               "southcentralus",
@@ -14937,6 +15173,16 @@
           "outboundLeadingPlusEnabled": {
             "type": "boolean",
             "description": "This ensures the outbound origination attempts have a leading plus. Defaults to false to match conventional telecom behavior.\n\nUsage:\n- Vonage/Twilio requires leading plus for all outbound calls. Set this to true.\n\n@default false"
+          },
+          "techPrefix": {
+            "type": "string",
+            "description": "This can be used to configure the tech prefix on outbound calls. This is an advanced property.",
+            "maxLength": 10000
+          },
+          "sipDiversionHeader": {
+            "type": "string",
+            "description": "This can be used to enable the SIP diversion header for authenticating the calling number if the SIP trunk supports it. This is an advanced property.",
+            "maxLength": 10000
           },
           "sbcConfiguration": {
             "description": "This is an advanced configuration for enterprise deployments. This uses the onprem SBC to trunk into the SIP trunk's `gateways`, rather than the managed SBC provided by Vapi.",
@@ -15547,6 +15793,25 @@
           "apiKey"
         ]
       },
+      "UpdateAssemblyAICredentialDTO": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "assembly-ai"
+            ]
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "This is not returned in the API."
+          }
+        },
+        "required": [
+          "provider",
+          "apiKey"
+        ]
+      },
       "UpdateAzureOpenAICredentialDTO": {
         "type": "object",
         "properties": {
@@ -15566,6 +15831,7 @@
               "france",
               "india",
               "japan",
+              "uaenorth",
               "northcentralus",
               "norway",
               "southcentralus",
@@ -15660,6 +15926,16 @@
           "outboundLeadingPlusEnabled": {
             "type": "boolean",
             "description": "This ensures the outbound origination attempts have a leading plus. Defaults to false to match conventional telecom behavior.\n\nUsage:\n- Vonage/Twilio requires leading plus for all outbound calls. Set this to true.\n\n@default false"
+          },
+          "techPrefix": {
+            "type": "string",
+            "description": "This can be used to configure the tech prefix on outbound calls. This is an advanced property.",
+            "maxLength": 10000
+          },
+          "sipDiversionHeader": {
+            "type": "string",
+            "description": "This can be used to enable the SIP diversion header for authenticating the calling number if the SIP trunk supports it. This is an advanced property.",
+            "maxLength": 10000
           },
           "sbcConfiguration": {
             "description": "This is an advanced configuration for enterprise deployments. This uses the onprem SBC to trunk into the SIP trunk's `gateways`, rather than the managed SBC provided by Vapi.",
@@ -18068,6 +18344,15 @@
             "type": "string",
             "description": "This is the reason the call ended. This can also be found at `call.endedReason` on GET /call/:id.",
             "enum": [
+              "pipeline-error-openai-voice-failed",
+              "pipeline-error-cartesia-voice-failed",
+              "pipeline-error-deepgram-voice-failed",
+              "pipeline-error-eleven-labs-voice-failed",
+              "pipeline-error-playht-voice-failed",
+              "pipeline-error-lmnt-voice-failed",
+              "pipeline-error-azure-voice-failed",
+              "pipeline-error-rime-ai-voice-failed",
+              "pipeline-error-neets-voice-failed",
               "db-error",
               "assistant-not-found",
               "license-check-failed",
@@ -18090,17 +18375,9 @@
               "vapifault-web-call-worker-setup-failed",
               "vapifault-transport-connected-but-call-not-active",
               "vapifault-call-started-but-connection-to-transport-missing",
-              "pipeline-error-openai-voice-failed",
-              "pipeline-error-cartesia-voice-failed",
               "pipeline-error-deepgram-transcriber-failed",
-              "pipeline-error-deepgram-voice-failed",
               "pipeline-error-gladia-transcriber-failed",
-              "pipeline-error-eleven-labs-voice-failed",
-              "pipeline-error-playht-voice-failed",
-              "pipeline-error-lmnt-voice-failed",
-              "pipeline-error-azure-voice-failed",
-              "pipeline-error-rime-ai-voice-failed",
-              "pipeline-error-neets-voice-failed",
+              "pipeline-error-assembly-ai-transcriber-failed",
               "pipeline-error-openai-llm-failed",
               "pipeline-error-azure-openai-llm-failed",
               "pipeline-error-groq-llm-failed",
@@ -18200,12 +18477,12 @@
               "pipeline-error-custom-llm-429-exceeded-quota",
               "pipeline-error-custom-llm-500-server-error",
               "pipeline-error-custom-llm-llm-failed",
+              "pipeline-error-custom-voice-failed",
               "pipeline-error-cartesia-socket-hang-up",
               "pipeline-error-cartesia-requested-payment",
               "pipeline-error-cartesia-500-server-error",
               "pipeline-error-cartesia-503-server-error",
               "pipeline-error-cartesia-522-server-error",
-              "pipeline-error-custom-voice-failed",
               "pipeline-error-eleven-labs-voice-not-found",
               "pipeline-error-eleven-labs-quota-exceeded",
               "pipeline-error-eleven-labs-unauthorized-access",
@@ -18840,6 +19117,15 @@
             "type": "string",
             "description": "This is the reason the call ended. This is only sent if the status is \"ended\".",
             "enum": [
+              "pipeline-error-openai-voice-failed",
+              "pipeline-error-cartesia-voice-failed",
+              "pipeline-error-deepgram-voice-failed",
+              "pipeline-error-eleven-labs-voice-failed",
+              "pipeline-error-playht-voice-failed",
+              "pipeline-error-lmnt-voice-failed",
+              "pipeline-error-azure-voice-failed",
+              "pipeline-error-rime-ai-voice-failed",
+              "pipeline-error-neets-voice-failed",
               "db-error",
               "assistant-not-found",
               "license-check-failed",
@@ -18862,17 +19148,9 @@
               "vapifault-web-call-worker-setup-failed",
               "vapifault-transport-connected-but-call-not-active",
               "vapifault-call-started-but-connection-to-transport-missing",
-              "pipeline-error-openai-voice-failed",
-              "pipeline-error-cartesia-voice-failed",
               "pipeline-error-deepgram-transcriber-failed",
-              "pipeline-error-deepgram-voice-failed",
               "pipeline-error-gladia-transcriber-failed",
-              "pipeline-error-eleven-labs-voice-failed",
-              "pipeline-error-playht-voice-failed",
-              "pipeline-error-lmnt-voice-failed",
-              "pipeline-error-azure-voice-failed",
-              "pipeline-error-rime-ai-voice-failed",
-              "pipeline-error-neets-voice-failed",
+              "pipeline-error-assembly-ai-transcriber-failed",
               "pipeline-error-openai-llm-failed",
               "pipeline-error-azure-openai-llm-failed",
               "pipeline-error-groq-llm-failed",
@@ -18972,12 +19250,12 @@
               "pipeline-error-custom-llm-429-exceeded-quota",
               "pipeline-error-custom-llm-500-server-error",
               "pipeline-error-custom-llm-llm-failed",
+              "pipeline-error-custom-voice-failed",
               "pipeline-error-cartesia-socket-hang-up",
               "pipeline-error-cartesia-requested-payment",
               "pipeline-error-cartesia-500-server-error",
               "pipeline-error-cartesia-503-server-error",
               "pipeline-error-cartesia-522-server-error",
-              "pipeline-error-custom-voice-failed",
               "pipeline-error-eleven-labs-voice-not-found",
               "pipeline-error-eleven-labs-quota-exceeded",
               "pipeline-error-eleven-labs-unauthorized-access",
