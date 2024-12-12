@@ -1,0 +1,167 @@
+---
+title:  Telynx SIP Integration
+subtitle: How to integrate SIP Telnyx to Vapi
+slug: advanced/sip/telynx
+---
+## Inbound
+### On Vapi
+<Steps>
+<Step title="Personalized origination SIP URI creation">
+
+First we will create a personalized origination SIP URI via the Vapi API 
+
+```json
+curl --location 'https://api.vapi.ai/phone-number' \
+	--header 'Authorization: Bearer your-vapi-private-api-key' \
+	--header 'Content-Type: application/json' \
+	--data-raw '{
+		"provider": "vapi",
+		"sipUri": "sip:username@sip.vapi.ai",
+		"assistantId": "your-assistant-id"
+	}'
+```
+ - ```provider```: This is set to "vapi".
+ - ```sipUri```: Replace ` username ` with your desired SIP username.
+ - ```assistantId```: Provide your specific `assistant ID` associated with your Vapi AI account.
+</Step>
+
+<Step title="[Optional] Send call request to a webhook instead of assistant">
+
+Send a PATCH to /phone-number/your_phone_id
+
+```json
+ curl --location --request PATCH 'https://api.vapi.ai/phone-number/your_phone_id' \
+ 	--header 'Content-Type: application/json' \
+ 	--header 'Authorization: Bearer your-vapi-private-api-key' \
+ 	--data '{
+ 		"assistantId": null,
+ 		"serverUrl": "https://your_server_url"
+ 	}'
+```
+- `your_server_url` is the webhook link that will receive the assistant request.
+- `your_phone_id` is the id of your just created origination sip URI
+
+Now every time you make a call to this number (i.e. assigned numbers on SIP trunking to this origination URI), you'll get a webhook event requesting an assistant.
+</Step>
+</Steps>
+
+### On Telynx
+<Steps>
+<Step title="Setup inbound authentication">
+1. Go to Voice / SIP Trunking / Create
+2. Select FQDN
+3. Select add FQDN
+4. Select A
+5. Add created SIP URI
+6. FQDN: sip.vapi.ai
+7. Port should be 5060 by default
+</Step>
+<Step title="Go to Inbound tab">
+Set as follows:
+<Frame>
+	<img src="../../static/images/sip/telynx-inbound.png" />
+</Frame>
+</Step>
+<Step title="Assign your acquired phone number to SIP trunking">
+Go to numbers tab, assign number
+</Step>
+<Step title="Modify SIP invite">
+Modify SIP invite so your VAPI and Telnyx accounts will be matched correctly
+1. Go to numbers, edit the one your will be using
+2. Navigate do voice
+3. Scroll down till the end to find Translated Number
+
+*This setting will modify the SIP Invite to the vapi platform so invites are sent to your vapi sip URI. It will be whatever value you set when you created it.*
+
+4. If your chosen sipURI from previous step is username@sip.vapi.ai , this should be username
+5. Done! You should now be receiving calls! 
+</Step>
+</Steps>
+
+## Outbound
+### On Telynx
+<Steps>
+<Step title="Set outbound authentication method">
+1. Go to Voice / Sip Trunking / Authentication and routing
+2. Scroll down to outbound calls authentication and:
+- Add the two fixed IPs from VAPI, select Tech Prefix and create a unique 4-digits Tech Prefix (example 1234 - don't use 1234, must be unique to your account)
+<Frame>
+    <img src="../../static/images/sip/telynx-outbound-auth.png" />
+</Frame>
+</Step>
+<Step title="Create outbound voice profiles">
+1. Go to voice / outbound voice profiles
+2. Create profile
+3. Name it as you will (1. details)
+4. Allow as desired destination (2. destinations)
+5. Leave the next screen as is (3. configuration)
+6. Assign the desired sip trunk (4. …)
+7. Complete
+
+Or you an just go to sip trunk / you sip trunk / outbound / and select your just created outbound voice profile. 
+</Step>
+<Step title="Go to Outbound tab to select the country you'll be calling the most">
+Set as follows, choosing the country that you will be making most calls to (example Brazil)
+
+*We recommend creating a separate SIP Trunk for each country you aim to be making most calls to.*
+<Frame>
+    <img src="../../static/images/sip/telynx-outbound-settings.png" />
+</Frame>
+</Step>
+</Steps>
+### On Vapi
+<Steps>
+<Step title="Create a SIP Trunk Credential through Vapi API">
+```json 
+curl -X POST https://api.vapi.ai/credential \
+	-H "Content-Type: application/json" \
+	-H "Authorization: Bearer your-vapi-private-api-key" \
+	-d '{
+		"provider": "byo-sip-trunk",
+		"name": "Telnyx Trunk",
+		"gateways": [
+			{
+				"ip": "sip.telnyx.com"
+			}
+		]
+	}'
+```
+</Step>
+<Step title="Create a Phone Number Associated with the SIP Trunk">
+```json
+curl -X POST https://api.vapi.ai/phone-number \
+	-H "Content-Type: application/json" \
+	-H "Authorization: Bearer your-vapi-private-api-key" \
+		-d '{
+			"provider": "byo-phone-number",
+			"name": "Telnyx SIP Number",
+			"number": "your-sip-phone-number",
+			"numberE164CheckEnabled": false,
+			"credentialId": "your-new-trunk-credential-id-which-you-got-from-previous-step"
+		}'
+```
+</Step>
+<Step title="Start making outbound calls">
+Use this cURL to trigger calls with tech prefix
+```json
+curl --location 'https://api.vapi.ai/call/phone' \
+	--header 'Authorization: Bearer your-vapi-private-api-key' \
+	--header 'Content-Type: application/json' \
+	--data '{
+		"assistantId": "your-assistant-id",
+		"customer": {	
+			"number": "tech-prefix-with-phone-number-without-plus-signal",
+			"numberE164CheckEnabled": false
+		},
+	"phoneNumberId": "your-phone-id"
+}'
+```
+Example of tech-prefix-with-phone-number-without-plus-signal
+- Phone number: +6699999999
+- Tech Prefix: 1234
+- Should look like this: 12346699999999
+- No + as you can see
+
+Done! Outbound should now be working!
+</Step>
+</Steps>
