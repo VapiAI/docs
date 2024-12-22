@@ -10,26 +10,75 @@ The Speaking Plan and Stop Speaking Plan are essential configurations designed t
 **Note**: At the moment these configurations can currently only be made via API.
 
 ## Start Speaking Plan
+This plan defines the parameters for when the assistant begins speaking after the customer pauses or finishes.
+
 
 - **Wait Time Before Speaking**: You can set how long the assistant waits before speaking after the customer finishes. The default is 0.4 seconds, but you can increase it if the assistant is speaking too soon, or decrease it if there’s too much delay.
+**Example:** For tech support calls, set `waitSeconds` for the assistant to more than 1.0 seconds to give customers time to complete their thoughts, even if they have some pauses in between.
 
-- **Smart Endpointing**: This feature uses advanced processing to detect when the customer has truly finished speaking, especially if they pause mid-thought. It’s off by default but can be turned on if needed.
+- **Smart Endpointing**: This feature uses advanced processing to detect when the customer has truly finished speaking, especially if they pause mid-thought. It’s off by default but can be turned on if needed. **Example:** In insurance claims, `smartendpointingEnabled` helps avoid interruptions while customers think through responses and as they formulate responses. Example: The assistant mentions "do you want a loan," triggering the system to check the customer's response. If the customer responds with "yes" (matching the CustomerRegex for "yes|no"), the system waits for 1.1 seconds before proceeding, allowing time for further clarification. For responses requiring number sequences like "What’s your account number?", set longer timeouts like 5 seconds or more to accommodate pauses between digits.
 
-- **Transcription-Based Detection**: Customize how the assistant determines that the customer has stopped speaking based on what they’re saying. This offers more control over the timing.
+- **Transcription-Based Detection**: Customize how the assistant determines that the customer has stopped speaking based on what they’re saying. This offers more control over the timing. **Example:** When a customer says, "My account number is 123456789, I want to transfer $500." 
+  - The system detects the number "123456789" and waits for 0.5 seconds (`WaitSeconds`) to ensure the customer isn't still speaking.
+  - If the customer were to finish with an additional line, "I want to transfer $500.", the system uses `onPunctuationSeconds` to confirm the end of the speech and then proceed with the request processing.
+  - In a scenario where the customer has been silent for a long and has already finished speaking but the transcriber is not confident to punctuate the transcription, `onNoPunctuationSeconds` is used for 1.5 seconds. 
+
+Here's a code snippet for Start Speaking Plan -
+
+```json
+  "startSpeakingPlan": {
+    "waitSeconds": 0.4,
+    "smartEndpointingEnabled": false,
+    "customEndpointingRules": [
+      {
+        "type": "both",
+        "assistantRegex": "customEndpointingRules",
+        "customerRegex": "customEndpointingRules",
+        "timeoutSeconds": 1.1
+      }
+    ],
+    "transcriptionEndpointingPlan": {
+      "onPunctuationSeconds": 0.1,
+      "onNoPunctuationSeconds": 1.5,
+      "onNumberSeconds": 0.5
+    }
+  } 
+```
 
 
 ## Stop Speaking Plan
+The Stop Speaking Plan defines when the assistant stops talking after detecting customer speech.
 
-- **Words to Stop Speaking**: Define how many words the customer needs to say before the assistant stops talking. If you want immediate reaction, set this to 0. Increase it to avoid interruptions by brief acknowledgments like "okay" or "right".
+- **Words to Stop Speaking**: Define how many words the customer needs to say before the assistant stops talking. If you want immediate reaction, set this to 0. Increase it to avoid interruptions by brief acknowledgments like "okay" or "right". **Example:** While setting an appointment with a clinic, set `numWords` to 2-3 seconds to allow customers to finish brief clarifications without triggering interruptions.
 
 - **Voice Activity Detection**: Adjust how long the customer needs to be speaking before the assistant stops. The default is 0.2 seconds, but you can tweak this to balance responsiveness and avoid false triggers.
+**Example:** For a banking call center, setting a higher `voiceSeconds` value ensures accuracy by reducing false positives. This avoids interruptions caused by background sounds, even if it slightly delays the detection of speech onset. This tradeoff is essential to ensure the assistant processes only correct and intended information.
+
 
 - **Pause Before Resuming**: Control how long the assistant waits before starting to talk again after being interrupted. The default is 1 second, but you can adjust it depending on how quickly the assistant should resume.
+**Example:** For quick queries (e.g., "What’s the total order value in my cart?"), set `backoffSeconds` to 1 second.
+
+Here's a code snippet for Start Speaking Plan -
+
+```json
+ "stopSpeakingPlan": {
+    "numWords": 0,
+    "voiceSeconds": 0.2,
+    "backoffSeconds": 1                                                                
+  }
+```
+
 
 ## Considerations for Configuration
 
 - **Customer Style**: Think about whether the customer pauses mid-thought or provides continuous speech. Adjust wait times and enable smart endpointing as needed.
 
-- **Background Noise**: If there’s a lot of background noise, you may need to tweak the settings to avoid false triggers.
+- **Background Noise**: If there’s a lot of background noise, you may need to tweak the settings to avoid false triggers. Default for phone calls is ‘office’ and default for web calls is ‘off’.
+
+
+
+```json
+  "backgroundSound": "off",
+```
 
 - **Conversation Flow**: Aim for a balance where the assistant is responsive but not intrusive. Test different settings to find the best fit for your needs.
