@@ -1,0 +1,141 @@
+## Introduction to Transfer Destinations
+
+Transferring calls dynamically based on context is an essential feature for handling user interactions effectively. This guide walks you through creating a custom transfer tool, linking it to your assistant, and handling transfer requests with detailed examples. Whether the destination is a phone number, SIP, or another assistant, you'll learn how to configure it seamlessly.
+
+## Step 1: Create a Custom Transfer Tool
+
+To get started, create a transfer tool with an empty `destinations` array:
+
+```bash
+curl -X POST https://api.vapi.ai/tool \
+     -H "Authorization: Bearer insert-private-key-here" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "type": "transferCall",
+  "destinations": [],
+  "function": {
+    "name": "dynamicDestinationTransferCall"
+  }
+}'
+```
+
+This tool acts as a placeholder, allowing dynamic destinations to be defined at runtime.
+
+## Step 2: Link the Tool to Your Assistant
+
+After creating the tool, link it to your assistant. This connection enables the assistant to trigger the tool during calls.
+
+## Step 3: Configure the Server Event
+
+Select the `transfer-destination-request` server event in your assistant settings. This event sends a webhook to your server whenever a transfer is requested, giving you the flexibility to dynamically determine the destination.
+
+## Step 4: Set Up Your Server
+
+Ensure your server is ready to handle incoming requests. Update the assistant's server URL to point to your server, which will process transfer requests and respond with the appropriate destination or error.
+
+## Step 5: Trigger the Tool and Process Requests
+
+Use the following prompt to trigger the transfer tool:
+
+```
+[TASK]
+trigger the dynamicDestinationTransferCall tool
+```
+
+When triggered, the assistant sends a `transfer-destination-request` webhook to your server. This webhook contains all the necessary call details, such as transcripts and messages, allowing your server to process the request dynamically.
+
+**Sample Request Payload:**
+
+```json
+{
+  "type": "transfer-destination-request",
+  "artifact": {
+    "messages": [...],
+    "transcript": "Hello, how can I help you?",
+    "messagesOpenAIFormatted": [...]
+  },
+  "assistant": { "id": "assistant123" },
+  "phoneNumber": "+14155552671",
+  "customer": { "id": "customer456" },
+  "call": { "id": "call789", "status": "ongoing" }
+}
+```
+
+## Step 6: Respond to Transfer Requests
+
+Your server should respond with either a valid `destination` or an `error` to indicate why the transfer cannot be completed.
+
+### Transfer Destination Request Response Payload
+
+#### Assistant Destination
+
+```json
+{
+  "destination": {
+    "type": "assistant",
+    "message": "Connecting you to our support assistant.",
+    "assistantName": "SupportAssistant",
+    "transferMode": "rolling-history"
+  }
+}
+```
+
+Transfers the call to another assistant, specifying how the conversation history should be handled.
+
+#### Number Destination
+
+```json
+{
+  "destination": {
+    "type": "number",
+    "message": "Connecting you to our support line.",
+    "number": "+14155552671",
+    "numberE164CheckEnabled": true,
+    "callerId": "+14155551234",
+    "extension": "101"
+  }
+}
+```
+
+Transfers the call to a specific phone number, with options for caller ID and extensions.
+
+#### SIP Destination
+
+```json
+{
+  "destination": {
+    "type": "sip",
+    "message": "Connecting your call via SIP.",
+    "sipUri": "sip:customer-support@domain.com",
+    "sipHeaders": {
+      "X-Custom-Header": "value"
+    }
+  }
+}
+```
+
+Transfers the call to a SIP URI with optional custom headers.
+
+### Error Response
+
+If the transfer cannot be completed, respond with an error:
+
+```json
+{
+  "error": "Invalid destination specified."
+}
+```
+
+- **Field**: `error`
+- **Description**: Provides a clear reason why the transfer failed.
+
+## Destination or Error in Response
+
+Every response to a transfer-destination-request must include either a `destination` or an `error`. These indicate the outcome of the transfer request:
+
+- **Destination**: Provides details for transferring the call.
+- **Error**: Explains why the transfer cannot be completed.
+
+## Conclusion
+
+Dynamic call transfers empower your assistant to route calls efficiently based on real-time data. By implementing this flow, you can ensure seamless interactions and provide a better experience for your users.
