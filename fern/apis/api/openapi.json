@@ -3339,6 +3339,39 @@
           "provider"
         ]
       },
+      "BackoffPlan": {
+        "type": "object",
+        "properties": {
+          "maxRetries": {
+            "type": "number",
+            "description": "This is the maximum number of retries to attempt if the request fails. Defaults to 0 (no retries).\n\n@default 0",
+            "minimum": 0,
+            "maximum": 10,
+            "example": 0
+          },
+          "type": {
+            "type": "object",
+            "description": "This is the type of backoff plan to use. Defaults to fixed.\n\n@default fixed",
+            "enum": [
+              "fixed",
+              "exponential"
+            ],
+            "example": "fixed"
+          },
+          "baseDelaySeconds": {
+            "type": "number",
+            "description": "This is the base delay in seconds. For linear backoff, this is the delay between each retry. For exponential backoff, this is the initial delay.",
+            "minimum": 0,
+            "maximum": 10,
+            "example": 1
+          }
+        },
+        "required": [
+          "maxRetries",
+          "type",
+          "baseDelaySeconds"
+        ]
+      },
       "Server": {
         "type": "object",
         "properties": {
@@ -3360,6 +3393,14 @@
           "headers": {
             "type": "object",
             "description": "These are the custom headers to include in the request sent to your server.\n\nEach key-value pair represents a header name and its value."
+          },
+          "backoffPlan": {
+            "description": "This is the backoff plan to use if the request fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackoffPlan"
+              }
+            ]
           }
         },
         "required": [
@@ -4442,6 +4483,10 @@
               "type": "string"
             }
           },
+          "regex": {
+            "type": "string",
+            "description": "This is a regex that will be used to validate data in question."
+          },
           "enum": {
             "description": "This array specifies the allowed values that can be used to restrict the output of the model.",
             "type": "array",
@@ -4960,10 +5005,11 @@
           },
           "transferMode": {
             "type": "string",
-            "description": "This is the mode to use for the transfer. Defaults to `rolling-history`.\n\n- `rolling-history`: This is the default mode. It keeps the entire conversation history and appends the new assistant's system message on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    system: assistant2 system message\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n- `swap-system-message-in-history`: This replaces the original system message with the new assistant's system message on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n- `delete-history`: This deletes the entire conversation history on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant2 first message\n    user: Yes, please\n    assistant: how can i help?\n    user: i need help with my account\n\n@default 'rolling-history'",
+            "description": "This is the mode to use for the transfer. Defaults to `rolling-history`.\n\n- `rolling-history`: This is the default mode. It keeps the entire conversation history and appends the new assistant's system message on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    system: assistant2 system message\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n- `swap-system-message-in-history`: This replaces the original system message with the new assistant's system message on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n- `delete-history`: This deletes the entire conversation history on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant2 first message\n    user: Yes, please\n    assistant: how can i help?\n    user: i need help with my account\n\n- `swap-system-message-in-history-and-remove-transfer-tool-messages`: This replaces the original system message with the new assistant's system message on transfer and removes transfer tool messages from conversation history sent to the LLM.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    transfer-tool\n    transfer-tool-result\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n@default 'rolling-history'",
             "enum": [
               "rolling-history",
               "swap-system-message-in-history",
+              "swap-system-message-in-history-and-remove-transfer-tool-messages",
               "delete-history"
             ]
           },
@@ -6016,6 +6062,7 @@
             "type": "string",
             "description": "This is the name of the model. Ex. cognitivecomputations/dolphin-mixtral-8x7b",
             "enum": [
+              "deepseek-r1-distill-llama-70b",
               "llama-3.3-70b-versatile",
               "llama-3.1-405b-reasoning",
               "llama-3.1-70b-versatile",
@@ -6799,7 +6846,8 @@
           }
         },
         "required": [
-          "type"
+          "type",
+          "matches"
         ]
       },
       "ProgrammaticEdgeCondition": {
@@ -6817,7 +6865,8 @@
           }
         },
         "required": [
-          "type"
+          "type",
+          "booleanExpression"
         ]
       },
       "Edge": {
@@ -6837,11 +6886,15 @@
           },
           "from": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 80
           },
           "to": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the edge."
           }
         },
         "required": [
@@ -6871,8 +6924,8 @@
                   "title": "Gather"
                 },
                 {
-                  "$ref": "#/components/schemas/ToolCall",
-                  "title": "ToolCall"
+                  "$ref": "#/components/schemas/HttpRequest",
+                  "title": "HttpRequest"
                 },
                 {
                   "$ref": "#/components/schemas/Hangup",
@@ -6901,7 +6954,7 @@
           },
           "name": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 80
           },
           "edges": {
             "type": "array",
@@ -10950,7 +11003,7 @@
             "type": "number",
             "description": "This is the timeout in seconds before a message from `idleMessages` is spoken. The clock starts when the assistant finishes speaking and remains active until the user speaks.\n\n@default 10",
             "minimum": 5,
-            "maximum": 30
+            "maximum": 60
           }
         }
       },
@@ -14849,6 +14902,10 @@
             "type": "string",
             "description": "This is the ISO 8601 date-time string of when the phone number was last updated."
           },
+          "number": {
+            "type": "string",
+            "description": "These are the digits of the phone number you purchased from Vapi."
+          },
           "name": {
             "type": "string",
             "description": "This is the name of the phone number. This is just for your own reference.",
@@ -14870,6 +14927,12 @@
               }
             ]
           },
+          "numberDesiredAreaCode": {
+            "type": "string",
+            "description": "This is the area code of the phone number to purchase.",
+            "minLength": 3,
+            "maxLength": 3
+          },
           "sipUri": {
             "type": "string",
             "description": "This is the SIP URI of the phone number. You can SIP INVITE this. The assistant attached to this number will answer.\n\nThis is case-insensitive."
@@ -14888,8 +14951,7 @@
           "id",
           "orgId",
           "createdAt",
-          "updatedAt",
-          "sipUri"
+          "updatedAt"
         ]
       },
       "CreateByoPhoneNumberDTO": {
@@ -15103,6 +15165,12 @@
               "vapi"
             ]
           },
+          "numberDesiredAreaCode": {
+            "type": "string",
+            "description": "This is the area code of the phone number to purchase.",
+            "minLength": 3,
+            "maxLength": 3
+          },
           "sipUri": {
             "type": "string",
             "description": "This is the SIP URI of the phone number. You can SIP INVITE this. The assistant attached to this number will answer.\n\nThis is case-insensitive."
@@ -15138,8 +15206,7 @@
           }
         },
         "required": [
-          "provider",
-          "sipUri"
+          "provider"
         ]
       },
       "UpdateByoPhoneNumberDTO": {
@@ -15561,6 +15628,10 @@
       "TrieveKnowledgeBaseSearchPlan": {
         "type": "object",
         "properties": {
+          "topK": {
+            "type": "number",
+            "description": "Specifies the number of top chunks to return. This corresponds to the `page_size` parameter in Trieve."
+          },
           "removeStopWords": {
             "type": "boolean",
             "description": "If true, stop words (specified in server/src/stop-words.txt in the git repo) will be removed. This will preserve queries that are entirely stop words."
@@ -19059,6 +19130,271 @@
         "type": "object",
         "properties": {}
       },
+      "ChatCompletionMessageMetadata": {
+        "type": "object",
+        "properties": {
+          "taskName": {
+            "type": "string"
+          },
+          "taskType": {
+            "type": "string"
+          },
+          "taskOutput": {
+            "type": "string"
+          },
+          "taskState": {
+            "type": "object"
+          },
+          "nodeTrace": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "taskName",
+          "taskType",
+          "taskOutput"
+        ]
+      },
+      "ChatCompletionMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "object"
+          },
+          "content": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatCompletionMessageMetadata"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ]
+      },
+      "Say": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "say"
+            ]
+          },
+          "instruction": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the task."
+          }
+        },
+        "required": [
+          "type",
+          "instruction",
+          "name"
+        ]
+      },
+      "Gather": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "gather"
+            ]
+          },
+          "schema": {
+            "$ref": "#/components/schemas/JsonSchema"
+          },
+          "instruction": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "confirmContent": {
+            "type": "boolean",
+            "description": "This is whether or not the workflow should read back the gathered data to the user, and ask about its correctness."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the task."
+          }
+        },
+        "required": [
+          "type",
+          "instruction",
+          "name"
+        ]
+      },
+      "HttpRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "http-request"
+            ]
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "API endpoint to send requests to."
+          },
+          "headers": {
+            "type": "object",
+            "description": "These are the custom headers to include in the HTTP request sent.\n\nEach key-value pair represents a header name and its value."
+          },
+          "body": {
+            "type": "object",
+            "description": "This defined the JSON body of your HTTP request. For example, if `body_schema`\nincluded \"my_field\": \"my_gather_statement.user_age\", then the json body sent to the server would have that particular value assign to it.\nRight now, only data from gather statements are supported."
+          },
+          "isAsync": {
+            "type": "boolean"
+          },
+          "startTaskMessage": {
+            "type": "string"
+          },
+          "waitTaskMessage": {
+            "type": "string"
+          },
+          "successTaskMessage": {
+            "type": "string"
+          },
+          "failureTaskMessage": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the task."
+          }
+        },
+        "required": [
+          "type",
+          "method",
+          "url",
+          "name"
+        ]
+      },
+      "Hangup": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "hangup"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the task."
+          }
+        },
+        "required": [
+          "type",
+          "name"
+        ]
+      },
+      "CreateWorkflowDTO": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "workflow"
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Say",
+                  "title": "Say"
+                },
+                {
+                  "$ref": "#/components/schemas/Gather",
+                  "title": "Gather"
+                },
+                {
+                  "$ref": "#/components/schemas/HttpRequest",
+                  "title": "HttpRequest"
+                },
+                {
+                  "$ref": "#/components/schemas/Hangup",
+                  "title": "Hangup"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateWorkflowDTO",
+                  "title": "CreateWorkflowDTO"
+                }
+              ]
+            }
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edge"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "nodes",
+          "name",
+          "edges"
+        ]
+      },
+      "ChatCompletionsDTO": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatCompletionMessage"
+            }
+          },
+          "workflowId": {
+            "type": "string"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/CreateWorkflowDTO"
+          }
+        },
+        "required": [
+          "messages"
+        ]
+      },
       "AnthropicCredential": {
         "type": "object",
         "properties": {
@@ -22044,15 +22380,27 @@
           "concurrencyCounter": {
             "type": "number",
             "description": "This is the total number of active calls (concurrency) across all orgs under this subscription.",
-            "minimum": 0
+            "minimum": 1
           },
           "concurrencyLimitIncluded": {
             "type": "number",
-            "description": "This is the default concurrency limit for the subscription."
+            "description": "This is the default concurrency limit for the subscription.",
+            "minimum": 1
+          },
+          "phoneNumbersCounter": {
+            "type": "number",
+            "description": "This is the number of free phone numbers the subscription has",
+            "minimum": 1
+          },
+          "phoneNumbersIncluded": {
+            "type": "number",
+            "description": "This is the maximum number of free phone numbers the subscription can have",
+            "minimum": 1
           },
           "concurrencyLimitPurchased": {
             "type": "number",
-            "description": "This is the purchased add-on concurrency limit for the subscription."
+            "description": "This is the purchased add-on concurrency limit for the subscription.",
+            "minimum": 1
           },
           "monthlyChargeScheduleId": {
             "type": "number",
@@ -22108,11 +22456,13 @@
           },
           "minutesIncluded": {
             "type": "number",
-            "description": "The number of minutes included in the subscription. Enterprise only."
+            "description": "The number of minutes included in the subscription. Enterprise only.",
+            "minimum": 1
           },
           "minutesUsed": {
             "type": "number",
-            "description": "The number of minutes used in the subscription. Enterprise only."
+            "description": "The number of minutes used in the subscription. Enterprise only.",
+            "minimum": 1
           },
           "minutesOverageCost": {
             "type": "number",
@@ -22128,12 +22478,12 @@
           "outboundCallsDailyLimit": {
             "type": "number",
             "description": "The maximum number of outbound calls this subscription may make in a day. Resets every night.",
-            "minimum": 10
+            "minimum": 1
           },
           "outboundCallsCounter": {
             "type": "number",
             "description": "The current number of outbound calls the subscription has made in the current day.",
-            "minimum": 0
+            "minimum": 1
           },
           "outboundCallsCounterNextResetAt": {
             "format": "date-time",
@@ -23295,144 +23645,6 @@
           }
         }
       },
-      "Say": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "say"
-            ]
-          },
-          "instruction": {
-            "type": "string",
-            "maxLength": 1000
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 40
-          }
-        },
-        "required": [
-          "type",
-          "instruction",
-          "name"
-        ]
-      },
-      "Gather": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "gather"
-            ]
-          },
-          "schema": {
-            "$ref": "#/components/schemas/JsonSchema"
-          },
-          "instruction": {
-            "type": "string",
-            "maxLength": 1000
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 40
-          }
-        },
-        "required": [
-          "type",
-          "instruction",
-          "name"
-        ]
-      },
-      "ToolCall": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "tool_call"
-            ]
-          },
-          "tool": {
-            "description": "The core properties of the tool call.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CreateFunctionToolDTO"
-              }
-            ]
-          },
-          "toolBody": {
-            "type": "object",
-            "description": "This defined the JSON body of your tool call. For example, if `body_schema`\nincluded \"my_field\": \"my_gather_statement.user_age\", then the json body sent to the server would have that particular value assign to it.\nRight now, only data from gather statements are supported."
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 40
-          }
-        },
-        "required": [
-          "type",
-          "tool",
-          "toolBody",
-          "name"
-        ]
-      },
-      "CreateWorkflowDTO": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "workflow"
-            ]
-          },
-          "nodes": {
-            "type": "array",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Say",
-                  "title": "Say"
-                },
-                {
-                  "$ref": "#/components/schemas/Gather",
-                  "title": "Gather"
-                },
-                {
-                  "$ref": "#/components/schemas/ToolCall",
-                  "title": "ToolCall"
-                },
-                {
-                  "$ref": "#/components/schemas/Hangup",
-                  "title": "Hangup"
-                },
-                {
-                  "$ref": "#/components/schemas/CreateWorkflowDTO",
-                  "title": "CreateWorkflowDTO"
-                }
-              ]
-            }
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 40
-          },
-          "edges": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Edge"
-            }
-          }
-        },
-        "required": [
-          "type",
-          "nodes",
-          "name",
-          "edges"
-        ]
-      },
       "UpdateWorkflowDTO": {
         "type": "object",
         "properties": {
@@ -23449,8 +23661,8 @@
                   "title": "Gather"
                 },
                 {
-                  "$ref": "#/components/schemas/ToolCall",
-                  "title": "ToolCall"
+                  "$ref": "#/components/schemas/HttpRequest",
+                  "title": "HttpRequest"
                 },
                 {
                   "$ref": "#/components/schemas/Hangup",
@@ -23465,7 +23677,7 @@
           },
           "name": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 80
           },
           "edges": {
             "type": "array",
@@ -23651,6 +23863,52 @@
           "role",
           "transcriptType",
           "transcript"
+        ]
+      },
+      "ToolCallFunction": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "This is the name of the function the model called."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "These are the arguments that the function was called with."
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ]
+      },
+      "ToolCall": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of tool the model called.",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "description": "This is the function the model called.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ToolCallFunction"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the tool call."
+          }
+        },
+        "required": [
+          "type",
+          "function",
+          "id"
         ]
       },
       "ClientMessageToolCalls": {
