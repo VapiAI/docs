@@ -1,0 +1,422 @@
+## What Is a Custom LLM and Why Use It?
+
+A **Custom LLM** is more than just a text generator—it’s a conversational assistant that can call external functions, trigger processes, and handle special logic, all while chatting with your users. Think of it as your smart helper that not only answers questions but also takes actions.
+
+**Why use a Custom LLM?**
+- **Enhanced Functionality:** It mixes natural language responses with actionable functions.
+- **Flexibility:** You can combine built-in functions, attach external tools via Vapi, or even add custom endpoints.
+- **Dynamic Interactions:** The assistant can return structured instructions—like transferring a call or running a custom process—when needed.
+- **Seamless Integration:** Vapi lets you plug these custom endpoints into your assistant quickly and easily.
+
+---
+
+## Setting Up Your Custom LLM for Response Generation
+
+Before adding tool calls, let’s start with the basics: setting up your Custom LLM to simply generate conversation responses. In this mode, your LLM receives conversation details, asks the model for a reply, and streams that text back.
+
+### How It Works
+- **Request Reception:** Your endpoint (e.g., `/chat/completions`) gets a payload with the model, messages, temperature, and (optionally) tools.
+- **Content Generation:** The code builds an OpenAI API request that includes the conversation context.
+- **Response Streaming:** The generated reply is sent back as Server-Sent Events (SSE).
+
+### Sample Code Snippet
+
+```typescript
+app.post("/chat/completions", async (req: Request, res: Response) => {
+  // Log the incoming request.
+  logEvent("Request received at /chat/completions", req.body);
+  const payload = req.body;
+
+  // Prepare the API request to OpenAI.
+  const requestArgs: any = {
+    model: payload.model,
+    messages: payload.messages,
+    temperature: payload.temperature ?? 1.0,
+    stream: true,
+    tools: payload.tools || [],
+    tool_choice: "auto",
+  };
+
+  // Optionally merge in native tool definitions.
+  const modelTools = payload.tools || [];
+  requestArgs.tools = [...modelTools, ...ourTools];
+
+  logEvent("Calling OpenAI API for content generation");
+  const openAIResponse = await openai.chat.completions.create(requestArgs);
+  logEvent("OpenAI API call successful. Streaming response.");
+
+  // Set up streaming headers.
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  // Stream the response chunks back.
+  for await (const chunk of openAIResponse as unknown as AsyncIterable<any>) {
+    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  }
+  res.write("data: [DONE]\n\n");
+  res.end();
+});
+```
+
+### Attaching Custom LLM Without Tools to an Existing Assistant in Vapi
+
+If you just want response generation (without tool calls), update your Vapi model with a PATCH request like this:
+
+```bash
+curl -X PATCH https://api.vapi.ai/assistant/insert-your-assistant-id-here \
+     -H "Authorization: Bearer insert-your-private-key-here" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "model": {
+    "provider": "custom-llm",
+    "model": "gpt-4o",
+    "url": "https://custom-llm-url/chat/completions",
+    "messages": [
+      {
+        "role": "system",
+        "content": "[TASK] Ask the user if they want to transfer the call; if not, continue the conversation."
+      }
+    ]
+  },
+  "transcriber": {
+    "provider": "azure",
+    "language": "en-CA"
+  }
+}'
+```
+
+---
+
+## Adding Tools Calling with Your Custom LLM
+
+Now that you’ve got response generation working, let’s expand your assistant’s abilities. Your Custom LLM can trigger external actions in three different ways.
+
+### a. Native LLM Tools
+
+These tools are built right into your LLM integration. For example, a native function like `get_payment_link` can return a payment URL.
+
+**How It Works:**
+1. **Detection:** The LLM’s streaming response includes a tool call for `get_payment_link`.
+2. **Execution:** The integration parses the arguments and calls the native function.
+3. **Response:** The result is packaged into a follow-up API call and streamed back.
+
+**Code Snippet:**
+
+```typescript
+// Variables to accumulate tool call information.
+let argumentsStr = "";
+let toolCallInfo: { name?: string; id?: string } | null = null;
+
+// Process streaming chunks.
+for await (const chunk of openAIResponse as unknown as AsyncIterable<any>) {
+  const choice = chunk.choices && chunk.choices[0];
+  const delta = choice?.delta || {};
+  const toolCalls = delta.tool_calls;
+
+  if (toolCalls && toolCalls.length > 0) {
+    for (const toolCall of toolCalls) {
+      const func = toolCall.function;
+      if (func && func.name) {
+        toolCallInfo = { name: func.name, id: toolCall.id };
+      }
+      if (func && func.arguments) {
+        argumentsStr += func.arguments;
+      }
+    }
+  }
+
+  const finishReason = choice?.finish_reason;
+  if (finishReason === "tool_calls" && toolCallInfo) {
+    let parsedArgs = {};
+    try {
+      parsedArgs = JSON.parse(argumentsStr);
+    } catch (err) {
+      console.error("Failed to parse arguments:", err);
+    }
+    if (tool_functions[toolCallInfo.name!]) {
+      const result = await tool_functions[toolCallInfo.name!](parsedArgs);
+      const functionMessage = {
+        role: "function",
+        name: toolCallInfo.name,
+        content: JSON.stringify(result)
+      };
+
+      const followUpResponse = await openai.chat.completions.create({
+        model: requestArgs.model,
+        messages: [...requestArgs.messages, functionMessage],
+        temperature: requestArgs.temperature,
+        stream: true,
+        tools: requestArgs.tools,
+        tool_choice: "auto"
+      });
+
+      for await (const followUpChunk of followUpResponse) {
+        res.write(`data: ${JSON.stringify(followUpChunk)}\n\n`);
+      }
+      argumentsStr = "";
+      toolCallInfo = null;
+      continue;
+    }
+  }
+  res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+}
+```
+
+### b. Vapi-Attached Tools
+
+These tools come pre-attached via your Vapi configuration. For example, the `transferCall` tool:
+
+**How It Works:**
+1. **Detection:** When a tool call for `transferCall` appears with a destination in the payload, the function isn’t executed.
+2. **Response:** The integration immediately sends a function call payload with the destination back to Vapi.
+
+**Code Snippet:**
+
+```typescript
+if (functionName === "transferCall" && payload.destination) {
+  const functionCallPayload = {
+    function_call: {
+      name: "transferCall",
+      arguments: {
+        destination: payload.destination,
+      },
+    },
+  };
+  logEvent("Special handling for transferCall", { functionCallPayload });
+  res.write(`data: ${JSON.stringify(functionCallPayload)}\n\n`);
+  // Skip further processing for this chunk.
+  continue;
+}
+```
+
+### c. Custom Tools
+
+Custom tools are unique to your application and are handled by a dedicated endpoint. For example, a custom function named `processOrder`.
+
+**How It Works:**
+1. **Dedicated Endpoint:** Requests for custom tools go to `/chat/completions/custom-tool`.
+2. **Detection:** The payload includes a tool call list. If the function name is `"processOrder"`, a hardcoded result is returned.
+3. **Response:** A JSON response is sent back with the result.
+
+**Code Snippet (Custom Endpoint):**
+
+```typescript
+app.post("/chat/completions/custom-tool", async (req: Request, res: Response) => {
+  logEvent("Received request at /chat/completions/custom-tool", req.body);
+  // Expect the payload to have a "message" with a "toolCallList" array.
+  const vapiPayload = req.body.message;
+
+  // Process tool call.
+  for (const toolCall of vapiPayload.toolCallList) {
+    if (toolCall.function?.name === "processOrder") {
+      const hardcodedResult = "CustomTool processOrder With CustomLLM Always Works";
+      logEvent("Returning hardcoded result for 'processOrder'", { toolCallId: toolCall.id });
+      return res.json({
+        results: [
+          {
+            toolCallId: toolCall.id,
+            result: hardcodedResult,
+          },
+        ],
+      });
+    }
+  }
+});
+```
+
+---
+
+## Testing Tool Calling with cURL
+
+Once your endpoints are set up, try testing them with these cURL commands.
+
+### a. Native Tool Calling (`get_payment_link`)
+
+```bash
+curl -X POST https://custom-llm-url/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+        "model": "gpt-3.5-turbo",
+        "messages": [
+          {"role": "user", "content": "I need a payment link."}
+        ],
+        "temperature": 0.7,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "get_payment_link",
+              "description": "Get a payment link",
+              "parameters": {}
+            }
+          }
+        ]
+      }'
+```
+
+*Expected Response:*  
+Streaming chunks eventually include the result (e.g., a payment link) returned by the native tool function.
+
+### b. Vapi-Attached Tool Calling (`transferCall`)
+
+```bash
+curl -X POST https://custom-llm-url/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+        "model": "gpt-3.5-turbo",
+        "messages": [
+          {"role": "user", "content": "Please transfer my call."}
+        ],
+        "temperature": 0.7,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "transferCall",
+              "description": "Transfer call to a specified destination",
+              "parameters": {}
+            }
+          }
+        ],
+        "destination": "555-1234"
+      }'
+```
+
+*Expected Response:*  
+Immediately returns a function call payload that instructs Vapi to transfer the call to the specified destination.
+
+### c. Custom Tool Calling (`processOrder`)
+
+```bash
+curl -X POST https://custom-llm-url/chat/completions/custom-tool \
+  -H "Content-Type: application/json" \
+  -d '{
+        "message": {
+          "toolCallList": [
+            {
+              "id": "12345",
+              "function": {
+                "name": "processOrder",
+                "arguments": {
+                  "param": "value"
+                }
+              }
+            }
+          ]
+        }
+      }'
+```
+
+*Expected Response:*
+```json
+{
+  "results": [
+    {
+      "toolCallId": "12345",
+      "result": "CustomTools With CustomLLM Always Works"
+    }
+  ]
+}
+```
+
+---
+
+## Integrating Tools with Vapi
+
+After testing locally, integrate your Custom LLM with Vapi. Choose the configuration that fits your needs.
+
+### a. Without Tools (Response Generation Only)
+
+```bash
+curl -X PATCH https://api.vapi.ai/assistant/insert-your-assistant-id-here \
+     -H "Authorization: Bearer insert-your-private-key-here" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "model": {
+    "provider": "custom-llm",
+    "model": "gpt-4o",
+    "url": "https://custom-llm-url/chat/completions",
+    "messages": [
+      {
+        "role": "system",
+        "content": "[TASK] Ask the user if they want to transfer the call; if not, continue chatting."
+      }
+    ]
+  },
+  "transcriber": {
+    "provider": "azure",
+    "language": "en-CA"
+  }
+}'
+```
+
+### b. With Tools (Including `transferCall` and `processOrder`)
+
+```bash
+curl -X PATCH https://api.vapi.ai/assistant/insert-your-assistant-id-here \
+     -H "Authorization: Bearer insert-your-private-key-here" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "model": {
+    "provider": "custom-llm",
+    "model": "gpt-4o",
+    "url": "https://custom-llm-url/chat/completions",
+    "messages": [
+      {
+        "role": "system",
+        "content": "[TASK] Ask the user if they want to transfer the call; if they agree, trigger the transferCall tool; if not, continue the conversation. Also, if the user asks about the custom function processOrder, trigger that tool."
+      }
+    ],
+    "tools": [
+      {
+        "type": "transferCall",
+        "destinations": [
+          {
+            "type": "number",
+            "number": "+xxxxxx",
+            "numberE164CheckEnabled": false,
+            "message": "Transferring Call To Customer Service Department"
+          }
+        ]
+      },
+      {
+        "type": "function",
+        "async": false,
+        "function": {
+          "name": "processOrder",
+          "description": "it's a custom tool function named processOrder according to vapi.ai custom tools guide"
+        },
+        "server": {
+          "url": "https://custom-llm-url/chat/completions/custom-tool"
+        }
+      }
+    ]
+  },
+  "transcriber": {
+    "provider": "azure",
+    "language": "en-CA"
+  }
+}'
+```
+
+---
+
+## Conclusion
+
+A Custom LLM turns a basic conversational assistant into an interactive helper that can:
+- **Generate everyday language responses,**
+- **Call native tools** (like fetching a payment link),
+- **Use Vapi-attached tools** (like transferring a call), and
+- **Leverage custom tools** (like processing orders).
+
+By building each layer step by step and testing with cURL, you can fine-tune your integration before rolling it out in production.
+
+---
+
+## Complete Code
+
+For your convenience, you can find the complete source code for this Custom LLM integration here:
+
+**[Custom LLM with Vapi Integration – Complete Code](https://codesandbox.io/p/devbox/gfwztp)**
+```
