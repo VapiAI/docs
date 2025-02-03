@@ -3339,6 +3339,39 @@
           "provider"
         ]
       },
+      "BackoffPlan": {
+        "type": "object",
+        "properties": {
+          "maxRetries": {
+            "type": "number",
+            "description": "This is the maximum number of retries to attempt if the request fails. Defaults to 0 (no retries).\n\n@default 0",
+            "minimum": 0,
+            "maximum": 10,
+            "example": 0
+          },
+          "type": {
+            "type": "object",
+            "description": "This is the type of backoff plan to use. Defaults to fixed.\n\n@default fixed",
+            "enum": [
+              "fixed",
+              "exponential"
+            ],
+            "example": "fixed"
+          },
+          "baseDelaySeconds": {
+            "type": "number",
+            "description": "This is the base delay in seconds. For linear backoff, this is the delay between each retry. For exponential backoff, this is the initial delay.",
+            "minimum": 0,
+            "maximum": 10,
+            "example": 1
+          }
+        },
+        "required": [
+          "maxRetries",
+          "type",
+          "baseDelaySeconds"
+        ]
+      },
       "Server": {
         "type": "object",
         "properties": {
@@ -3360,6 +3393,14 @@
           "headers": {
             "type": "object",
             "description": "These are the custom headers to include in the request sent to your server.\n\nEach key-value pair represents a header name and its value."
+          },
+          "backoffPlan": {
+            "description": "This is the backoff plan to use if the request fails.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackoffPlan"
+              }
+            ]
           }
         },
         "required": [
@@ -3513,6 +3554,12 @@
             "type": "boolean",
             "description": "This automatically switches the transcriber's language when the customer's language changes. Defaults to false.\n\nUsage:\n- If your customers switch languages mid-call, you can set this to true.\n\nNote:\n- To detect language changes, Vapi uses a custom trained model. Languages supported (X = limited support):\n  1. Arabic\n  2. Bengali\n  3. Cantonese\n  4. Chinese\n  5. Chinese Simplified (X)\n  6. Chinese Traditional (X)\n  7. English\n  8. Farsi (X)\n  9. French\n  10. German\n  11. Haitian Creole (X)\n  12. Hindi\n  13. Italian\n  14. Japanese\n  15. Korean\n  16. Portuguese\n  17. Russian\n  18. Spanish\n  19. Thai\n  20. Urdu\n  21. Vietnamese\n- To receive `language-change-detected` webhook events, add it to `assistant.serverMessages`.\n\n@default false",
             "example": false
+          },
+          "mipOptOut": {
+            "type": "boolean",
+            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis will only be used if you are using your own Deepgram API key.\n\n@default false",
+            "example": false,
+            "default": false
           },
           "keywords": {
             "description": "These keywords are passed to the transcription model to help it pick up use-case specific words. Anything that may not be a common word, like your company name, should be added here.",
@@ -4442,6 +4489,18 @@
               "type": "string"
             }
           },
+          "regex": {
+            "type": "string",
+            "description": "This is a regex that will be used to validate data in question."
+          },
+          "value": {
+            "type": "string",
+            "description": "This the value that will be used in filling the property."
+          },
+          "target": {
+            "type": "string",
+            "description": "This the target variable that will be filled with the value of this property."
+          },
           "enum": {
             "description": "This array specifies the allowed values that can be used to restrict the output of the model.",
             "type": "array",
@@ -4960,10 +5019,11 @@
           },
           "transferMode": {
             "type": "string",
-            "description": "This is the mode to use for the transfer. Defaults to `rolling-history`.\n\n- `rolling-history`: This is the default mode. It keeps the entire conversation history and appends the new assistant's system message on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    system: assistant2 system message\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n- `swap-system-message-in-history`: This replaces the original system message with the new assistant's system message on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n- `delete-history`: This deletes the entire conversation history on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant2 first message\n    user: Yes, please\n    assistant: how can i help?\n    user: i need help with my account\n\n@default 'rolling-history'",
+            "description": "This is the mode to use for the transfer. Defaults to `rolling-history`.\n\n- `rolling-history`: This is the default mode. It keeps the entire conversation history and appends the new assistant's system message on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    system: assistant2 system message\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n- `swap-system-message-in-history`: This replaces the original system message with the new assistant's system message on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n- `delete-history`: This deletes the entire conversation history on transfer.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant2 first message\n    user: Yes, please\n    assistant: how can i help?\n    user: i need help with my account\n\n- `swap-system-message-in-history-and-remove-transfer-tool-messages`: This replaces the original system message with the new assistant's system message on transfer and removes transfer tool messages from conversation history sent to the LLM.\n\n  Example:\n\n  Pre-transfer:\n    system: assistant1 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    transfer-tool\n    transfer-tool-result\n    assistant: (destination.message)\n\n  Post-transfer:\n    system: assistant2 system message\n    assistant: assistant1 first message\n    user: hey, good morning\n    assistant: how can i help?\n    user: i need help with my account\n    assistant: (destination.message)\n    assistant: assistant2 first message (or model generated if firstMessageMode is set to `assistant-speaks-first-with-model-generated-message`)\n\n@default 'rolling-history'",
             "enum": [
               "rolling-history",
               "swap-system-message-in-history",
+              "swap-system-message-in-history-and-remove-transfer-tool-messages",
               "delete-history"
             ]
           },
@@ -6016,6 +6076,7 @@
             "type": "string",
             "description": "This is the name of the model. Ex. cognitivecomputations/dolphin-mixtral-8x7b",
             "enum": [
+              "deepseek-r1-distill-llama-70b",
               "llama-3.3-70b-versatile",
               "llama-3.1-405b-reasoning",
               "llama-3.1-70b-versatile",
@@ -6799,7 +6860,8 @@
           }
         },
         "required": [
-          "type"
+          "type",
+          "matches"
         ]
       },
       "ProgrammaticEdgeCondition": {
@@ -6817,7 +6879,8 @@
           }
         },
         "required": [
-          "type"
+          "type",
+          "booleanExpression"
         ]
       },
       "Edge": {
@@ -6837,11 +6900,15 @@
           },
           "from": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 80
           },
           "to": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the edge."
           }
         },
         "required": [
@@ -6871,8 +6938,8 @@
                   "title": "Gather"
                 },
                 {
-                  "$ref": "#/components/schemas/ToolCall",
-                  "title": "ToolCall"
+                  "$ref": "#/components/schemas/ApiRequest",
+                  "title": "ApiRequest"
                 },
                 {
                   "$ref": "#/components/schemas/Hangup",
@@ -6901,7 +6968,7 @@
           },
           "name": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 80
           },
           "edges": {
             "type": "array",
@@ -7617,6 +7684,12 @@
                 "title": "Deepgram Voice ID"
               }
             ]
+          },
+          "mipOptOut": {
+            "type": "boolean",
+            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis will only be used if you are using your own Deepgram API key.\n\n@default false",
+            "example": false,
+            "default": false
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -8623,6 +8696,12 @@
                 "title": "Deepgram Voice ID"
               }
             ]
+          },
+          "mipOptOut": {
+            "type": "boolean",
+            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis will only be used if you are using your own Deepgram API key.\n\n@default false",
+            "example": false,
+            "default": false
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -10950,7 +11029,12 @@
             "type": "number",
             "description": "This is the timeout in seconds before a message from `idleMessages` is spoken. The clock starts when the assistant finishes speaking and remains active until the user speaks.\n\n@default 10",
             "minimum": 5,
-            "maximum": 30
+            "maximum": 60
+          },
+          "silenceTimeoutMessage": {
+            "type": "string",
+            "description": "This is the message that the assistant will say if the call ends due to silence.\n\nIf unspecified, it will hang up without saying anything.",
+            "maxLength": 1000
           }
         }
       },
@@ -11161,6 +11245,114 @@
             "minimum": 0,
             "maximum": 10,
             "example": 1
+          },
+          "acknowledgementPhrases": {
+            "description": "These are the phrases that will never interrupt the assistant, even if numWords threshold is met.\nThese are typically acknowledgement or backchanneling phrases.",
+            "example": [
+              "i understand",
+              "i see",
+              "i got it",
+              "i hear you",
+              "im listening",
+              "im with you",
+              "right",
+              "okay",
+              "ok",
+              "sure",
+              "alright",
+              "got it",
+              "understood",
+              "yeah",
+              "yes",
+              "uh-huh",
+              "mm-hmm",
+              "gotcha",
+              "mhmm",
+              "ah",
+              "yeah okay",
+              "yeah sure"
+            ],
+            "default": [
+              "i understand",
+              "i see",
+              "i got it",
+              "i hear you",
+              "im listening",
+              "im with you",
+              "right",
+              "okay",
+              "ok",
+              "sure",
+              "alright",
+              "got it",
+              "understood",
+              "yeah",
+              "yes",
+              "uh-huh",
+              "mm-hmm",
+              "gotcha",
+              "mhmm",
+              "ah",
+              "yeah okay",
+              "yeah sure"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 240
+            }
+          },
+          "interruptionPhrases": {
+            "description": "These are the phrases that will always interrupt the assistant immediately, regardless of numWords.\nThese are typically phrases indicating disagreement or desire to stop.",
+            "example": [
+              "stop",
+              "shut",
+              "up",
+              "enough",
+              "quiet",
+              "silence",
+              "but",
+              "dont",
+              "not",
+              "no",
+              "hold",
+              "wait",
+              "cut",
+              "pause",
+              "nope",
+              "nah",
+              "nevermind",
+              "never",
+              "bad",
+              "actually"
+            ],
+            "default": [
+              "stop",
+              "shut",
+              "up",
+              "enough",
+              "quiet",
+              "silence",
+              "but",
+              "dont",
+              "not",
+              "no",
+              "hold",
+              "wait",
+              "cut",
+              "pause",
+              "nope",
+              "nah",
+              "nevermind",
+              "never",
+              "bad",
+              "actually"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 240
+            }
           }
         }
       },
@@ -14849,6 +15041,10 @@
             "type": "string",
             "description": "This is the ISO 8601 date-time string of when the phone number was last updated."
           },
+          "number": {
+            "type": "string",
+            "description": "These are the digits of the phone number you purchased from Vapi."
+          },
           "name": {
             "type": "string",
             "description": "This is the name of the phone number. This is just for your own reference.",
@@ -14870,6 +15066,12 @@
               }
             ]
           },
+          "numberDesiredAreaCode": {
+            "type": "string",
+            "description": "This is the area code of the phone number to purchase.",
+            "minLength": 3,
+            "maxLength": 3
+          },
           "sipUri": {
             "type": "string",
             "description": "This is the SIP URI of the phone number. You can SIP INVITE this. The assistant attached to this number will answer.\n\nThis is case-insensitive."
@@ -14888,8 +15090,7 @@
           "id",
           "orgId",
           "createdAt",
-          "updatedAt",
-          "sipUri"
+          "updatedAt"
         ]
       },
       "CreateByoPhoneNumberDTO": {
@@ -15103,6 +15304,12 @@
               "vapi"
             ]
           },
+          "numberDesiredAreaCode": {
+            "type": "string",
+            "description": "This is the area code of the phone number to purchase.",
+            "minLength": 3,
+            "maxLength": 3
+          },
           "sipUri": {
             "type": "string",
             "description": "This is the SIP URI of the phone number. You can SIP INVITE this. The assistant attached to this number will answer.\n\nThis is case-insensitive."
@@ -15138,8 +15345,7 @@
           }
         },
         "required": [
-          "provider",
-          "sipUri"
+          "provider"
         ]
       },
       "UpdateByoPhoneNumberDTO": {
@@ -15345,54 +15551,6 @@
           }
         }
       },
-      "BuyPhoneNumberDTO": {
-        "type": "object",
-        "properties": {
-          "fallbackDestination": {
-            "description": "This is the fallback destination an inbound call will be transferred to if:\n1. `assistantId` is not set\n2. `squadId` is not set\n3. and, `assistant-request` message to the `serverUrl` fails\n\nIf this is not set and above conditions are met, the inbound call is hung up with an error message.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/TransferDestinationNumber",
-                "title": "NumberTransferDestination"
-              },
-              {
-                "$ref": "#/components/schemas/TransferDestinationSip",
-                "title": "SipTransferDestination"
-              }
-            ]
-          },
-          "areaCode": {
-            "type": "string",
-            "description": "This is the area code of the phone number to purchase.",
-            "minLength": 3,
-            "maxLength": 3
-          },
-          "name": {
-            "type": "string",
-            "description": "This is the name of the phone number. This is just for your own reference.",
-            "maxLength": 40
-          },
-          "assistantId": {
-            "type": "string",
-            "description": "This is the assistant that will be used for incoming calls to this phone number.\n\nIf neither `assistantId` nor `squadId` is set, `assistant-request` will be sent to your Server URL. Check `ServerMessage` and `ServerMessageResponse` for the shape of the message and response that is expected."
-          },
-          "squadId": {
-            "type": "string",
-            "description": "This is the squad that will be used for incoming calls to this phone number.\n\nIf neither `assistantId` nor `squadId` is set, `assistant-request` will be sent to your Server URL. Check `ServerMessage` and `ServerMessageResponse` for the shape of the message and response that is expected."
-          },
-          "server": {
-            "description": "This is where Vapi will send webhooks. You can find all webhooks available along with their shape in ServerMessage schema.\n\nThe order of precedence is:\n\n1. assistant.server\n2. phoneNumber.server\n3. org.server",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Server"
-              }
-            ]
-          }
-        },
-        "required": [
-          "areaCode"
-        ]
-      },
       "ImportVonagePhoneNumberDTO": {
         "type": "object",
         "properties": {
@@ -15561,6 +15719,10 @@
       "TrieveKnowledgeBaseSearchPlan": {
         "type": "object",
         "properties": {
+          "topK": {
+            "type": "number",
+            "description": "Specifies the number of top chunks to return. This corresponds to the `page_size` parameter in Trieve."
+          },
           "removeStopWords": {
             "type": "boolean",
             "description": "If true, stop words (specified in server/src/stop-words.txt in the git repo) will be removed. This will preserve queries that are entirely stop words."
@@ -19059,6 +19221,295 @@
         "type": "object",
         "properties": {}
       },
+      "ChatCompletionMessageMetadata": {
+        "type": "object",
+        "properties": {
+          "taskName": {
+            "type": "string"
+          },
+          "taskType": {
+            "type": "string"
+          },
+          "taskOutput": {
+            "type": "string"
+          },
+          "taskState": {
+            "type": "object"
+          },
+          "nodeTrace": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "taskName",
+          "taskType",
+          "taskOutput"
+        ]
+      },
+      "ChatCompletionMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "object"
+          },
+          "content": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatCompletionMessageMetadata"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ]
+      },
+      "Say": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "say"
+            ]
+          },
+          "exact": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the task."
+          }
+        },
+        "required": [
+          "type",
+          "name"
+        ]
+      },
+      "Gather": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "gather"
+            ]
+          },
+          "schema": {
+            "$ref": "#/components/schemas/JsonSchema"
+          },
+          "instruction": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "confirmContent": {
+            "type": "boolean",
+            "description": "This is whether or not the workflow should read back the gathered data to the user, and ask about its correctness."
+          },
+          "maxRetries": {
+            "type": "number",
+            "description": "This is the number of times we should try to gather the information from the user before we failover to the fail path. An example of this would be a user refusing to give their phone number for privacy reasons, and then going down a different path on account of this"
+          },
+          "literalTemplate": {
+            "type": "string",
+            "description": "This is a liquid templating string. On the first call to Gather, the template will be filled out with variables from the context, and will be spoken verbatim to the user. An example would be \"Base on your zipcode, it looks like you could be in one of these counties: {{ counties | join: \", \" }}. Which one do you live in?\""
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the task."
+          }
+        },
+        "required": [
+          "type",
+          "instruction",
+          "name"
+        ]
+      },
+      "ApiRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "api-request"
+            ]
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "Api endpoint to send requests to."
+          },
+          "headers": {
+            "description": "These are the custom headers to include in the Api Request sent.\n\nEach key-value pair represents a header name and its value.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JsonSchema"
+              }
+            ]
+          },
+          "body": {
+            "description": "This defined the JSON body of your Api Request. For example, if `body_schema`\nincluded \"my_field\": \"my_gather_statement.user_age\", then the json body sent to the server would have that particular value assign to it.\nRight now, only data from gather statements are supported.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JsonSchema"
+              }
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "blocking",
+              "background"
+            ]
+          },
+          "startTaskMessage": {
+            "type": "string"
+          },
+          "waitTaskMessage": {
+            "type": "string"
+          },
+          "successTaskMessage": {
+            "type": "string"
+          },
+          "failureTaskMessage": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the task."
+          }
+        },
+        "required": [
+          "type",
+          "method",
+          "url",
+          "mode",
+          "name"
+        ]
+      },
+      "Hangup": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "hangup"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "metadata": {
+            "type": "object",
+            "description": "This is for metadata you want to store on the task."
+          }
+        },
+        "required": [
+          "type",
+          "name"
+        ]
+      },
+      "CreateWorkflowDTO": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "workflow"
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Say",
+                  "title": "Say"
+                },
+                {
+                  "$ref": "#/components/schemas/Gather",
+                  "title": "Gather"
+                },
+                {
+                  "$ref": "#/components/schemas/ApiRequest",
+                  "title": "ApiRequest"
+                },
+                {
+                  "$ref": "#/components/schemas/Hangup",
+                  "title": "Hangup"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateWorkflowDTO",
+                  "title": "CreateWorkflowDTO"
+                }
+              ]
+            }
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edge"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "nodes",
+          "name",
+          "edges"
+        ]
+      },
+      "ChatCompletionsDTO": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatCompletionMessage"
+            }
+          },
+          "workflowId": {
+            "type": "string"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/CreateWorkflowDTO"
+          }
+        },
+        "required": [
+          "messages"
+        ]
+      },
       "AnthropicCredential": {
         "type": "object",
         "properties": {
@@ -22044,15 +22495,27 @@
           "concurrencyCounter": {
             "type": "number",
             "description": "This is the total number of active calls (concurrency) across all orgs under this subscription.",
-            "minimum": 0
+            "minimum": 1
           },
           "concurrencyLimitIncluded": {
             "type": "number",
-            "description": "This is the default concurrency limit for the subscription."
+            "description": "This is the default concurrency limit for the subscription.",
+            "minimum": 1
+          },
+          "phoneNumbersCounter": {
+            "type": "number",
+            "description": "This is the number of free phone numbers the subscription has",
+            "minimum": 1
+          },
+          "phoneNumbersIncluded": {
+            "type": "number",
+            "description": "This is the maximum number of free phone numbers the subscription can have",
+            "minimum": 1
           },
           "concurrencyLimitPurchased": {
             "type": "number",
-            "description": "This is the purchased add-on concurrency limit for the subscription."
+            "description": "This is the purchased add-on concurrency limit for the subscription.",
+            "minimum": 1
           },
           "monthlyChargeScheduleId": {
             "type": "number",
@@ -22108,11 +22571,13 @@
           },
           "minutesIncluded": {
             "type": "number",
-            "description": "The number of minutes included in the subscription. Enterprise only."
+            "description": "The number of minutes included in the subscription. Enterprise only.",
+            "minimum": 1
           },
           "minutesUsed": {
             "type": "number",
-            "description": "The number of minutes used in the subscription. Enterprise only."
+            "description": "The number of minutes used in the subscription. Enterprise only.",
+            "minimum": 1
           },
           "minutesOverageCost": {
             "type": "number",
@@ -22128,12 +22593,12 @@
           "outboundCallsDailyLimit": {
             "type": "number",
             "description": "The maximum number of outbound calls this subscription may make in a day. Resets every night.",
-            "minimum": 10
+            "minimum": 1
           },
           "outboundCallsCounter": {
             "type": "number",
             "description": "The current number of outbound calls the subscription has made in the current day.",
-            "minimum": 0
+            "minimum": 1
           },
           "outboundCallsCounterNextResetAt": {
             "format": "date-time",
@@ -23295,144 +23760,6 @@
           }
         }
       },
-      "Say": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "say"
-            ]
-          },
-          "instruction": {
-            "type": "string",
-            "maxLength": 1000
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 40
-          }
-        },
-        "required": [
-          "type",
-          "instruction",
-          "name"
-        ]
-      },
-      "Gather": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "gather"
-            ]
-          },
-          "schema": {
-            "$ref": "#/components/schemas/JsonSchema"
-          },
-          "instruction": {
-            "type": "string",
-            "maxLength": 1000
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 40
-          }
-        },
-        "required": [
-          "type",
-          "instruction",
-          "name"
-        ]
-      },
-      "ToolCall": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "tool_call"
-            ]
-          },
-          "tool": {
-            "description": "The core properties of the tool call.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CreateFunctionToolDTO"
-              }
-            ]
-          },
-          "toolBody": {
-            "type": "object",
-            "description": "This defined the JSON body of your tool call. For example, if `body_schema`\nincluded \"my_field\": \"my_gather_statement.user_age\", then the json body sent to the server would have that particular value assign to it.\nRight now, only data from gather statements are supported."
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 40
-          }
-        },
-        "required": [
-          "type",
-          "tool",
-          "toolBody",
-          "name"
-        ]
-      },
-      "CreateWorkflowDTO": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "workflow"
-            ]
-          },
-          "nodes": {
-            "type": "array",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Say",
-                  "title": "Say"
-                },
-                {
-                  "$ref": "#/components/schemas/Gather",
-                  "title": "Gather"
-                },
-                {
-                  "$ref": "#/components/schemas/ToolCall",
-                  "title": "ToolCall"
-                },
-                {
-                  "$ref": "#/components/schemas/Hangup",
-                  "title": "Hangup"
-                },
-                {
-                  "$ref": "#/components/schemas/CreateWorkflowDTO",
-                  "title": "CreateWorkflowDTO"
-                }
-              ]
-            }
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 40
-          },
-          "edges": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Edge"
-            }
-          }
-        },
-        "required": [
-          "type",
-          "nodes",
-          "name",
-          "edges"
-        ]
-      },
       "UpdateWorkflowDTO": {
         "type": "object",
         "properties": {
@@ -23449,8 +23776,8 @@
                   "title": "Gather"
                 },
                 {
-                  "$ref": "#/components/schemas/ToolCall",
-                  "title": "ToolCall"
+                  "$ref": "#/components/schemas/ApiRequest",
+                  "title": "ApiRequest"
                 },
                 {
                   "$ref": "#/components/schemas/Hangup",
@@ -23465,7 +23792,7 @@
           },
           "name": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 80
           },
           "edges": {
             "type": "array",
@@ -23651,6 +23978,52 @@
           "role",
           "transcriptType",
           "transcript"
+        ]
+      },
+      "ToolCallFunction": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "This is the name of the function the model called."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "These are the arguments that the function was called with."
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ]
+      },
+      "ToolCall": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of tool the model called.",
+            "enum": [
+              "function"
+            ]
+          },
+          "function": {
+            "description": "This is the function the model called.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ToolCallFunction"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the tool call."
+          }
+        },
+        "required": [
+          "type",
+          "function",
+          "id"
         ]
       },
       "ClientMessageToolCalls": {
