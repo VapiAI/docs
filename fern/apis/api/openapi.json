@@ -3076,7 +3076,7 @@
             "name": "sortOrder",
             "required": false,
             "in": "query",
-            "description": "This is the sort order for pagination. Defaults to 'ASC'.",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
             "schema": {
               "enum": [
                 "ASC",
@@ -5967,6 +5967,7 @@
             "type": "string",
             "description": "This is the Google model that will be used.",
             "enum": [
+              "gemini-2.0-flash-thinking-exp",
               "gemini-2.0-pro-exp-02-05",
               "gemini-2.0-flash",
               "gemini-2.0-flash-lite-preview-02-05",
@@ -7212,7 +7213,8 @@
             "type": "string",
             "description": "This is the name of the model. Ex. cognitivecomputations/dolphin-mixtral-8x7b",
             "enum": [
-              "grok-beta"
+              "grok-beta",
+              "grok-2"
             ]
           },
           "provider": {
@@ -13260,6 +13262,7 @@
               "pipeline-error-groq-llm-failed",
               "pipeline-error-google-llm-failed",
               "pipeline-error-xai-llm-failed",
+              "pipeline-error-mistral-llm-failed",
               "pipeline-error-inflection-ai-llm-failed",
               "pipeline-error-cerebras-llm-failed",
               "pipeline-error-deep-seek-llm-failed",
@@ -13278,6 +13281,11 @@
               "pipeline-error-xai-403-model-access-denied",
               "pipeline-error-xai-429-exceeded-quota",
               "pipeline-error-xai-500-server-error",
+              "pipeline-error-mistral-400-bad-request-validation-failed",
+              "pipeline-error-mistral-401-unauthorized",
+              "pipeline-error-mistral-403-model-access-denied",
+              "pipeline-error-mistral-429-exceeded-quota",
+              "pipeline-error-mistral-500-server-error",
               "pipeline-error-inflection-ai-400-bad-request-validation-failed",
               "pipeline-error-inflection-ai-401-unauthorized",
               "pipeline-error-inflection-ai-403-model-access-denied",
@@ -24058,48 +24066,6 @@
           }
         }
       },
-      "UpdateWorkflowDTO": {
-        "type": "object",
-        "properties": {
-          "nodes": {
-            "type": "array",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Say",
-                  "title": "Say"
-                },
-                {
-                  "$ref": "#/components/schemas/Gather",
-                  "title": "Gather"
-                },
-                {
-                  "$ref": "#/components/schemas/ApiRequest",
-                  "title": "ApiRequest"
-                },
-                {
-                  "$ref": "#/components/schemas/Hangup",
-                  "title": "Hangup"
-                },
-                {
-                  "$ref": "#/components/schemas/Transfer",
-                  "title": "Transfer"
-                }
-              ]
-            }
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 80
-          },
-          "edges": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Edge"
-            }
-          }
-        }
-      },
       "Eval": {
         "type": "object",
         "properties": {
@@ -24138,19 +24104,22 @@
           "updatedAt"
         ]
       },
-      "GetEvalsResponseDto": {
+      "EvalsPaginatedResponse": {
         "type": "object",
         "properties": {
           "results": {
-            "description": "These are the evaluations returned in the response.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Eval"
             }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
           }
         },
         "required": [
-          "results"
+          "results",
+          "metadata"
         ]
       },
       "CreateEvalDto": {
@@ -24248,6 +24217,93 @@
           "updatedAt",
           "script",
           "attempts"
+        ]
+      },
+      "EvalTest": {
+        "type": "object",
+        "properties": {
+          "scorers": {
+            "type": "array",
+            "description": "These are the scorers used to evaluate the test.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/EvalTestScorerAI",
+                  "title": "AI"
+                }
+              ]
+            }
+          },
+          "type": {
+            "type": "string",
+            "description": "This is the type of the test, which must be voice.",
+            "enum": [
+              "voice"
+            ],
+            "maxLength": 100
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the test."
+          },
+          "evalId": {
+            "type": "string",
+            "description": "This is the unique identifier for the evaluation this test belongs to."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the test was created."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the test was last updated."
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the test.",
+            "maxLength": 80
+          },
+          "script": {
+            "type": "string",
+            "description": "This is the script to be used for the voice test.",
+            "maxLength": 10000
+          },
+          "attempts": {
+            "type": "number",
+            "description": "This is the number of attempts allowed for the test.",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "scorers",
+          "type",
+          "id",
+          "evalId",
+          "createdAt",
+          "updatedAt",
+          "script",
+          "attempts"
+        ]
+      },
+      "EvalTestsPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalTest"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
         ]
       },
       "EvalRunTestAttemptCall": {
@@ -24364,6 +24420,24 @@
           "createdAt",
           "updatedAt",
           "testResults"
+        ]
+      },
+      "EvalRunsPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalRun"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
         ]
       },
       "CreateEvalRunDto": {
@@ -25164,6 +25238,7 @@
               "pipeline-error-groq-llm-failed",
               "pipeline-error-google-llm-failed",
               "pipeline-error-xai-llm-failed",
+              "pipeline-error-mistral-llm-failed",
               "pipeline-error-inflection-ai-llm-failed",
               "pipeline-error-cerebras-llm-failed",
               "pipeline-error-deep-seek-llm-failed",
@@ -25182,6 +25257,11 @@
               "pipeline-error-xai-403-model-access-denied",
               "pipeline-error-xai-429-exceeded-quota",
               "pipeline-error-xai-500-server-error",
+              "pipeline-error-mistral-400-bad-request-validation-failed",
+              "pipeline-error-mistral-401-unauthorized",
+              "pipeline-error-mistral-403-model-access-denied",
+              "pipeline-error-mistral-429-exceeded-quota",
+              "pipeline-error-mistral-500-server-error",
               "pipeline-error-inflection-ai-400-bad-request-validation-failed",
               "pipeline-error-inflection-ai-401-unauthorized",
               "pipeline-error-inflection-ai-403-model-access-denied",
@@ -25960,6 +26040,7 @@
               "pipeline-error-groq-llm-failed",
               "pipeline-error-google-llm-failed",
               "pipeline-error-xai-llm-failed",
+              "pipeline-error-mistral-llm-failed",
               "pipeline-error-inflection-ai-llm-failed",
               "pipeline-error-cerebras-llm-failed",
               "pipeline-error-deep-seek-llm-failed",
@@ -25978,6 +26059,11 @@
               "pipeline-error-xai-403-model-access-denied",
               "pipeline-error-xai-429-exceeded-quota",
               "pipeline-error-xai-500-server-error",
+              "pipeline-error-mistral-400-bad-request-validation-failed",
+              "pipeline-error-mistral-401-unauthorized",
+              "pipeline-error-mistral-403-model-access-denied",
+              "pipeline-error-mistral-429-exceeded-quota",
+              "pipeline-error-mistral-500-server-error",
               "pipeline-error-inflection-ai-400-bad-request-validation-failed",
               "pipeline-error-inflection-ai-401-unauthorized",
               "pipeline-error-inflection-ai-403-model-access-denied",
