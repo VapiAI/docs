@@ -1,0 +1,94 @@
+---
+title: SIP Trunking Guide for Vapi
+subtitle: How to integrate your SIP provider with Vapi
+slug: advanced/sip/sip-trunk
+---
+
+SIP trunking replaces traditional phone lines with a virtual connection over the internet, allowing your business to make and receive calls via a broadband connection. It connects your internal PBX or VoIP system to a SIP provider, which then routes calls to the Public Switched Telephone Network (PSTN). This setup simplifies your communications infrastructure and often reduces costs.
+
+## 1. Vapi SIP Trunking Options
+
+Vapi supports multiple SIP trunk configurations, including:
+
+- **Telnyx**: Uses SIP gateway domain (e.g., sip.telnyx.com) with IP-based authentication. May require a tech prefix for outbound calls.
+- **Zadarma**: Uses SIP credentials (username/password) with its SIP server (e.g., sip.zadarma.com).
+- **Custom "BYO" SIP Trunk**: Allows integration with any SIP provider. You simply provide the SIP gateway address and the necessary authentication details.
+
+## 2. Setup Process Overview
+
+To set up a SIP trunk in Vapi, follow these steps:
+
+### Obtain Provider Details
+
+Gather the SIP server address, authentication credentials (username/password or IP-based), and at least one phone number (DID) from your provider.
+
+### Create a SIP Trunk Credential in Vapi
+
+Use the Vapi API to create a new credential (type: byo-sip-trunk) with your provider's details. This informs Vapi how to connect to your SIP network.
+
+**Example (using Zadarma):**
+
+```bash
+curl -X POST "https://api.vapi.ai/credential" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+  -d '{
+    "provider": "byo-sip-trunk",
+    "name": "Zadarma Trunk",
+    "gateways": [{
+      "ip": "sip.zadarma.com"
+    }],
+    "outboundLeadingPlusEnabled": true,
+    "outboundAuthenticationPlan": {
+      "authUsername": "YOUR_SIP_NUMBER",
+      "authPassword": "YOUR_SIP_PASSWORD"
+    }
+  }'
+```
+
+Save the returned Credential ID for later use.
+
+### Associate a Phone Number with the SIP Trunk
+
+Link your external phone number (DID) to the SIP trunk credential in Vapi by creating a Phone Number resource.
+
+**Example:**
+
+```bash
+curl -X POST "https://api.vapi.ai/phone-number" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+  -d '{
+    "provider": "byo-phone-number",
+    "name": "Zadarma Number",
+    "number": "15551234567",
+    "numberE164CheckEnabled": false,
+    "credentialId": "YOUR_CREDENTIAL_ID"
+  }'
+```
+
+Note the returned Phone Number ID for use in test calls.
+
+### Test Your SIP Trunk
+
+#### Outbound Call Test
+
+Initiate a call through the Vapi dashboard or API to ensure outbound calls are properly routed.
+
+**API Example:**
+
+```json
+POST https://api.vapi.ai/call/phone
+{
+  "assistantId": "YOUR_ASSISTANT_ID",
+  "customer": {
+    "number": "15557654321",
+    "numberE164CheckEnabled": false
+  },
+  "phoneNumberId": "YOUR_PHONE_NUMBER_ID"
+}
+```
+
+#### Inbound Call Test
+
+If inbound routing is configured, call your phone number from an external line. Ensure your provider forwards calls to the correct SIP URI (e.g., `{phoneNumber}@sip.vapi.ai` for Zadarma).
