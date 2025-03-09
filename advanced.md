@@ -1,4 +1,4 @@
-# VAPI Fern Configuration
+# Vapi Api Configuration
 
 This repository contains our Fern Configuration:
 

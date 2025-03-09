@@ -1,4 +1,4 @@
-# VAPI API Documentation
+# Vapi Api Documentation
 
 This repository contains the source files for the documentation found at [docs.vapi.ai](https://docs.vapi.ai/). 
 
