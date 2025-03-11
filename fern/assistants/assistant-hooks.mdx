@@ -1,0 +1,73 @@
+# Assistant Hooks
+
+Assistant hooks allow you to configure actions that will be performed when specific events occur during a call. Currently, hooks support the `call.ending` event, which triggers when a call is ending.
+
+## Usage
+
+Hooks are defined in the `hooks` array of an assistant. Each hook consists of:
+
+- `on`: The event that triggers the hook (currently only supports `call.ending`)
+- `do`: The actions to perform when the hook triggers (currently only supports `transfer`)
+- `filters`: Optional conditions that must be met for the hook to trigger
+
+The `call.endedReason` field in filters can be set to any of the [call ended reasons](https://docs.vapi.ai/api-reference/calls/get#response.body.endedReason). The transfer destination type follows the same schema as the [transfer call tool destinations](https://docs.vapi.ai/api-reference/tools/create#request.body.transferCall.destinations).
+
+Note: Using `"oneOf": ["pipeline-error"]` acts as a catch-all filter that matches any pipeline-related error reason. This is useful when you want to handle all types of pipeline failures with the same transfer action.
+
+## Example: Transfer on Pipeline Error
+
+This example shows how to transfer a call to a fallback number when a pipeline error occurs. The hook will trigger when the call is ending due to a pipeline error, and transfer the call to a specified phone number:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [{
+    "on": "call.ending",
+    "filters": [{
+      "type": "oneOf",
+      "key": "call.endedReason",
+      "oneOf": ["pipeline-error"]
+    }],
+    "do": [{
+      "type": "transfer",
+      "destination": {
+        "type": "number",
+        "number": "+1234567890",
+        "callerId": "+1987654321"
+      }
+    }]
+  }]
+}'
+```
+
+You can also transfer to a SIP destination:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [{
+    "on": "call.ending",
+    "filters": [{
+      "type": "oneOf",
+      "key": "call.endedReason",
+      "oneOf": ["pipeline-error"]
+    }],
+    "do": [{
+      "type": "transfer",
+      "destination": {
+        "type": "sip",
+        "sipUri": "sip:user@domain.com"
+      }
+    }]
+  }]
+}'
+```
+
+Common use cases for hooks include:
+- Transferring to a human agent on errors
+- Routing to a fallback system if the assistant fails
+- Ensuring calls are handled gracefully in edge cases
