@@ -1,6 +1,12 @@
-# Vapi Api Documentation
+# Vapi Platform Documentation
 
 This repository contains the source files for the documentation found at [docs.vapi.ai](https://docs.vapi.ai/). 
+
+Get started with Vapi here: [docs.vapi.ai/introduction](https://docs.vapi.ai/introduction)
+
+View the API Reference here: [docs.vapi.ai/api-reference](https://docs.vapi.ai/api-reference/)
+
+Explore our Client and Server SDKs here: [docs.vapi.ai/sdks](https://docs.vapi.ai/sdks)
 
 ## How can I contribute to these docs?
 
