@@ -23,12 +23,28 @@ The following steps outline how to generate a JWT token:
 3. **Set Token Options**: Define options for the token, such as the expiration time (`expiresIn`).
 4. **Generate the Token**: Use a JWT library or built-in functionality to generate the token with the payload, key, and options.
 
-### Example
+### JWT Token Scopes
+
+The generated JWT token can have one of two scopes: `private` or `public`. The scope of the token will determine the actions that can be performed using the token.
+
+For example, it can be used to restrict which API endpoints the token can access.
+
+<Note>
+  As of writing, the only publicly scoped API endpoint is
+  https://api.vapi.ai//call/web, which is used for Web Call creation. All other
+  endpoints are privately scoped.
+</Note>
+
+### Example (generating a private JWT token)
 
 ```js
 // Define the payload
 const payload = {
   orgId: process.env.ORG_ID,
+  token: {
+    // This is the scope of the token
+    tag: "private",
+  },
 };
 
 // Get the private key from environment variables
@@ -36,7 +52,37 @@ const key = process.env.PRIVATE_KEY;
 
 // Define token options
 const options = {
-  expiresIn: '1h',
+  expiresIn: "1h",
+};
+
+// Generate the token using a JWT library or built-in functionality
+const token = generateJWT(payload, key, options);
+```
+
+### Example (generating a public JWT token)
+
+```js
+// Define the payload
+const payload = {
+  orgId: process.env.ORG_ID,
+  // This is the scope of the token
+  token: {
+    tag: "public",
+    restrictions: {
+      enabled: true,
+      allowedOrigins: ["https://example.vapi.ai"],
+      allowedAssistantIds: ["1cbf8c70-5fd7-4f61-a220-376ab35be1b0"],
+      allowTransientAssistant: false,
+    },
+  },
+};
+
+// Get the private key from environment variables
+const key = process.env.PRIVATE_KEY;
+
+// Define token options
+const options = {
+  expiresIn: "1h",
 };
 
 // Generate the token using a JWT library or built-in functionality
@@ -45,14 +91,14 @@ const token = generateJWT(payload, key, options);
 
 ### Explanation
 
-- **Payload**: The payload includes the `orgId`, representing the organization ID.
+- **Payload**: The payload includes the `orgId` representing the organization ID and the `token` object with the scope of the token.
 - **Key**: The private key is used to sign the token, ensuring its authenticity.
 - **Options**: The `expiresIn` option specifies that the token will expire in 1 hour.
 - **Token Generation**: The `generateJWT` function (a placeholder for the actual JWT generation method) creates the token using the provided payload, key, and options.
 
-## Making an Authenticated API Request
+## Usage (Making an Authenticated API Request)
 
-Once the token is generated, you can use it to make authenticated API requests. The following steps outline how to make an authenticated request:
+If you set the scope to `private`, you can use it to make authenticated API requests. The following steps outline how to make an authenticated request:
 
 1. **Define the API Endpoint**: Specify the URL of the API you want to call.
 2. **Set the Headers**: Include the `Content-Type` and `Authorization` headers in your request. The `Authorization` header should include the generated JWT token prefixed with `Bearer`.
@@ -62,10 +108,10 @@ Once the token is generated, you can use it to make authenticated API requests. 
 
 ```js
 async function getAssistants() {
-  const response = await fetch('https://api.vapi.ai/assistant', {
-    method: 'GET',
+  const response = await fetch("https://api.vapi.ai/assistant", {
+    method: "GET",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
   });
@@ -75,7 +121,6 @@ async function getAssistants() {
 }
 
 fetchData().catch(console.error);
-
 ```
 
 ### Explanation
@@ -84,9 +129,24 @@ fetchData().catch(console.error);
 - **Headers**: The `Content-Type` is set to `application/json`, and the `Authorization` header includes the generated JWT token.
 - **API Call**: The `fetchData` function makes an asynchronous GET request to the specified API endpoint and logs the response.
 
-### Usage
+### Usage (Web Client)
 
-With the generated token, you can authenticate API requests to any endpoint requiring authentication. The token will be valid for the duration specified in the options (1 hour in this case).
+If you set the scope to `public`, you can use it to make authenticated API requests using the Vapi Web Client.
+
+```
+import Vapi from '@vapi-ai/web';
+
+const vapi = new Vapi({
+  token: 'your-jwt-token',
+});
+
+vapi.start('your-assistant-id');
+```
+
+## Notes
+
+- With the generated token, you can authenticate API requests to any endpoint requiring authentication. The token will be valid for the duration specified in the options (1 hour in this case).
+- If you don't specify `token` in the JWT payload, the token will be public.
 
 ## Conclusion
 
