@@ -20,18 +20,25 @@ const removeAllClickListeners = (element) => {
 };
 
 const makeDefaultSearchTrieve = async () => {
+  let defaultSearchBar = null;
   try {
-    let defaultSearchBar = null;
     let retries = 0;
     while (!defaultSearchBar && retries < 10) {
       for (const el of document.querySelectorAll("*")) {
-        if (el.querySelector('[aria-label="Search"]')) {
-          defaultSearchBar = el.querySelector('[aria-label="Search"]');
+        if (el.querySelector('[aria-label="Search"], #fern-search-button')) {
+          defaultSearchBar = el.querySelector(
+            '[aria-label="Search"], #fern-search-button'
+          );
           break;
+        } else {
+          console.log("Default search bar not found");
         }
       }
       retries++;
       await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    if (defaultSearchBar?.hasAttribute("disabled")) {
+      defaultSearchBar.removeAttribute("disabled");
     }
     defaultSearchBar = removeAllClickListeners(defaultSearchBar);
 
@@ -44,16 +51,23 @@ const makeDefaultSearchTrieve = async () => {
   } catch (e) {
     console.error(e);
   }
+
+  return !!defaultSearchBar;
 };
+
 try {
-  await makeDefaultSearchTrieve();
-  setTimeout(makeDefaultSearchTrieve, 50);
-  setTimeout(makeDefaultSearchTrieve, 100);
-  setTimeout(makeDefaultSearchTrieve, 250);
-  setTimeout(makeDefaultSearchTrieve, 500);
-  setTimeout(makeDefaultSearchTrieve, 1000);
-  setTimeout(makeDefaultSearchTrieve, 2000);
-  setTimeout(makeDefaultSearchTrieve, 3000);
+  let defaultSearchBar = null;
+  let retries = 0;
+  let sleepTime = 50;
+  while (!retries < 10) {
+    defaultSearchBar = await makeDefaultSearchTrieve();
+    if (defaultSearchBar) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, sleepTime));
+    sleepTime = Math.min(sleepTime * 2, 500);
+    retries++;
+  }
 } catch (e) {
   console.error(e);
 }
