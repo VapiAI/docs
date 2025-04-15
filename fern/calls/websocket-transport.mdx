@@ -1,47 +1,43 @@
 ---
 title: WebSocket Transport
-description: Stream audio directly via WebSockets for bidirectional real-time communication
+description: Stream audio directly via WebSockets for real-time, bidirectional communication
 slug: calls/websocket-transport
 ---
 
 # WebSocket Transport
 
-Vapi's WebSocket transport provides a powerful way to establish direct, bidirectional audio communication between your application and Vapi's AI assistants. Unlike traditional phone or web calls, this transport mechanism allows you to send and receive raw audio data in real time with minimal latency.
+Vapi's WebSocket transport enables real-time, bidirectional audio communication directly between your application and Vapi's AI assistants. Unlike traditional phone or web calls, this transport method lets you stream raw audio data instantly with minimal latency.
 
-## Overview
+## Key Benefits
 
-The WebSocket transport offers several advantages:
-
-- **Low Latency**: Direct streaming reduces processing delays
-- **Bidirectional Communication**: Simultaneous audio streaming in both directions
-- **Flexible Integration**: Implement in any environment that supports WebSockets
-- **Customizable Audio Format**: Configure sample rate and format to match your needs
-- **Sample Rate Conversion**: Automatic handling of different audio sample rates
+- **Low Latency**: Direct streaming ensures minimal delays.
+- **Bidirectional Streaming**: Real-time audio flow in both directions.
+- **Easy Integration**: Compatible with any environment supporting WebSockets.
+- **Flexible Audio Formats**: Customize audio parameters such as sample rate.
+- **Automatic Sample Rate Conversion**: Seamlessly handles various audio rates.
 
 ## Creating a WebSocket Call
 
-To create a call using the WebSocket transport:
+To initiate a call using WebSocket transport:
 
 ```bash
-curl 'https://api.vapi.ai/call' 
--H 'authorization: Bearer YOUR_API_KEY' 
--H 'content-type: application/json' 
---data-raw '{
-  "assistant": {
-    "assistantId": "YOUR_ASSISTANT_ID"
-  },
-  "transport": {
-    "provider": "vapi.websocket",
-    "audioFormat": {
-      "format": "pcm_s16le",
-      "container": "raw",
-      "sampleRate": 16000
+curl 'https://api.vapi.ai/call' \
+  -H 'authorization: Bearer YOUR_API_KEY' \
+  -H 'content-type: application/json' \
+  --data-raw '{
+    "assistant": { "assistantId": "YOUR_ASSISTANT_ID" },
+    "transport": {
+      "provider": "vapi.websocket",
+      "audioFormat": {
+        "format": "pcm_s16le",
+        "container": "raw",
+        "sampleRate": 16000
+      }
     }
-  }
-}'
+  }'
 ```
 
-### Sample Response
+### Sample API Response
 
 ```json
 {
@@ -62,101 +58,86 @@ curl 'https://api.vapi.ai/call'
 
 ## Audio Format Configuration
 
-When creating a WebSocket call, you can configure the audio format:
+When creating a WebSocket call, the audio format can be customized:
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `format` | Audio encoding format | `pcm_s16le` (16-bit PCM) |
-| `container` | Audio container format | `raw` (Raw PCM) |
-| `sampleRate` | Sample rate in Hz | `16000` (16kHz) |
+| Parameter   | Description             | Default             |
+|-------------|-------------------------|---------------------|
+| `format`    | Audio encoding format   | `pcm_s16le` (16-bit PCM) |
+| `container` | Audio container format  | `raw` (Raw PCM)         |
+| `sampleRate`| Sample rate in Hz       | `16000` (16kHz)         |
 
 <Important>
-Currently, only raw PCM audio data (`pcm_s16le` format with `raw` container) is supported. Additional audio formats and container types may be supported in future releases.
+Currently, Vapi supports only raw PCM (`pcm_s16le` with `raw` container). Additional formats may be supported in future updates.
 </Important>
 
 <Note>
-Vapi automatically handles sample rate conversion between your specified rate and the model's required format. This means you can send audio at 8kHz, 44.1kHz, or other rates, and Vapi will convert it appropriately.
+Vapi automatically converts sample rates as needed. You can stream audio at 8kHz, 44.1kHz, etc., and Vapi will handle conversions seamlessly.
 </Note>
 
 ## Connecting to the WebSocket
 
-After creating a call, connect to the WebSocket URL returned in the response:
+Use the WebSocket URL from the response to establish a connection:
 
 ```javascript
-// Using the websocketCallUrl from the response
 const socket = new WebSocket("wss://api.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/transport");
 
-socket.onopen = () => {
-  console.log("WebSocket connection established");
-};
-
-socket.onclose = () => {
-  console.log("WebSocket connection closed");
-};
-
-socket.onerror = (error) => {
-  console.error("WebSocket error:", error);
-};
+socket.onopen = () => console.log("WebSocket connection opened.");
+socket.onclose = () => console.log("WebSocket connection closed.");
+socket.onerror = (error) => console.error("WebSocket error:", error);
 ```
 
 ## Sending and Receiving Data
 
-The WebSocket connection supports two types of messages:
+The WebSocket supports two types of messages:
 
-1. **Binary audio data**: Raw PCM audio frames (16-bit signed little-endian format)
-2. **Text messages**: JSON-formatted control messages
+- **Binary audio data** (PCM, 16-bit signed little-endian)
+- **Text-based JSON control messages**
 
 ### Sending Audio Data
 
 ```javascript
-// Send binary audio data
 function sendAudioChunk(audioBuffer) {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(audioBuffer);
   }
 }
 
-// Example: Send audio from a microphone stream
-navigator.mediaDevices.getUserMedia({ audio: true })
-  .then(stream => {
-    const audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(1024, 1, 1);
-    
-    processor.onaudioprocess = (e) => {
-      const pcmData = e.inputBuffer.getChannelData(0);
-      // Convert Float32Array to Int16Array (for pcm_s16le format)
-      const int16Data = new Int16Array(pcmData.length);
-      for (let i = 0; i < pcmData.length; i++) {
-        int16Data[i] = Math.max(-32768, Math.min(32767, pcmData[i] * 32768));
-      }
-      sendAudioChunk(int16Data.buffer);
-    };
-    
-    source.connect(processor);
-    processor.connect(audioContext.destination);
-  });
+navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+  const audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(stream);
+  const processor = audioContext.createScriptProcessor(1024, 1, 1);
+
+  processor.onaudioprocess = (event) => {
+    const pcmData = event.inputBuffer.getChannelData(0);
+    const int16Data = new Int16Array(pcmData.length);
+
+    for (let i = 0; i < pcmData.length; i++) {
+      int16Data[i] = Math.max(-32768, Math.min(32767, pcmData[i] * 32768));
+    }
+
+    sendAudioChunk(int16Data.buffer);
+  };
+
+  source.connect(processor);
+  processor.connect(audioContext.destination);
+});
 ```
 
-### Receiving Messages
+### Receiving Data
 
 ```javascript
 socket.onmessage = (event) => {
   if (event.data instanceof Blob) {
-    // Handle binary audio data
     event.data.arrayBuffer().then(buffer => {
       const audioData = new Int16Array(buffer);
-      // Process audio data (e.g., play it back or analyze it)
       playAudio(audioData);
     });
   } else {
-    // Handle JSON control messages
     try {
       const message = JSON.parse(event.data);
-      console.log("Received control message:", message);
       handleControlMessage(message);
     } catch (error) {
-      console.error("Error parsing message:", error);
+      console.error("Failed to parse message:", error);
     }
   }
 };
@@ -171,7 +152,7 @@ function sendControlMessage(messageObj) {
   }
 }
 
-// Example: Send a hangup message
+// Example: hangup call
 function hangupCall() {
   sendControlMessage({ type: "hangup" });
 }
@@ -179,29 +160,27 @@ function hangupCall() {
 
 ## Ending the Call
 
-To properly end a WebSocket call:
+To gracefully end the WebSocket call:
 
 ```javascript
-// Send hangup message
 sendControlMessage({ type: "hangup" });
-
-// Close the WebSocket connection
 socket.close();
 ```
 
-## Comparison with Call Listen Feature
+## Comparison: WebSocket Transport vs. Call Listen Feature
 
-Vapi offers two WebSocket-related features that serve different purposes:
+Vapi provides two WebSocket options:
 
-| WebSocket Transport | Call Listen Feature |
-|---------------------|---------------------|
-| Primary communication channel for the call | Secondary monitoring channel for an existing call |
-| Bidirectional audio streaming | One-way audio streaming (receive only) |
-| Replaces phone/web as the transport method | Supplements an existing phone/web call |
-| Created with `transport.provider: "vapi.websocket"` | Accessed via the `monitor.listenUrl` in a standard call |
+| WebSocket Transport                 | Call Listen Feature                |
+|-------------------------------------|------------------------------------|
+| Primary communication method        | Secondary, monitoring-only channel |
+| Bidirectional audio streaming       | Unidirectional (listen-only)       |
+| Replaces phone/web as transport     | Supplements existing calls         |
+| Uses `provider: "vapi.websocket"`   | Accessed via `monitor.listenUrl`   |
 
-See [Live Call Control](/calls/call-features) for more information about the Call Listen feature.
+Refer to [Live Call Control](/calls/call-features) for more on the Call Listen feature.
 
 <Warning>
-When using the WebSocket transport, you cannot simultaneously use phone number parameters (`phoneNumber` or `phoneNumberId`). The transport method is mutually exclusive with phone-based calling.
+When using WebSocket transport, phone-based parameters (`phoneNumber` or `phoneNumberId`) are not permitted. These methods are mutually exclusive.
 </Warning>
+
