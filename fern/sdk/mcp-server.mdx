@@ -1,0 +1,298 @@
+---
+title: Vapi MCP Server
+subtitle: 'Integrate Vapi APIs with AI assistants through the Model Context Protocol (MCP)'
+slug: sdk/mcp-server
+---
+
+The Vapi Model Context Protocol (MCP) server allows you to integrate with Vapi APIs through tool calling. This enables AI assistants like Claude to directly communicate with Vapi's services, making it possible to manage assistants, phone numbers, and create calls directly through conversational interfaces.
+
+<Note>
+  Looking to use MCP tools with your assistants? See the [MCP Tool documentation](/tools/mcp) for integrating external MCP servers with your Vapi assistants.
+</Note>
+
+## What is Vapi MCP Server?
+
+Vapi MCP Server is an implementation of the Model Context Protocol that exposes Vapi's APIs as callable tools. This allows any MCP-compatible client (like Claude Desktop or custom applications using the MCP SDK) to access Vapi functionality, including:
+
+- Listing, creating, and managing Vapi assistants
+- Managing phone numbers
+- Creating and scheduling outbound calls
+- Retrieving call details and status
+
+## Supported Actions
+
+The Vapi MCP Server provides the following tools for integration:
+
+### Assistant Tools
+- `list_assistants`: Lists all Vapi assistants
+- `create_assistant`: Creates a new Vapi assistant
+- `get_assistant`: Gets a Vapi assistant by ID
+
+### Call Tools
+- `list_calls`: Lists all Vapi calls
+- `create_call`: Creates an outbound call
+- `get_call`: Gets details of a specific call
+
+> **Note:** The `create_call` action supports scheduling calls for immediate execution or for a future time using the optional `scheduledAt` parameter.
+
+### Phone Number Tools
+- `list_phone_numbers`: Lists all Vapi phone numbers
+- `get_phone_number`: Gets details of a specific phone number
+
+## Setup Options
+
+There are two primary ways to connect to the Vapi MCP Server:
+
+1. **Local Setup**: Run the MCP server locally for development or testing
+2. **Remote SSE Connection**: Connect to Vapi's hosted MCP server via Server-Sent Events (SSE)
+
+## Claude Desktop Setup
+
+The easiest way to get started with Vapi MCP Server is through Claude Desktop. This allows you to interact with Vapi services directly through conversations with Claude.
+
+### Prerequisites
+- Claude Desktop application installed
+- Vapi API key (get it from the [Vapi dashboard](https://dashboard.vapi.ai/org/api-keys))
+
+### Configuration Steps
+
+1. Open Claude Desktop and press `CMD + ,` (Mac) to go to `Settings`
+2. Click on the `Developer` tab
+3. Click on the `Edit Config` button
+4. This will open the `claude_desktop_config.json` file in your file explorer
+5. Add the following configuration to the file:
+
+```json
+{
+  "mcpServers": {
+    "vapi-mcp-server": {
+      "command": "npx",
+      "args": [
+          "-y",
+          "@vapi-ai/mcp-server"
+      ],
+      "env": {
+        "VAPI_TOKEN": "<your_vapi_token>"
+      }
+    }
+  }
+}
+```
+
+6. Replace `<your_vapi_token>` with your actual Vapi API key
+7. Save the file and restart Claude Desktop
+
+### Example Usage with Claude Desktop
+
+After configuring Claude Desktop with the Vapi MCP server, you can ask Claude to help with Vapi-related tasks.
+
+#### Example 1: Request an immediate call
+
+```
+I'd like to speak with my appointment scheduling assistant. Can you have it call me at +1234567890?
+```
+
+#### Example 2: Schedule a future call
+
+```
+I need to schedule a call with my customer service assistant for next Tuesday at 3:00 PM. My phone number is +1555123456.
+```
+
+#### Example 3: Manage assistants
+
+```
+Can you list all my Vapi assistants and help me create a new one for appointment scheduling?
+```
+
+## Remote SSE Connection
+
+For production use or if you prefer not to run a local server, you can connect to Vapi's hosted MCP server via Server-Sent Events (SSE) Transport.
+
+### Connection Details
+
+- SSE Endpoint: `https://mcp.vapi.ai/sse`
+- Authentication: Include your Vapi API key as a bearer token in the request headers
+  - Example header: `Authorization: Bearer your_vapi_api_key_here`
+
+This connection allows you to access Vapi's functionality remotely without running a local server.
+
+## Custom MCP Client Integration
+
+If you're building a custom application that needs to communicate with Vapi, you can use any MCP-compatible client SDK.
+
+### Available SDKs
+
+The Model Context Protocol supports clients in multiple languages:
+
+- [TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
+- [Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+- [Java SDK](https://github.com/modelcontextprotocol/java-sdk)
+- [Kotlin SDK](https://github.com/modelcontextprotocol/kotlin-sdk)
+- [C# SDK](https://github.com/modelcontextprotocol/csharp-sdk)
+
+### Integration Steps
+
+1. Install the MCP client SDK for your language of choice
+2. Configure the client to connect to the Vapi MCP Server (either locally or via SSE)
+3. Query the server for available tools
+4. Use the tools in your application logic
+
+Here's an example using the Node.js SDK with SSE transport:
+
+```javascript
+#!/usr/bin/env node
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
+
+// Ensure API key is available
+if (!process.env.VAPI_TOKEN) {
+  console.error('Error: VAPI_TOKEN environment variable is required');
+  process.exit(1);
+}
+
+async function main() {
+  try {
+    // Initialize MCP client
+    const mcpClient = new Client({
+      name: 'vapi-client-example',
+      version: '1.0.0',
+    });
+    
+    // Create SSE transport for connection to remote Vapi MCP server
+    const transport = new SSEClientTransport({
+      url: 'https://mcp.vapi.ai/sse',
+      headers: {
+        'Authorization': `Bearer ${process.env.VAPI_TOKEN}`
+      }
+    });
+    
+    console.log('Connecting to Vapi MCP server via SSE...');
+    await mcpClient.connect(transport);
+    console.log('Connected successfully');
+    
+    try {
+      // List available tools
+      const toolsResult = await mcpClient.listTools();
+      console.log('Available tools:');
+      toolsResult.tools.forEach((tool) => {
+        console.log(`- ${tool.name}: ${tool.description}`);
+      });
+      
+      // List assistants
+      console.log('\nListing assistants...');
+      const assistantsResponse = await mcpClient.callTool({
+        name: 'list_assistants',
+        arguments: {},
+      });
+      
+      const assistants = assistantsResponse.content;
+      if (!(Array.isArray(assistants) && assistants.length > 0)) {
+        console.log('No assistants found. Please create an assistant in the Vapi dashboard first.');
+        return;
+      }
+      
+      console.log('Your assistants:');
+      assistants.forEach((assistant) => {
+        console.log(`- ${assistant.name} (${assistant.id})`);
+      });
+      
+      // List phone numbers
+      console.log('\nListing phone numbers...');
+      const phoneNumbersResponse = await mcpClient.callTool({
+        name: 'list_phone_numbers',
+        arguments: {},
+      });
+      
+      const phoneNumbers = phoneNumbersResponse.content;
+      if (!(Array.isArray(phoneNumbers) && phoneNumbers.length > 0)) {
+        console.log('No phone numbers found. Please add a phone number in the Vapi dashboard first.');
+        return;
+      }
+      
+      console.log('Your phone numbers:');
+      phoneNumbers.forEach((phoneNumber) => {
+        console.log(`- ${phoneNumber.phoneNumber} (${phoneNumber.id})`);
+      });
+      
+      // Create a call using the first assistant and first phone number
+      const phoneNumberId = phoneNumbers[0].id;
+      const assistantId = assistants[0].id;
+      
+      console.log(`\nCreating a call using assistant (${assistantId}) and phone number (${phoneNumberId})...`);
+      const createCallResponse = await mcpClient.callTool({
+        name: 'create_call',
+        arguments: {
+          assistantId: assistantId,
+          phoneNumberId: phoneNumberId,
+          customer: {
+            phoneNumber: "+1234567890"  // Replace with actual customer phone number
+          }
+          // Optional: schedule a call for the future
+          // scheduledAt: "2025-04-15T15:30:00Z"
+        },
+      });
+      
+      console.log('Call created:', JSON.stringify(createCallResponse.content, null, 2));
+    } finally {
+      console.log('\nDisconnecting from server...');
+      await mcpClient.close();
+      console.log('Disconnected');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    process.exit(1);
+  }
+}
+
+main();
+```
+
+This code shows how to:
+- Connect to the Vapi MCP Server using SSE transport
+- List available tools
+- List your existing assistants
+- List your phone numbers
+- Create an outbound call using your first assistant and phone number
+
+You can run this code by saving it as a script and executing it with Node.js:
+
+```bash
+# Install required packages
+npm install @modelcontextprotocol/sdk dotenv
+
+# Create a .env file with your Vapi API token
+echo "VAPI_TOKEN=your_vapi_api_token_here" > .env
+
+# Run the script
+node vapi-client.js
+```
+
+For more detailed examples and complete client implementations, refer to the [MCP Client Quickstart](https://modelcontextprotocol.io/quickstart/client).
+
+## References
+
+- [Vapi MCP Server Repository](https://github.com/VapiAI/mcp-server)
+- [Model Context Protocol Documentation](https://modelcontextprotocol.io)
+- [Vapi Dashboard](https://dashboard.vapi.ai)
+- [Model Context Protocol Client Quickstart](https://modelcontextprotocol.io/quickstart/client)
+
+<CardGroup cols={2}>
+  <Card
+    title="Need Help?"
+    icon="question-circle"
+    href="https://discord.gg/pUFNcf2WmH"
+  >
+    Join our Discord community for support with MCP integration
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="/api-reference/tools/create"
+  >
+    View the complete API documentation for tools
+  </Card>
+</CardGroup>
