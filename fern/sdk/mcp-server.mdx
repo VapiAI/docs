@@ -163,16 +163,43 @@ async function main() {
     });
     
     // Create SSE transport for connection to remote Vapi MCP server
-    const transport = new SSEClientTransport({
-      url: 'https://mcp.vapi.ai/sse',
-      headers: {
-        'Authorization': `Bearer ${process.env.VAPI_TOKEN}`
-      }
-    });
+    const serverUrl = 'https://mcp.vapi.ai/sse';
+    const headers = {
+      Authorization: `Bearer ${process.env.VAPI_TOKEN}`,
+    };
+    const options = {
+      requestInit: { headers: headers },
+      eventSourceInit: {
+        fetch: (url, init) => {
+          return fetch(url, {
+            ...(init || {}),
+            headers: {
+              ...(init?.headers || {}),
+              ...headers,
+            },
+          });
+        },
+      },
+    };
+    const transport = new SSEClientTransport(new URL(serverUrl), options);
     
     console.log('Connecting to Vapi MCP server via SSE...');
     await mcpClient.connect(transport);
     console.log('Connected successfully');
+
+    // Helper function to parse tool responses
+    function parseToolResponse(response) {
+      if (!response?.content) return response;
+      const textItem = response.content.find(item => item.type === 'text');
+      if (textItem?.text) {
+        try {
+          return JSON.parse(textItem.text);
+        } catch {
+          return textItem.text;
+        }
+      }
+      return response;
+    }
     
     try {
       // List available tools
@@ -189,7 +216,7 @@ async function main() {
         arguments: {},
       });
       
-      const assistants = assistantsResponse.content;
+      const assistants = parseToolResponse(assistantsResponse);
       if (!(Array.isArray(assistants) && assistants.length > 0)) {
         console.log('No assistants found. Please create an assistant in the Vapi dashboard first.');
         return;
@@ -207,7 +234,7 @@ async function main() {
         arguments: {},
       });
       
-      const phoneNumbers = phoneNumbersResponse.content;
+      const phoneNumbers = parseToolResponse(phoneNumbersResponse);
       if (!(Array.isArray(phoneNumbers) && phoneNumbers.length > 0)) {
         console.log('No phone numbers found. Please add a phone number in the Vapi dashboard first.');
         return;
@@ -236,7 +263,8 @@ async function main() {
         },
       });
       
-      console.log('Call created:', JSON.stringify(createCallResponse.content, null, 2));
+      const createdCall = parseToolResponse(createCallResponse);
+      console.log('Call created:', JSON.stringify(createdCall, null, 2));
     } finally {
       console.log('\nDisconnecting from server...');
       await mcpClient.close();
