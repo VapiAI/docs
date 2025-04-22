@@ -77,12 +77,12 @@ try {
   try {
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = "https://cdn.trieve.ai/beta/search-component/index.css";
+    link.href = "https://cdn.trieve.ai/stable/search-component/index.css";
     document.head.appendChild(link);
   } catch (e) {
     console.error(e);
   }
-  import("https://cdn.trieve.ai/beta/search-component/vanilla/index.js").then(
+  import("https://cdn.trieve.ai/stable/search-component/vanilla/index.js").then(
     async (module) => {
       try {
         const { renderToDiv } = module;
