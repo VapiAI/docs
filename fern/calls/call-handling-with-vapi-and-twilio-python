@@ -1,0 +1,464 @@
+---
+title: Call Handling with Vapi and Twilio (Python)
+slug: calls/call-handling-with-vapi-and-twilio-python
+---
+
+This document explains how to implement a Python Flask solution for handling a scenario where a user is on hold while the system attempts to connect them to a specialist. If the specialist does not pick up within X seconds or if the call hits voicemail, we take an alternate action (like playing an announcement or scheduling an appointment). This solution integrates Vapi.ai for AI-driven conversations and Twilio for call bridging.
+
+## Problem
+
+Vapi.ai does not provide a built-in way to keep the user on hold, dial a specialist, and handle cases where the specialist is unavailable. We want:
+
+1. The user already talking to the AI (Vapi).
+2. The AI offers to connect them to a specialist.
+3. The user is placed on hold or in a conference room.
+4. We dial the specialist to join.
+5. If the specialist answers, everyone is merged.
+6. If the specialist does not answer (within X seconds or goes to voicemail), we want to either announce "Specialist not available" or schedule an appointment.
+
+## Solution
+
+1. An inbound call arrives from Vapi or from the user directly.
+2. We store its details (e.g., Twilio CallSid).
+3. We send TwiML (or instructions) to put the user in a Twilio conference (on hold).
+4. We place a second call to the specialist, also directed to join the same conference.
+5. If the specialist picks up, Twilio merges the calls.
+6. If not, we handle the no-answer event by playing a message or returning control to the AI for scheduling.
+
+## Steps to Solve the Problem
+
+1. **Receive Inbound Call**
+
+   - Twilio posts data to your `/inbound_call`.
+   - You store the call reference.
+   - You might also invoke Vapi for initial AI instructions.
+
+2. **Prompt User via Vapi**
+
+   - The user decides whether they want the specialist.
+   - If yes, you call an endpoint (e.g., `/connect`).
+
+3. **Create/Join Conference**
+
+   - In `/connect`, you update the inbound call to go into a conference route.
+   - The user is effectively on hold.
+
+4. **Dial Specialist**
+
+   - You create a second call leg to the specialist's phone.
+   - A `statusCallback` can detect no-answer or voicemail.
+
+5. **Detect Unanswered**
+
+   - If Twilio sees a no-answer or failure, your callback logic plays an announcement or signals the AI to schedule an appointment.
+
+6. **Merge or Exit**
+
+   - If the specialist answers, they join the user.
+   - If not, the user is taken off hold and the call ends or goes back to AI.
+
+7. **Use Ephemeral Call (Optional)**
+   - If you need an in-conference announcement, create a short-lived Twilio call that `<Say>` the message to everyone, then ends the conference.
+
+## Code Example
+
+Below is a Python Flask implementation for On-Hold Specialist Transfer with Vapi and Twilio, including improvements for specialist confirmation and voicemail detection.
+
+1. **Flask Setup and Environment**
+
+```python
+import os
+import requests
+from flask import Flask, Response, request
+from twilio.rest import Client
+from twilio.twiml.voice_response import Dial, VoiceResponse
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+app = Flask(__name__)
+
+# Twilio Configuration
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "your_twilio_account_sid")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "your_twilio_auth_token")
+FROM_NUMBER = os.getenv("FROM_NUMBER", "+15551234567")  # Twilio number
+TO_NUMBER = os.getenv("TO_NUMBER", "+15557654321")  # Specialist's number
+
+# Vapi Configuration
+VAPI_BASE_URL = os.getenv("VAPI_BASE_URL", "https://api.vapi.ai")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID", "your_vapi_phone_number_id")
+ASSISTANT_ID = os.getenv("ASSISTANT_ID", "your_vapi_assistant_id")
+PRIVATE_API_KEY = os.getenv("PRIVATE_API_KEY", "your_vapi_private_api_key")
+
+# Create a Twilio client
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+# We'll store the inbound call SID here for simplicity
+global_call_sid = ""
+```
+
+2. **`/inbound_call` - Handling the Inbound Call**
+
+```python
+@app.route("/inbound_call", methods=["POST"])
+def inbound_call():
+    """
+    Handle the inbound call from Twilio.
+    Store the call SID and call Vapi.ai to get initial TwiML.
+    """
+    try:
+        global global_call_sid
+        global_call_sid = request.form.get("CallSid")
+        caller = request.form.get("Caller")
+
+        print(f"Inbound call received: CallSid={global_call_sid}, Caller={caller}")
+        print(f"Request form data: {request.form}")
+
+        # Call Vapi.ai to get initial TwiML
+        response = requests.post(
+            f"{VAPI_BASE_URL}/call",
+            json={
+                "phoneNumberId": PHONE_NUMBER_ID,
+                "phoneCallProviderBypassEnabled": True,
+                "customer": {"number": caller},
+                "assistantId": ASSISTANT_ID,
+            },
+            headers={
+                "Authorization": f"Bearer {PRIVATE_API_KEY}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        returned_twiml = response.json()["phoneCallProviderDetails"]["twiml"]
+        print(f"Vapi returned TwiML: {returned_twiml}")
+        return Response(returned_twiml, mimetype="text/xml")
+    except Exception as e:
+        print(f"Error in inbound_call: {str(e)}")
+        return Response("Internal Server Error", status=500)
+```
+
+3. **`/connect` - Putting User on Hold and Dialing Specialist**
+
+```python
+@app.route("/connect", methods=["POST"])
+def connect():
+    """
+    Put the user on hold and dial the specialist.
+    """
+    try:
+        # Get the base URL
+        protocol = (
+            "https" if request.headers.get("X-Forwarded-Proto") == "https" else "http"
+        )
+        base_url = f"{protocol}://{request.host}"
+        conference_url = f"{base_url}/conference"
+        specialist_prompt_url = f"{base_url}/specialist-prompt"
+
+        # 1) Update inbound call to fetch TwiML from /conference
+        client.calls(global_call_sid).update(url=conference_url, method="POST")
+
+        # 2) Dial the specialist with prompt instead of direct conference
+        status_callback_url = f"{base_url}/participant-status"
+
+        client.calls.create(
+            to=TO_NUMBER,
+            from_=FROM_NUMBER,
+            url=specialist_prompt_url,  # Using prompt endpoint for confirmation
+            method="POST",
+            status_callback=status_callback_url,
+            status_callback_method="POST",
+        )
+
+        return {"status": "Specialist call initiated"}, 200
+    except Exception as e:
+        print(f"Error in connect: {str(e)}")
+        return {"error": "Failed to connect specialist"}, 500
+```
+
+4. **`/conference` - Placing Callers Into a Conference**
+
+```python
+@app.route("/conference", methods=["POST"])
+def conference():
+    """
+    Place callers into a conference.
+    """
+    call_sid = request.form.get("CallSid", "")
+    print(f"Conference endpoint called for CallSid: {call_sid}")
+    
+    response = VoiceResponse()
+    
+    # Put the caller(s) into a conference
+    dial = Dial()
+    dial.conference(
+        "my_conference_room",
+        start_conference_on_enter=True,
+        end_conference_on_exit=True,
+    )
+    response.append(dial)
+    
+    return Response(str(response), mimetype="text/xml")
+```
+
+5. **`/participant-status` - Handling No-Answer or Busy**
+
+```python
+@app.route("/participant-status", methods=["POST"])
+def participant_status():
+    """
+    Handle no-answer or busy scenarios.
+    This is called by Twilio when the specialist call status changes.
+    """
+    call_sid = request.form.get("CallSid", "")
+    call_status = request.form.get("CallStatus", "")
+    call_duration = request.form.get("CallDuration", "")
+    
+    print(f"Participant status update: CallSid={call_sid}, Status={call_status}, Duration={call_duration}")
+    
+    # Check for voicemail by looking at call duration - if it's very short but "completed"
+    # it might be a voicemail system that answered
+    if call_status == "completed" and call_duration and int(call_duration) < 5:
+        print(f"Call was very short ({call_duration}s), likely voicemail. Treating as no-answer.")
+        call_status = "no-answer"
+    
+    if call_status in ["no-answer", "busy", "failed"]:
+        print(f"Specialist did not pick up: {call_status}")
+        
+        # Create an ephemeral call to announce the specialist is unavailable
+        try:
+            protocol = (
+                "https"
+                if request.headers.get("X-Forwarded-Proto") == "https"
+                else "http"
+            )
+            base_url = f"{protocol}://{request.host}"
+            announce_url = f"{base_url}/announce"
+            
+            # Create an ephemeral call to join the conference and make an announcement
+            announce_call = client.calls.create(
+                to=FROM_NUMBER,  # This is just a placeholder, the call will join the conference
+                from_=FROM_NUMBER,
+                url=announce_url,
+                method="POST",
+            )
+            print(f"Created announcement call with SID: {announce_call.sid}")
+        except Exception as e:
+            print(f"Error creating announcement call: {str(e)}")
+    
+    return "", 200
+```
+
+6. **`/announce` - Ephemeral Announcement**
+
+```python
+@app.route("/announce", methods=["POST"])
+def announce():
+    """
+    Create an ephemeral announcement in the conference.
+    """
+    response = VoiceResponse()
+    response.say("Specialist is not available. The transfer wasn't successful.")
+    
+    # Join the conference, then end it
+    dial = Dial()
+    dial.conference(
+        "my_conference_room",
+        start_conference_on_enter=True,
+        end_conference_on_exit=True,
+    )
+    response.append(dial)
+    
+    return Response(str(response), mimetype="text/xml")
+```
+
+7. **Specialist Prompt Endpoints (Improved Voicemail Handling)**
+
+```python
+@app.route("/specialist-prompt", methods=["POST"])
+def specialist_prompt():
+    """
+    Prompt the specialist to press 1 to accept the call.
+    """
+    # Check if this is a retry
+    attempt = request.args.get("attempt", "1")
+    
+    response = VoiceResponse()
+    response.say("Someone is waiting to speak with you. Press 1 to accept this call.")
+    
+    # Wait for keypress with 3 second timeout
+    with response.gather(
+        num_digits=1, action="/specialist-accept", timeout=3
+    ) as gather:
+        gather.say("Press 1 now to connect.")
+    
+    # If no input after timeout
+    if attempt == "1":
+        # Try once more
+        response.redirect("/specialist-prompt?attempt=2")
+    else:
+        # Second attempt failed, handle as declined
+        response.redirect("/specialist-declined")
+    
+    return Response(str(response), mimetype="text/xml")
+
+@app.route("/specialist-accept", methods=["POST"])
+def specialist_accept():
+    """
+    Handle specialist accepting the call by pressing 1.
+    """
+    digits = request.form.get("Digits", "")
+    
+    response = VoiceResponse()
+    
+    if digits == "1":
+        response.say("Thank you. Connecting you now.")
+        
+        # Join the conference
+        dial = Dial()
+        dial.conference(
+            "my_conference_room",
+            start_conference_on_enter=True,
+            end_conference_on_exit=True,
+        )
+        response.append(dial)
+    else:
+        # If they pressed something other than 1
+        response.say("Invalid input. Goodbye.")
+        response.hangup()
+    
+    return Response(str(response), mimetype="text/xml")
+
+@app.route("/specialist-declined", methods=["POST"])
+def specialist_declined():
+    """
+    Handle specialist declining the call (not pressing 1 after two attempts).
+    """
+    # Get the base URL
+    protocol = (
+        "https" if request.headers.get("X-Forwarded-Proto") == "https" else "http"
+    )
+    base_url = f"{protocol}://{request.host}"
+    announce_url = f"{base_url}/announce"
+    
+    # Create an ephemeral call to join the conference and make an announcement
+    try:
+        client.calls.create(
+            to=FROM_NUMBER,  # This is just a placeholder, the call will join the conference
+            from_=FROM_NUMBER,
+            url=announce_url,
+            method="POST",
+        )
+    except Exception as e:
+        print(f"Error creating announcement call: {str(e)}")
+    
+    # Hang up the specialist call
+    response = VoiceResponse()
+    response.say("Thank you. Goodbye.")
+    response.hangup()
+    
+    return Response(str(response), mimetype="text/xml")
+```
+
+8. **Starting the Server**
+
+```python
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=3000)
+```
+
+## How to Test
+
+1. **Environment Variables**  
+   Create a `.env` file with the following variables:
+   ```
+   TWILIO_ACCOUNT_SID=your_twilio_account_sid
+   TWILIO_AUTH_TOKEN=your_twilio_auth_token
+   FROM_NUMBER=+15551234567
+   TO_NUMBER=+15557654321
+   VAPI_BASE_URL=https://api.vapi.ai
+   PHONE_NUMBER_ID=your_vapi_phone_number_id
+   ASSISTANT_ID=your_vapi_assistant_id
+   PRIVATE_API_KEY=your_vapi_private_api_key
+   NGROK_AUTH_TOKEN=your_ngrok_auth_token
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   pip install flask requests twilio python-dotenv ngrok
+   ```
+
+3. **Expose Your Server**
+
+   - Use ngrok to create a public URL to port 3000:
+     ```python
+     # ngrok_tunnel.py
+     import os
+     import ngrok
+     from dotenv import load_dotenv
+
+     load_dotenv()
+     NGROK_AUTH_TOKEN = os.getenv("NGROK_AUTH_TOKEN")
+     listener = ngrok.forward(3000, authtoken=NGROK_AUTH_TOKEN)
+     print(" * ngrok tunnel:", listener.url())
+     print(" * Use this URL in your Vapi webhook configuration and Twilio voice webhook URL")
+     print(" * For example, your inbound call webhook would be:", f"{listener.url()}/inbound_call")
+     input("Press Enter to exit...\n")
+     ```
+
+   - Run the ngrok tunnel:
+     ```bash
+     python ngrok_tunnel.py
+     ```
+
+   - Configure your Twilio phone number to call `/inbound_call` when a call comes in.
+
+4. **Start the Flask Server**
+   ```bash
+   python vapi_twilio_transfer.py
+   ```
+
+5. **Place a Real Call**
+
+   - Dial your Twilio number from a phone.
+   - Twilio hits `/inbound_call`, and runs Vapi logic.
+   - Trigger `/connect` to conference the user and dial the specialist.
+   - If the specialist answers and presses 1, they join the same conference.
+   - If they don't press 1 or never answer, Twilio eventually calls `/participant-status`.
+
+## Improvements Over Basic Implementation
+
+1. **Specialist Confirmation**
+   - When the specialist is called, they must press 1 to accept the call
+   - This prevents voicemail systems from being treated as answered calls
+   - If no key is pressed within 3 seconds, the prompt is repeated once
+   - If still no response, the call is considered declined
+
+2. **Voicemail Detection**
+   - Added logic to detect voicemail by checking call duration
+   - If a call is "completed" but lasted less than 5 seconds, it's likely a voicemail system
+   - In this case, it's treated as a "no-answer" scenario
+
+3. **Detailed Logging**
+   - Added comprehensive logging throughout the application
+   - Each endpoint logs the request data it receives and the responses it sends
+   - This helps with debugging and understanding the call flow
+
+## Notes & Limitations
+
+1. **Voicemail Detection**  
+   Our implementation uses call duration to detect voicemail, but this is not foolproof. If a specialist answers but hangs up quickly, it might be mistaken for voicemail. You can adjust the 5-second threshold in the `/participant-status` endpoint based on your needs.
+
+2. **Specialist Prompt Timing**  
+   The 3-second timeout for specialist response might be too short or too long depending on your use case. Adjust the timeout in the `/specialist-prompt` endpoint as needed.
+
+3. **Concurrent Calls**  
+   Multiple calls at once require storing separate `CallSid`s or similar references. The current implementation uses a global variable which only works for one call at a time.
+
+4. **Conference Behavior**  
+   `start_conference_on_enter=True` merges participants immediately; `end_conference_on_exit=True` ends the conference when that participant leaves. Adjust these parameters based on your specific requirements.
+
+5. **Flask in Production**  
+   For production use, consider using a WSGI server like Gunicorn instead of Flask's built-in development server.
+
+With these steps and code, you can integrate Vapi Assistant while using Twilio's conferencing features to hold, dial out to a specialist, and handle an unanswered or unavailable specialist scenario, with improved handling for voicemail detection.
