@@ -5,14 +5,14 @@ slug: assistants/assistant-hooks
 
 # Assistant Hooks
 
-Assistant hooks allow you to configure actions that will be performed when specific events occur during a call. Currently, hooks support the `call.ending` event, which triggers when a call is ending.
+Assistant hooks allow you to configure actions that will be performed when specific events occur during a call. Currently, hooks support the `call.ending` event (which is triggered when a call is ending), `assistant.speech.interrupted` (when the assistant's speech is interrupted), and `customer.speech.interrupted` (when the customer's speech is interrupted)
 
 ## Usage
 
 Hooks are defined in the `hooks` array of an assistant. Each hook consists of:
 
-- `on`: The event that triggers the hook (currently only supports `call.ending`)
-- `do`: The actions to perform when the hook triggers (currently only supports `transfer`)
+- `on`: The event that triggers the hook (supports `call.ending`, `assistant.speech.interrupted`, and `customer.speech.interrupted`)
+- `do`: The actions to perform when the hook triggers (supports `transfer`, `function`, and `say`)
 - `filters`: Optional conditions that must be met for the hook to trigger
 
 The `call.endedReason` field in filters can be set to any of the [call ended reasons](https://docs.vapi.ai/api-reference/calls/get#response.body.endedReason). The transfer destination type follows the same schema as the [transfer call tool destinations](https://docs.vapi.ai/api-reference/tools/create#request.body.transferCall.destinations).
@@ -72,7 +72,98 @@ curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
 }'
 ```
 
+## Example: Combined Actions on Pipeline Error
+
+This example demonstrates how to combine multiple actions (say, function, and transfer) when a pipeline error occurs. The hook will first say a message, then call a function, and finally transfer the call:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [{
+    "on": "call.ending",
+    "filters": [{
+      "type": "oneOf",
+      "key": "call.endedReason",
+      "oneOf": ["pipeline-error"]
+    }],
+    "do": [
+      {
+        "type": "say",
+        "exact": "I apologize for the technical difficulty. Let me transfer you to our support team."
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "log_error",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "error_type": {
+                "type": "string",
+                "value": "pipeline_error"
+              }
+            }
+          },
+          "description": "Logs the error details for monitoring"
+        },
+        "async": true,
+        "server": {
+          "url": "https://your-server.com/api"
+        }
+      },
+      {
+        "type": "transfer",
+        "destination": {
+          "type": "number",
+          "number": "+1234567890",
+          "callerId": "+1987654321"
+        }
+      }
+    ]
+  }]
+}'
+```
+
+## Example: Handling Speech Interruptions
+
+This example demonstrates how to handle when the assistant's speech is interrupted by the customer. The hook will respond with a polite acknowledgment:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [{
+    "on": "assistant.speech.interrupted",
+    "do": [{
+      "type": "say",
+      "exact": ["Sorry about that", "Go ahead", "Please continue"]
+    }]
+  }]
+}'
+```
+
+You can also handle customer speech interruptions in a similar way:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [{
+    "on": "customer.speech.interrupted",
+    "do": [{
+      "type": "say",
+      "exact": "I apologize for interrupting. Please continue."
+    }]
+  }]
+}'
+```
+
 Common use cases for hooks include:
 - Transferring to a human agent on errors
 - Routing to a fallback system if the assistant fails
 - Ensuring calls are handled gracefully in edge cases
+- Handling customer/assistant interruptions
