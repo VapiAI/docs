@@ -1,253 +1,201 @@
 ---
-title: Voice Formatting Plan
-subtitle: >-
-  Learn what voice formatting plans are and how to format voice input dynamically for clearer and more natural text-to-speech interactions.
+title: Voice formatting plan
+subtitle: Format LLM output for natural-sounding speech
 slug: assistants/voice-formatting-plan
 ---
 
-## What is Voice Input Formatted?
+## Overview
 
-When interacting with voice assistants, you might notice terms like `Voice Input Formatted` in call logs or system outputs. This article explains what this means, how it works, and why it's important for delivering clear and natural voice interactions.
+Voice formatting automatically transforms raw text from your language model (LLM) into a format that sounds natural when spoken by a text-to-speech (TTS) provider. This process—called **Voice Input Formatted**—is enabled by default for all assistants.
 
-Voice Input Formatted is a function that takes raw text from a language model (LLM) and cleans it up so text-to-speech (TTS) provider can read it more naturally. It’s **on by default** in your assistant’s voice provider settings, because it helps turn things like:
+Formatting helps with things like:
 
-- `$42.50` → `forty two dollars and fifty cents`
-- `ST` → `STREET`,
-- or phone numbers → spaced digits (“1 2 3 4 5 6 7 8 9 0”).
+- Expanding numbers and currency (e.g., `$42.50` → "forty two dollars and fifty cents")
+- Expanding abbreviations (e.g., `ST` → "STREET")
+- Spacing out phone numbers (e.g., `123-456-7890` → "1 2 3 4 5 6 7 8 9 0")
 
-If you prefer the raw, unchanged text, you can **turn off** these transformations, which we’ll show you later.
+You can turn off formatting if you want the TTS to read the raw LLM output.
 
-### Log Example
+## How voice input formatting works
 
-![Screenshot 2025-01-21 at 10.23.19.png](https://img.notionusercontent.com/s3/prod-files-secure%2Ffdafdda2-774c-49e6-8896-a352ff4d44f3%2Ff603f2bd-36cf-4085-a3bc-f76c89a1ef75%2FScreenshot_2025-01-21_at_10.23.19.png/size/w=2000?exp=1737581744&sig=yoEEQF-BcTTgEVBNdcZh9MWHye2moRsbUcxGPjATNX8)
+When enabled, the formatter runs a series of transformations on your text, each handled by a specific function. Here's the order and what each function does:
 
-## 1. Step-by-Step Transformations
+<Steps>
 
-When `Voice Input Formatted` runs, it calls a bunch of helper functions in a row. Each one focuses on a different kind of text pattern. The entire process happens in this order:
+  <Step title="removeAngleBracketContent">
+    Removes anything in `<...>`, except for `<break>`, `<spell>`, or double angle brackets `<< >>`.
 
-1. **removeAngleBracketContent**
-2. **removeMarkdownSymbols**
-3. **removePhrasesInAsterisks**
-4. **replaceNewLinesWithPeriods**
-5. **replaceColonsWithPeriods**
-6. **formatAcronyms**
-7. **formatDollarAmounts**
-8. **formatEmails**
-9. **formatDates**
-10. **formatTimes**
-11. **formatDistances, formatUnits, formatPercentages, formatPhoneNumbers**
-12. **formatNumbers**
-13. **Applying Replacements**
+    **Example:**
+    ```
+    Hello <tag> world
+    **Wanted** to say *hi*
+    ...
+    ```
+    Becomes:
+    ```
+    Hello  world
+    **Wanted** to say *hi*
+    ...
+    ```
+  </Step>
 
-We’ll walk you through them using a **shorter example** than before.
+  <Step title="removeMarkdownSymbols">
+    Removes markdown characters like `_`, `` ` ``, and `~`. Some versions also remove double asterisks, but that might happen in the next step.
 
-### 1.1 Our Simpler Example Input
+    **Example:**
+    ```
+    **Wanted** to say *hi*
+    ```
+    If only `_`, backticks, and tildes are removed, asterisks remain for now.
+  </Step>
 
+  <Step title="removePhrasesInAsterisks">
+    Removes text wrapped in single or double asterisks.
+
+    **Example:**
+    ```
+    **Wanted** to say *hi*
+    ```
+    Becomes:
+    ```
+     to say
+    ```
+  </Step>
+
+  <Step title="replaceNewLinesWithPeriods">
+    Converts line breaks to periods for smoother speech.
+
+    **Example:**
+    ```
+    Hello  world\n to say\nWe have NASA and .NET here,\ncall me at 123-456-7890,\nprice: $42.50\nand the date is 2023 05 10\nand time is 14:00\nDistance is 5km\nWe might see 9999\nthe address is 320 ST 21 RD\nmy email is JOHN.DOE@example.COM
+    ```
+    Becomes:
+    ```
+    Hello  world .  to say . We have NASA and .NET here, call me at 123-456-7890, price: $42.50 and the date is 2023 05 10 and time is 14:00 Distance is 5km We might see 9999 the address is 320 ST 21 RD my email is JOHN.DOE@example.COM
+    ```
+  </Step>
+
+  <Step title="replaceColonsWithPeriods">
+    Replaces `:` with `.` for better phrasing.
+
+    **Example:**
+    ```
+    price: $42.50
+    ```
+    Becomes:
+    ```
+    price. $42.50
+    ```
+  </Step>
+
+  <Step title="formatAcronyms">
+    Converts known acronyms to lowercase or spaces out unknown all-caps words. If it's all-caps but not recognized, it might get spaced letters. If it has vowels, it's left alone.
+
+    **Example:**
+    - `NASA` → `nasa`
+    - `.NET` → `.net`
+  </Step>
+
+  <Step title="formatDollarAmounts">
+    Expands currency to words.
+
+    **Example:**
+    - `$42.50` → "forty two dollars and fifty cents"
+  </Step>
+
+  <Step title="formatEmails">
+    Replaces `@` with "at" and `.` with "dot" in email addresses.
+
+    **Example:**
+    - `JOHN.DOE@example.COM` → `JOHN dot DOE at example dot COM`
+  </Step>
+
+  <Step title="formatDates">
+    Converts date strings to spoken dates.
+
+    **Example:**
+    - `2023 05 10` → "Wednesday, May 10, 2023"
+  </Step>
+
+  <Step title="formatTimes">
+    Expands time strings for clarity.
+
+    **Example:**
+    - `14:00` → `14`
+  </Step>
+
+  <Step title="formatDistances, formatUnits, formatPercentages, formatPhoneNumbers">
+    - `5km` → "5 kilometers"
+    - `43 lb` → "forty three pounds"
+    - `50%` → "50 percent"
+    - `123-456-7890` → "1 2 3 4 5 6 7 8 9 0"
+  </Step>
+
+  <Step title="formatNumbers">
+    - Years below the current year are read as digits (e.g., `2023`)
+    - Large numbers above a cutoff are read as digits
+    - Negative numbers: `-9` → "minus nine"
+    - Decimals: `2.5` → "two point five"
+  </Step>
+
+  <Step title="Applying Replacements">
+    Runs user-defined replacements last, such as expanding street abbreviations.
+
+    **Example:**
+    - `320 ST 21 RD` → `320 STREET 21 ROAD`
+  </Step>
+
+</Steps>
+
+---
+
+## Customizing the formatting plan
+
+You can control some aspects of formatting:
+
+### Enabled
+Formatting is on by default. To disable, set:
+```js
+voice.chunkPlan.formatPlan.enabled = false
 ```
-Hello <tag> world
-**Wanted** to say *hi*
-We have NASA and .NET here,
-call me at 123-456-7890,
-price: $42.50
-and the date is 2023 05 10
-and time is 14:00
-Distance is 5km
-We might see 9999
-the address is 320 ST 21 RD
-my email is JOHN.DOE@example.COM
 
-```
-
-### 1.2 removeAngleBracketContent
-
-- **What it does**: Removes `<anything>` unless it’s `<break>`, `<spell>`, or double angle brackets `<< >>`.
-- **Example effect**: `<tag>` gets removed.
-
-**Result so far**:
-
-```
-Hello  world
-**Wanted** to say *hi*
-We have NASA and .NET here,
-call me at 123-456-7890,
-price: $42.50
-and the date is 2023 05 10
-and time is 14:00
-Distance is 5km
-We might see 9999
-the address is 320 ST 21 RD
-my email is JOHN.DOE@example.COM
-
-```
-
-### 1.3 removeMarkdownSymbols
-
-- **What it does**: Removes `_`, ```, or `~`. Some versions also remove double asterisks, but that might happen in a later step (next function).
-
-In this example, there’s `**Wanted**`, which _might_ remain if we strictly only remove `_`, backticks, and tildes. If the code does remove `**` as well, it’ll vanish here or in the next step. Let’s assume it doesn’t remove them in this step.
-
-**Result**: _No real change if the code only targets `_` , ```, and  `~`.\_
-
-```
-Hello  world
-**Wanted** to say *hi*
-...
-
-```
-
-### 1.4 removePhrasesInAsterisks
-
-- **What it does**: Looks for `some text*` or `*some text**` and cuts it out.
-
-In our text, we have `**Wanted**` and `*hi*`. Both get removed if the function is broad enough to remove single and double-asterisk blocks.
-
-**Result**:
-
-```
-Hello  world
- to say
-We have NASA and .NET here,
-call me at 123-456-7890,
-price: $42.50
-and the date is 2023 05 10
-and time is 14:00
-Distance is 5km
-We might see 9999
-the address is 320 ST 21 RD
-my email is JOHN.DOE@example.COM
-
-```
-
-### 1.5 replaceNewLinesWithPeriods
-
-- **What it does**: Turns line breaks into `.` or `.` and merges repeated periods.
-
-Let’s say the above text has line breaks. After this step, it’s more of a single line (or fewer lines), each newline replaced by a period.
-
-**Result** (roughly):
-
-```
-Hello  world .  to say . We have NASA and .NET here, call me at 123-456-7890, price: $42.50 and the date is 2023 05 10 and time is 14:00 Distance is 5km We might see 9999 the address is 320 ST 21 RD my email is JOHN.DOE@example.COM
-
-```
-
-### 1.6 replaceColonsWithPeriods
-
-- **What it does**: `:` → `.`
-
-Our text has `price: $42.50`. That becomes `price. $42.50`.
-
-**Result**:
-
-```
-Hello  world .  to say . We have NASA and .NET here, call me at 123-456-7890, price. $42.50 ...
-
-```
-
-### 1.7 formatAcronyms
-
-- **What it does**:
-  - If something is in a known “to-lower” list (like `NASA`, `.NET`), it becomes lowercase (`nasa`, `.net`).
-  - If it’s all-caps but not recognized, it might get spaced letters. If it has vowels, it’s left alone.
-
-In the example:
-
-- `NASA` → `nasa`
-- `.NET` → `.net`
-
-### 1.8 formatDollarAmounts
-
-- **What it does**: `$42.50` → “forty two dollars and fifty cents.”
-
-### 1.9 formatEmails
-
-- **What it does**: Replaces `@` with “ at ” and `.` with “ dot ” in emails.
-- `JOHN.DOE@example.COM` → `JOHN dot DOE at example dot COM`
-
-### 1.10 formatDates
-
-- **What it does**: `YYYY MM DD` → e.g. “Wednesday, May 10, 2023” (if valid).
-- `2023 05 10` become “Wednesday, May 10, 2023” (day name depends on how the code calculates it).
-
-### 1.11 formatTimes
-
-- **What it does**: `14:00` → `14` (since minutes are “00,” it remove them).
-- If it was `14:30`, it might become `14 30`.
-
-### 1.12 formatDistances, formatUnits, formatPercentages, formatPhoneNumbers
-
-- **Distances**: `5km` → “5 kilometers.”
-- **Units**: e.g. `43 lb` → “forty three pounds.”
-- **Percentages**: `50%` → “50 percent.”
-- **PhoneNumbers**: `123-456-7890` → `1 2 3 4 5 6 7 8 9 0`.
-
-### 1.13 formatNumbers
-
-- **What it does**:
-  - Skips year-like numbers if they’re below current year(2025).
-  - For large numbers above a cutoff (e.g. 1000 or 5000), it reads as digits.
-  - Negative numbers: `9` → “minus nine.”
-  - Decimals: `2.5` → “two point five.”
-
-In our case, `9999` might be big enough to become spelled out (nine thousand nine hundred ninety nine) or digits spaced out, depending on the cutoff.
-
-`2023` used with `05 10` might get turned into a date, so it’s handled by the date logic, not the plain number logic.
-
-### 1.14 Applying Replacements (street-suffix expansions)
-
-- **Runs last**. If you have user-defined replacements like `\bST\b` → `STREET`, `\bRD\b` → `ROAD`, it changes them after all the other steps.
-- So `320 ST 21 RD` → `320 STREET 21 ROAD`.
-
-**End Result**: A single line of text with all the helpful expansions and transformations done.
-
-## 2. Formatting Plan: Customization Options
-
-The **Formatting Plan** governs how Voice Input Formatted works. Here are the main settings you can customize:
-
-### 2.1 Enabled
-
-Determines whether the formatting is applied.
-
-- **Default**: `true`
-- To disable: Set `voice.chunkPlan.formatPlan.enabled = false`.
-
-### 2.2 Number-to-Digits Cutoff
-
-This decides when numbers are read as digits instead of words.
-
-- **Default**: `2025` (current year).
-- The code generally **doesn’t** convert numbers below the current year (like `2025`) into spelled-out words, so it stays as digits if it’s obviously a year.
-- If a number is bigger than the cutoff (`numberToDigitsCutoff`), it reads digits out loud.
-- Negative numbers become “minus,” decimals get “point,” etc.
-- Example: With a cutoff of `2025`, numbers like `12345` will remain digits.
-- To ensure larger numbers are spelled out, set the cutoff higher, like `300000`. For example:
-  - `30003` → “thirty thousand and three” (with a cutoff of `300000`).
-
-### 2.3 Replacements
-
-Allows exact or regex-based substitutions in text.
-
-- **Example 1**: Replace `hello` with `hi`:`{ type: 'exact', key: 'hello', value: 'hi' }`.
-- **Example 2**: Replace words matching a pattern:`{ type: 'regex', regex: '\\\\b[a-zA-Z]{5}\\\\b', value: 'hi' }`.
-
-### Note
-
-Currently, only **replacements** and **number-to-digits cutoff** are exposed for customization. Other options, such as toggling acronym replacement, are not exposed to be toggled.
-
-## 3. How to Turn It Off
-
-By default, the entire pipeline is **on** because it helps TTS read better. To **turn it off**, set:
-
-```
-voice.chunkPlan.enabled = false;
+### Number-to-digits cutoff
+Controls when numbers are read as digits instead of words.
+- **Default:** `2025` (current year)
+- Example: With a cutoff of `2025`, numbers above this are read as digits.
+- To spell out larger numbers, set the cutoff higher (e.g., `300000`).
+
+### Replacements
+Add exact or regex-based substitutions to customize output.
+- **Example 1:** Replace `hello` with `hi`:
+  ```js
+  { type: 'exact', key: 'hello', value: 'hi' }
+  ```
+- **Example 2:** Replace words matching a pattern:
+  ```js
+  { type: 'regex', regex: '\b[a-zA-Z]{5}\b', value: 'hi' }
+  ```
+
+<Note>
+Currently, only replacements and the number-to-digits cutoff are customizable. Other options are not exposed.
+</Note>
+
+---
+
+## Turning formatting off
+
+To disable all formatting and use raw LLM output, set either of these to `false`:
+
+```js
+voice.chunkPlan.enabled = false
 // or
-voice.chunkPlan.formatPlan.enabled = false;
+voice.chunkPlan.formatPlan.enabled = false
 ```
 
-Any of those flags being `false` means we **skip** calling `Voice Input Formatted`.
+---
 
-## 4. Conclusion
+## Summary
 
-- `Voice Input Formatted` orchestrates a chain of mini-functions that together fix punctuation, expand abbreviations, and make text more readable out loud.
-- You can keep it **on** for better TTS results or **off** if you need the raw LLM output.
-- The final transformations, especially the user-supplied replacements (like street expansions), happen **last**, so keep that in mind it rely on other expansions earlier.
+- Voice input formatting improves clarity and naturalness for TTS.
+- Each transformation step targets a specific pattern for better speech output.
+- You can customize or disable formatting as needed.

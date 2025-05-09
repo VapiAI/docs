@@ -1,33 +1,40 @@
 ---
-title: Assistant Hooks
+title: Assistant hooks
+subtitle: Automate actions on call events and interruptions
 slug: assistants/assistant-hooks
 ---
 
-# Assistant Hooks
+## Overview
 
-Assistant hooks allow you to configure actions that will be performed when specific events occur during a call. Currently, hooks support the `call.ending` event (which is triggered when a call is ending), `assistant.speech.interrupted` (when the assistant's speech is interrupted), and `customer.speech.interrupted` (when the customer's speech is interrupted)
+Assistant hooks let you automate actions when specific events occur during a call. Use hooks to transfer calls, run functions, or send messages in response to events like call ending or speech interruptions.
 
-## Usage
+Supported events include:
 
-Hooks are defined in the `hooks` array of an assistant. Each hook consists of:
+- `call.ending`: When a call is ending
+- `assistant.speech.interrupted`: When the assistant's speech is interrupted
+- `customer.speech.interrupted`: When the customer's speech is interrupted
 
-- `on`: The event that triggers the hook (supports `call.ending`, `assistant.speech.interrupted`, and `customer.speech.interrupted`)
-- `do`: The actions to perform when the hook triggers (supports `transfer`, `function`, and `say`)
-- `filters`: Optional conditions that must be met for the hook to trigger
+You can combine actions and add filters to control when hooks trigger.
 
-The `call.endedReason` field in filters can be set to any of the [call ended reasons](https://docs.vapi.ai/api-reference/calls/get#response.body.endedReason). The transfer destination type follows the same schema as the [transfer call tool destinations](https://docs.vapi.ai/api-reference/tools/create#request.body.transferCall.destinations).
+## How hooks work
 
-Note: Using `"oneOf": ["pipeline-error"]` acts as a catch-all filter that matches any pipeline-related error reason. This is useful when you want to handle all types of pipeline failures with the same transfer action.
+Hooks are defined in the `hooks` array of your assistant configuration. Each hook includes:
 
-## Example: Transfer on Pipeline Error
+- `on`: The event that triggers the hook
+- `do`: The actions to perform (supports `transfer`, `function`, and `say`)
+- `filters`: (Optional) Conditions that must be met for the hook to trigger
 
-This example shows how to transfer a call to a fallback number when a pipeline error occurs. The hook will trigger when the call is ending due to a pipeline error, and transfer the call to a specified phone number:
+<Note>
+The `call.endedReason` filter can be set to any of the [call ended reasons](https://docs.vapi.ai/api-reference/calls/get#response.body.endedReason).  
+The transfer destination type follows the [transfer call tool destinations](https://docs.vapi.ai/api-reference/tools/create#request.body.transferCall.destinations) schema.
+</Note>
 
-```bash
-curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
-     -H "Authorization: Bearer <auth>" \
-     -H "Content-Type: application/json" \
-     -d '{
+## Example: Transfer on pipeline error
+
+Transfer a call to a fallback number if a pipeline error occurs:
+
+```json
+{
   "hooks": [{
     "on": "call.ending",
     "filters": [{
@@ -44,16 +51,13 @@ curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
       }
     }]
   }]
-}'
+}
 ```
 
 You can also transfer to a SIP destination:
 
-```bash
-curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
-     -H "Authorization: Bearer <auth>" \
-     -H "Content-Type: application/json" \
-     -d '{
+```json
+{
   "hooks": [{
     "on": "call.ending",
     "filters": [{
@@ -69,18 +73,15 @@ curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
       }
     }]
   }]
-}'
+}
 ```
 
-## Example: Combined Actions on Pipeline Error
+## Example: Combine actions on pipeline error
 
-This example demonstrates how to combine multiple actions (say, function, and transfer) when a pipeline error occurs. The hook will first say a message, then call a function, and finally transfer the call:
+Perform multiple actions—say a message, call a function, and transfer the call—when a pipeline error occurs:
 
-```bash
-curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
-     -H "Authorization: Bearer <auth>" \
-     -H "Content-Type: application/json" \
-     -d '{
+```json
+{
   "hooks": [{
     "on": "call.ending",
     "filters": [{
@@ -123,18 +124,15 @@ curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
       }
     ]
   }]
-}'
+}
 ```
 
-## Example: Handling Speech Interruptions
+## Example: Handle speech interruptions
 
-This example demonstrates how to handle when the assistant's speech is interrupted by the customer. The hook will respond with a polite acknowledgment:
+Respond when the assistant's speech is interrupted by the customer:
 
-```bash
-curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
-     -H "Authorization: Bearer <auth>" \
-     -H "Content-Type: application/json" \
-     -d '{
+```json
+{
   "hooks": [{
     "on": "assistant.speech.interrupted",
     "do": [{
@@ -142,16 +140,13 @@ curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
       "exact": ["Sorry about that", "Go ahead", "Please continue"]
     }]
   }]
-}'
+}
 ```
 
-You can also handle customer speech interruptions in a similar way:
+Handle customer speech interruptions in a similar way:
 
-```bash
-curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
-     -H "Authorization: Bearer <auth>" \
-     -H "Content-Type: application/json" \
-     -d '{
+```json
+{
   "hooks": [{
     "on": "customer.speech.interrupted",
     "do": [{
@@ -159,11 +154,16 @@ curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
       "exact": "I apologize for interrupting. Please continue."
     }]
   }]
-}'
+}
 ```
 
-Common use cases for hooks include:
-- Transferring to a human agent on errors
-- Routing to a fallback system if the assistant fails
-- Ensuring calls are handled gracefully in edge cases
-- Handling customer/assistant interruptions
+## Common use cases
+
+- Transfer to a human agent on errors
+- Route to a fallback system if the assistant fails
+- Handle customer or assistant interruptions gracefully
+- Log errors or events for monitoring
+
+<Note>
+Use `"oneOf": ["pipeline-error"]` as a catch-all filter for any pipeline-related error reason.
+</Note>
