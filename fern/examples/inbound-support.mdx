@@ -1,15 +1,22 @@
 ---
-title: Banking Customer Support 💳
+title: Inbound customer support
 subtitle: Build a banking customer support agent that can process inbound phone calls and assist with common banking issues.
-slug: examples/banking-customer-support
-description: A practical example of how to build a banking customer support agent that can process inbound phone calls and assist with common banking issues.
+slug: examples/inbound-support
+description: Build a voice AI banking support agent with tools for account lookup, balance and transaction retrieval.
 ---
 
-By following this example, you'll learn how to:
+## Overview
 
-* Create a voice AI assistant that answers inbound support calls 24/7 on a dedicated phone line.
-* Build custom tools to facilitate customer support without human intervention.
-* Make an automated test suite to ensure your assistant is working as expected.
+Build a banking support agent with function tools, CSV knowledge bases, and voice test suites. The agent handles account verification, balance inquiries, and transaction history via phone calls.
+
+**Agent Capabilities:**
+* Account lookup and verification via phone number
+* Balance and transaction history retrieval
+
+**What You'll Build:**
+* Retrieval tools and CSV knowledge bases for account/transaction data
+* Voice test suites for automated quality assurance
+* Inbound phone number configuration for 24/7 availability
 
 ## Prerequisites
 
@@ -17,25 +24,20 @@ By following this example, you'll learn how to:
 
 ## Scenario
 
-We will be creating a customer support agent for VapiBank, a bank that wants to provide 24/7 support to consumers. It will be capable of:
-
-* identifying the caller's account
-* retrieving current balance
-* processing lost card claims
-* disputing transactions
+We will be creating a customer support agent for VapiBank, a bank that wants to provide 24/7 support to consumers.
 
 
 ---
 
-## 1. Creating a Knowledge Base
+## 1. Create a Knowledge Base
 
 <Steps>
   <Step title="Download the spreadsheets">
     <div className="flex gap-2">
-      <Download src="../static/spreadsheets/banking-customer-support/accounts.csv">
+      <Download src="../static/spreadsheets/inbound-support/accounts.csv">
         <Button intent="primary">Download accounts.csv</Button>
       </Download>
-      <Download src="../static/spreadsheets/banking-customer-support/transactions.csv">
+      <Download src="../static/spreadsheets/inbound-support/transactions.csv">
         <Button intent="primary">Download transactions.csv</Button>
       </Download>
     </div>
@@ -49,11 +51,11 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
   </Step>
 </Steps>
 
-<video autoPlay loop muted src="../static/videos/banking-customer-support/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+<video autoPlay loop muted src="../static/videos/inbound-support/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ---
 
-## 2. Creating an Assistant
+## 2. Create an Assistant
 
 <Steps>
   <Step title="Open the Vapi Dashboard">
@@ -69,11 +71,11 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
   </Step>
 </Steps>
 
-<video autoPlay loop muted src="../static/videos/banking-customer-support/create-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+<video autoPlay loop muted src="../static/videos/inbound-support/create-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ---
 
-## 3. Configuring an Assistant
+## 3. Configure an Assistant
 
 <Steps>
   <Step title="Update the introduction message">
@@ -86,56 +88,58 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
   <Step title="Update the system prompt">
     Update `System Prompt` to:
 
-    ```txt title="System Prompt" maxLines=10
-    # VapiBank - Phone Support Agent Prompt
-
-    ## Identity & Purpose
-    You are **Tom**, VapiBank's friendly, 24x7 phone-support voice assistant. Do not introduce yourself after the first message.
-    You resolve two common requests without human intervention:
-    1. **Check balance**  
-    2. **Report lost / stolen card** (immediately lock the card)  
-
-    ## Data Source
-    A CSV named **accounts.csv** is loaded in context. Columns:  
-    `account_id, name, phone_last4, balance, card_status, email`.
-
-    ## Available Tools
-    1. **get_balance** → returns `balance` for given account holder name.
-    2. **lock_card** → locks card to prevent unauthorized use.
-
-    ## Conversation Flow
-    1. **Greeting**  
-      > “Hi, this is Tom at VapiBank. May I have the last four digits of the phone number on your account?”
-
-    2. **Account Verification**  
-      • After caller answers → call **lookup_account**.  
-      • Read back the returned `name` for confirmation.  
-      • If no match after 2 tries → apologize and transfer.
-
-    3. **Handle Intent**  
-      Ask: “How can I help you today—balance, lost card, or dispute a charge?”
-
-      **Balance** → call **get_balance** → read result.
-      **Lost card** → call **secure_card** with `action:"lost_card"` → confirm card is locked.
-      **Dispute** → gather date & amount → call **secure_card** with `action:"dispute"` + meta details → give `ticketId`.
-
-    4. **Close**  
-      > “Is there anything else I can help you with?”  
-      If no → thank the caller and end the call.
-
-    ## Style & Tone
-    * Warm, concise, ≤ 30 words per reply.  
-    * One question at a time.  
-    * Repeat critical numbers slowly (“Your ticket ID is 8 7 1 4”).  
-    * Empathize with frustration but remain efficient.
-
-    ## Edge Cases
-    * **No CSV match** → transfer to human.
-    * **Duplicate intents** → answer latest request, then ask if anything else.
-    * **Caller upset** → apologize, escalate urgency flag (`meta.urgent=true`) in **secure_card**.
-
-    (Remember: never reveal CSV data beyond what the caller is entitled to.)
-    ```
+```txt title="System Prompt" maxLines=10
+# VapiBank - Phone Support Agent Prompt
+ 
+## Identity & Purpose
+You are **Tom**, VapiBank's friendly, 24x7 phone-support voice assistant. Do not introduce yourself after the first message.
+You help customers with account inquiries:
+ 
+1. **Check balance**  
+2. **View recent transactions**  
+ 
+## Data Sources
+You have access to CSV files with account and transaction data:
+- **accounts.csv**: `account_id, name, phone_last4, balance, card_status, email`
+- **transactions.csv**: transaction history for all accounts
+ 
+## Available Tools
+1. **lookup_account** → verify customer identity using phone number
+2. **get_balance** → returns current balance for verified account
+3. **get_recent_transactions** → returns recent transaction history
+ 
+## Conversation Flow
+1. **Greeting**  
+  > "Hello, you've reached VapiBank customer support! My name is Tom, how may I assist you today?"
+ 
+2. **Account Verification**  
+  * After caller provides phone digits → call **lookup_account**
+  * Read back the returned `name` for confirmation
+  * If no match after 2 tries → apologize and offer to transfer
+ 
+3. **Handle Request**  
+  Ask: "How can I help you today—check your balance or review recent transactions?"
+ 
+  **Balance** → call **get_balance** → read current balance
+  **Transactions** → call **get_recent_transactions** → summarize recent activity
+ 
+4. **Close**  
+  > "Is there anything else I can help you with today?"  
+  If no → thank the caller and end the call
+ 
+## Style & Tone
+* Warm, concise, ≤ 30 words per reply
+* One question at a time
+* Repeat important numbers slowly and clearly
+* Professional but friendly tone
+ 
+## Edge Cases
+* **No account match** → offer to transfer to human agent
+* **Multiple requests** → handle each request, then ask if anything else needed
+* **Technical issues** → apologize and offer callback or transfer
+ 
+(Remember: only share account information with verified account holders.)
+```
   </Step>
   <Step title="Configure LLM settings (optional)">
     Configure the LLM settings to your liking.
@@ -151,11 +155,11 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
   </Step>
 </Steps>
 
-<video autoPlay loop muted src="../static/videos/banking-customer-support/configure-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+<video autoPlay loop muted src="../static/videos/inbound-support/configure-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ---
 
-## 4. Adding Tools to an Assistant
+## 4. Add Tools to an Assistant
 
 <Steps>
   <Step title="Navigate to Tools">
@@ -226,11 +230,11 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
   </Step>
 </Steps>
 
-<video autoPlay loop muted src="../static/videos/banking-customer-support/assistant-tools.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+<video autoPlay loop muted src="../static/videos/inbound-support/assistant-tools.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ---
 
-## 5. Assigning a Phone Number to an Assistant
+## 5. Assign a Phone Number to an Assistant
 
 <Steps>
   <Step title="Navigate to Phone Numbers">
@@ -248,11 +252,11 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
   </Step>
 </Steps>
 
-<video autoPlay loop muted src="../static/videos/banking-customer-support/assign-phone-number.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+<video autoPlay loop muted src="../static/videos/inbound-support/assign-phone-number.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ---
 
-## 6. Creating a Test Suite for an Assistant
+## 6. Create a Test Suite for an Assistant
 
 <Steps>
   <Step title="Navigate to Test Suites page">
@@ -269,18 +273,18 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
     - Use the following prompt to generate the test case:
 
     ```txt title="Test Case Prompt" wordWrap
-    Ensure that the assistant correctly captures customer name, email, and issue description when creating a support ticket.
+    Test that the assistant can verify a customer account using phone number, retrieve their current balance, and provide recent transaction history.
     ```
 
     - Accept the generated test case.
   </Step>
 </Steps>
 
-<video autoPlay loop muted src="../static/videos/banking-customer-support/create-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+<video autoPlay loop muted src="../static/videos/inbound-support/create-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ---
 
-## 7. Running the Test Suite on an Assistant
+## 7. Run the Test Suite on an Assistant
 
 <Steps>
   <Step title="Navigate to Test Suites page">
@@ -294,7 +298,7 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
   </Step>
 </Steps>
 
-<video autoPlay loop muted src="../static/videos/banking-customer-support/run-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+<video autoPlay loop muted src="../static/videos/inbound-support/run-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ## Next Steps
 
