@@ -1,0 +1,310 @@
+---
+title: Banking Customer Support 💳
+subtitle: Build a banking customer support agent that can process inbound phone calls and assist with common banking issues.
+slug: examples/banking-customer-support
+description: A practical example of how to build a banking customer support agent that can process inbound phone calls and assist with common banking issues.
+---
+
+By following this example, you'll learn how to:
+
+* Create a voice AI assistant that answers inbound support calls 24/7 on a dedicated phone line.
+* Build custom tools to facilitate customer support without human intervention.
+* Make an automated test suite to ensure your assistant is working as expected.
+
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/).
+
+## Scenario
+
+We will be creating a customer support agent for VapiBank, a bank that wants to provide 24/7 support to consumers. It will be capable of:
+
+* identifying the caller's account
+* retrieving current balance
+* processing lost card claims
+* disputing transactions
+
+
+---
+
+## 1. Creating a Knowledge Base
+
+<Steps>
+  <Step title="Download the spreadsheets">
+    <div className="flex gap-2">
+      <Download src="../static/spreadsheets/banking-customer-support/accounts.csv">
+        <Button intent="primary">Download accounts.csv</Button>
+      </Download>
+      <Download src="../static/spreadsheets/banking-customer-support/transactions.csv">
+        <Button intent="primary">Download transactions.csv</Button>
+      </Download>
+    </div>
+  </Step>
+  <Step title="Navigate to the Files section">
+    In your Vapi dashboard, click `Files` in the left sidebar.
+  </Step>
+  <Step title="Upload the spreadsheets">
+    - Click `Choose file`. Upload both `accounts.csv` and `transactions.csv` files.
+    - Note the file IDs. We'll need them later to create tools.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/banking-customer-support/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 2. Creating an Assistant
+
+<Steps>
+  <Step title="Open the Vapi Dashboard">
+    Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
+  </Step>
+  <Step title="Navigate to the Assistants section">
+    Click `Assistants` in the left sidebar.
+  </Step>
+  <Step title="Create a new assistant">
+    - Click `Create Assistant`.
+    - Select `Blank Template` as your starting point.
+    - Change assistant name to `Tom`.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/banking-customer-support/create-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 3. Configuring an Assistant
+
+<Steps>
+  <Step title="Update the introduction message">
+    Update `First Message` to:
+
+    ```txt title="First Message" wordWrap
+    Hello, you've reached VapiBank customer support! My name is Tom, how may I assist you today?
+    ```
+  </Step>
+  <Step title="Update the system prompt">
+    Update `System Prompt` to:
+
+    ```txt title="System Prompt" maxLines=10
+    # VapiBank - Phone Support Agent Prompt
+
+    ## Identity & Purpose
+    You are **Tom**, VapiBank's friendly, 24x7 phone-support voice assistant. Do not introduce yourself after the first message.
+    You resolve two common requests without human intervention:
+    1. **Check balance**  
+    2. **Report lost / stolen card** (immediately lock the card)  
+
+    ## Data Source
+    A CSV named **accounts.csv** is loaded in context. Columns:  
+    `account_id, name, phone_last4, balance, card_status, email`.
+
+    ## Available Tools
+    1. **get_balance** → returns `balance` for given account holder name.
+    2. **lock_card** → locks card to prevent unauthorized use.
+
+    ## Conversation Flow
+    1. **Greeting**  
+      > “Hi, this is Tom at VapiBank. May I have the last four digits of the phone number on your account?”
+
+    2. **Account Verification**  
+      • After caller answers → call **lookup_account**.  
+      • Read back the returned `name` for confirmation.  
+      • If no match after 2 tries → apologize and transfer.
+
+    3. **Handle Intent**  
+      Ask: “How can I help you today—balance, lost card, or dispute a charge?”
+
+      **Balance** → call **get_balance** → read result.
+      **Lost card** → call **secure_card** with `action:"lost_card"` → confirm card is locked.
+      **Dispute** → gather date & amount → call **secure_card** with `action:"dispute"` + meta details → give `ticketId`.
+
+    4. **Close**  
+      > “Is there anything else I can help you with?”  
+      If no → thank the caller and end the call.
+
+    ## Style & Tone
+    * Warm, concise, ≤ 30 words per reply.  
+    * One question at a time.  
+    * Repeat critical numbers slowly (“Your ticket ID is 8 7 1 4”).  
+    * Empathize with frustration but remain efficient.
+
+    ## Edge Cases
+    * **No CSV match** → transfer to human.
+    * **Duplicate intents** → answer latest request, then ask if anything else.
+    * **Caller upset** → apologize, escalate urgency flag (`meta.urgent=true`) in **secure_card**.
+
+    (Remember: never reveal CSV data beyond what the caller is entitled to.)
+    ```
+  </Step>
+  <Step title="Configure LLM settings (optional)">
+    Configure the LLM settings to your liking.
+    - Select any provider and model you like (you will see cost and latency estimates).
+    - You can configure the files available to the LLM as knowledge base.
+    - You can specify the temperature and max tokens of the LLM.
+  </Step>
+  <Step title="Publish your assistant">
+    Click `Publish` to save your changes.
+  </Step>
+  <Step title="Test your assistant">
+    Click `Talk to Assistant` to test it out.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/banking-customer-support/configure-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 4. Adding Tools to an Assistant
+
+<Steps>
+  <Step title="Navigate to Tools">
+    Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Tools` in the left sidebar.
+  </Step>
+  <Step title="Create a tool for retrieving account balance">
+    - Click `Create Tool`.
+    - Select `Function` as your tool type.
+    - Change tool name to `get_balance`.
+    - Add the following function description:
+
+      ```txt title="Function Description" wordWrap
+      Retrieve the balance for an account based on provided account holder name and last 4 digits of the phone number.
+      ```
+    - Scroll down to the `Knowledge Bases` section and add the following knowledge base:
+
+      - Name: `accounts`<br />
+        Description: `Use this to retrieve account information`<br />
+        File IDs: `<File ID of your accounts.csv file>`
+  </Step>
+  <Step title="Create a tool for retrieving account transactions">
+    - Click `Create Tool`.
+    - Select `Function` as your tool type.
+    - Change tool name to `get_recent_transactions`.
+    - Add the following function description:
+
+      ```txt title="Function Description" wordWrap
+      Return the three most recent transactions for a specific account.
+      ```
+    - Scroll down to the `Knowledge Bases` section and add the following knowledge bases:
+
+      - Name: `accounts`<br />
+        Description: `Use this to retrieve account information`<br />
+        File IDs: `<File ID of your accounts.csv file>`
+
+      - Name: `transactions`<br />
+        Description: `Use this to retrieve transactions`<br />
+        File IDs: `<File ID of your transactions.csv file>`
+  </Step>
+  <Step title="Create a tool for looking up account">
+    - Click `Create Tool`.
+    - Select `Function` as your tool type.
+    - Change tool name to `lookup_account`.
+    - Add the following function description:
+
+      ```txt title="Function Description" wordWrap
+      Look up account based on provided name and last 4 digits of the phone number.
+      ```
+    - Scroll down to the `Knowledge Bases` section and add the following knowledge bases:
+
+      - Name: `accounts`<br />
+        Description: `Use this to retrieve account information`<br />
+        File IDs: `<File ID of your accounts.csv file>`
+  </Step>
+  <Step title="Add tools to assistant">
+    - Click `Assistants` in the left sidebar.
+    - Make sure `Tom` is selected in the list of assistants.
+    - Scroll down until you see `Tools` accordion. Expand it.
+    - In the expanded accordion, add `get_balance` and `get_recent_transactions` tools.
+    - Click `Publish` to save your changes.
+  </Step>
+  <Step title="Add predefined functions to assistant">
+    - While we're here, let's give our assistant ability to hang up.
+    - Expand the `Predefined Functions` accordion.
+    - Toggle `Enable End Call Function` to `On`.
+    - Here you can add a forwarding phone number to transfer the call to (in case assistant is unable to resolve the issue).
+    - Click `Publish` to save your changes.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/banking-customer-support/assistant-tools.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 5. Assigning a Phone Number to an Assistant
+
+<Steps>
+  <Step title="Navigate to Phone Numbers">
+    Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Phone Numbers` in the left sidebar.
+  </Step>
+  <Step title="Create a new phone number">
+    - Click `Create Phone Number`.
+    - Stick with `Free Vapi Number`.
+    - Enter your preferred area code (e.g. `530`).
+  </Step>
+  <Step title="Configure the phone number">
+    - Set the `Phone Number Name` to `Vapi Support Hotline`.
+    - Under `Inbound Settings` find `Assistant` dropdown and select `Tom` from the list.
+    - Changes are saved automatically.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/banking-customer-support/assign-phone-number.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 6. Creating a Test Suite for an Assistant
+
+<Steps>
+  <Step title="Navigate to Test Suites page">
+    - Open your [dashboard.vapi.ai](https://dashboard.vapi.ai).
+    - Below the `Build` section, find and expand the `Test` section.
+    - In the expanded section, click `Voice Test Suites`.
+  </Step>
+  <Step title="Create a new test suite">
+    - On the `Test Suites` page, click `Create Test Suite`.
+    - Click on `New Test Suite` and change the name to `Support Hotline Test Suite`.
+    - Set the `Assistant` to `Bobby`.
+    - Set the `Phone Number` to `Vapi Support Hotline`.
+    - Under `Test Cases`, click `Generate Tests`.
+    - Use the following prompt to generate the test case:
+
+    ```txt title="Test Case Prompt" wordWrap
+    Ensure that the assistant correctly captures customer name, email, and issue description when creating a support ticket.
+    ```
+
+    - Accept the generated test case.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/banking-customer-support/create-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 7. Running the Test Suite on an Assistant
+
+<Steps>
+  <Step title="Navigate to Test Suites page">
+    Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Assistants` in the left sidebar.
+  </Step>
+  <Step title="Run the test suite">
+    - Click on `Support Hotline Test Suite` in the list of test suites.
+    - Click on `Run Test Suite` button.
+    - Wait for the test suite to finish running.
+    - You will see the results of the test suite in the `Test Results` section.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/banking-customer-support/run-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+## Next Steps
+
+Just like that, you've built a 24/7 customer support hotline that can handle inbound calls, create support tickets, and run automated tests to ensure it's working as expected.
+
+Consider the reading the following guides to further enhance your assistant:
+
+* [**Knowledge Bases**](../knowledge-base/) - Attach a Trieve KB so the agent can answer FAQs inline.
+* [**External Integrations**](../tools/) - Configure integrations with [Google Calendar](../tools/google-calendar), [Google Sheets](../tools/google-sheets), [Slack](../tools/slack), etc.
+
+<Callout>
+Need help? Chat with the team on our [Discord](https://discord.com/invite/pUFNcf2WmH) or mention us on [X/Twitter](https://x.com/Vapi_AI).
+</Callout>
