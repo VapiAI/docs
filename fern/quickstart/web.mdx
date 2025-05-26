@@ -1,116 +1,522 @@
 ---
-title: Web call
-subtitle: Make a web call to your assistant from a browser
+title: Web SDK Quickstart
+subtitle: Learn to build web applications with Vapi Web SDK in under 5 minutes.
+slug: quickstart/web
 ---
-
-## Overview
-
-This guide shows you how to integrate live, two-way voice calls with your Vapi assistant into any web app. You can use Vapi in plain JavaScript, React, Next.js, or any other web framework. 
-
-Get started with either the Vapi web SDK or by connecting to an assistant you created in the dashboard.
-
-<Note>See the full next.js [demo here on v0](https://v0.dev/chat/vapi-quickstart-nextjs-z3lv02T7Dd5). To try it live and make edits, follow these steps:</Note>
-
-1. Fork the app in v0
-2. Go to settings --> environment variables 
-3. Create a new environment variable called `NEXT_PUBLIC_VAPI_API_KEY`
-4. Add your [public api key from the dashboard](https://dashboard.vapi.ai/org/api-keys)!
 
 ## Installation
 
 <Steps>
-  ### Install the SDK
-    <Markdown src="../snippets/sdks/web/install-web-sdk.mdx" />
+  <Step title="Install the package">
+    <CodeBlocks>
+      <CodeBlock title="npm">
+        ```bash
+        npm install @vapi-ai/web
+        ```
+      </CodeBlock>
+      <CodeBlock title="yarn">
+        ```bash
+        yarn add @vapi-ai/web
+        ```
+      </CodeBlock>
+      <CodeBlock title="pnpm">
+        ```bash
+        pnpm add @vapi-ai/web
+        ```
+      </CodeBlock>
+      <CodeBlock title="bun">
+        ```bash
+        bun add @vapi-ai/web
+        ```
+      </CodeBlock>
+    </CodeBlocks>
+  </Step>
 
-  ### Import the SDK
-    <Markdown src="../snippets/sdks/web/import-web-sdk.mdx" />
+  <Step title="Get your credentials">
+    You'll need your public API key and/or private API key from the [Dashboard → Vapi API Keys](https://dashboard.vapi.ai/org/api-keys).
+
+    <Warning>
+      Always use your **public key** (starts with `pk_`) in client-side code. Never expose your private key in the browser.
+    </Warning>
+  </Step>
+
+  <Step title="Get your assistant ID">
+    You'll need your assistant ID from the [Dashboard → Assistants](https://dashboard.vapi.ai/assistants).
+  </Step>
 </Steps>
 
-## Get started
+## Framework Examples
 
 <Tabs>
-  <Tab title="Using the SDK">
+  <Tab title="Next.js">
     <Steps>
-      <Step title="Create an assistant">
-        Create an assistant object.
-
-        ```javascript
-        const assistantOptions = {
-          name: "Vapi's Pizza Front Desk",
-          firstMessage: "Vapi's Pizzeria speaking, how can I help you?",
-          transcriber: {
-            provider: "deepgram",
-            model: "nova-2",
-            language: "en-US",
-          },
-          voice: {
-            provider: "playht",
-            voiceId: "jennifer",
-          },
-          model: {
-            provider: "openai",
-            model: "gpt-4",
-            messages: [
-              {
-                role: "system",
-                content: `You are a voice assistant for Vappy's Pizzeria, a pizza shop located on the Internet.\n\nYour job is to take the order of customers calling in. The menu has only 3 types of items: pizza, sides, and drinks. There are no other types of items on the menu.\n\n1) There are 3 kinds of pizza: cheese pizza, pepperoni pizza, and vegetarian pizza (often called \"veggie\" pizza).\n2) There are 3 kinds of sides: french fries, garlic bread, and chicken wings.\n3) There are 2 kinds of drinks: soda, and water. (if a customer asks for a brand name like \"coca cola\", just let them know that we only offer \"soda\")\n\nCustomers can only order 1 of each item. If a customer tries to order more than 1 item within each category, politely inform them that only 1 item per category may be ordered.\n\nCustomers must order 1 item from at least 1 category to have a complete order. They can order just a pizza, or just a side, or just a drink.\n\nBe sure to introduce the menu items, don't assume that the caller knows what is on the menu (most appropriate at the start of the conversation).\n\nIf the customer goes off-topic or off-track and talks about anything but the process of ordering, politely steer the conversation back to collecting their order.\n\nOnce you have all the information you need pertaining to their order, you can end the conversation. You can say something like \"Awesome, we'll have that ready for you in 10-20 minutes.\" to naturally let the customer know the order has been fully communicated.\n\nIt is important that you collect the order in an efficient manner (succinct replies & direct questions). You only have 1 task here, and it is to collect the customers order, then end the conversation.\n\n- Be sure to be kind of funny and witty!\n- Keep all your responses short and simple. Use casual language, phrases like \"Umm...\", \"Well...\", and \"I mean\" are preferred.\n- This is a voice conversation, so keep your responses short, like in a real conversation. Don't ramble for too long.`,
-              },
-            ],
-          },
-        };
+      <Step title="Environment setup">
+        ```env title=".env.local"
+        NEXT_PUBLIC_VAPI_API_KEY=pk_your_public_key_here
+        NEXT_PUBLIC_VAPI_ASSISTANT_ID=your_assistant_id_here
         ```
-
-        **Parameters:**
-        - `name` sets the display name for the assistant (internal use)
-        - `firstMessage` is the first message the assistant says
-        - `transcriber` selects the speech-to-text provider and model
-        - `voice` selects the text-to-speech provider and voice
-        - `model` sets the LLM provider, model, and system prompt
       </Step>
-      <Step title="Make a call">
-        Start a call using your assistant configuration.
 
-        ```javascript
-        vapi.start(assistantOptions);
+      <Step title="Create voice component">
+        ```typescript title="components/voice-button.tsx"
+        'use client';
+
+        import Vapi from '@vapi-ai/web';
+        import { useState } from 'react';
+
+        export function VoiceButton() {
+          const [vapi] = useState(() => new Vapi(process.env.NEXT_PUBLIC_VAPI_API_KEY!));
+          const [isActive, setIsActive] = useState(false);
+
+          const toggleCall = async () => {
+            if (isActive) {
+              vapi.stop();
+            } else {
+              await vapi.start(process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!);
+            }
+          };
+
+          vapi.on('call-start', () => setIsActive(true));
+          vapi.on('call-end', () => setIsActive(false));
+
+          return (
+            <button 
+              onClick={toggleCall} 
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              {isActive ? 'End Call' : 'Start Call'}
+            </button>
+          );
+        }
+        ```
+      </Step>
+
+      <Step title="Use in your page">
+        ```typescript title="app/page.tsx"
+        import { VoiceButton } from '@/components/voice-button';
+
+        export default function Home() {
+          return (
+            <main className="p-8">
+              <h1 className="text-2xl font-bold mb-4">Voice AI Demo</h1>
+              <VoiceButton />
+            </main>
+          );
+        }
         ```
       </Step>
     </Steps>
   </Tab>
-  <Tab title="In the dashboard">
+
+  <Tab title="React + Vite">
     <Steps>
-      <Step title="Create an assistant in the dashboard">
-        To create an assistant in the dashboard, follow the step-by-step guide in the [Dashboard Quickstart](https://docs.vapi.ai/quickstart/dashboard#get-started).
-      </Step>
-      <Step title="Make a call with your assistant">
-        Once you have your assistant's ID, you can start a call with it:
-
-        <Frame background="subtle">
-          <img src="/static/images/quickstart/assistant-id-dashboard.png" alt="Assistant ID in dashboard" />
-        </Frame>
-
-        ```javascript
-        vapi.start("YOUR_ASSISTANT_ID_FROM_THE_DASHBOARD");
+      <Step title="Environment setup">
+        ```env title=".env"
+        VITE_VAPI_API_KEY=pk_your_public_key_here
+        VITE_VAPI_ASSISTANT_ID=your_assistant_id_here
         ```
       </Step>
-      <Step title="Override assistant settings">
-        To override assistant settings or set template variables, pass an `assistantOverrides` object as the second argument.
 
-        ```javascript
-        const assistantOverrides = {
-          transcriber: {
-            provider: "deepgram",
-            model: "nova-2",
-            language: "en-US",
-          },
-          recordingEnabled: false,
-          variableValues: {
-            name: "John",
-          },
-        };
+      <Step title="Create voice component">
+        ```typescript title="components/VoiceButton.tsx"
+        import Vapi from '@vapi-ai/web';
+        import { useState } from 'react';
 
-        vapi.start("YOUR_ASSISTANT_ID_FROM_THE_DASHBOARD", assistantOverrides);
+        export function VoiceButton() {
+          const [vapi] = useState(() => new Vapi(import.meta.env.VITE_VAPI_API_KEY));
+          const [isActive, setIsActive] = useState(false);
+
+          const toggleCall = async () => {
+            if (isActive) {
+              vapi.stop();
+            } else {
+              await vapi.start(import.meta.env.VITE_VAPI_ASSISTANT_ID);
+            }
+          };
+
+          vapi.on('call-start', () => setIsActive(true));
+          vapi.on('call-end', () => setIsActive(false));
+
+          return (
+            <button 
+              onClick={toggleCall}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              {isActive ? 'End Call' : 'Start Call'}
+            </button>
+          );
+        }
+        ```
+      </Step>
+
+      <Step title="Use in App">
+        ```typescript title="src/App.tsx"
+        import { VoiceButton } from './components/VoiceButton';
+
+        function App() {
+          return (
+            <div className="p-8">
+              <h1 className="text-2xl font-bold mb-4">Voice AI Demo</h1>
+              <VoiceButton />
+            </div>
+          );
+        }
+
+        export default App;
         ```
       </Step>
     </Steps>
+  </Tab>
+
+  <Tab title="Vue 3">
+    <Steps>
+      <Step title="Environment setup">
+        ```env title=".env"
+        VITE_VAPI_API_KEY=pk_your_public_key_here
+        VITE_VAPI_ASSISTANT_ID=your_assistant_id_here
+        ```
+      </Step>
+
+      <Step title="Create voice component">
+        ```vue title="src/components/VoiceButton.vue"
+        <template>
+          <button @click="toggleCall" class="px-4 py-2 text-white bg-blue-500 rounded hover:bg-blue-600">
+            {{ isActive ? 'End Call' : 'Start Call' }}
+          </button>
+        </template>
+
+        <script setup lang="ts">
+        import { ref, onMounted } from 'vue';
+        import Vapi from '@vapi-ai/web';
+
+        const isActive = ref(false);
+        let vapi: Vapi;
+
+        onMounted(() => {
+          vapi = new Vapi(import.meta.env.VITE_VAPI_API_KEY);
+          
+          vapi.on('call-start', () => {
+            isActive.value = true;
+          });
+          
+          vapi.on('call-end', () => {
+            isActive.value = false;
+          });
+        });
+
+        const toggleCall = async () => {
+          if (isActive.value) {
+            vapi.stop();
+          } else {
+            await vapi.start(import.meta.env.VITE_VAPI_ASSISTANT_ID);
+          }
+        };
+        </script>
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Svelte/SvelteKit">
+    <Tabs>
+      <Tab title="Svelte 4">
+        <Steps>
+          <Step title="Environment setup">
+            ```env title=".env"
+            VITE_VAPI_API_KEY=pk_your_public_key_here
+            VITE_VAPI_ASSISTANT_ID=your_assistant_id_here
+            ```
+          </Step>
+
+          <Step title="Create voice component">
+            ```svelte title="src/lib/VoiceButton.svelte"
+            <script lang="ts">
+              import { onMount } from 'svelte';
+              import Vapi from '@vapi-ai/web';
+              import { env } from '$env/dynamic/public';
+
+              let isActive = false;
+              let vapi: Vapi;
+
+              onMount(() => {
+                vapi = new Vapi(env.PUBLIC_VAPI_API_KEY);
+                
+                vapi.on('call-start', () => {
+                  isActive = true;
+                });
+                
+                vapi.on('call-end', () => {
+                  isActive = false;
+                });
+              });
+
+              async function toggleCall() {
+                if (isActive) {
+                  vapi.stop();
+                } else {
+                  await vapi.start(env.PUBLIC_VAPI_ASSISTANT_ID);
+                }
+              }
+            </script>
+
+            <button 
+              on:click={toggleCall} 
+              class="px-4 py-2 text-white bg-blue-500 rounded hover:bg-blue-600"
+            >
+              {isActive ? 'End Call' : 'Start Call'}
+            </button>
+            ```
+          </Step>
+
+          <Step title="Use in page">
+            ```svelte title="src/routes/+page.svelte"
+            <script lang="ts">
+              import VoiceButton from '$lib/VoiceButton.svelte';
+            </script>
+
+            <div class="p-8">
+              <h1 class="mb-4 text-2xl font-bold">Voice AI Demo</h1>
+              <VoiceButton />
+            </div>
+            ```
+          </Step>
+        </Steps>
+      </Tab>
+
+      <Tab title="Svelte 5 (Runes)">
+        <Steps>
+          <Step title="Environment setup">
+            ```env title=".env"
+            VITE_VAPI_API_KEY=pk_your_public_key_here
+            VITE_VAPI_ASSISTANT_ID=your_assistant_id_here
+            ```
+          </Step>
+
+          <Step title="Create voice component">
+            ```svelte title="src/lib/VoiceButton.svelte"
+            <script lang="ts">
+              import { onMount } from 'svelte';
+              import Vapi from '@vapi-ai/web';
+              import { env } from '$env/dynamic/public';
+
+              let isActive = $state(false);
+              let vapi: Vapi;
+
+              onMount(() => {
+                vapi = new Vapi(env.PUBLIC_VAPI_API_KEY);
+                
+                vapi.on('call-start', () => {
+                  isActive = true;
+                });
+                
+                vapi.on('call-end', () => {
+                  isActive = false;
+                });
+
+                return () => {
+                  if (vapi) {
+                    vapi.removeAllListeners();
+                  }
+                };
+              });
+
+              async function toggleCall() {
+                if (isActive) {
+                  vapi.stop();
+                } else {
+                  await vapi.start(env.PUBLIC_VAPI_ASSISTANT_ID);
+                }
+              }
+            </script>
+
+            <button 
+              onclick={toggleCall} 
+              class="px-4 py-2 text-white bg-blue-500 rounded hover:bg-blue-600"
+            >
+              {isActive ? 'End Call' : 'Start Call'}
+            </button>
+            ```
+          </Step>
+
+          <Step title="Use in page">
+            ```svelte title="src/routes/+page.svelte"
+            <script lang="ts">
+              import VoiceButton from '$lib/VoiceButton.svelte';
+            </script>
+
+            <div class="p-8">
+              <h1 class="mb-4 text-2xl font-bold">Voice AI Demo</h1>
+              <VoiceButton />
+            </div>
+            ```
+          </Step>
+        </Steps>
+      </Tab>
+    </Tabs>
+  </Tab>
+
+  <Tab title="Angular">
+    <Steps>
+      <Step title="Environment setup">
+        ```typescript title="src/environments/environment.ts"
+        export const environment = {
+          production: false,
+          vapiApiKey: 'pk_your_public_key_here',
+          vapiAssistantId: 'your_assistant_id_here'
+        };
+        ```
+      </Step>
+
+      <Step title="Create voice component">
+        ```typescript title="src/app/voice-button/voice-button.component.ts"
+        import { Component, OnInit, OnDestroy } from '@angular/core';
+        import Vapi from '@vapi-ai/web';
+        import { environment } from '../../environments/environment';
+
+        @Component({
+          selector: 'app-voice-button',
+          template: `
+            <button 
+              (click)="toggleCall()" 
+              class="px-4 py-2 text-white bg-blue-500 rounded hover:bg-blue-600"
+            >
+              {{ isActive ? 'End Call' : 'Start Call' }}
+            </button>
+          `
+        })
+        export class VoiceButtonComponent implements OnInit, OnDestroy {
+          isActive = false;
+          private vapi!: Vapi;
+
+          ngOnInit() {
+            this.vapi = new Vapi(environment.vapiApiKey);
+            
+            this.vapi.on('call-start', () => {
+              this.isActive = true;
+            });
+            
+            this.vapi.on('call-end', () => {
+              this.isActive = false;
+            });
+          }
+
+          ngOnDestroy() {
+            if (this.vapi) {
+              this.vapi.removeAllListeners();
+            }
+          }
+
+          async toggleCall() {
+            if (this.isActive) {
+              this.vapi.stop();
+            } else {
+              await this.vapi.start(environment.vapiAssistantId);
+            }
+          }
+        }
+        ```
+      </Step>
+
+      <Step title="Use in app">
+        ```typescript title="src/app/app.component.ts"
+        import { Component } from '@angular/core';
+
+        @Component({
+          selector: 'app-root',
+          template: `
+            <div class="p-8">
+              <h1 class="mb-4 text-2xl font-bold">Voice AI Demo</h1>
+              <app-voice-button></app-voice-button>
+            </div>
+          `
+        })
+        export class AppComponent {}
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Vanilla JS">
+    ```javascript title="main.js"
+    import Vapi from '@vapi-ai/web';
+
+    const vapi = new Vapi('pk_your_public_key_here');
+    const button = document.getElementById('voice-btn');
+    let isActive = false;
+
+    button.addEventListener('click', async () => {
+      if (isActive) {
+        vapi.stop();
+      } else {
+        await vapi.start('your_assistant_id');
+      }
+    });
+
+    vapi.on('call-start', () => {
+      isActive = true;
+      button.textContent = 'End Call';
+    });
+
+    vapi.on('call-end', () => {
+      isActive = false;
+      button.textContent = 'Start Call';
+    });
+    ```
   </Tab>
 </Tabs>
+
+## Basic Usage
+
+### Core Methods
+
+```typescript
+// Initialize Vapi
+const vapi = new Vapi('pk_your_public_key');
+
+// Start a call
+await vapi.start('your_assistant_id');
+
+// End a call
+vapi.stop();
+
+// Listen to events
+vapi.on('call-start', () => console.log('Call started'));
+vapi.on('call-end', () => console.log('Call ended'));
+vapi.on('message', (message) => console.log('Message:', message));
+```
+
+### Assistant Configuration
+
+You can also pass an assistant configuration directly instead of using an ID:
+
+```typescript
+const assistantConfig = {
+  model: {
+    provider: "openai",
+    model: "gpt-4o-2024-11-20",
+  },
+  voice: {
+    provider: "11labs",
+    voiceId: "21m00Tcm4TlvDq8ikWAM",
+  },
+  firstMessage: "Hello! How can I help you today?",
+  systemMessage: "You are a helpful assistant.",
+};
+
+await vapi.start(assistantConfig);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SDK Reference" icon="code" href="/sdk/web">
+    Complete Web SDK documentation
+  </Card>
+  <Card title="API Reference" icon="book-open" href="/api-reference">
+    Complete API reference documentation
+  </Card>
+</CardGroup>
+
+<Info>
+  **Need help?** Join our [Discord community](https://discord.gg/vapi) or check out the [full documentation](/overview).
+</Info>
