@@ -164,6 +164,92 @@ Handle customer speech interruptions in a similar way:
 - Handle customer or assistant interruptions gracefully
 - Log errors or events for monitoring
 
+## Slack Webhook on Call Failure 
+
+You can set up automatic Slack notifications when calls fail by combining assistant hooks with Slack webhooks. This is useful for monitoring call quality and getting immediate alerts when issues occur.
+
+### Step 1: Generate a Slack webhook
+
+Follow the [Slack webhook documentation](https://api.slack.com/messaging/webhooks) to create an incoming webhook:
+
+1. Create a Slack app (if you don't have one already)
+2. Enable incoming webhooks in your app settings
+3. Create an incoming webhook for your desired channel
+4. Copy the webhook URL (it will look like `https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`)
+
+### Step 2: Create a serverless function
+
+Set up a serverless function (using a service like [val.town](https://val.town)) to convert Vapi tool call requests into Slack messages:
+
+```javascript
+export default async function(req: Request): Promise<Response> {
+  try {
+    const json = await req.json();
+    console.log(json);
+    
+    const callId = json.message.call.id;
+    const reason = json.message.toolCalls[0].function.arguments.properties.callEndedReason.value;
+    
+    fetch("<your-slack-webhook-url>", {
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: `🚨 Call Failed\nCall ID: ${callId}\nReason: ${reason}`
+      }),
+    });
+    
+    return Response.json({
+      results: [{ 
+        "result": "success", 
+        "toolCallId": "hook-function-call" 
+      }],
+    });
+  } catch (err) {
+    console.error("JSON parsing error:", err);
+    return new Response("Invalid JSON", { status: 400 });
+  }
+}
+```
+
+### Step 3: Configure the assistant hook
+
+Add this hook configuration to your assistant to trigger Slack notifications on call failures:
+
+```json
+{
+  "hooks": [{
+    "on": "call.ending",
+    "filters": [{
+      "type": "oneOf",
+      "key": "call.endedReason",
+      "oneOf": ["pipeline-error"]
+    }],
+    "do": [{
+      "type": "function",
+      "function": {
+        "name": "report_error",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "value": "A call error occured."
+            }
+          }
+        },
+        "description": "Reports a call error to Slack."
+      },
+      "async": false,
+      "server": {
+        "url": "<your-serverless-function-url>"
+      }
+    }]
+  }]
+}
+```
+
 <Note>
 Use `"oneOf": ["pipeline-error"]` as a catch-all filter for any pipeline-related error reason.
 </Note>
