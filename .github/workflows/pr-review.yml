@@ -1,0 +1,156 @@
+name: 📚 Documentation Review (Simple)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'fern/**/*.mdx'
+      - 'fern/**/*.yml'
+      - 'fern/**/*.yaml'
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 📂 Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v40
+        with:
+          files: |
+            fern/**/*.mdx
+            fern/**/*.yml
+            fern/**/*.yaml
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 🤖 Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: 🔍 Review documentation
+        if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "## 📝✨ Documentation Review by Claude 🤖" > review.md
+          echo "" >> review.md
+          echo "Hey there! 👋 I've reviewed your documentation changes against our style guidelines. Here's what I found:" >> review.md
+          echo "" >> review.md
+          
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "🔍 Reviewing $file..."
+            
+            # Read file content
+            content=$(cat "$file")
+            
+            # Get review from Claude
+            review=$(claude -p --output-format text "
+            You are a friendly documentation reviewer. Review this documentation file against these specific guidelines:
+
+            ## Core Principles to Check:
+            - **Clarity**: Plain language, no jargon or unnecessary complexity
+            - **Brevity**: Short sentences and paragraphs
+            - **Task-orientation**: Logical step order that helps readers proceed
+            - **Scannability**: Good headings, spacing, and components for quick review
+            - **Outcome focus**: Every section supports user success
+
+            ## Style Rules to Verify:
+            - **Titles**: Only first word capitalized (unless proper noun)
+            - **Subtitles**: Begin with 'Learn to...' for guides, otherwise concise
+            - **Emojis**: Only when essential for comprehension
+            - **Tone**: Direct, professional, friendly
+            - **Links**: Descriptive text (not 'click here')
+            - **Bold**: Used for key names/concepts
+
+            ## Writing Style to Check:
+            - **Active voice**: 'Connect the SDK' not 'SDK should be connected'
+            - **Present tense**: 'Run' not 'You will run'
+            - **Second person**: 'you' (reserve 'we' for collaborative tutorials)
+            - **Intent before action**: Explain why, then how
+            - **Concrete examples**: Code snippets over theory
+            - **Consistent terminology**: Same terms used throughout
+
+            ## MDX Components to Validate:
+            - **Accordions**: Only for FAQ sections
+            - **Callouts**: <Tip>, <Note>, <Warning>, <Error>, <Info>, <Check>
+            - **Cards**: Proper title, icon, href format
+            - **Steps**: <Steps> for sequential instructions (NOT numbered lists 1,2,3,4...)
+            - **Frames**: For images with captions
+            - **Tabs**: For organizing related content
+            - **CodeBlocks**: For multi-language examples
+
+            ## Specific Things to Flag:
+            - **Numbered lists (1. 2. 3.)**: Should use <Steps> component instead
+            - **'Click here' links**: Use descriptive link text
+            - **Passive voice**: Convert to active voice
+            - **Long paragraphs**: Break into shorter ones
+            - **Missing context**: Code examples need explanation
+
+            ## Front Matter to Check:
+            - title: short and clear
+            - subtitle: concise and helpful
+
+            File: $file
+            Content:
+            \`\`\`
+            $content
+            \`\`\`
+            
+            Be helpful and encouraging! Use these emojis in your feedback:
+            - 🚨 🔥 for major issues that need fixing
+            - ⚠️ 🤔 for minor issues or improvements  
+            - 💡 ✨ for suggestions and ideas
+            - ✅ 🎉 🚀 for things done well
+            - 🎯 for specific improvements
+            - 📝 for writing style issues
+            - 🧩 for MDX component suggestions
+
+            **IMPORTANT**: If you see numbered lists (1. 2. 3. etc.), tell them to use the <Steps> component instead:
+            
+            Example:
+            Instead of:
+            1. First step
+            2. Second step
+            3. Third step
+            
+            Use:
+            <Steps>
+              <Step title="First step">Description</Step>
+              <Step title="Second step">Description</Step>
+              <Step title="Third step">Description</Step>
+            </Steps>
+
+            Focus on the most impactful issues first. Keep it friendly and constructive.
+            ")
+            
+            echo "### 📄 \`$file\`" >> review.md
+            echo "$review" >> review.md
+            echo "" >> review.md
+            echo "---" >> review.md
+            echo "" >> review.md
+          done
+          
+          echo "📖 [Style Guidelines](.cursorrules) | Thanks for contributing! 🙏✨" >> review.md
+
+      - name: 💬 Comment on PR
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('review.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: review
+            }); 
