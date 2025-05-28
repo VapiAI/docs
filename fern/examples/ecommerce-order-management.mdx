@@ -1,0 +1,363 @@
+---
+title: E-commerce order management workflow
+subtitle: Build an AI customer service workflow that handles orders, returns, and support using visual nodes.
+slug: examples/ecommerce-order-management
+description: Build a voice AI e-commerce workflow with order tracking, return processing, and customer support automation using Vapi's visual workflow builder.
+---
+
+## Overview
+
+Build an AI-powered e-commerce customer service workflow that handles order inquiries, returns, and customer support using visual nodes with tier-based routing and global monitoring for comprehensive automation.
+
+**What You'll Build:**
+* Order tracking with real-time status updates
+* Return processing with automated eligibility verification
+* Customer tier routing (VIP, Premium, Standard)
+* Global fraud detection and sentiment monitoring
+
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/).
+* E-commerce platform or order management system.
+* Shipping carrier integrations.
+
+## Scenario
+
+We will be creating an order management workflow for TechGear Online, an electronics retailer that wants to automate customer service calls and improve order resolution times through sophisticated workflow automation.
+
+---
+
+## 1. Create a Knowledge Base
+
+<Steps>
+  <Step title="Download the spreadsheets">
+    <div className="flex gap-2">
+      <Download src="../static/spreadsheets/ecommerce/customers.csv">
+        <Button intent="primary">Download customers.csv</Button>
+      </Download>
+      <Download src="../static/spreadsheets/ecommerce/orders.csv">
+        <Button intent="primary">Download orders.csv</Button>
+      </Download>
+      <Download src="../static/spreadsheets/ecommerce/products.csv">
+        <Button intent="primary">Download products.csv</Button>
+      </Download>
+      <Download src="../static/spreadsheets/ecommerce/returns.csv">
+        <Button intent="primary">Download returns.csv</Button>
+      </Download>
+    </div>
+  </Step>
+  <Step title="Navigate to the Files section">
+    In your Vapi dashboard, click `Files` in the left sidebar.
+  </Step>
+  <Step title="Upload the spreadsheets">
+    - Click `Choose file`. Upload all four CSV files: `customers.csv`, `orders.csv`, `products.csv`, and `returns.csv`.
+    - Note the file IDs. We'll need them later to create tools.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 2. Create Required Tools
+
+Before building the workflow, create the necessary tools in your dashboard:
+
+<Steps>
+  <Step title="Navigate to Tools">
+    In your Vapi dashboard, click **Tools** in the left sidebar.
+  </Step>
+  <Step title="Create Customer Lookup Tool">
+    Click **Create Tool** and configure:
+    - **Tool Name**: "Customer Lookup"
+    - **Tool Type**: "Function"
+    - **Function Name**: `lookup_customer`
+    - **Description**: "Look up customer account and order history"
+    - **Parameters**:
+      - `customer_id` (string): Customer ID to lookup
+    - **Server URL**: `https://jsonplaceholder.typicode.com/users`
+    
+    <Note>
+      This example uses JSONPlaceholder, a free testing API. In production, replace with your actual e-commerce API endpoint.
+    </Note>
+  </Step>
+  <Step title="Create Order Tracking Tool">
+    Create another tool:
+    - **Tool Name**: "Order Tracking"
+    - **Function Name**: `track_order`
+    - **Description**: "Track order status and shipping information"
+    - **Parameters**:
+      - `order_id` (string): Order ID to track
+    - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
+    
+    <Note>
+      This example uses JSONPlaceholder for demonstration. Replace with your shipping provider's API (FedEx, UPS, etc.) in production.
+    </Note>
+  </Step>
+  <Step title="Create Return Processing Tool">
+    Create a third tool:
+    - **Tool Name**: "Return Processing"
+    - **Function Name**: `process_return`
+    - **Description**: "Process return requests and generate return labels"
+    - **Parameters**:
+      - `order_id` (string): Original order ID
+      - `return_reason` (string): Reason for return
+    - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
+    
+    <Note>
+      This example uses JSONPlaceholder for demonstration. In production, integrate with your returns management system.
+    </Note>
+  </Step>
+</Steps>
+
+---
+
+## 3. Create a Workflow
+
+<Steps>
+  <Step title="Open the Vapi Dashboard">
+    Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
+  </Step>
+  <Step title="Navigate to the Workflows section">
+    Click `Workflows` in the left sidebar.
+  </Step>
+  <Step title="Create a new workflow">
+    - Click `Create Workflow`.
+    - Enter workflow name: `TechGear E-commerce Support Workflow`.
+    - Select the default template (includes Call Start node).
+    - Click "Create Workflow".
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 4. Build the Workflow
+
+You'll start with a default template that includes a "Call Start" node. We'll modify the existing nodes and add new ones to create our e-commerce customer service workflow.
+
+<Steps>
+  <Step title="Configure the Initial Conversation Node">
+    The default template includes a conversation node. Click on it and configure:
+    
+    **Node Name**: `greeting_and_inquiry_type`
+    
+    **Prompt**:
+    ```txt
+    You are Emma, the friendly customer service representative for TechGear Online.
+
+    Start with: "Hello! Thank you for calling TechGear Online customer service. This is Emma, your virtual assistant. I can help you track orders, process returns, answer product questions, or resolve any issues. How can I assist you today?"
+
+    Listen to the customer's response and determine their inquiry type:
+    - "order_tracking" for checking order status or shipping
+    - "return_exchange" for returns, exchanges, or refunds
+    - "product_inquiry" for product questions or recommendations
+    - "billing_payment" for payment or billing issues
+    - "complaint" for problems or complaints
+    - "general" for other inquiries
+
+    Keep responses friendly and under 35 words.
+    ```
+
+    **Extract Variables**:
+    - Variable: `inquiry_type`
+    - Type: `String`
+    - Description: `The customer's inquiry type`
+    - Enum Values: `order_tracking`, `return_exchange`, `product_inquiry`, `billing_payment`, `complaint`, `general`
+  </Step>
+
+  <Step title="Add Customer Identification Node">
+    Add a **Conversation** node:
+    
+    **Node Name**: `customer_identification`
+    
+    **Prompt**:
+    ```txt
+    I'll be happy to help you with that. To look up your account, can you please provide your phone number or email address associated with your TechGear Online account?
+
+    If you don't have an account, that's okay - I can still help you with general product questions.
+    ```
+
+    **Variable Extraction**:
+    - Variable: `customer_phone`
+    - Type: `string`
+    - Description: `Customer's phone number`
+    - Required: `false`
+    - Variable: `customer_email`
+    - Type: `string`
+    - Description: `Customer's email address`
+    - Required: `false`
+  </Step>
+
+  <Step title="Add Customer Lookup Tool Node">
+    Add a **Tool** node:
+    
+    **Tool**: Select your pre-configured "Customer Lookup" tool from the dropdown. This tool should be created in the **Tools** section of your dashboard with:
+    - **Function Name**: `lookup_customer`
+    - **Description**: "Look up customer account and order history"
+    - **Parameters**: 
+      - `customer_id` (string): Customer ID to lookup
+    - **Server URL**: `https://jsonplaceholder.typicode.com/users`
+  </Step>
+
+  <Step title="Add Inquiry-Based Routing">
+    Create branching paths based on the customer's inquiry type. Add multiple conversation nodes:
+
+    **Order Tracking Node**:
+    - **Node Name**: `order_tracking_flow`
+    - **Prompt**: `I can help you track your order. Do you have your order number, or would you like me to look up your recent orders?`
+
+    **Return/Exchange Node**:
+    - **Node Name**: `return_exchange_flow`
+    - **Prompt**: `I can help you with returns and exchanges. Can you tell me which item you'd like to return and the reason for the return?`
+
+    **Product Inquiry Node**:
+    - **Node Name**: `product_inquiry_flow`
+    - **Prompt**: `I'd be happy to help with product information. What specific product are you interested in, or what type of device are you looking for?`
+
+    **Billing/Payment Node**:
+    - **Node Name**: `billing_payment_flow`
+    - **Prompt**: `I can help with billing and payment questions. Are you looking to update payment information, dispute a charge, or have questions about a specific order?`
+
+    **Complaint Resolution Node**:
+    - **Node Name**: `complaint_resolution_flow`
+    - **Prompt**: `I'm sorry to hear you're having an issue. I want to make this right for you. Can you tell me what happened so I can help resolve this?`
+  </Step>
+
+  <Step title="Configure Flow Conditions">
+    Connect the nodes with conditions for the LLM to interpret:
+
+    **From greeting_and_inquiry_type to order_tracking_flow**:
+    - Condition: `{{ inquiry_type == "order_tracking" }}`
+
+    **From greeting_and_inquiry_type to return_exchange_flow**:
+    - Condition: `{{ inquiry_type == "return_exchange" }}`
+
+    **From greeting_and_inquiry_type to product_inquiry_flow**:
+    - Condition: `{{ inquiry_type == "product_inquiry" }}`
+
+    **From greeting_and_inquiry_type to billing_payment_flow**:
+    - Condition: `{{ inquiry_type == "billing_payment" }}`
+
+    **From greeting_and_inquiry_type to complaint_resolution_flow**:
+    - Condition: `{{ inquiry_type == "complaint" }}`
+  </Step>
+
+  <Step title="Add Global VIP Customer Handler">
+    Create a global node that provides special handling for VIP customers:
+    
+    **Node Name**: `vip_customer_handler`
+    **Global Node**: `enabled = true`
+    **Enter Condition**: `{{ customer_tier == "VIP" or total_orders > 50 or lifetime_value > 5000 }}`
+    
+    **Prompt**:
+    ```txt
+    I see you're one of our valued VIP customers. I want to make sure you receive our highest level of service today. Let me prioritize your request and see what I can do to exceed your expectations.
+    ```
+    
+    This global node will activate for high-value customers, regardless of their inquiry type.
+  </Step>
+
+  <Step title="Add Order Tracking Flow">
+    For the order tracking path, add these nodes:
+
+    **Order Number Collection Node**:
+    - **Node Name**: `collect_order_number`
+    - Extract order number or use recent orders from customer history
+
+    **Order Status Tool Node**:
+    - Add a **Tool** node that calls your order tracking API with order information
+
+    **Shipping Information Node**:
+    - **Node Name**: `provide_shipping_info`
+    - Present tracking details, delivery estimates, and shipping updates
+  </Step>
+
+  <Step title="Add Return Processing Flow">
+    **Return Eligibility Check Node**:
+    - **Node Name**: `check_return_eligibility`
+    - Verify return policy compliance and item condition
+
+    **Return Authorization Tool Node**:
+    - Add a **Tool** node that creates return label and authorization number
+
+    **Refund Processing Node**:
+    - **Node Name**: `process_refund`
+    - Handle refund calculations and payment processing
+  </Step>
+
+  <Step title="Add Escalation and Resolution Options">
+    **Human Agent Transfer Node**:
+    - **Node Type**: `Transfer`
+    - **Destination**: `+1-555-SUPPORT` (customer service team)
+
+    **Issue Resolution Node**:
+    - **Node Name**: `resolve_issue`
+    - Provide solutions, credits, or compensations
+
+    **End Call Node**:
+    - **Node Type**: `Hangup`
+    - Use when customer issue is resolved
+  </Step>
+</Steps>
+
+---
+
+## 5. Configure Phone Number
+
+<Steps>
+  <Step title="Navigate to Phone Numbers">
+    Click `Phone Numbers` in the left sidebar of your dashboard.
+  </Step>
+  <Step title="Create or Import Phone Number">
+    - Click `Create Phone Number` for a new Vapi number, or
+    - Click `Import Phone Number` to use your existing customer service number
+  </Step>
+  <Step title="Configure Inbound Settings">
+    **Workflow**: Select your `TechGear Customer Service Workflow`
+    
+    **Customer Service Configuration**:
+    - Enable call recording for quality assurance
+    - Set maximum call duration (e.g., 30 minutes for complex issues)
+    - Configure voicemail for after-hours support
+    - Enable priority routing for VIP customers
+  </Step>
+  <Step title="Test Customer Service Scenarios">
+    Test the workflow with various customer scenarios:
+    - Order tracking requests
+    - Return and exchange processing
+    - Product inquiries and recommendations
+    - Billing and payment issues
+    - Complaint resolution
+  </Step>
+</Steps>
+
+## Integrating with Real Systems
+
+This example uses JSONPlaceholder for demonstration purposes. To integrate with your actual e-commerce systems:
+
+### E-commerce Platform Integration
+- **Shopify**: Use the [Shopify Admin API](https://shopify.dev/api/admin-rest) for customer and order data
+- **WooCommerce**: Use the [WooCommerce REST API](https://woocommerce.github.io/woocommerce-rest-api-docs/)
+- **Magento**: Use the [Magento Web API](https://devdocs.magento.com/guides/v2.4/get-started/web-api-functional-testing.html)
+
+### Shipping Provider APIs
+- **FedEx**: [FedEx Web Services](https://www.fedex.com/en-us/developer/web-services.html)
+- **UPS**: [UPS Developer Kit](https://www.ups.com/upsdeveloperkit)
+- **USPS**: [USPS Web Tools](https://www.usps.com/business/web-tools-apis/)
+
+### Payment Processing
+- **Stripe**: [Stripe API](https://stripe.com/docs/api)
+- **PayPal**: [PayPal Developer](https://developer.paypal.com/)
+- **Square**: [Square API](https://developer.squareup.com/)
+
+## Next Steps
+
+Just like that, you've built an e-commerce customer service workflow that can handle order inquiries, returns, and support requests with 24/7 availability for your online store.
+
+Consider reading the following guides to further enhance your workflow:
+
+* [**Custom Tools**](/tools/custom-tools) - Create custom tools for e-commerce platform integration and order management.
+* [**Custom Voices**](/customization/custom-voices/custom-voice) - Customize your assistant's voice for customer service excellence.
+* [**Call Recording**](/assistants/call-recording) - Record calls for quality assurance and training purposes. 
