@@ -1,0 +1,143 @@
+---
+title: Personalization with user information
+subtitle: Add customer-specific information to your voice assistant conversations
+slug: assistants/personalization
+---
+
+## Overview
+
+Personalization lets you include customer-specific information in your voice assistant conversations. When a customer calls, your server can provide data about that customer, which is then used to tailor the conversation in real time.
+
+This approach is ideal for use cases like customer support, account management, or any scenario where the assistant should reference details unique to the caller.
+
+## How Personalization Works
+
+<Steps>
+  <Step title="Customer Calls Your Number">
+    When a call comes in, Vapi sends a request to your server instead of using a fixed assistant configuration.
+  </Step>
+
+  <Step title="Your Server Looks Up the Caller">
+    Your server receives the request, identifies the caller (for example, by phone number), and fetches relevant customer data from your database or CRM.
+  </Step>
+
+  <Step title="Your Server Responds with Assistant Details">
+    Your server responds to Vapi with either:
+    - An existing assistant ID and a set of dynamic variables to personalize the conversation, or
+    - A complete assistant configuration, with customer data embedded directly in the prompts or instructions.
+  </Step>
+
+  <Step title="Vapi Handles the Call">
+    Vapi uses the personalized assistant configuration or variables to guide the conversation, referencing the customer's information as needed.
+  </Step>
+</Steps>
+
+## Prerequisites
+
+- A Vapi phone number
+- A created Vapi Assistant
+- A server endpoint to receive Vapi's requests
+
+## Implementation
+
+<Steps>
+  <Step title="Add Dynamic Variables to Your Assistant">
+    Use variable placeholders in your assistant's instructions or messages with the `{{variable_name}}` syntax.
+
+    Example:  
+    `"Hello {{customerName}}! I see you've been a {{accountType}} customer since {{joinDate}}."`
+  </Step>
+
+  <Step title="Configure Your Phone Number to Use Your Server">
+    Update your phone number so that Vapi sends incoming call events to your server, rather than using a static assistant.
+
+    ```json
+    PATCH /phone-number/{id}
+    {
+      "assistantId": null,
+      "squadId": null,
+      "server": {
+        "url": "https://your-server.com/api/assistant-selector"
+      }
+    }
+    ```
+
+    <Note>
+      Your server must respond within 7.5 seconds, or the call will fail.
+    </Note>
+  </Step>
+
+  <Step title="Implement Your Server Endpoint">
+    Your server should handle POST requests from Vapi and return either:
+
+    **Option 1: Use an Existing Assistant with Dynamic Variables**
+
+    ```javascript
+    app.post("/api/assistant-selector", async (req, res) => {
+      if (req.body.message?.type === "assistant-request") {
+        const phoneNumber = req.body.call.from.phoneNumber;
+        const customer = await crmAPI.getCustomerByPhone(phoneNumber);
+
+        res.json({
+          assistantId: "asst_customersupport",
+          assistantOverrides: {
+            variableValues: {
+              customerName: customer.name,
+              accountType: customer.tier,
+              joinDate: customer.createdAt
+            }
+          }
+        });
+      }
+    });
+    ```
+
+    **Option 2: Return a Complete Assistant Configuration**
+
+    ```javascript
+    app.post("/api/assistant-selector", async (req, res) => {
+      if (req.body.message?.type === "assistant-request") {
+        const phoneNumber = req.body.call.from.phoneNumber;
+        const customer = await crmAPI.getCustomerByPhone(phoneNumber);
+
+        res.json({
+          assistant: {
+            name: "Dynamic Customer Support Assistant",
+            model: {
+              provider: "openai",
+              model: "gpt-4",
+              messages: [{
+                role: "system",
+                content: `You are helping ${customer.name}, a ${customer.tier} member since ${customer.createdAt}.`
+              }]
+            },
+            voice: {
+              provider: "11labs",
+              voiceId: "shimmer"
+            }
+          }
+        });
+      }
+    });
+    ```
+  </Step>
+</Steps>
+
+## Error Handling
+
+If your server encounters an error or cannot find the customer, return a response like this to end the call with a spoken message:
+
+```json
+{
+  "error": "Unable to find customer record. Please try again later."
+}
+```
+
+## Common Issues
+
+<Note>
+- Use the exact `{{variable_name}}` syntax for variables in your assistant configuration.
+- Your server must respond within 7.5 seconds.
+- Implement fallbacks for missing or incomplete customer data.
+- Ensure your endpoint is highly available to avoid missed calls.
+</Note>

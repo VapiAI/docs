@@ -1,0 +1,254 @@
+---
+title: Documentation agent
+subtitle: Build a voice assistant that answers questions about your docs
+slug: examples/docs-agent
+---
+
+Try our live implementation using the voice widget in the bottom-right corner of this page.
+
+## Overview
+
+Build a voice-powered documentation assistant step by step. Use API requests (shown below) or the [Vapi Dashboard](https://dashboard.vapi.ai/).
+
+You'll learn to:
+- Index your docs with LlamaCloud
+- Create a RAG tool for document retrieval
+- Create an assistant with Claude 3.5 Sonnet and attach the tool
+- Use the Web SDK to create a widget
+- Analyze user sessions and improve the quality of your agent overtime
+
+## Prerequisites
+
+- [Vapi account](https://dashboard.vapi.ai/) with API access
+- Documentation content - use your `llms-full.txt` file ([example](https://docs.vapi.ai/llms-full.txt)), available out-of-box on [Fern](https://buildwithfern.com/learn/docs/developer-tools/llms-txt) or [Mintlify](https://mintlify.com/docs/ai-ingestion#%2Fllms-full-txt)
+- [LlamaCloud account](https://cloud.llamaindex.ai/) for indexing
+
+## Get started
+
+<Steps>
+  <Step title="Index your documentation">
+    Upload and index your documentation in LlamaCloud using `text-embedding-3-small`.
+
+    1. Create a new project in LlamaCloud
+    2. Upload your documentation files (you can use a single consolidated file like [llms-full.txt](https://docs.vapi.ai/llms-full.txt))
+    3. Configure embedding model to `text-embedding-3-small`
+    4. Set chunking to 512 tokens with 50 token overlap
+    5. Note your index ID and API credentials
+
+    <Tip>
+      Consolidate your documentation into a single text file for better RAG performance. You can see our example at [docs.vapi.ai/llms-full.txt](https://docs.vapi.ai/llms-full.txt).
+    </Tip>
+  </Step>
+
+  <Step title="Create the RAG tool">
+    Create a tool that connects your assistant to your LlamaCloud index using the [Tools API](/api-reference/tools/create).
+
+    You can also create this tool in the [Vapi Dashboard](https://dashboard.vapi.ai/).
+    ```bash
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "apiRequest",
+           "name": "docsquery",
+           "function": {
+             "name": "docsquery",
+             "parameters": {
+               "type": "object",
+               "properties": {
+                 "query": {
+                   "type": "string",
+                   "description": "The search query to find relevant documentation"
+                 }
+               },
+               "required": ["query"]
+             }
+           },
+           "url": "https://api.cloud.llamaindex.ai/api/v1/pipelines/YOUR_PIPELINE_ID/retrieve",
+           "method": "POST",
+           "headers": {
+             "type": "object",
+             "properties": {
+               "Content-Type": {
+                 "type": "string",
+                 "value": "application/json"
+               },
+               "Authorization": {
+                 "type": "string",
+                 "value": "Bearer YOUR_LLAMACLOUD_API_KEY"
+               }
+             }
+           },
+           "body": {
+             "type": "object",
+             "properties": {
+               "query": {
+                 "type": "string",
+                 "value": "{{query}}"
+               }
+             }
+           }
+         }'
+    ```
+
+    Replace `YOUR_PIPELINE_ID` with your LlamaCloud pipeline ID and `YOUR_LLAMACLOUD_API_KEY` with your API key. Save the tool ID from the response for the next step.
+  </Step>
+
+  <Step title="Create an assistant with the tool">
+    Create an assistant using the [Assistant API](/api-reference/assistants/create) with the RAG tool attached.
+
+    You can also create this assistant in the [Vapi Dashboard](https://dashboard.vapi.ai/).
+
+    ```bash
+    curl -X POST https://api.vapi.ai/assistant \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "Docs agent",
+           "model": {
+             "provider": "anthropic",
+             "model": "claude-3-5-sonnet-20241022",
+             "maxTokens": 400,
+             "messages": [
+               {
+                 "role": "system",
+                 "content": "You are a helpful documentation assistant. Use the docsquery tool to find relevant information. Always be helpful, friendly, and concise. Provide accurate information based on the documentation. When you don'\''t know something, say so clearly. Keep responses conversational for voice interaction."
+               }
+             ],
+             "toolIds": ["YOUR_TOOL_ID_FROM_STEP_2"]
+           },
+           "voice": {
+             "provider": "vapi",
+             "voiceId": "Harry"
+           },
+           "transcriber": {
+             "provider": "deepgram",
+             "model": "nova-3",
+             "language": "en"
+           },
+           "firstMessage": "Hey I'\''m Harry, a support agent. How can I help you today? You can ask me questions about Vapi, how to get started or our documentation.",
+           "endCallMessage": "Goodbye.",
+           "backgroundSound": "off",
+           "analysisPlan": {
+             "summaryPlan": {
+               "enabled": true,
+               "prompt": "Summarize this documentation support call, focusing on the user'\''s questions and how well they were answered."
+             },
+             "successEvaluationPlan": {
+               "enabled": true,
+               "prompt": "Evaluate if this documentation support call was successful. Did the user get helpful answers to their questions?",
+               "rubric": "NumericScale"
+             }
+           }
+         }'
+    ```
+
+    Replace `YOUR_TOOL_ID_FROM_STEP_2` with the tool ID from step 2. Save the assistant ID from the response for the next step.
+
+    <Tip>
+      See our [complete documentation agent prompt](/docs-agent-prompt.txt) that includes detailed personality, style guidelines, and interaction patterns.
+    </Tip>
+  </Step>
+
+  <Step title="Create a web component">
+    Use the Vapi Web SDK to create a voice widget.
+
+    ```bash
+    npm install @vapi-ai/web
+    ```
+
+    Replace `YOUR_PUBLIC_API_KEY` and `YOUR_ASSISTANT_ID` with your actual values:
+
+    ```typescript
+    import { useState, useEffect } from 'react';
+    import Vapi from '@vapi-ai/web';
+
+    export default function VoiceWidget() {
+      const [vapi, setVapi] = useState(null);
+      const [isConnected, setIsConnected] = useState(false);
+      const [transcript, setTranscript] = useState([]);
+
+      useEffect(() => {
+        const vapiInstance = new Vapi('YOUR_PUBLIC_API_KEY');
+        setVapi(vapiInstance);
+
+        vapiInstance.on('call-start', () => setIsConnected(true));
+        vapiInstance.on('call-end', () => setIsConnected(false));
+        vapiInstance.on('message', (msg) => {
+          if (msg.type === 'transcript') {
+            setTranscript(prev => [...prev, { role: msg.role, text: msg.transcript }]);
+          }
+        });
+
+        return () => vapiInstance?.stop();
+      }, []);
+
+      const startCall = () => vapi?.start('YOUR_ASSISTANT_ID');
+      const endCall = () => vapi?.stop();
+
+      return (
+        <div style={{ position: 'fixed', bottom: 24, right: 24, background: '#000', color: '#fff', borderRadius: 12, padding: 20, width: 300 }}>
+          {!isConnected ? (
+            <button onClick={startCall} style={{ background: '#12A594', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 24px' }}>
+              Start Voice Chat
+            </button>
+          ) : (
+            <div>
+              <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
+                {transcript.map((msg, i) => (
+                  <div key={i} style={{ marginBottom: 8, textAlign: msg.role === 'user' ? 'right' : 'left' }}>
+                    <span style={{ background: msg.role === 'user' ? '#12A594' : '#333', padding: '8px 12px', borderRadius: 12, display: 'inline-block' }}>
+                      {msg.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={endCall} style={{ background: '#e5e7eb', color: '#000', border: 'none', borderRadius: 8, padding: '8px 16px' }}>
+                End Call
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+    ```
+
+    <Tip>
+      For a complete implementation with waveform visualization, real-time transcripts, and responsive design, check out our [voice widget component](https://github.com/VapiAI/docs/blob/7879817ad2789d5929842cecff4ef3f4ec82acae/fern/widget/voice-widget.tsx) on GitHub.
+    </Tip>
+  </Step>
+
+  <Step title="Improve your prompts with call analysis">
+    Vapi automatically analyzes every call. The assistant above includes an [`analysisPlan`](https://docs.vapi.ai/api-reference/assistants/create#request.body.analysisPlan) with summary and success evaluation configured.
+
+    Configure additional analysis options in your assistant:
+    - **Summary plan**: Custom prompts for call summaries
+    - **Structured data plan**: Extract specific information using JSON schemas
+    - **Success evaluation plan**: Score calls with custom rubrics
+    - **Structured data multi plan**: Multiple extraction schemas
+
+    Retrieve analysis results using the [Get Call API](https://docs.vapi.ai/api-reference/calls/get#response.body.analysis):
+
+    ```bash
+    curl https://api.vapi.ai/call/CALL_ID \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY"
+    ```
+
+    The response includes `call.analysis` with your configured analysis results. Learn more about [call analysis configuration](https://docs.vapi.ai/assistants/call-analysis).
+
+    **Iterative improvements:**
+    - Review analysis summaries to identify common user questions
+    - Use structured data to track conversation patterns
+    - Monitor success evaluations to optimize assistant performance
+    - Update your system prompt based on recurring issues
+    - Refine RAG retrieval based on query success patterns
+  </Step>
+</Steps>
+
+<Card
+  title='Prompting guide'
+  icon='fa-light fa-pen-to-square'
+  href='/prompting-guide'
+>
+Learn advanced prompting techniques to optimize your documentation agent's responses and behavior.
+</Card> 
