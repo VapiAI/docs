@@ -1,216 +1,262 @@
 ---
 title: Plivo SIP Integration
-subtitle: How to integrate Plivo SIP with Vapi
+subtitle: Learn to connect your Plivo SIP trunk to Vapi for inbound and outbound calls
 slug: advanced/sip/plivo
 ---
 
-This guide walks you through setting up both outbound and inbound SIP trunking between Plivo and Vapi.
+## Overview
 
-## Outbound Calls (Plivo to Vapi)
+For a general introduction to SIP trunking with Vapi (concepts and architecture), see our [SIP Trunking Guide](../sip-trunk.mdx).
 
-### Plivo Configuration
+This guide shows you how to connect your Plivo SIP trunk to your existing Vapi agents. It covers:
 
-1. **Login to Plivo Console**
-   
-   Access the Plivo console at [https://console.plivo.com/accounts/login/](https://console.plivo.com/accounts/login/)
+- Step-by-step configuration of Plivo and Vapi for SIP trunking (outbound and inbound)
+- How to register and associate your Plivo phone numbers with Vapi
+- How to make outbound calls using the Vapi API and dashboard
+- How to assign Plivo numbers for inbound call routing through Vapi
 
-2. **Create IP Access Control List**
-   
-   Navigate to: Zentrunk(SIP) → Outbound Trunks → IP Access Control List → Create New IP Group
-   
-   - Name: Choose a descriptive name
-   - IP Address List: Whitelist Vapi's fixed IPs:
-     - 44.229.228.186/32
-     - 44.238.177.138/32
-   - Click "Create ACL"
-   
-   ![Plivo IP Access Control List](../../static/images/sip/sip-plivo-ip-acl.png)
+## Prerequisites
+- [A Plivo account](https://console.plivo.com/accounts/request-trial/)
+- Admin access to your Plivo and PBX/SIP trunk configuration
+- A phone number you want to connect to Vapi via Plivo
 
-3. **Create Outbound Trunk**
-   
-   Navigate to: Zentrunk(SIP) → Outbound Trunks → Trunks → Create New Outbound Trunk
-   
-   - Trunk Name: Choose a descriptive name
-   - IP Access Control List: Select the IP ACL created in the previous step
-   - Click "Create Trunk"
-   
-   ![Create New Outbound Trunk](../../static/images/sip/sip-plivo-outbound-trunk.png)
+<Warning>
+Indian phone numbers cannot be used with Plivo on Vapi due to TRAI regulations. These regulations require SIP termination to occur via an Indian server, which Vapi does not currently support.
+</Warning>
 
-4. **Note Your Termination SIP Domain**
-   
-   After creating the trunk, note the Termination SIP Domain (format: 12700668357XXXXXX.zt.plivo.com)
-   
-   ![Termination SIP Domain](../../static/images/sip/sip-plivo-termination-sip-domain.png)
+## Get Started
 
-5. **Purchase a Phone Number**
-   
-   Navigate to: Numbers → Buy a new number
-   
-   ![Buy Phone Number](../../static/images/sip/sip-plivo-buy-phone-number.png)
+<Tabs>
+  <Tab title="Outbound (Vapi to user)">
+    ## Plivo Configuration
+    <Steps>
+      <Step title="Login to Plivo Console">
+        <a href="https://console.plivo.com/accounts/login/" target="_blank" rel="noopener">Access the Plivo console</a>.
+      </Step>
+      <Step title="Create IP Access Control List">
+        1. **Navigate to:**
+           `Zentrunk (SIP) → Outbound Trunks → IP Access Control List → Create New IP Group`
+        
+        2. **Fill out the form:**
+        - **Name:** Enter a descriptive name (for example, `VAPI-IP-Group`).
+        - **IP Address List:** Add each of the following IP addresses one at a time:
+        ```
+44.229.228.186/32
+        ```
+        ```
+44.238.177.138/32
+        ```
+        3. **Click** **Create ACL** to save.
+        
+        ![Plivo IP Access Control List](../../static/images/sip/sip-plivo-ip-acl.png)
+      </Step>
+      <Step title="Create Outbound Trunk">
+        1. **Navigate to:**
+           `Zentrunk (SIP) → Outbound Trunks → Trunks → Create New Outbound Trunk`
+        
+        2. **Fill out the form:**
+        - **Trunk Name:** Enter a descriptive name (for example, `Vapi-Outbound-Trunk`).
+        - **IP Access Control List:** Select the IP ACL created in the previous step.
+        3. **Click** **Create Trunk** to save.
+        
+        ![Create New Outbound Trunk](../../static/images/sip/sip-plivo-outbound-trunk.png)
+      </Step>
+      <Step title="Note Your Termination SIP Domain">
+        After creating the trunk, locate the **Termination SIP Domain** in the trunk details page. It will look something like:
+        `12700668357XXXXXX.zt.plivo.com`
+        ![Termination SIP Domain](../../static/images/sip/sip-plivo-termination-sip-domain.png)
+        
+        **You will need this value when configuring your SIP trunk in Vapi.**
+      </Step>
+      <Step title="Purchase a Phone Number">
+        Navigate to:
+        `Numbers → Buy a new number`
+        
+        Once purchased, note down your new phone number. You will associate this number with your SIP trunk in a later step.
+        
+        ![Buy Phone Number](../../static/images/sip/sip-plivo-buy-phone-number.png)
+      </Step>
+    </Steps>
+    
+    ## Vapi Configuration
+    <Steps>
+      <Step title="Get Your Vapi API Key">
+        Sign in to the dashboard and [get your API key](https://dashboard.vapi.ai/org/api-keys). 
+      </Step>
+      <Step title="Create a SIP Trunk Credential">
+        1. Copy the following API call.
+        2. Replace `YOUR_PLIVO_TERMINATION_SIP_DOMAIN` with your actual Plivo Termination SIP Domain (for example, `12700668357XXXXXX.zt.plivo.com`).
 
-### Vapi Configuration
+        ```bash
+        curl -X POST https://api.vapi.ai/credential \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer YOUR_VAPI_PRIVATE_API_KEY" \
+          -d '{
+            "provider": "byo-sip-trunk",
+            "name": "PLIVO Trunk",
+            "gateways": [
+              {
+                "ip": "YOUR_PLIVO_TERMINATION_SIP_DOMAIN"
+              }
+            ]
+          }'
+        ```
+        3. You'll receive a response like the one below. Note the `id` (credentialId) for the next step.
 
-1. **Get Your Vapi API Key**
-   
-   Sign in to the Vapi dashboard at [https://dashboard.vapi.ai/](https://dashboard.vapi.ai/) and retrieve your API key
-   
-   ![VAPI Dashboard](../../static/images/sip/sip-plivo-vapi-dashboard.png)
+        ```json
+        {
+          "id": "d293b924-f68d-4cbc-850f-xxxxxxxxxxxxxxx",
+          "orgId": "424acf80-dbea-4015-ace8-0f3924e6000xxxx",
+          "provider": "byo-sip-trunk",
+          "createdAt": "2025-05-05T16:38:08.815Z",
+          "updatedAt": "2025-05-05T16:38:08.815Z",
+          "gateways": [
+            {
+              "ip": "1856282236xxxxxxxxxxx.zt.plivo.com"
+            }
+          ],
+          "name": "PLIVO Trunk"
+        }
+        ```
+      </Step>
+      <Step title="Register Your Phone Number">
+        1. Associate your Plivo number with the SIP trunk. Replace `YOUR_PLIVO_PHONE_NUMBER` and `YOUR_CREDENTIAL_ID` with the numbers from previous steps. 
+        ```bash
+        curl -X POST https://api.vapi.ai/phone-number \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer YOUR_VAPI_PRIVATE_API_KEY" \
+        -d '{
+          "provider": "byo-phone-number",
+          "name": "PLIVO SIP Number",
+          "number": "YOUR_PLIVO_PHONE_NUMBER",
+          "numberE164CheckEnabled": false,
+          "credentialId": "YOUR_CREDENTIAL_ID"
+        }'
+        ```
+        2. Your response will look like this, note the phone number ID from the response for making calls.
+        ```bash
+        {
+          "id": "eba2fb13-259f-4123-abfa-xxxxxxxxxxxxxxx",
+          "orgId": "489ea344-c56f-4243-8723-b28362cd5a5c",
+          "number": "1833684XXXX",
+          "createdAt": "2025-03-05T18:31:30.389Z",
+          "updatedAt": "2025-03-05T18:31:30.389Z",
+          "name": "PLIVO SIP Number",
+          "credentialId": "a2c815b8-03f4-40f5-813c-xxxxxxxxxxxx",
+          "provider": "byo-phone-number",
+          "numberE164CheckEnabled": false,
+          "status": "active"
+        }
+        ```
+      </Step>
+      <Step title="Create a Vapi Assistant">
+        1. [Follow this guide to create an assistant](https://docs.vapi.ai/quickstart/dashboard#create-an-assistant)
+        2. Note your Assistant ID for making calls.
+      </Step>
+      <Step title="Make Outbound Calls">
+        [**Using the API**](https://docs.vapi.ai/calls/outbound-calling)
 
-2. **Create a SIP Trunk Credential**
-   
-   Use the following API call, replacing the gateway IP with your Plivo Termination SIP Domain:
+        ```bash
+        curl --location 'https://api.vapi.ai/call/phone' \
+        --header 'Authorization: Bearer YOUR_VAPI_PRIVATE_API_KEY' \
+        --header 'Content-Type: application/json' \
+        --data '{
+          "assistantId": "29d47d31-ba3c-451c-86ce-xxxxxxxxx",
+          "customer": {
+            "number": "9199437XXXXX",
+            "numberE164CheckEnabled": false
+          },
+          "phoneNumberId": "eba2fb13-259f-4123-abfa-xxxxxxxxxxx"
+        }'
+        ```
 
-   ```bash
-   curl -X POST https://api.vapi.ai/credential \
-   -H "Content-Type: application/json" \
-   -H "Authorization: Bearer your-vapi-private-api-key" \
-   -d '{
-     "provider": "byo-sip-trunk",
-     "name": "PLIVO Trunk",
-     "gateways": [
-       {
-         "ip": "1270066835XXXXXXXXX.zt.plivo.com"
-       }
-     ]
-   }'
-   ```
+        [**Using the Vapi Dashboard**](https://docs.vapi.ai/quickstart/phone/outbound)
 
-   ![SIP Trunk Credential Response](../../static/images/sip/sip-plivo-sip-trunk-credential-response.png)
-   
-   Note the `id` (credentialId) from the response for the next step.
+        1. Select your Assistant 
+        2. Enter the phone number of the user you want to call
+        ![VAPI Dashboard Call](../../static/images/sip/sip-plivo-vapi-dashboard-call.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Inbound (user to Vapi)">
+    ## Plivo Configuration
+    <Steps>
+      <Step title="Login to Plivo Console">
+        <a href="https://console.plivo.com/accounts/login/" target="_blank" rel="noopener">Access the Plivo console</a>.
+      </Step>
+      <Step title="Create Origination URI">
+        1. **Navigate to:**
+           `Zentrunk (SIP) → Inbound Trunks → Origination URI → Create New IP URI`
+        
+        2. **Fill out the form:**
+        - **Name:** Enter a descriptive name (for example, `Vapi Inbound`).
+        - **URI:** Enter this origination URI exactly: `sip.vapi.ai;transport=udp`
+        3. **Click** **Create URI** to save.
+        
+        ![Create New IP URI](../../static/images/sip/sip-plivo-create-new-ip-uri.png)
+      </Step>
+      <Step title="Create Inbound Trunk">
+        1. **Navigate to:**
+           `Zentrunk (SIP) → Inbound Trunks → Trunks → Create New Inbound Trunk`
+        
+        2. **Fill out the form:**
+        - **Trunk Name:** Enter a descriptive name (for example, `Vapi Inbound Trunk`).
+        - **Primary URI:** Select the URI created in the previous step.
+        3. **Click** **Create Trunk** to save.
+        
+        ![Create New Inbound Trunk](../../static/images/sip/sip-plivo-create-new-inbound-trunk.png)
+      </Step>
+      <Step title="Attach Phone Number to Inbound Trunk">
+        1. **Navigate to:**
+           `Phone Numbers → Select your purchased number`
+        
+        2. **Configure the number:**
+        - In the **Application** dropdown, select **Zentrunk**.
+        - In the **Zentrunk** dropdown, select your inbound trunk.
+        3. **Click** **Save** to apply changes.
+        
+        ![Attach Number to Inbound Trunk](../../static/images/sip/sip-plivo-attach-number-to-inbound-trunk.png)
+      </Step>
+    </Steps>
+    
+    ## Vapi Configuration
+    <Steps>
+      <Step title="Get Your Vapi API Key">
+        Sign into the dashboard and [get your api key](https://dashboard.vapi.ai/org/api-keys). 
+      </Step>
+      <Step title="Create an Inbound SIP Trunk Credential">
+        ```bash
+        curl -X POST https://api.vapi.ai/credential \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer YOUR_VAPI_PRIVATE_API_KEY" \
+        -d '{
+          "provider": "byo-sip-trunk",
+          "name": "PLIVO Inbound Trunk",
+          "type": "inbound"
+        }'
+        ```
+        Note the `id` (credentialId) from the response for the next step.
+      </Step>
+      <Step title="Register Your Phone Number">
+        ```bash
+        curl -X POST https://api.vapi.ai/phone-number \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer YOUR_VAPI_PRIVATE_API_KEY" \
+        -d '{
+          "provider": "byo-phone-number",
+          "name": "PLIVO SIP Inbound Number",
+          "number": "1833684XXXX",
+          "numberE164CheckEnabled": false,
+          "credentialId": "a2c815b8-03f4-40f5-813c-xxxxxxxxxxxx"
+        }'
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
-3. **Register Your Phone Number**
-   
-   Associate your Plivo number with the SIP trunk:
+## Errors
 
-   ```bash
-   curl -X POST https://api.vapi.ai/phone-number \
-   -H "Content-Type: application/json" \
-   -H "Authorization: Bearer your-vapi-private-api-key" \
-   -d '{
-     "provider": "byo-phone-number",
-     "name": "PLIVO SIP Number",
-     "number": "1833684XXXX",
-     "numberE164CheckEnabled": false,
-     "credentialId": "a2c815b8-03f4-40f5-813c-xxxxxxxxxxxx"
-   }'
-   ```
-
-   ![Phone Number Response](../../static/images/sip/sip-plivo-phone-number-response.png)
-   
-   Note the phone number ID from the response for making calls.
-
-4. **Create a Vapi Assistant**
-   
-   Follow the steps at [https://docs.vapi.ai/quickstart/dashboard#create-an-assistant](https://docs.vapi.ai/quickstart/dashboard#create-an-assistant)
-   
-   ![Create VAPI Assistant](../../static/images/sip/sip-plivo-create-vapi-assistant.png)
-   
-   Note your Assistant ID for making calls.
-
-5. **Make Outbound Calls**
-
-   **Using the API:**
-   
-   ```bash
-   curl --location 'https://api.vapi.ai/call/phone' \
-   --header 'Authorization: Bearer your-vapi-private-api-key' \
-   --header 'Content-Type: application/json' \
-   --data '{
-     "assistantId": "29d47d31-ba3c-451c-86ce-xxxxxxxxx",
-     "customer": {
-       "number": "9199437XXXXX",
-       "numberE164CheckEnabled": false
-     },
-     "phoneNumberId": "eba2fb13-259f-4123-abfa-xxxxxxxxxxx"
-   }'
-   ```
-   
-   ![Outbound Call Response](../../static/images/sip/sip-plivo-outbound-call-response.png)
-   
-   **Using the Vapi Dashboard:**
-   
-   Select your Assistant and enter the destination number you want to call.
-   
-   ![VAPI Dashboard Call](../../static/images/sip/sip-plivo-vapi-dashboard-call.png)
-
-## Inbound Calls (Vapi to Plivo)
-
-### Plivo Configuration
-
-1. **Login to Plivo Console**
-   
-   Access the Plivo console at [https://console.plivo.com/accounts/login/](https://console.plivo.com/accounts/login/)
-
-2. **Create Origination URI**
-   
-   Navigate to: Zentrunk(SIP) → Inbound Trunks → Origination URI → Create New IP URI
-   
-   - Name: Choose a descriptive name
-   - URI: Enter Vapi's SIP URI: `sip.vapi.ai;transport=udp`
-   - Click "Create URI"
-   
-   ![Create New IP URI](../../static/images/sip/sip-plivo-create-new-ip-uri.png)
-
-3. **Create Inbound Trunk**
-   
-   Navigate to: Zentrunk(SIP) → Inbound Trunks → Trunks → Create New Inbound Trunk
-   
-   - Trunk Name: Choose a descriptive name
-   - Primary URI: Select the URI created in the previous step
-   - Click "Create Trunk"
-   
-   ![Create New Inbound Trunk](../../static/images/sip/sip-plivo-create-new-inbound-trunk.png)
-
-4. **Attach Phone Number to Inbound Trunk**
-   
-   Navigate to: Phone Numbers → Select your purchased number
-   
-   - In the Application dropdown, select "Zentrunk"
-   - In the Zentrunk dropdown, select your inbound trunk
-   - Save the changes
-   
-   ![Attach Number to Inbound Trunk](../../static/images/sip/sip-plivo-attach-number-to-inbound-trunk.png)
-
-### Vapi Configuration
-
-1. **Get Your Vapi API Key**
-   
-   Sign in to the Vapi dashboard at [https://dashboard.vapi.ai/](https://dashboard.vapi.ai/) and retrieve your API key
-
-2. **Create an Inbound SIP Trunk Credential**
-   
-   ```bash
-   curl -X POST https://api.vapi.ai/credential \
-   -H "Content-Type: application/json" \
-   -H "Authorization: Bearer your-vapi-private-api-key" \
-   -d '{
-     "provider": "byo-sip-trunk",
-     "name": "PLIVO Inbound Trunk",
-     "type": "inbound"
-   }'
-   ```
-   
-   Note the `id` (credentialId) from the response for the next step.
-
-3. **Register Your Phone Number**
-   
-   ```bash
-   curl -X POST https://api.vapi.ai/phone-number \
-   -H "Content-Type: application/json" \
-   -H "Authorization: Bearer your-vapi-private-api-key" \
-   -d '{
-     "provider": "byo-phone-number",
-     "name": "PLIVO SIP Inbound Number",
-     "number": "1833684XXXX",
-     "numberE164CheckEnabled": false,
-     "credentialId": "a2c815b8-03f4-40f5-813c-xxxxxxxxxxxx"
-   }'
-   ```
-
-4. **Create and Configure a Vapi Assistant**
-   
-   - Create an assistant following the steps at [https://docs.vapi.ai/quickstart/dashboard#create-an-assistant](https://docs.vapi.ai/quickstart/dashboard#create-an-assistant)
-   - In the assistant settings, link it to the phone number you created
-   
-   Now when someone calls your Plivo number, the call will be routed to your Vapi assistant.
+- **Codec Support:** Limit trunk codecs to G.711 µ‑law and A‑law only. Other codecs are not supported by Plivo SIP trunks.
+- **SIP REFER Not Supported:** Plivo SIP trunks do not accept SIP REFER for call transfers.
+- **Origination URI Already Exists:** This was previously an error on Plivo's side and has been fixed. 

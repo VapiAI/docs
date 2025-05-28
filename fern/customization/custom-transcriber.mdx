@@ -1,435 +1,431 @@
-## Introduction
+---
+title: Custom transcriber
+subtitle: Integrate your own transcription service with Vapi
+slug: customization/custom-transcriber
+---
+## Overview
 
-Vapi supports several transcription providers, but sometimes you may need to use your own transcription service. This guide shows you how to integrate Deepgram as your custom transcriber. The solution streams raw stereo PCM audio (16‑bit) from Vapi via WebSocket to your server, which then forwards the audio to Deepgram. Deepgram returns real‑time partial and final transcripts that are processed (including channel detection) and sent back to Vapi.
+A custom transcriber lets you use your own transcription service with Vapi, instead of a built-in provider. This is useful if you need more control, want to use a specific provider like Deepgram, or have custom processing needs.
+
+This guide shows you how to set up Deepgram as your custom transcriber. The same approach can be adapted for other providers.
+
+You'll learn how to:
+- Stream audio from Vapi to your server
+- Forward audio to Deepgram for transcription
+- Return real-time transcripts back to Vapi
 
 ## Why Use a Custom Transcriber?
 
 - **Flexibility:** Integrate with your preferred transcription service.
-- **Control:** Implement specialized processing that isn’t available with built‑in providers.
+- **Control:** Implement specialized processing that isn't available with built‑in providers.
 - **Cost Efficiency:** Leverage your existing transcription infrastructure while maintaining full control over the pipeline.
 - **Customization:** Tailor the handling of audio data, transcript formatting, and buffering according to your specific needs.
 
-## How It Works
+## How it works
 
-1. **Connection Initialization:**  
-   Vapi connects to your custom transcriber endpoint (e.g. `/api/custom-transcriber`) via WebSocket. It sends an initial JSON message like this:
-   ```json
-   {
-     "type": "start",
-     "encoding": "linear16",
-     "container": "raw",
-     "sampleRate": 16000,
-     "channels": 2
-   }
-   ```
-2. **Audio Streaming:**  
-   Vapi then streams binary PCM audio to your server.
-
-3. **Transcription Processing:**  
-   Your server forwards the audio to Deepgram(Chooseen Transcriber for Example) using its SDK. Deepgram processes the audio and returns transcript events that include a `channel_index` (e.g. `[0, ...]` for customer, `[1, ...]` for assistant). The service buffers the incoming data, processes the transcript events (with debouncing and channel detection), and emits a final transcript.
-
-4. **Response:**  
-   The final transcript is sent back to Vapi as a JSON message:
-   ```json
-   {
-     "type": "transcriber-response",
-     "transcription": "The transcribed text",
-     "channel": "customer" // or "assistant"
-   }
-   ```
-
-## Implementation Steps
-
-### 1. Project Setup
-
-Create a new Node.js project and install the required dependencies:
-
-```bash
-mkdir vapi-custom-transcriber
-cd vapi-custom-transcriber
-npm init -y
-npm install ws express dotenv @deepgram/sdk
-```
-
-Create a `.env` file with the following content:
-
-```env
-DEEPGRAM_API_KEY=your_deepgram_api_key
-PORT=3001
-```
-
-### 2. Code Files
-
-Below are the individual code files you need for the integration.
-
-#### transcriptionService.js
-
-This service creates a live connection to Deepgram, processes incoming audio, handles transcript events (including channel detection), and emits the final transcript back to the caller.
-
-```js
-const { createClient, LiveTranscriptionEvents } = require("@deepgram/sdk");
-const EventEmitter = require("events");
-
-const PUNCTUATION_TERMINATORS = [".", "!", "?"];
-const MAX_RETRY_ATTEMPTS = 3;
-const DEBOUNCE_DELAY_IN_SECS = 3;
-const DEBOUNCE_DELAY = DEBOUNCE_DELAY_IN_SECS * 1000;
-const DEEPGRAM_API_KEY = process.env["DEEPGRAM_API_KEY"] || "";
-
-class TranscriptionService extends EventEmitter {
-  constructor(config, logger) {
-    super();
-    this.config = config;
-    this.logger = logger;
-    this.flowLogger = require("./fileLogger").createNamedLogger(
-      "transcriber-flow.log"
-    );
-    if (!DEEPGRAM_API_KEY) {
-      throw new Error("Missing Deepgram API Key");
+<Steps>
+  <Step title="Connection initialization">
+    Vapi connects to your custom transcriber endpoint (e.g. `/api/custom-transcriber`) via WebSocket. It sends an initial JSON message like this:
+    ```json
+    {
+      "type": "start",
+      "encoding": "linear16",
+      "container": "raw",
+      "sampleRate": 16000,
+      "channels": 2
     }
-    this.deepgramClient = createClient(DEEPGRAM_API_KEY);
-    this.logger.logDetailed(
-      "INFO",
-      "Initializing Deepgram live connection",
-      "TranscriptionService",
-      {
-        model: "nova-2",
-        sample_rate: 16000,
-        channels: 2,
-      }
-    );
-    this.deepgramLive = this.deepgramClient.listen.live({
-      encoding: "linear16",
-      channels: 2,
-      sample_rate: 16000,
-      model: "nova-2",
-      smart_format: true,
-      interim_results: true,
-      endpointing: 800,
-      language: "en",
-      multichannel: true,
-    });
-    this.finalResult = { customer: "", assistant: "" };
-    this.audioBuffer = [];
-    this.retryAttempts = 0;
-    this.lastTranscriptionTime = Date.now();
-    this.pcmBuffer = Buffer.alloc(0);
+    ```
+  </Step>
+  <Step title="Audio streaming">
+    Vapi then streams binary PCM audio to your server.
+  </Step>
+  <Step title="Transcription processing">
+    Your server forwards the audio to Deepgram (or your chosen transcriber) using its SDK. Deepgram processes the audio and returns transcript events that include a `channel_index` (e.g. `[0, ...]` for customer, `[1, ...]` for assistant). The service buffers the incoming data, processes the transcript events (with debouncing and channel detection), and emits a final transcript.
+  </Step>
+  <Step title="Response">
+    The final transcript is sent back to Vapi as a JSON message:
+    ```json
+    {
+      "type": "transcriber-response",
+      "transcription": "The transcribed text",
+      "channel": "customer" // or "assistant"
+    }
+    ```
+  </Step>
+</Steps>
 
-    this.deepgramLive.addListener(LiveTranscriptionEvents.Open, () => {
-      this.logger.logDetailed(
-        "INFO",
-        "Deepgram connection opened",
-        "TranscriptionService"
-      );
-      this.deepgramLive.on(LiveTranscriptionEvents.Close, () => {
+## Implementation steps
+
+<Steps>
+  <Step title="Project setup">
+    Create a new Node.js project and install the required dependencies:
+    ```bash
+    mkdir vapi-custom-transcriber
+    cd vapi-custom-transcriber
+    npm init -y
+    npm install ws express dotenv @deepgram/sdk
+    ```
+    Create a `.env` file with the following content:
+    ```env
+    DEEPGRAM_API_KEY=your_deepgram_api_key
+    PORT=3001
+    ```
+  </Step>
+
+  <Step title="Add code files">
+    Add the following files to your project:
+
+    **transcriptionService.js**
+    ```js
+    const { createClient, LiveTranscriptionEvents } = require("@deepgram/sdk");
+    const EventEmitter = require("events");
+
+    const PUNCTUATION_TERMINATORS = [".", "!", "?"];
+    const MAX_RETRY_ATTEMPTS = 3;
+    const DEBOUNCE_DELAY_IN_SECS = 3;
+    const DEBOUNCE_DELAY = DEBOUNCE_DELAY_IN_SECS * 1000;
+    const DEEPGRAM_API_KEY = process.env["DEEPGRAM_API_KEY"] || "";
+
+    class TranscriptionService extends EventEmitter {
+      constructor(config, logger) {
+        super();
+        this.config = config;
+        this.logger = logger;
+        this.flowLogger = require("./fileLogger").createNamedLogger(
+          "transcriber-flow.log"
+        );
+        if (!DEEPGRAM_API_KEY) {
+          throw new Error("Missing Deepgram API Key");
+        }
+        this.deepgramClient = createClient(DEEPGRAM_API_KEY);
         this.logger.logDetailed(
           "INFO",
-          "Deepgram connection closed",
-          "TranscriptionService"
-        );
-        this.emitTranscription();
-        this.audioBuffer = [];
-      });
-      this.deepgramLive.on(LiveTranscriptionEvents.Metadata, (data) => {
-        this.logger.logDetailed(
-          "DEBUG",
-          "Deepgram metadata received",
+          "Initializing Deepgram live connection",
           "TranscriptionService",
-          data
+          {
+            model: "nova-2",
+            sample_rate: 16000,
+            channels: 2,
+          }
         );
-      });
-      this.deepgramLive.on(LiveTranscriptionEvents.Transcript, (event) => {
-        this.handleTranscript(event);
-      });
-      this.deepgramLive.on(LiveTranscriptionEvents.Error, (err) => {
-        this.logger.logDetailed(
-          "ERROR",
-          "Deepgram error received",
-          "TranscriptionService",
-          { error: err }
-        );
-        this.emit("transcriptionerror", err);
-      });
-    });
-  }
-
-  send(payload) {
-    if (payload instanceof Buffer) {
-      this.pcmBuffer =
-        this.pcmBuffer.length === 0
-          ? payload
-          : Buffer.concat([this.pcmBuffer, payload]);
-    } else {
-      this.logger.warn("TranscriptionService: Received non-Buffer data chunk.");
-    }
-    if (this.deepgramLive.getReadyState() === 1 && this.pcmBuffer.length > 0) {
-      this.sendBufferedData(this.pcmBuffer);
-      this.pcmBuffer = Buffer.alloc(0);
-    }
-  }
-
-  sendBufferedData(bufferedData) {
-    try {
-      this.logger.logDetailed(
-        "INFO",
-        "Sending buffered data to Deepgram",
-        "TranscriptionService",
-        { bytes: bufferedData.length }
-      );
-      this.deepgramLive.send(bufferedData);
-      this.audioBuffer = [];
-      this.retryAttempts = 0;
-    } catch (error) {
-      this.logger.logDetailed(
-        "ERROR",
-        "Error sending buffered data",
-        "TranscriptionService",
-        { error }
-      );
-      this.retryAttempts++;
-      if (this.retryAttempts <= MAX_RETRY_ATTEMPTS) {
-        setTimeout(() => {
-          this.sendBufferedData(bufferedData);
-        }, 1000);
-      } else {
-        this.logger.logDetailed(
-          "ERROR",
-          "Max retry attempts reached, discarding data",
-          "TranscriptionService"
-        );
+        this.deepgramLive = this.deepgramClient.listen.live({
+          encoding: "linear16",
+          channels: 2,
+          sample_rate: 16000,
+          model: "nova-2",
+          smart_format: true,
+          interim_results: true,
+          endpointing: 800,
+          language: "en",
+          multichannel: true,
+        });
+        this.finalResult = { customer: "", assistant: "" };
         this.audioBuffer = [];
         this.retryAttempts = 0;
-      }
-    }
-  }
+        this.lastTranscriptionTime = Date.now();
+        this.pcmBuffer = Buffer.alloc(0);
 
-  handleTranscript(transcription) {
-    if (!transcription.channel || !transcription.channel.alternatives?.[0]) {
-      this.logger.logDetailed(
-        "WARN",
-        "Invalid transcript format",
-        "TranscriptionService",
-        { transcription }
-      );
-      return;
-    }
-    const text = transcription.channel.alternatives[0].transcript.trim();
-    if (!text) return;
-    const currentTime = Date.now();
-    const channelIndex = transcription.channel_index
-      ? transcription.channel_index[0]
-      : 0;
-    const channel = channelIndex === 0 ? "customer" : "assistant";
-    this.logger.logDetailed(
-      "INFO",
-      "Received transcript",
-      "TranscriptionService",
-      { channel, text }
-    );
-    if (transcription.is_final || transcription.speech_final) {
-      this.finalResult[channel] += ` ${text}`;
-      this.emitTranscription();
-    } else {
-      this.finalResult[channel] += ` ${text}`;
-      if (currentTime - this.lastTranscriptionTime >= DEBOUNCE_DELAY) {
-        this.logger.logDetailed(
-          "INFO",
-          `Emitting transcript after ${DEBOUNCE_DELAY_IN_SECS}s inactivity`,
-          "TranscriptionService"
-        );
-        this.emitTranscription();
-      }
-    }
-    this.lastTranscriptionTime = currentTime;
-  }
-
-  emitTranscription() {
-    for (const chan of ["customer", "assistant"]) {
-      if (this.finalResult[chan].trim()) {
-        const transcript = this.finalResult[chan].trim();
-        this.logger.logDetailed(
-          "INFO",
-          "Emitting transcription",
-          "TranscriptionService",
-          { channel: chan, transcript }
-        );
-        this.emit("transcription", transcript, chan);
-        this.finalResult[chan] = "";
-      }
-    }
-  }
-}
-
-module.exports = TranscriptionService;
-```
-
----
-
-#### server.js
-
-This file creates an Express server, attaches the custom transcriber WebSocket at `/api/custom-transcriber`, and starts the HTTP server.
-
-```js
-const express = require("express");
-const http = require("http");
-const TranscriptionService = require("./transcriptionService");
-const FileLogger = require("./fileLogger");
-require("dotenv").config();
-
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.get("/", (req, res) => {
-  res.send("Custom Transcriber Service is running");
-});
-
-const server = http.createServer(app);
-
-const config = {
-  DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY,
-  PORT: process.env.PORT || 3001,
-};
-
-const logger = new FileLogger();
-const transcriptionService = new TranscriptionService(config, logger);
-
-transcriptionService.setupWebSocketServer = function (server) {
-  const WebSocketServer = require("ws").Server;
-  const wss = new WebSocketServer({ server, path: "/api/custom-transcriber" });
-  wss.on("connection", (ws) => {
-    logger.logDetailed(
-      "INFO",
-      "New WebSocket client connected on /api/custom-transcriber",
-      "Server"
-    );
-    ws.on("message", (data, isBinary) => {
-      if (!isBinary) {
-        try {
-          const msg = JSON.parse(data.toString());
-          if (msg.type === "start") {
-            logger.logDetailed(
+        this.deepgramLive.addListener(LiveTranscriptionEvents.Open, () => {
+          this.logger.logDetailed(
+            "INFO",
+            "Deepgram connection opened",
+            "TranscriptionService"
+          );
+          this.deepgramLive.on(LiveTranscriptionEvents.Close, () => {
+            this.logger.logDetailed(
               "INFO",
-              "Received start message from client",
-              "Server",
-              { sampleRate: msg.sampleRate, channels: msg.channels }
+              "Deepgram connection closed",
+              "TranscriptionService"
             );
-          }
-        } catch (err) {
-          logger.error("JSON parse error", err, "Server");
+            this.emitTranscription();
+            this.audioBuffer = [];
+          });
+          this.deepgramLive.on(LiveTranscriptionEvents.Metadata, (data) => {
+            this.logger.logDetailed(
+              "DEBUG",
+              "Deepgram metadata received",
+              "TranscriptionService",
+              data
+            );
+          });
+          this.deepgramLive.on(LiveTranscriptionEvents.Transcript, (event) => {
+            this.handleTranscript(event);
+          });
+          this.deepgramLive.on(LiveTranscriptionEvents.Error, (err) => {
+            this.logger.logDetailed(
+              "ERROR",
+              "Deepgram error received",
+              "TranscriptionService",
+              { error: err }
+            );
+            this.emit("transcriptionerror", err);
+          });
+        });
+      }
+
+      send(payload) {
+        if (payload instanceof Buffer) {
+          this.pcmBuffer =
+            this.pcmBuffer.length === 0
+              ? payload
+              : Buffer.concat([this.pcmBuffer, payload]);
+        } else {
+          this.logger.warn("TranscriptionService: Received non-Buffer data chunk.");
         }
-      } else {
-        transcriptionService.send(data);
+        if (this.deepgramLive.getReadyState() === 1 && this.pcmBuffer.length > 0) {
+          this.sendBufferedData(this.pcmBuffer);
+          this.pcmBuffer = Buffer.alloc(0);
+        }
       }
-    });
-    ws.on("close", () => {
-      logger.logDetailed("INFO", "WebSocket client disconnected", "Server");
-      if (
-        transcriptionService.deepgramLive &&
-        transcriptionService.deepgramLive.getReadyState() === 1
-      ) {
-        transcriptionService.deepgramLive.finish();
+
+      sendBufferedData(bufferedData) {
+        try {
+          this.logger.logDetailed(
+            "INFO",
+            "Sending buffered data to Deepgram",
+            "TranscriptionService",
+            { bytes: bufferedData.length }
+          );
+          this.deepgramLive.send(bufferedData);
+          this.audioBuffer = [];
+          this.retryAttempts = 0;
+        } catch (error) {
+          this.logger.logDetailed(
+            "ERROR",
+            "Error sending buffered data",
+            "TranscriptionService",
+            { error }
+          );
+          this.retryAttempts++;
+          if (this.retryAttempts <= MAX_RETRY_ATTEMPTS) {
+            setTimeout(() => {
+              this.sendBufferedData(bufferedData);
+            }, 1000);
+          } else {
+            this.logger.logDetailed(
+              "ERROR",
+              "Max retry attempts reached, discarding data",
+              "TranscriptionService"
+            );
+            this.audioBuffer = [];
+            this.retryAttempts = 0;
+          }
+        }
       }
+
+      handleTranscript(transcription) {
+        if (!transcription.channel || !transcription.channel.alternatives?.[0]) {
+          this.logger.logDetailed(
+            "WARN",
+            "Invalid transcript format",
+            "TranscriptionService",
+            { transcription }
+          );
+          return;
+        }
+        const text = transcription.channel.alternatives[0].transcript.trim();
+        if (!text) return;
+        const currentTime = Date.now();
+        const channelIndex = transcription.channel_index
+          ? transcription.channel_index[0]
+          : 0;
+        const channel = channelIndex === 0 ? "customer" : "assistant";
+        this.logger.logDetailed(
+          "INFO",
+          "Received transcript",
+          "TranscriptionService",
+          { channel, text }
+        );
+        if (transcription.is_final || transcription.speech_final) {
+          this.finalResult[channel] += ` ${text}`;
+          this.emitTranscription();
+        } else {
+          this.finalResult[channel] += ` ${text}`;
+          if (currentTime - this.lastTranscriptionTime >= DEBOUNCE_DELAY) {
+            this.logger.logDetailed(
+              "INFO",
+              `Emitting transcript after ${DEBOUNCE_DELAY_IN_SECS}s inactivity`,
+              "TranscriptionService"
+            );
+            this.emitTranscription();
+          }
+        }
+        this.lastTranscriptionTime = currentTime;
+      }
+
+      emitTranscription() {
+        for (const chan of ["customer", "assistant"]) {
+          if (this.finalResult[chan].trim()) {
+            const transcript = this.finalResult[chan].trim();
+            this.logger.logDetailed(
+              "INFO",
+              "Emitting transcription",
+              "TranscriptionService",
+              { channel: chan, transcript }
+            );
+            this.emit("transcription", transcript, chan);
+            this.finalResult[chan] = "";
+          }
+        }
+      }
+    }
+
+    module.exports = TranscriptionService;
+    ```
+
+    **server.js**
+    ```js
+    const express = require("express");
+    const http = require("http");
+    const TranscriptionService = require("./transcriptionService");
+    const FileLogger = require("./fileLogger");
+    require("dotenv").config();
+
+    const app = express();
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+
+    app.get("/", (req, res) => {
+      res.send("Custom Transcriber Service is running");
     });
-    ws.on("error", (error) => {
-      logger.error("WebSocket error", error, "Server");
-    });
-    transcriptionService.on("transcription", (text, channel) => {
-      const response = {
-        type: "transcriber-response",
-        transcription: text,
-        channel,
-      };
-      ws.send(JSON.stringify(response));
-      logger.logDetailed("INFO", "Sent transcription to client", "Server", {
-        channel,
-        text,
+
+    const server = http.createServer(app);
+
+    const config = {
+      DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY,
+      PORT: process.env.PORT || 3001,
+    };
+
+    const logger = new FileLogger();
+    const transcriptionService = new TranscriptionService(config, logger);
+
+    transcriptionService.setupWebSocketServer = function (server) {
+      const WebSocketServer = require("ws").Server;
+      const wss = new WebSocketServer({ server, path: "/api/custom-transcriber" });
+      wss.on("connection", (ws) => {
+        logger.logDetailed(
+          "INFO",
+          "New WebSocket client connected on /api/custom-transcriber",
+          "Server"
+        );
+        ws.on("message", (data, isBinary) => {
+          if (!isBinary) {
+            try {
+              const msg = JSON.parse(data.toString());
+              if (msg.type === "start") {
+                logger.logDetailed(
+                  "INFO",
+                  "Received start message from client",
+                  "Server",
+                  { sampleRate: msg.sampleRate, channels: msg.channels }
+                );
+              }
+            } catch (err) {
+              logger.error("JSON parse error", err, "Server");
+            }
+          } else {
+            transcriptionService.send(data);
+          }
+        });
+        ws.on("close", () => {
+          logger.logDetailed("INFO", "WebSocket client disconnected", "Server");
+          if (
+            transcriptionService.deepgramLive &&
+            transcriptionService.deepgramLive.getReadyState() === 1
+          ) {
+            transcriptionService.deepgramLive.finish();
+          }
+        });
+        ws.on("error", (error) => {
+          logger.error("WebSocket error", error, "Server");
+        });
+        transcriptionService.on("transcription", (text, channel) => {
+          const response = {
+            type: "transcriber-response",
+            transcription: text,
+            channel,
+          };
+          ws.send(JSON.stringify(response));
+          logger.logDetailed("INFO", "Sent transcription to client", "Server", {
+            channel,
+            text,
+          });
+        });
+        transcriptionService.on("transcriptionerror", (err) => {
+          ws.send(
+            JSON.stringify({ type: "error", error: "Transcription service error" })
+          );
+          logger.error("Transcription service error", err, "Server");
+        });
       });
+    };
+
+    transcriptionService.setupWebSocketServer(server);
+
+    server.listen(config.PORT, () => {
+      console.log(`Server is running on http://localhost:${config.PORT}`);
     });
-    transcriptionService.on("transcriptionerror", (err) => {
-      ws.send(
-        JSON.stringify({ type: "error", error: "Transcription service error" })
-      );
-      logger.error("Transcription service error", err, "Server");
-    });
-  });
-};
+    ```
+  </Step>
 
-transcriptionService.setupWebSocketServer(server);
+  <Step title="Test your integration">
+    1. **Deploy your server:**
+    ```bash
+    node server.js
+    ```
+    2. **Expose your server:**
+    Use a tool like ngrok to expose your server via HTTPS/WSS.
+    3. **Initiate a call with Vapi:**
+    Use the following CURL command (update the placeholders with your actual values):
+    ```bash
+    curl -X POST https://api.vapi.ai/call \
+         -H "Authorization: Bearer YOUR_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+      "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+      "customer": {
+        "number": "CUSTOMER_PHONE_NUMBER"
+      },
+      "assistant": {
+        "transcriber": {
+          "provider": "custom-transcriber",
+          "server": {
+            "url": "wss://your-server.ngrok.io/api/custom-transcriber"
+          },
+          "secret": "your_optional_secret_value"
+        },
+        "firstMessage": "Hello! I am using a custom transcriber with Deepgram."
+      },
+      "name": "CustomTranscriberTest"
+    }'
+    ```
+    
+    **Expected behavior:**
+    - Vapi connects via WebSocket to your custom transcriber at `/api/custom-transcriber`.
+    - The `"start"` message initializes the Deepgram session.
+    - PCM audio data is forwarded to Deepgram.
+    - Deepgram returns transcript events, which are processed with channel detection and debouncing.
+    - The final transcript is sent back as a JSON message:
+      ```json
+      {
+        "type": "transcriber-response",
+        "transcription": "The transcribed text",
+        "channel": "customer" // or "assistant"
+      }
+      ```
+  </Step>
+</Steps>
 
-server.listen(config.PORT, () => {
-  console.log(`Server is running on http://localhost:${config.PORT}`);
-});
-```
+## Notes and limitations
 
----
-
-## Testing Your Integration
-
-### Code Examples – How to Test
-
-1. **Deploy Your Server:**  
-   Run your server with:
-
-   ```bash
-   node server.js
-   ```
-
-2. **Expose Your Server:**  
-   If you want to test externally, use a tool like ngrok to expose your server via HTTPS/WSS.
-
-3. **Initiate a Call with Vapi:**  
-   Use the following CURL command (update the placeholders with your actual values):
-   ```bash
-   curl -X POST https://api.vapi.ai/call \
-        -H "Authorization: Bearer YOUR_API_KEY" \
-        -H "Content-Type: application/json" \
-        -d '{
-     "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
-     "customer": {
-       "number": "CUSTOMER_PHONE_NUMBER"
-     },
-     "assistant": {
-       "transcriber": {
-         "provider": "custom-transcriber",
-         "server": {
-           "url": "wss://your-server.ngrok.io/api/custom-transcriber"
-         },
-         "secret": "your_optional_secret_value"
-       },
-       "firstMessage": "Hello! I am using a custom transcriber with Deepgram."
-     },
-     "name": "CustomTranscriberTest"
-   }'
-   ```
-
-### Expected Behavior
-
-- Vapi connects via WebSocket to your custom transcriber at `/api/custom-transcriber`.
-- The `"start"` message initializes the Deepgram session.
-- PCM audio data is forwarded to Deepgram.
-- Deepgram returns transcript events, which are processed with channel detection and debouncing.
-- The final transcript is sent back as a JSON message:
-  ```json
-  {
-    "type": "transcriber-response",
-    "transcription": "The transcribed text",
-    "channel": "customer" // or "assistant"
-  }
-  ```
-
-## Notes and Limitations
-
-- **Streaming Support Requirement:**  
+- **Streaming support requirement:**  
   The custom transcriber must support streaming. Vapi sends continuous audio data over the WebSocket, and your server must handle this stream in real time.
-- **Secret Header:**  
+- **Secret header:**  
   The custom transcriber configuration accepts an optional field called **`secret`**. When set, Vapi will send this value with every request as an HTTP header named `x-vapi-secret`. This can also be configured via a headers field.
-
 - **Buffering:**  
   The solution buffers PCM audio and performs simple validation (e.g. ensuring stereo PCM data length is a multiple of 4). If the audio data is malformed, it is trimmed to a valid length.
-
-- **Channel Detection:**  
-  Transcript events from Deepgram include a `channel_index` array. The service uses the first element to determine whether the transcript is from the customer (`0`) or the assistant (`1`). Ensure Deepgram’s response format remains consistent with this logic.
+- **Channel detection:**  
+  Transcript events from Deepgram include a `channel_index` array. The service uses the first element to determine whether the transcript is from the customer (`0`) or the assistant (`1`). Ensure Deepgram's response format remains consistent with this logic.
 
 ---
 

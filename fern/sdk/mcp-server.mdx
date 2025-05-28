@@ -1,0 +1,593 @@
+---
+title: Vapi MCP Server
+subtitle: Connect Vapi to AI assistants with Model Context Protocol (MCP)
+slug: sdk/mcp-server
+---
+
+## Overview
+
+The **Vapi MCP Server** exposes Vapi APIs as tools via the Model Context Protocol (MCP), so you can manage assistants, phone numbers, and calls from any MCP-compatible AI assistant (like Claude Desktop) or agent framework.
+
+Use this server to connect your AI workflows to real-world telephony, automate voice tasks, and build richer conversational agents.
+
+<Note>
+  Looking to use MCP tools *inside* a Vapi assistant? See the [MCP Tool documentation](/tools/mcp) for integrating *external* MCP servers with your Vapi agents.
+</Note>
+
+## Quickstart: Claude Desktop Config
+
+**Fastest way to get started:** connect Claude Desktop to the Vapi MCP Server.  
+
+<Steps>
+  <Step title="Get your Vapi API key">
+    [Get your API key from the Vapi dashboard.](https://dashboard.vapi.ai/org/api-keys)
+  </Step>
+  <Step title="Edit Claude Desktop config">
+    Open <b>Settings</b> → <b>Developer</b> tab → <b>Edit Config</b>.
+  </Step>
+  <Step title="Add the Vapi MCP server block">
+    Insert this into your <code>claude_desktop_config.json</code>:
+    ```json
+    {
+      "mcpServers": {
+        "vapi-mcp": {
+          "command": "npx",
+          "args": [
+            "mcp-remote",
+            "https://mcp.vapi.ai/mcp",
+            "--header",
+            "Authorization: Bearer ${VAPI_TOKEN}"
+          ],
+          "env": {
+            "VAPI_TOKEN": "YOUR_VAPI_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+    Replace <code>YOUR_VAPI_API_KEY</code> with your API key.
+  </Step>
+  <Step title="Restart Claude Desktop">
+    Save and restart Claude Desktop.
+  </Step>
+</Steps>
+
+**Example prompt:**  
+> "Have my customer support assistant call Jeremy at +1555123456."
+
+---
+
+## Core Tools
+
+The Vapi MCP Server exposes these actions as MCP tools:
+
+| Tool                   | Description                                      | Example Usage                                 |
+|------------------------|--------------------------------------------------|-----------------------------------------------|
+| `list_assistants`      | List all Vapi assistants                         | Show all configured assistants                |
+| `create_assistant`     | Create a new Vapi assistant                      | Add a new assistant for a use case            |
+| `get_assistant`        | Get a Vapi assistant by ID                       | View assistant config                         |
+| `list_calls`           | List all calls                                   | Review call activity                          |
+| `create_call`          | Create an outbound call (now or scheduled)       | Initiate or schedule a call                   |
+| `get_call`             | Get details for a specific call                  | Check status or result of a call              |
+| `list_phone_numbers`   | List all Vapi phone numbers                      | See available numbers                         |
+| `get_phone_number`     | Get details of a specific phone number           | Inspect a phone number                        |
+| `list_tools`           | List all available Vapi tools                    | Tool discovery                                |
+| `get_tool`             | Get details of a specific tool                   | Tool integration info                         |
+
+<Note>
+  <b>Scheduling calls:</b> The <code>create_call</code> action supports scheduling with the optional <code>scheduledAt</code> parameter.
+</Note>
+
+---
+
+## Integration Options
+
+<Tabs>
+  <Tab title="Remote (streamable-HTTP)">
+    Connect to the Vapi-hosted MCP server using the streamable-HTTP protocol.
+    <Note> 
+      Recommended for most production use cases.
+    </Note>
+    <Warning>
+      Use this for clients or SDKs that support streamable-HTTP transport.
+    </Warning>
+    
+    - **Endpoint:** `https://mcp.vapi.ai/mcp`
+    - **Authentication:** Pass your Vapi API key as a bearer token:
+      <br/><code>Authorization: Bearer YOUR_VAPI_API_KEY</code>
+    
+    Example config:
+    ```json
+    {
+      "mcpServers": {
+        "vapi-mcp": {
+          "command": "npx",
+          "args": [
+            "mcp-remote",
+            "https://mcp.vapi.ai/mcp",
+            "--header",
+            "Authorization: Bearer ${VAPI_TOKEN}"
+          ],
+          "env": {
+            "VAPI_TOKEN": "YOUR_VAPI_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Remote (SSE)">
+    Connect to the Vapi-hosted MCP server using Server-Sent Events (SSE).
+
+    <Warning>
+      Use this for clients or SDKs that support SSE transport.
+    </Warning>
+    
+    - **Endpoint:** `https://mcp.vapi.ai/sse`
+    - **Authentication:** Pass your Vapi API key as a bearer token:
+      <br/><code>Authorization: Bearer YOUR_VAPI_API_KEY</code>
+    
+    Example config for Claude:
+    ```json
+    {
+      "mcpServers": {
+        "vapi-sse": {
+          "command": "npx",
+          "args": [
+            "mcp-remote",
+            "https://mcp.vapi.ai/sse",
+            "--header",
+            "Authorization: Bearer ${VAPI_TOKEN}"
+          ],
+          "env": {
+            "VAPI_TOKEN": "YOUR_VAPI_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+  
+  </Tab>
+  <Tab title="OpenAI responses API">
+    <Note>
+      The OpenAI <code>responses</code> API now supports MCP. <a href="https://platform.openai.com/docs/guides/tools-remote-mcp#page-top" target="_blank" rel="noopener">Read more here</a>.
+    </Note>
+    <CodeBlocks>
+    ```typescript title="typescript"
+    import OpenAI from 'openai';
+    // Replace with your actual OpenAI API key
+    const openai = new OpenAI({ apiKey: 'YOUR_OPENAI_API_KEY' });
+    async function main() {
+      const response = await openai.responses.create({
+        model: 'gpt-4.1',
+        tools: [
+          {
+            type: 'mcp',
+            server_label: 'vapi-mcp',
+            server_url: 'https://mcp.vapi.ai/mcp',
+            headers: { "Authorization": "Bearer YOUR_VAPI_API_KEY" }
+          },
+        ],
+        input: 'What vapi tools do you have available?',
+      });
+      console.dir(response, { depth: null });
+    }
+    main();
+    ```
+    ```python title="python"
+    import openai
+    # Replace with your actual OpenAI API key
+    openai.api_key = 'YOUR_OPENAI_API_KEY'
+    response = openai.responses.create(
+        model="gpt-4.1",
+        tools=[
+            {
+                "type": "mcp",
+                "server_label": "vapi-mcp",
+                "server_url": "https://mcp.vapi.ai/mcp",
+                "headers": {"Authorization": "Bearer YOUR_VAPI_API_KEY"}
+            },
+        ],
+        input="What vapi tools do you have available?",
+    )
+    print(response)
+    ```
+    </CodeBlocks>
+  </Tab>
+  <Tab title="Local">
+    Run the MCP server on your own machine for development or testing.
+    
+    - **Start locally:**
+      ```bash
+      npx -y @vapi-ai/mcp-server
+      ```
+    - **Authentication:** Set the `VAPI_TOKEN` environment variable to your API key.
+    
+    Example config for Claude:
+    ```json
+    {
+      "mcpServers": {
+        "vapi-mcp-server": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@vapi-ai/mcp-server"
+          ],
+          "env": {
+            "VAPI_TOKEN": "YOUR_VAPI_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+    <Warning>
+      Use this for clients or SDKs that support local command-based MCP servers.
+    </Warning>
+    
+    Connect your client or SDK to the local server endpoint (default: `http://localhost:3000`).
+  </Tab>
+</Tabs>
+
+---
+
+## Custom MCP Client Integration
+
+You can use any MCP-compatible client (SDKs available for multiple languages).
+
+<Steps>
+  <Step title="Install an MCP client SDK">
+    Choose a language:
+    - [TypeScript](https://github.com/modelcontextprotocol/typescript-sdk)
+    - [Python](https://github.com/modelcontextprotocol/python-sdk)
+    - [Java](https://github.com/modelcontextprotocol/java-sdk)
+    - [Kotlin](https://github.com/modelcontextprotocol/kotlin-sdk)
+    - [C#](https://github.com/modelcontextprotocol/csharp-sdk)
+  </Step>
+  <Step title="Configure your connection">
+    Set up your SDK to connect to the Vapi MCP Server (<code>https://mcp.vapi.ai/sse</code>) and authenticate with your API key.
+  </Step>
+  <Step title="Use MCP tools">
+    Query available tools, list assistants, create calls, etc, via your SDK.
+  </Step>
+</Steps>
+
+---
+
+### Example: Build a client with Node.js
+
+<Tabs>
+  <Tab title="Streamable-HTTP">
+
+```javascript
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const mcpClient = new Client({ name: 'vapi-client', version: '1.0.0' });
+const transport = new StreamableHTTPClientTransport(
+  new URL('https://mcp.vapi.ai/mcp'),
+  { requestInit: { headers: { Authorization: `Bearer ${process.env.VAPI_TOKEN}` } } }
+);
+
+async function main() {
+  await mcpClient.connect(transport);
+  const assistants = await mcpClient.callTool({ name: 'list_assistants', arguments: {} });
+  console.log(assistants);
+  await mcpClient.close();
+}
+
+main();
+```
+
+  </Tab>
+  <Tab title="SSE">
+
+```javascript
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const mcpClient = new Client({ name: 'vapi-client', version: '1.0.0' });
+const transport = new SSEClientTransport(
+  new URL('https://mcp.vapi.ai/sse'),
+  { requestInit: { headers: { Authorization: `Bearer ${process.env.VAPI_TOKEN}` } } }
+);
+
+async function main() {
+  await mcpClient.connect(transport);
+  const assistants = await mcpClient.callTool({ name: 'list_assistants', arguments: {} });
+  console.log(assistants);
+  await mcpClient.close();
+}
+
+main();
+```
+
+  </Tab>
+</Tabs>
+
+### Detailed example: Build a client with Node.js
+
+<Tabs>
+  <Tab title="Streamable-HTTP">
+
+```javascript
+#!/usr/bin/env node
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
+
+// Ensure API key is available
+if (!process.env.VAPI_TOKEN) {
+  console.error('Error: VAPI_TOKEN environment variable is required');
+  process.exit(1);
+}
+
+async function main() {
+  try {
+    // Initialize MCP client
+    const mcpClient = new Client({
+      name: 'vapi-client-example',
+      version: '1.0.0',
+    });
+    // Create Streamable-HTTP transport for connection to remote Vapi MCP server
+    const serverUrl = 'https://mcp.vapi.ai/mcp';
+    const headers = {
+      Authorization: `Bearer ${process.env.VAPI_TOKEN}`,
+    };
+    const options = {
+      requestInit: { headers: headers },
+    };
+    const transport = new StreamableHTTPClientTransport(new URL(serverUrl), options);
+    console.log('Connecting to Vapi MCP server via Streamable HTTP...');
+    await mcpClient.connect(transport);
+    console.log('Connected successfully');
+
+    // Helper function to parse tool responses
+    function parseToolResponse(response) {
+      if (!response?.content) return response;
+      const textItem = response.content.find(item => item.type === 'text');
+      if (textItem?.text) {
+        try {
+          return JSON.parse(textItem.text);
+        } catch {
+          return textItem.text;
+        }
+      }
+      return response;
+    }
+
+    try {
+      // List available tools
+      const toolsResult = await mcpClient.listTools();
+      console.log('Available tools:');
+      toolsResult.tools.forEach((tool) => {
+        console.log(`- ${tool.name}: ${tool.description}`);
+      });
+
+      // List assistants
+      console.log('\nListing assistants...');
+      const assistantsResponse = await mcpClient.callTool({
+        name: 'list_assistants',
+        arguments: {},
+      });
+      const assistants = parseToolResponse(assistantsResponse);
+      if (!(Array.isArray(assistants) && assistants.length > 0)) {
+        console.log('No assistants found. Please create an assistant in the Vapi dashboard first.');
+        return;
+      }
+      console.log('Your assistants:');
+      assistants.forEach((assistant) => {
+        console.log(`- ${assistant.name} (${assistant.id})`);
+      });
+
+      // List phone numbers
+      console.log('\nListing phone numbers...');
+      const phoneNumbersResponse = await mcpClient.callTool({
+        name: 'list_phone_numbers',
+        arguments: {},
+      });
+      const phoneNumbers = parseToolResponse(phoneNumbersResponse);
+      if (!(Array.isArray(phoneNumbers) && phoneNumbers.length > 0)) {
+        console.log('No phone numbers found. Please add a phone number in the Vapi dashboard first.');
+        return;
+      }
+      console.log('Your phone numbers:');
+      phoneNumbers.forEach((phoneNumber) => {
+        console.log(`- ${phoneNumber.phoneNumber} (${phoneNumber.id})`);
+      });
+
+      // Create a call using the first assistant and first phone number
+      const phoneNumberId = phoneNumbers[0].id;
+      const assistantId = assistants[0].id;
+      console.log(`\nCreating a call using assistant (${assistantId}) and phone number (${phoneNumberId})...`);
+      const createCallResponse = await mcpClient.callTool({
+        name: 'create_call',
+        arguments: {
+          assistantId: assistantId,
+          phoneNumberId: phoneNumberId,
+          customer: {
+            phoneNumber: "+1234567890"  // Replace with actual customer phone number
+          }
+          // Optional: schedule a call for the future
+          // scheduledAt: "2025-04-15T15:30:00Z"
+        },
+      });
+      const createdCall = parseToolResponse(createCallResponse);
+      console.log('Call created:', JSON.stringify(createdCall, null, 2));
+    } finally {
+      console.log('\nDisconnecting from server...');
+      await mcpClient.close();
+      console.log('Disconnected');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    process.exit(1);
+  }
+}
+
+main();
+```
+
+  </Tab>
+  <Tab title="SSE">
+
+```javascript
+#!/usr/bin/env node
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
+
+// Ensure API key is available
+if (!process.env.VAPI_TOKEN) {
+  console.error('Error: VAPI_TOKEN environment variable is required');
+  process.exit(1);
+}
+
+async function main() {
+  try {
+    // Initialize MCP client
+    const mcpClient = new Client({
+      name: 'vapi-client-example',
+      version: '1.0.0',
+    });
+    // Create SSE transport for connection to remote Vapi MCP server
+    const serverUrl = 'https://mcp.vapi.ai/sse';
+    const headers = {
+      Authorization: `Bearer ${process.env.VAPI_TOKEN}`,
+    };
+    const options = {
+      requestInit: { headers: headers },
+      eventSourceInit: {
+        fetch: (url, init) => {
+          return fetch(url, {
+            ...(init || {}),
+            headers: {
+              ...(init?.headers || {}),
+              ...headers,
+            },
+          });
+        },
+      },
+    };
+    const transport = new SSEClientTransport(new URL(serverUrl), options);
+    console.log('Connecting to Vapi MCP server via SSE...');
+    await mcpClient.connect(transport);
+    console.log('Connected successfully');
+
+    // Helper function to parse tool responses
+    function parseToolResponse(response) {
+      if (!response?.content) return response;
+      const textItem = response.content.find(item => item.type === 'text');
+      if (textItem?.text) {
+        try {
+          return JSON.parse(textItem.text);
+        } catch {
+          return textItem.text;
+        }
+      }
+      return response;
+    }
+
+    try {
+      // List available tools
+      const toolsResult = await mcpClient.listTools();
+      console.log('Available tools:');
+      toolsResult.tools.forEach((tool) => {
+        console.log(`- ${tool.name}: ${tool.description}`);
+      });
+
+      // List assistants
+      console.log('\nListing assistants...');
+      const assistantsResponse = await mcpClient.callTool({
+        name: 'list_assistants',
+        arguments: {},
+      });
+      const assistants = parseToolResponse(assistantsResponse);
+      if (!(Array.isArray(assistants) && assistants.length > 0)) {
+        console.log('No assistants found. Please create an assistant in the Vapi dashboard first.');
+        return;
+      }
+      console.log('Your assistants:');
+      assistants.forEach((assistant) => {
+        console.log(`- ${assistant.name} (${assistant.id})`);
+      });
+
+      // List phone numbers
+      console.log('\nListing phone numbers...');
+      const phoneNumbersResponse = await mcpClient.callTool({
+        name: 'list_phone_numbers',
+        arguments: {},
+      });
+      const phoneNumbers = parseToolResponse(phoneNumbersResponse);
+      if (!(Array.isArray(phoneNumbers) && phoneNumbers.length > 0)) {
+        console.log('No phone numbers found. Please add a phone number in the Vapi dashboard first.');
+        return;
+      }
+      console.log('Your phone numbers:');
+      phoneNumbers.forEach((phoneNumber) => {
+        console.log(`- ${phoneNumber.phoneNumber} (${phoneNumber.id})`);
+      });
+
+      // Create a call using the first assistant and first phone number
+      const phoneNumberId = phoneNumbers[0].id;
+      const assistantId = assistants[0].id;
+      console.log(`\nCreating a call using assistant (${assistantId}) and phone number (${phoneNumberId})...`);
+      const createCallResponse = await mcpClient.callTool({
+        name: 'create_call',
+        arguments: {
+          assistantId: assistantId,
+          phoneNumberId: phoneNumberId,
+          customer: {
+            phoneNumber: "+1234567890"  // Replace with actual customer phone number
+          }
+          // Optional: schedule a call for the future
+          // scheduledAt: "2025-04-15T15:30:00Z"
+        },
+      });
+      const createdCall = parseToolResponse(createCallResponse);
+      console.log('Call created:', JSON.stringify(createdCall, null, 2));
+    } finally {
+      console.log('\nDisconnecting from server...');
+      await mcpClient.close();
+      console.log('Disconnected');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    process.exit(1);
+  }
+}
+
+main();
+```
+
+  </Tab>
+</Tabs>
+
+<Note> For more detailed examples and complete client implementations, see the [MCP Client Quickstart](https://modelcontextprotocol.io/quickstart/client). </Note>
+
+## References
+
+- [Github repo](https://github.com/VapiAI/mcp-server)
+- [Model Context Protocol docs](https://modelcontextprotocol.io)
+- [Vapi dashboard](https://dashboard.vapi.ai)
+- [MCP client quickstart](https://modelcontextprotocol.io/quickstart/client)
+
+<CardGroup cols={2}>
+  <Card title="Need help?" icon="question-circle" href="https://discord.gg/pUFNcf2WmH">
+    Join our Discord community for MCP support.
+  </Card>
+  <Card title="API reference" icon="book" href="/api-reference/tools/create">
+    Full API documentation for tools.
+  </Card>
+</CardGroup>

@@ -1,28 +1,40 @@
-# Assistant Hooks
+---
+title: Assistant hooks
+subtitle: Automate actions on call events and interruptions
+slug: assistants/assistant-hooks
+---
 
-Assistant hooks allow you to configure actions that will be performed when specific events occur during a call. Currently, hooks support the `call.ending` event, which triggers when a call is ending.
+## Overview
 
-## Usage
+Assistant hooks let you automate actions when specific events occur during a call. Use hooks to transfer calls, run functions, or send messages in response to events like call ending or speech interruptions.
 
-Hooks are defined in the `hooks` array of an assistant. Each hook consists of:
+Supported events include:
 
-- `on`: The event that triggers the hook (currently only supports `call.ending`)
-- `do`: The actions to perform when the hook triggers (currently only supports `transfer`)
-- `filters`: Optional conditions that must be met for the hook to trigger
+- `call.ending`: When a call is ending
+- `assistant.speech.interrupted`: When the assistant's speech is interrupted
+- `customer.speech.interrupted`: When the customer's speech is interrupted
 
-The `call.endedReason` field in filters can be set to any of the [call ended reasons](https://docs.vapi.ai/api-reference/calls/get#response.body.endedReason). The transfer destination type follows the same schema as the [transfer call tool destinations](https://docs.vapi.ai/api-reference/tools/create#request.body.transferCall.destinations).
+You can combine actions and add filters to control when hooks trigger.
 
-Note: Using `"oneOf": ["pipeline-error"]` acts as a catch-all filter that matches any pipeline-related error reason. This is useful when you want to handle all types of pipeline failures with the same transfer action.
+## How hooks work
 
-## Example: Transfer on Pipeline Error
+Hooks are defined in the `hooks` array of your assistant configuration. Each hook includes:
 
-This example shows how to transfer a call to a fallback number when a pipeline error occurs. The hook will trigger when the call is ending due to a pipeline error, and transfer the call to a specified phone number:
+- `on`: The event that triggers the hook
+- `do`: The actions to perform (supports `transfer`, `function`, and `say`)
+- `filters`: (Optional) Conditions that must be met for the hook to trigger
 
-```bash
-curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
-     -H "Authorization: Bearer <auth>" \
-     -H "Content-Type: application/json" \
-     -d '{
+<Note>
+The `call.endedReason` filter can be set to any of the [call ended reasons](https://docs.vapi.ai/api-reference/calls/get#response.body.endedReason).  
+The transfer destination type follows the [transfer call tool destinations](https://docs.vapi.ai/api-reference/tools/create#request.body.transferCall.destinations) schema.
+</Note>
+
+## Example: Transfer on pipeline error
+
+Transfer a call to a fallback number if a pipeline error occurs:
+
+```json
+{
   "hooks": [{
     "on": "call.ending",
     "filters": [{
@@ -39,16 +51,13 @@ curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
       }
     }]
   }]
-}'
+}
 ```
 
 You can also transfer to a SIP destination:
 
-```bash
-curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
-     -H "Authorization: Bearer <auth>" \
-     -H "Content-Type: application/json" \
-     -d '{
+```json
+{
   "hooks": [{
     "on": "call.ending",
     "filters": [{
@@ -64,10 +73,187 @@ curl -X PATCH "https://api.vapi.ai/assistant/<id>" \
       }
     }]
   }]
-}'
+}
 ```
 
-Common use cases for hooks include:
-- Transferring to a human agent on errors
-- Routing to a fallback system if the assistant fails
-- Ensuring calls are handled gracefully in edge cases
+## Example: Combine actions on pipeline error
+
+Perform multiple actions—say a message, call a function, and transfer the call—when a pipeline error occurs:
+
+```json
+{
+  "hooks": [{
+    "on": "call.ending",
+    "filters": [{
+      "type": "oneOf",
+      "key": "call.endedReason",
+      "oneOf": ["pipeline-error"]
+    }],
+    "do": [
+      {
+        "type": "say",
+        "exact": "I apologize for the technical difficulty. Let me transfer you to our support team."
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "log_error",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "error_type": {
+                "type": "string",
+                "value": "pipeline_error"
+              }
+            }
+          },
+          "description": "Logs the error details for monitoring"
+        },
+        "async": true,
+        "server": {
+          "url": "https://your-server.com/api"
+        }
+      },
+      {
+        "type": "transfer",
+        "destination": {
+          "type": "number",
+          "number": "+1234567890",
+          "callerId": "+1987654321"
+        }
+      }
+    ]
+  }]
+}
+```
+
+## Example: Handle speech interruptions
+
+Respond when the assistant's speech is interrupted by the customer:
+
+```json
+{
+  "hooks": [{
+    "on": "assistant.speech.interrupted",
+    "do": [{
+      "type": "say",
+      "exact": ["Sorry about that", "Go ahead", "Please continue"]
+    }]
+  }]
+}
+```
+
+Handle customer speech interruptions in a similar way:
+
+```json
+{
+  "hooks": [{
+    "on": "customer.speech.interrupted",
+    "do": [{
+      "type": "say",
+      "exact": "I apologize for interrupting. Please continue."
+    }]
+  }]
+}
+```
+
+<Note>
+Use `"oneOf": ["pipeline-error"]` as a catch-all filter for any pipeline-related error reason.
+</Note>
+
+## Common use cases
+
+- Transfer to a human agent on errors
+- Route to a fallback system if the assistant fails
+- Handle customer or assistant interruptions gracefully
+- Log errors or events for monitoring
+
+## Slack Webhook on Call Failure 
+
+You can set up automatic Slack notifications when calls fail by combining assistant hooks with Slack webhooks. This is useful for monitoring call quality and getting immediate alerts when issues occur.
+
+### Step 1: Generate a Slack webhook
+
+Follow the [Slack webhook documentation](https://api.slack.com/messaging/webhooks) to create an incoming webhook:
+
+1. Create a Slack app (if you don't have one already)
+2. Enable incoming webhooks in your app settings
+3. Create an incoming webhook for your desired channel
+4. Copy the webhook URL (it will look like `https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`)
+
+### Step 2: Create a serverless function
+
+Set up a serverless function (using a service like [val.town](https://val.town)) to convert Vapi tool call requests into Slack messages:
+
+```javascript
+export default async function(req: Request): Promise<Response> {
+  try {
+    const json = await req.json();
+    console.log(json);
+    
+    const callId = json.message.call.id;
+    const reason = json.message.toolCalls[0].function.arguments.properties.callEndedReason.value;
+    
+    fetch("<your-slack-webhook-url>", {
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: `🚨 Call Failed\nCall ID: ${callId}\nReason: ${reason}`
+      }),
+    });
+    
+    return Response.json({
+      results: [{ 
+        "result": "success", 
+        "toolCallId": "hook-function-call" 
+      }],
+    });
+  } catch (err) {
+    console.error("JSON parsing error:", err);
+    return new Response("Invalid JSON", { status: 400 });
+  }
+}
+```
+
+### Step 3: Configure the assistant hook
+
+Add this hook configuration to your assistant to trigger Slack notifications on call failures:
+
+```json
+{
+  "hooks": [{
+    "on": "call.ending",
+    "filters": [{
+      "type": "oneOf",
+      "key": "call.endedReason",
+      "oneOf": ["pipeline-error"]
+    }],
+    "do": [{
+      "type": "function",
+      "function": {
+        "name": "report_error",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "value": "A call error occurred."
+            }
+          }
+        },
+        "description": "Reports a call error to Slack."
+      },
+      "async": false,
+      "server": {
+        "url": "<your-serverless-function-url>"
+      }
+    }]
+  }]
+}
+```
+
+<Note>
+Replace `<your-slack-webhook-url>` with your actual Slack webhook URL and `<your-serverless-function-url>` with your serverless function endpoint.
+</Note>
