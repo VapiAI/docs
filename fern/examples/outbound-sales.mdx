@@ -1,158 +1,353 @@
 ---
-title: Outbound Sales Example 📞
-subtitle: Let's build an outbound sales agent that can schedule appointments.
+title: Outbound sales workflow
+subtitle: Build an AI sales workflow that qualifies leads and schedules appointments using visual nodes.
 slug: examples/outbound-sales
+description: Build a voice AI outbound sales workflow with lead qualification, CRM integration, and automated follow-up using Vapi's visual workflow builder.
 ---
 
+## Overview
 
-We want this agent to be able to call a list of leads and schedule appointments. We'll create our assistant, create a phone number for it, then we'll configure our server for function calling to book the appointments.
+Build an AI-powered outbound sales workflow that qualifies leads, handles objections, and schedules appointments using visual nodes with sophisticated branching logic and CRM integration.
+
+**What You'll Build:**
+* Lead qualification with BANT scoring and conditional routing
+* Objection handling with global nodes and sentiment analysis
+* Appointment scheduling with calendar integration
+* CRM updates with automated follow-up sequences
+
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/).
+* A CRM system or customer database.
+* A calendar system for appointment scheduling.
+
+## Scenario
+
+We will be creating an outbound sales workflow for TechFlow Solutions, a B2B software company that wants to automate their lead qualification process with sophisticated branching logic to handle different prospect scenarios and increase appointment booking rates.
+
+---
+
+## 1. Create a Knowledge Base
 
 <Steps>
-  <Step title="Create an assistant">
-    We'll start by taking a look at the [Assistant API
-    reference](/api-reference/assistants/create-assistant) and define our
-    assistant:
-
-    ```json
-    {
-      "transcriber":{
-        "provider": "deepgram",
-        "keywords": ["Bicky:1"]
-      },
-      "model": {
-        "provider": "openai",
-        "model": "gpt-4",
-        "messages": [
-          {
-              "role": "system",
-              "content": "You're a sales agent for a Bicky Realty. You're calling a list of leads to schedule appointments to show them houses..."
-          }
-        ],
-      "tools": [
-        {
-            "name": "bookAppointment",
-            "description": "Used to book the appointment.",
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "datetime": {
-                  "type": "string",
-                  "description": "The date and time of the appointment in ISO format."
-                }
-              }
-            }
-        }
-        {
-          "type": "transferCall",
-          "destinations": [
-            {
-                "type": "number",
-                "number": "+16054440129",
-                "message": "I am forwarding your call. Please stay on the line."
-            }
-          ]
-        }
-      ]
-      },
-      "voice": {
-        "provider": "openai",
-        "voiceId": "onyx"
-      },
-      "voicemailMessage": "Hi, this is Jennifer from Bicky Realty. We were just calling to let you know...",
-      "firstMessage": "Hi, this Jennifer from Bicky Realty. We're calling to schedule an appointment to show you a house. When would be a good time for you?",
-      "endCallMessage": "Thanks for your time.",
-      "endCallFunctionEnabled": true,
-      "recordingEnabled": false,
-    }
-    ```
-    Let's break this down:
-    - `transcriber` - We're defining this to make sure the transcriber picks up the custom word "Bicky"
-    - `model` - We're using the OpenAI GPT-4 model, which is better at function calling.
-    - `messages` - We're defining the assistant's instructions for how to run the call.
-    - `bookAppointment` in `model.tools` - We're providing a bookAppointment function with a datetime parameter. The assistant can call this during the conversation to book the appointment.
-    - `transferCall` in `model.tools` - Since we've added this, the assistant will be provided the [transferCall](/assistants#transfer-call) function to use.
-    - `voice` - We're using the Onyx voice from OpenAI.
-    - `voicemailMessage` - If the call goes to voicemail, this message will be played.
-    - `firstMessage` - This is the first message the assistant will say when the user picks up.
-    - `endCallMessage` - This is the message the assistant will deciding to hang up.
-    - `endCallFunctionEnabled` - This will give the assistant the [endCall](/assistants#end-call) function.
-    - `recordingEnabled` - We've disabled recording, since we don't have the user's consent to record the call.
-
-    We'll then make a POST request to the [Create Assistant](/api-reference/assistants/create-assistant) endpoint to create the assistant.
-
+  <Step title="Download the spreadsheets">
+    <div className="flex gap-2">
+      <Download src="../static/spreadsheets/outbound-sales/leads.csv">
+        <Button intent="primary">Download leads.csv</Button>
+      </Download>
+      <Download src="../static/spreadsheets/outbound-sales/products.csv">
+        <Button intent="primary">Download products.csv</Button>
+      </Download>
+      <Download src="../static/spreadsheets/outbound-sales/call_outcomes.csv">
+        <Button intent="primary">Download call_outcomes.csv</Button>
+      </Download>
+    </div>
   </Step>
-  <Step title="Create a phone number">
-    We'll create a phone number for outbound calls using the [Phone Numbers API](/phone-calling#set-up-a-phone-number).
-
-    ```json
-    {
-      "id": "c86b5177-5cd8-447f-9013-99e307a8a7bb",
-      "orgId": "aa4c36ba-db21-4ce0-9c6e-99e307a8a7bb",
-      "provider": "vapi",
-      "number": "+11234567890",
-      "createdAt": "2023-09-29T21:44:37.946Z",
-      "updatedAt": "2023-12-08T00:57:24.706Z",
-    }
-    ```
-
-    Great, let's take note of that `id` field- we'll need it later.
-
+  <Step title="Navigate to the Files section">
+    In your Vapi dashboard, click `Files` in the left sidebar.
   </Step>
-  <Step title="Configure your Server URL">
-    When the assistant calls that `bookAppointment` function, we'll want to handle that function call and actually book the appointment. We also want to let the user know if booking the appointment was unsuccessful.
-
-    First, we'll create an endpoint on our server for Vapi to hit. It'll receive messages as shown in the [Function Calling](/server-url#function-calling) docs. Once created, we'll add that endpoint URL to the **Server URL** field in the Account page on the [Vapi Dashboard](https://dashboard.vapi.ai).
-
-  </Step>
-    <Step title="Handle function calls">
-    So now, when the assistant decides to call `bookAppointment`, our server will get something like this:
-
-    ```json
-    {
-      "message": {
-        "type": "function-call",
-        "call": { Call Object },
-        "functionCall": {
-          "name": "bookAppointment",
-          "parameters": "{ \"datetime\": \"2023-09-29T21:44:37.946Z\"}"
-        }
-      }
-    }
-    ```
-
-    We'll do our own logic to book the appointment, then we'll respond to the request with the result to let the assistant know it was booked:
-
-    ```json
-    { "result": "The appointment was booked successfully." }
-    ```
-
-    or, if it failed:
-
-    ```json
-    { "result": "The appointment time is unavailable, please try another time." }
-    ```
-
-    So, when the assistant calls this function, these results will be appended to the conversation, and the assistant will respond to the user knowing the result.
-
-    Great, now we're ready to start calling leads!
-    </Step>
-
-  <Step title="Place a call">
-    We'll use the [Create Phone Call](/api-reference/calls/create-phone-call) endpoint to place a call to a lead:
-
-    ```json
-    {
-      "phoneNumberId": "c86b5177-5cd8-447f-9013-99e307a8a7bb",
-      "assistantId": "d87b5177-5cd8-447f-9013-99e307a8a7bb",
-      "customer": {
-        "number": "+11234567890"
-      }
-    }
-    ```
-
-    Since we also defined a `transferCall` tool, when the user asks to speak to a human, the assistant will transfer the call to that number automatically.
-
-    We can then check the [Dashboard](https://dashboard.vapi.ai) to see the call logs and read the transcripts.
-
+  <Step title="Upload the spreadsheets">
+    - Click `Choose file`. Upload all three CSV files: `leads.csv`, `products.csv`, and `call_outcomes.csv`.
+    - Note the file IDs. We'll need them later to create tools.
   </Step>
 </Steps>
+
+<video autoPlay loop muted src="../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 2. Create Required Tools
+
+Before building the workflow, create the necessary tools in your dashboard:
+
+<Steps>
+  <Step title="Navigate to Tools">
+    In your Vapi dashboard, click **Tools** in the left sidebar.
+  </Step>
+  <Step title="Create Lead Lookup Tool">
+    Click **Create Tool** and configure:
+    - **Tool Name**: "Lead Lookup"
+    - **Tool Type**: "Function"
+    - **Function Name**: `lookup_lead`
+    - **Description**: "Retrieve lead information and call history"
+    - **Parameters**:
+      - `lead_id` (string): Lead ID to lookup
+    - **Server URL**: `https://jsonplaceholder.typicode.com/users`
+    
+    <Note>
+      This example uses JSONPlaceholder for demonstration. In production, replace with your CRM API (Salesforce, HubSpot, etc.).
+    </Note>
+  </Step>
+  <Step title="Create Lead Scoring Tool">
+    Create another tool:
+    - **Tool Name**: "Lead Scoring"
+    - **Function Name**: `score_lead`
+    - **Description**: "Score leads based on qualification responses"
+    - **Parameters**:
+      - `budget` (string): Budget information
+      - `authority` (string): Decision-making authority
+      - `need` (string): Business need assessment
+      - `timeline` (string): Purchase timeline
+    - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
+    
+    <Note>
+      This example uses JSONPlaceholder for demonstration. Replace with your lead scoring system in production.
+    </Note>
+  </Step>
+  <Step title="Create CRM Update Tool">
+    Create a third tool:
+    - **Tool Name**: "CRM Update"
+    - **Function Name**: `update_crm`
+    - **Description**: "Update CRM with call outcomes and next steps"
+    - **Parameters**:
+      - `lead_id` (string): Lead identifier
+      - `call_outcome` (string): Result of the call
+      - `next_steps` (string): Planned follow-up actions
+    - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
+    
+    <Note>
+      This example uses JSONPlaceholder for demonstration. In production, integrate with your CRM system.
+    </Note>
+  </Step>
+</Steps>
+
+---
+
+## 3. Create a Workflow
+
+<Steps>
+  <Step title="Open the Vapi Dashboard">
+    Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
+  </Step>
+  <Step title="Navigate to the Workflows section">
+    Click `Workflows` in the left sidebar.
+  </Step>
+  <Step title="Create a new workflow">
+    - Click `Create Workflow`.
+    - Enter workflow name: `TechFlow Sales Qualification Workflow`.
+    - Select the default template (includes Call Start node).
+    - Click "Create Workflow".
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../static/videos/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 4. Build the Workflow
+
+You'll start with a default template that includes a "Call Start" node. We'll modify the existing nodes and add new ones to create our outbound sales workflow.
+
+<Steps>
+  <Step title="Configure the Initial Conversation Node">
+    The default template includes a conversation node. Click on it and configure:
+    
+    **Node Name**: `opening_and_permission`
+    
+    **Prompt**:
+    ```txt
+    You are Alex, a professional outbound sales representative for TechFlow Solutions.
+
+    Start with: "Hi, this is Alex calling from TechFlow Solutions. I hope I'm catching you at a good time. I'm reaching out because I noticed your company might benefit from our workflow automation platform. Do you have just 2 minutes to chat?"
+
+    Listen for their response and determine:
+    - "permission_granted" if they agree to talk
+    - "busy_reschedule" if they're busy but open to rescheduling
+    - "not_interested" if they decline
+    - "gatekeeper" if you're speaking to someone who isn't the decision maker
+
+    Keep responses under 30 words and be respectful of their time.
+    ```
+
+    **Extract Variables**:
+    - Variable: `permission_status`
+    - Type: `String`
+    - Description: `The prospect's response to the initial request`
+    - Enum Values: `permission_granted`, `busy_reschedule`, `not_interested`, `gatekeeper`
+  </Step>
+
+  <Step title="Add Lead Lookup Tool Node">
+    Add a **Tool** node that runs before the opening:
+    
+    **Tool**: Select your pre-configured "Lead Lookup" tool from the dropdown. This tool should be created in the **Tools** section of your dashboard with:
+    - **Function Name**: `lookup_lead`
+    - **Description**: "Retrieve lead information and call history"
+    - **Parameters**: 
+      - `lead_id` (string): Lead ID to lookup
+    - **Server URL**: `https://jsonplaceholder.typicode.com/users`
+  </Step>
+
+  <Step title="Add Permission-Based Routing">
+    Create branching paths based on the prospect's response. Add multiple conversation nodes:
+
+    **Discovery Questions Node**:
+    - **Node Name**: `discovery_questions`
+    - **Prompt**: `Great! I appreciate your time. To better understand how we might help, can you tell me about your current workflow challenges? Specifically, what manual processes are taking up most of your team's time?`
+
+    **Reschedule Node**:
+    - **Node Name**: `schedule_callback`
+    - **Prompt**: `I completely understand. When would be a better time for a quick 5-minute conversation? I have availability tomorrow morning or afternoon.`
+
+    **Objection Handling Node**:
+    - **Node Name**: `handle_initial_objection`
+    - **Prompt**: `I understand you might not be looking for new solutions right now. Can I ask what you're currently using for workflow automation? I might have some insights that could be valuable.`
+
+    **Gatekeeper Node**:
+    - **Node Name**: `gatekeeper_routing`
+    - **Prompt**: `I appreciate you taking the call. I'm looking to speak with whoever handles software decisions or operations. Would that be you, or could you point me in the right direction?`
+  </Step>
+
+  <Step title="Configure Flow Conditions">
+    Connect the nodes with conditions for the LLM to interpret:
+
+    **From opening_and_permission to discovery_questions**:
+    - Condition: `{{ permission_status == "permission_granted" }}`
+
+    **From opening_and_permission to schedule_callback**:
+    - Condition: `{{ permission_status == "busy_reschedule" }}`
+
+    **From opening_and_permission to handle_initial_objection**:
+    - Condition: `{{ permission_status == "not_interested" }}`
+
+    **From opening_and_permission to gatekeeper_routing**:
+    - Condition: `{{ permission_status == "gatekeeper" }}`
+  </Step>
+
+  <Step title="Add Global Objection Handler">
+    Create a global node that handles objections throughout the call:
+    
+    **Node Name**: `objection_handler`
+    **Global Node**: `enabled = true`
+    **Enter Condition**: `{{ objection_detected == true or negative_sentiment == true }}`
+    
+    **Prompt**:
+    ```txt
+    I hear your concern, and that's completely valid. Many of our clients had similar thoughts initially. Let me address that specific point and see if we can find a solution that makes sense for your situation.
+    ```
+    
+    This global node will activate whenever an objection is detected, regardless of where they are in the sales conversation.
+  </Step>
+
+  <Step title="Add Qualification Flow">
+    For prospects who engage, add these qualification nodes:
+
+    **BANT Qualification Node**:
+    - **Node Name**: `bant_qualification`
+    - Extract budget, authority, need, and timeline information
+
+    **Lead Scoring Tool Node**:
+    - Add a **Tool** node that calls lead scoring API based on qualification responses
+
+    **Qualification Results Node**:
+    - **Node Name**: `route_by_score`
+    - Route based on lead score (hot, warm, cold)
+  </Step>
+
+  <Step title="Add Value Proposition Flow">
+    **Industry-Specific Pitch Node**:
+    - **Node Name**: `tailored_pitch`
+    - Present value proposition based on their industry and pain points
+
+    **ROI Demonstration Node**:
+    - **Node Name**: `show_roi`
+    - Provide specific ROI examples and case studies
+
+    **Demo Offer Node**:
+    - **Node Name**: `offer_demo`
+    - Propose a product demonstration meeting
+  </Step>
+
+  <Step title="Add Appointment Scheduling Flow">
+    **Calendar Check Tool Node**:
+    - Add a **Tool** node that checks sales team calendar for available demo slots
+
+    **Appointment Confirmation Node**:
+    - **Node Name**: `confirm_appointment`
+    - Confirm meeting details and send calendar invite
+
+    **CRM Update Tool Node**:
+    - Add a **Tool** node that records call outcome and next steps in CRM
+  </Step>
+
+  <Step title="Add Transfer and Follow-up Options">
+    **Transfer to Sales Rep Node**:
+    - **Node Type**: `Transfer`
+    - **Destination**: `+1-555-SALES-1` (your sales team number)
+
+    **Schedule Follow-up Node**:
+    - **Node Name**: `schedule_followup`
+    - Set automated follow-up call for future date
+
+    **End Call Node**:
+    - **Node Type**: `Hangup`
+    - Use when prospect is not qualified or requests no further contact
+  </Step>
+</Steps>
+
+---
+
+## 5. Configure Phone Number for Outbound Calls
+
+<Steps>
+  <Step title="Navigate to Phone Numbers">
+    Click `Phone Numbers` in the left sidebar of your dashboard.
+  </Step>
+  <Step title="Create or Import Phone Number">
+    - Click `Create Phone Number` for a new Vapi number, or
+    - Click `Import Phone Number` to use your existing number from Twilio/Telnyx
+  </Step>
+  <Step title="Configure Outbound Settings">
+    **Assistant**: Select your `Alex - Sales Agent` assistant
+    **Workflow**: Ensure it's linked to your `TechFlow Sales Qualification Workflow`
+    
+    **Outbound Configuration**:
+    - Enable outbound calling capabilities
+    - Set caller ID name to "TechFlow Solutions"
+    - Configure voicemail detection and handling
+    - Set maximum call duration (e.g., 10 minutes)
+  </Step>
+  <Step title="Test Outbound Calling">
+    Use the Vapi API to initiate test outbound calls:
+    ```bash
+    curl -X POST https://api.vapi.ai/call \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "phoneNumberId": "your-phone-number-id",
+        "customer": {
+          "number": "+1234567890"
+        },
+        "assistantId": "your-assistant-id"
+      }'
+    ```
+  </Step>
+</Steps>
+
+## Integrating with Real Systems
+
+This example uses JSONPlaceholder for demonstration purposes. To integrate with your actual sales systems:
+
+### CRM Platform Integration
+- **Salesforce**: Use the [Salesforce REST API](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/)
+- **HubSpot**: Use the [HubSpot API](https://developers.hubspot.com/docs/api/overview)
+- **Pipedrive**: Use the [Pipedrive API](https://developers.pipedrive.com/docs/api/v1)
+
+### Calendar Integration
+- **Google Calendar**: [Google Calendar API](https://developers.google.com/calendar/api)
+- **Microsoft Outlook**: [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/calendar)
+- **Calendly**: [Calendly API](https://developer.calendly.com/)
+
+### Communication Tools
+- **Twilio**: [Twilio API](https://www.twilio.com/docs/usage/api) for SMS and voice
+- **SendGrid**: [SendGrid API](https://docs.sendgrid.com/api-reference) for email
+- **Slack**: [Slack API](https://api.slack.com/) for team notifications
+
+## Next Steps
+
+Just like that, you've built an outbound sales qualification workflow that can handle lead qualification, objection handling, and appointment scheduling with automated CRM integration.
+
+Consider reading the following guides to further enhance your workflow:
+
+* [**Custom Tools**](/tools/custom-tools) - Create custom tools for CRM integration and lead management.
+* [**Voice Formatting Plan**](/assistants/voice-formatting-plan) - Configure speech patterns for professional sales conversations.
+* [**Call Analysis**](/assistants/call-analysis) - Analyze call performance and optimize sales conversations.
