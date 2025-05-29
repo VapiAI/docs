@@ -13,17 +13,10 @@ Migrate your existing OpenAI chat applications to Vapi without changing a single
 * Integration with popular frameworks like LangChain and Vercel AI SDK
 * Production-ready server implementations with both streaming and non-streaming
 
-**Migration Benefits:**
-* Keep existing OpenAI SDK code unchanged
-* Leverage Vapi's advanced assistant capabilities
-* Maintain familiar developer experience
-* Easy rollback if needed
-
 ## Prerequisites
 
 * Completed [Chat quickstart](/docs/chat/quickstart) tutorial
 * Existing OpenAI integration or familiarity with OpenAI SDK
-* Node.js/Python environment for testing migrations
 
 ## Scenario
 
@@ -37,9 +30,23 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Install the OpenAI SDK">
     If you don't already have it, install the OpenAI SDK:
     
-    ```bash title="Install OpenAI SDK"
+    <CodeBlocks>
+    ```bash title="npm"
     npm install openai
     ```
+
+    ```bash title="yarn"
+    yarn add openai
+    ```
+
+    ```bash title="pnpm"
+    pnpm add openai
+    ```
+
+    ```bash title="bun"
+    bun add openai
+    ```
+    </CodeBlocks>
   </Step>
   <Step title="Test with OpenAI-compatible endpoint">
     Use your existing OpenAI code with minimal changes:
@@ -94,29 +101,43 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Update your OpenAI client configuration">
     Change only the base URL and API key in your existing code:
     
-    ```javascript title="Before (OpenAI)"
+    ```typescript title="Before (OpenAI)"
     import OpenAI from 'openai';
-    
+
     const openai = new OpenAI({
-      apiKey: 'sk-...' // OpenAI API key
+      apiKey: 'your-openai-api-key'
+    });
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'Hello!' }],
+      stream: true
     });
     ```
-    
-    ```javascript title="After (Vapi)"
+
+    ### With Vapi (No Code Changes)
+
+    ```typescript title="After (Vapi)"
     import OpenAI from 'openai';
-    
+
     const openai = new OpenAI({
-      apiKey: 'YOUR_VAPI_API_KEY', // Vapi API key
-      baseURL: 'https://api.vapi.ai/chat'
+      apiKey: 'YOUR_VAPI_API_KEY',
+      baseURL: 'https://api.vapi.ai/chat',
+    });
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'Hello!' }],
+      stream: true
     });
     ```
   </Step>
   <Step title="Update your function calls">
     Change `chat.completions.create` to `responses.create` and add `assistantId`:
     
-    ```javascript title="Before (OpenAI Chat Completions)"
+    ```typescript title="Before (OpenAI Chat Completions)"
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o',
       messages: [
         { role: 'user', content: 'What is the capital of France?' }
       ],
@@ -126,7 +147,7 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
     console.log(response.choices[0].message.content);
     ```
     
-    ```javascript title="After (Vapi Compatibility)"
+    ```typescript title="After (Vapi Compatibility)"
     const response = await openai.responses.create({
       model: 'gpt-4o',
       input: 'What is the capital of France?',
@@ -140,7 +161,7 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Test your migrated code">
     Run your updated code to verify the migration works:
     
-    ```javascript title="migration-test.js"
+    ```typescript title="migration-test.ts"
     import OpenAI from 'openai';
     
     const openai = new OpenAI({
@@ -192,8 +213,8 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Update streaming JavaScript code">
     Adapt your existing streaming implementation:
     
-    ```javascript title="streaming-migration.js"
-    async function streamWithVapi(userInput) {
+    ```typescript title="streaming-migration.ts"
+    async function streamWithVapi(userInput: string): Promise<string> {
       const stream = await openai.responses.create({
         model: 'gpt-4o',
         input: userInput,
@@ -221,43 +242,38 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Handle conversation context">
     Implement context management using Vapi's approach:
     
-    ```javascript title="context-management.js"
-    class ContextualChatSession {
-      constructor(apiKey, assistantId) {
-        this.openai = new OpenAI({
-          apiKey: apiKey,
-          baseURL: 'https://api.vapi.ai/chat'
-        });
-        this.assistantId = assistantId;
-        this.lastResponseId = null;
-      }
+    ```typescript title="context-management.ts"
+    function createContextualChatSession(apiKey: string, assistantId: string) {
+      const openai = new OpenAI({
+        apiKey: apiKey,
+        baseURL: 'https://api.vapi.ai/chat'
+      });
+      let lastChatId: string | null = null;
 
-      async sendMessage(input, stream = false) {
+      async function sendMessage(input: string, stream: boolean = false) {
         const requestParams = {
           model: 'gpt-4o',
           input: input,
           stream: stream,
-          assistantId: this.assistantId
+          assistantId: assistantId,
+          ...(lastChatId && { previousChatId: lastChatId })
         };
 
-        // Add context if we have a previous response
-        if (this.lastResponseId) {
-          requestParams.previous_response_id = this.lastResponseId;
-        }
-
-        const response = await this.openai.responses.create(requestParams);
+        const response = await openai.responses.create(requestParams);
 
         if (!stream) {
-          this.lastResponseId = response.id;
+          lastChatId = response.id;
           return response.output[0].content[0].text;
         }
 
         return response; // Return stream for streaming requests
       }
+
+      return { sendMessage };
     }
 
     // Usage example
-    const session = new ContextualChatSession('YOUR_VAPI_API_KEY', 'your-assistant-id');
+    const session = createContextualChatSession('YOUR_VAPI_API_KEY', 'your-assistant-id');
 
     const response1 = await session.sendMessage("My name is Sarah and I'm having login issues");
     console.log('Response 1:', response1);
@@ -276,7 +292,7 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Integrate with LangChain">
     Use Vapi with LangChain's OpenAI integration:
     
-    ```javascript title="langchain-integration.js"
+    ```typescript title="langchain-integration.ts"
     import { ChatOpenAI } from "langchain/chat_models/openai";
     import { HumanMessage } from "langchain/schema";
 
@@ -289,9 +305,7 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
       streaming: false
     });
 
-    // Custom method to handle Vapi-specific parameters
-    async function chatWithVapi(message, assistantId) {
-      // LangChain doesn't directly support assistantId, so we'll use a custom approach
+    async function chatWithVapi(message: string, assistantId: string): Promise<string> {
       const response = await fetch('https://api.vapi.ai/chat/responses', {
         method: 'POST',
         headers: {
@@ -321,19 +335,17 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Integrate with Vercel AI SDK">
     Use Vapi with Vercel's AI SDK:
     
-    ```javascript title="vercel-ai-integration.js"
+    ```typescript title="vercel-ai-integration.ts"
     import { openai } from '@ai-sdk/openai';
     import { generateText, streamText } from 'ai';
 
-    // Create a custom Vapi provider
     const vapiOpenAI = openai({
       apiKey: 'YOUR_VAPI_API_KEY',
       baseURL: 'https://api.vapi.ai/chat'
     });
 
     // Non-streaming text generation
-    async function generateWithVapi(prompt, assistantId) {
-      // Note: Vercel AI SDK may need custom implementation for assistantId
+    async function generateWithVapi(prompt: string, assistantId: string): Promise<string> {
       const response = await fetch('https://api.vapi.ai/chat/responses', {
         method: 'POST',
         headers: {
@@ -353,7 +365,7 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
     }
 
     // Streaming implementation
-    async function streamWithVapi(prompt, assistantId) {
+    async function streamWithVapi(prompt: string, assistantId: string): Promise<void> {
       const response = await fetch('https://api.vapi.ai/chat/responses', {
         method: 'POST',
         headers: {
@@ -368,7 +380,9 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
         })
       });
 
-      const reader = response.body.getReader();
+      const reader = response.body?.getReader();
+      if (!reader) return;
+      
       const decoder = new TextDecoder();
 
       while (true) {
@@ -390,105 +404,61 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
     ```
   </Step>
   <Step title="Create a production server">
-    Build a server that exposes Vapi through OpenAI-compatible endpoints:
+    Build a simple server that exposes Vapi through OpenAI-compatible endpoints:
     
-    ```javascript title="production-server.js"
+    ```typescript title="simple-server.ts"
     import express from 'express';
-    import OpenAI from 'openai';
 
     const app = express();
     app.use(express.json());
 
-    const openai = new OpenAI({
-      apiKey: process.env.VAPI_API_KEY,
-      baseURL: 'https://api.vapi.ai/chat'
-    });
-
-    // OpenAI-compatible chat completions endpoint
+    // Basic OpenAI-compatible chat endpoint
     app.post('/v1/chat/completions', async (req, res) => {
-      try {
-        const { messages, model, stream = false, assistant_id } = req.body;
-        
-        if (!assistant_id) {
-          return res.status(400).json({ 
-            error: 'assistant_id is required for Vapi compatibility' 
-          });
-        }
-
-        // Convert OpenAI messages format to Vapi input
-        const lastMessage = messages[messages.length - 1];
-        const input = lastMessage.content;
-
-        if (stream) {
-          res.setHeader('Content-Type', 'text/event-stream');
-          res.setHeader('Cache-Control', 'no-cache');
-          res.setHeader('Connection', 'keep-alive');
-
-          const stream = await openai.responses.create({
-            model: model || 'gpt-4o',
-            input: input,
-            stream: true,
-            assistantId: assistant_id
-          });
-
-          for await (const event of stream) {
-            if (event.type === 'response.output_text.delta') {
-              const openaiFormat = {
-                id: event.id,
-                object: 'chat.completion.chunk',
-                created: Math.floor(Date.now() / 1000),
-                model: model || 'gpt-4o',
-                choices: [{
-                  index: 0,
-                  delta: { content: event.delta },
-                  finish_reason: null
-                }]
-              };
-              res.write(`data: ${JSON.stringify(openaiFormat)}\n\n`);
-            }
-          }
-
-          res.write('data: [DONE]\n\n');
-          res.end();
-        } else {
-          const response = await openai.responses.create({
-            model: model || 'gpt-4o',
-            input: input,
-            stream: false,
-            assistantId: assistant_id
-          });
-
-          // Convert to OpenAI format
-          const openaiResponse = {
-            id: response.id,
-            object: 'chat.completion',
-            created: Math.floor(Date.now() / 1000),
-            model: model || 'gpt-4o',
-            choices: [{
-              index: 0,
-              message: {
-                role: 'assistant',
-                content: response.output[0].content[0].text
-              },
-              finish_reason: 'stop'
-            }],
-            usage: response.usage || {
-              prompt_tokens: 0,
-              completion_tokens: 0,
-              total_tokens: 0
-            }
-          };
-
-          res.json(openaiResponse);
-        }
-      } catch (error) {
-        console.error('Server error:', error);
-        res.status(500).json({ 
-          error: { 
-            message: error.message,
-            type: 'server_error'
-          }
+      const { messages, model, stream = false, assistant_id } = req.body;
+      
+      if (!assistant_id) {
+        return res.status(400).json({ 
+          error: 'assistant_id is required for Vapi compatibility' 
         });
+      }
+
+      const lastMessage = messages[messages.length - 1];
+      const input = lastMessage.content;
+
+      const response = await fetch('https://api.vapi.ai/chat', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.VAPI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          assistantId: assistant_id,
+          input: input,
+          stream: stream
+        })
+      });
+
+      if (stream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        const reader = response.body?.getReader();
+        // Handle streaming response...
+      } else {
+        const chat = await response.json();
+        const openaiResponse = {
+          id: chat.id,
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: model || 'gpt-4o',
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: chat.output[0].content
+            },
+            finish_reason: 'stop'
+          }]
+        };
+        res.json(openaiResponse);
       }
     });
 
@@ -511,7 +481,7 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
     curl -X POST http://localhost:3000/v1/chat/completions \
       -H "Content-Type: application/json" \
       -d '{
-        "model": "gpt-4",
+        "model": "gpt-4o",
         "messages": [
           {"role": "user", "content": "Hello, I need technical support"}
         ],
@@ -523,21 +493,22 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Test streaming compatibility">
     Verify streaming works with OpenAI format:
     
-    ```javascript title="test-streaming-compatibility.js"
+    ```typescript title="test-streaming-compatibility.ts"
     import OpenAI from 'openai';
 
     // Test with your local server
     const localOpenAI = new OpenAI({
-      apiKey: 'dummy-key', // Not used by local server
+      apiKey: 'api-key',
       baseURL: 'http://localhost:3000/v1'
     });
 
     const stream = await localOpenAI.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o',
       messages: [
         { role: 'user', content: 'Explain cloud computing in detail' }
       ],
       stream: true,
+      // @ts-ignore - Custom parameter for Vapi compatibility
       assistant_id: 'your-assistant-id'
     });
 
@@ -550,8 +521,15 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   <Step title="Compare performance and responses">
     Run side-by-side tests to validate migration quality:
     
-    ```javascript title="migration-validation.js"
-    async function compareResponses(prompt) {
+    ```typescript title="migration-validation.ts"
+    import OpenAI from 'openai';
+
+    const openai = new OpenAI({
+      apiKey: 'YOUR_VAPI_API_KEY',
+      baseURL: 'https://api.vapi.ai/chat'
+    });
+
+    async function compareResponses(prompt: string): Promise<void> {
       console.log('Testing prompt:', prompt);
       console.log('---');
 
@@ -579,23 +557,12 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
   </Step>
 </Steps>
 
-## What You've Built
-
-Congratulations! You now have:
-
-✅ **Seamless OpenAI to Vapi migration** with zero code changes required  
-✅ **Production-ready compatibility server** that translates between formats  
-✅ **Framework integrations** with LangChain and Vercel AI SDK  
-✅ **Streaming and non-streaming support** maintaining OpenAI API patterns  
-✅ **Context management** using Vapi's advanced conversation features  
-✅ **Validation testing** to ensure migration quality  
-
 ## Key Differences from OpenAI
 
 | Aspect | OpenAI | Vapi Compatible |
 |--------|--------|-----------------|
 | **Endpoint** | `/chat/completions` | `/chat/responses` |
-| **Messages** | `messages` array | `input` string + `previous_response_id` |
+| **Messages** | `messages` array | `input` string + `previousChatId` |
 | **Assistant** | Model determines behavior | `assistantId` required |
 | **Context** | Full message history | Efficient context linking |
 | **Base URL** | `api.openai.com/v1` | `api.vapi.ai/chat` |
@@ -605,7 +572,7 @@ Congratulations! You now have:
 - [ ] Updated API keys and base URLs
 - [ ] Changed `chat.completions.create` to `responses.create`
 - [ ] Added `assistantId` to all requests
-- [ ] Updated context management to use `previous_response_id`
+- [ ] Updated context management to use `previousChatId`
 - [ ] Tested both streaming and non-streaming modes
 - [ ] Validated response quality matches expectations
 - [ ] Updated error handling for Vapi-specific errors
