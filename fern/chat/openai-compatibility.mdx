@@ -225,10 +225,32 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
 
       let fullResponse = '';
       
-      for await (const event of stream) {
-        if (event.type === 'response.output_text.delta') {
-          process.stdout.write(event.delta);
-          fullResponse += event.delta;
+      const reader = stream.body?.getReader();
+      if (!reader) return fullResponse;
+      
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        
+        // Parse and process SSE events
+        const lines = chunk.split('\n').filter(line => line.trim());
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.path && event.delta) {
+                process.stdout.write(event.delta);
+                fullResponse += event.delta;
+              }
+            } catch (e) {
+              console.error('Invalid JSON line:', line);
+              continue;
+            }
+          }
         }
       }
       
@@ -236,7 +258,6 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
       return fullResponse;
     }
 
-    // Test streaming
     streamWithVapi('Write a detailed explanation of REST APIs');
     ```
   </Step>
@@ -267,7 +288,7 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
           return response.output[0].content[0].text;
         }
 
-        return response; // Return stream for streaming requests
+        return response;
       }
 
       return { sendMessage };
@@ -391,8 +412,22 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
         if (done) break;
 
         const chunk = decoder.decode(value);
-        // Process SSE events here...
-        console.log(chunk);
+        
+        // Parse and process SSE events
+        const lines = chunk.split('\n').filter(line => line.trim());
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.path && event.delta) {
+                process.stdout.write(event.delta);
+              }
+            } catch (e) {
+              console.error('Invalid JSON line:', line);
+              continue;
+            }
+          }
+        }
       }
     }
 
@@ -440,8 +475,27 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
 
       if (stream) {
         res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        
         const reader = response.body?.getReader();
-        // Handle streaming response...
+        if (!reader) {
+          return res.status(500).json({ error: 'Failed to get stream reader' });
+        }
+        
+        const decoder = new TextDecoder();
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            res.write('data: [DONE]\n\n');
+            res.end();
+            break;
+          }
+          
+          const chunk = decoder.decode(value);
+          res.write(chunk);
+        }
       } else {
         const chat = await response.json();
         const openaiResponse = {
