@@ -1,0 +1,495 @@
+---
+title: OpenAI compatibility
+subtitle: Use Vapi with existing OpenAI client libraries and tools
+---
+
+## Overview
+
+Vapi provides an OpenAI-compatible endpoint at `/chat/responses` that works with the OpenAI SDK. This allows you to use existing OpenAI client libraries with Vapi assistants without changing your code.
+
+Benefits:
+- **Drop-in replacement** - Use existing OpenAI code
+- **Familiar API** - Same interface as OpenAI's API
+- **Easy migration** - Switch from OpenAI to Vapi seamlessly
+- **Library support** - Works with all OpenAI SDKs
+
+## Quick start with OpenAI SDK
+
+```bash
+# Install the OpenAI SDK
+npm install openai
+```
+
+```javascript
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: 'YOUR_VAPI_API_KEY',
+  baseURL: 'https://api.vapi.ai/chat'
+});
+
+// Create a streaming response
+const stream = await openai.responses.create({
+  model: 'gpt-4o',
+  input: 'Tell me a joke',
+  stream: true,
+  assistantId: 'your-assistant-id'
+});
+
+// Handle the stream
+for await (const event of stream) {
+  if (event.type === 'response.output_text.delta') {
+    process.stdout.write(event.delta);
+  }
+}
+```
+
+## Using curl with OpenAI-compatible endpoint
+
+```bash
+curl -X POST https://api.vapi.ai/chat/responses \
+  -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "What is the capital of France?",
+    "stream": false,
+    "assistantId": "your-assistant-id"
+  }'
+```
+
+## Non-streaming with OpenAI SDK
+
+```javascript
+const response = await openai.responses.create({
+  model: 'gpt-4o',
+  input: 'What is the capital of France?',
+  stream: false,
+  assistantId: 'your-assistant-id'
+});
+
+console.log(response.output[0].content[0].text);
+```
+
+### Using curl for non-streaming
+
+```bash
+curl -X POST https://api.vapi.ai/chat/responses \
+  -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "Explain machine learning in simple terms",
+    "stream": false,
+    "assistantId": "your-assistant-id"
+  }'
+```
+
+## Streaming responses
+
+### JavaScript streaming with OpenAI SDK
+
+```javascript
+const stream = await openai.responses.create({
+  model: 'gpt-4o',
+  input: 'Write a short story about robots',
+  stream: true,
+  assistantId: 'your-assistant-id'
+});
+
+// Handle the stream
+for await (const event of stream) {
+  if (event.type === 'response.output_text.delta') {
+    process.stdout.write(event.delta);
+  }
+}
+```
+
+### Streaming with curl
+
+```bash
+curl -X POST https://api.vapi.ai/chat/responses \
+  -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "Write a poem about technology",
+    "stream": true,
+    "assistantId": "your-assistant-id"
+  }'
+```
+
+## Context management
+
+### Maintaining context with OpenAI SDK
+
+```javascript
+// First request
+const response1 = await openai.responses.create({
+  model: 'gpt-4o',
+  input: 'My name is Sarah',
+  stream: false,
+  assistantId: 'your-assistant-id'
+});
+
+// Continue conversation using previous_response_id
+const response2 = await openai.responses.create({
+  model: 'gpt-4o',
+  input: 'What is my name?',
+  previous_response_id: response1.id,
+  stream: false,
+  assistantId: 'your-assistant-id'
+});
+
+console.log(response2.output[0].content[0].text); // "Your name is Sarah"
+```
+
+### Using curl with context
+
+```bash
+# First message
+curl -X POST https://api.vapi.ai/chat/responses \
+  -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "I am learning about quantum physics",
+    "stream": false,
+    "assistantId": "your-assistant-id"
+  }'
+```
+
+```bash
+# Continue with previous response ID
+curl -X POST https://api.vapi.ai/chat/responses \
+  -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "Can you explain wave-particle duality?",
+    "previous_response_id": "response_abc123",
+    "stream": false,
+    "assistantId": "your-assistant-id"
+  }'
+```
+
+## Python with OpenAI SDK
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="YOUR_VAPI_API_KEY",
+    base_url="https://api.vapi.ai/chat"
+)
+
+# Non-streaming response
+response = client.responses.create(
+    model="gpt-4o",
+    input="Explain the importance of renewable energy",
+    stream=False,
+    assistant_id="your-assistant-id"
+)
+
+print(response.output[0].content[0].text)
+
+# Streaming response
+stream = client.responses.create(
+    model="gpt-4o",
+    input="Write a technical blog post about APIs",
+    stream=True,
+    assistant_id="your-assistant-id"
+)
+
+for event in stream:
+    if event.type == "response.output_text.delta":
+        print(event.delta, end="")
+```
+
+### Python with curl equivalent
+
+```bash
+# Python equivalent using requests
+curl -X POST https://api.vapi.ai/chat/responses \
+  -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "Explain the importance of renewable energy",
+    "stream": false,
+    "assistantId": "your-assistant-id"
+  }'
+```
+
+## Node.js server example
+
+```javascript
+import express from 'express';
+import OpenAI from 'openai';
+
+const app = express();
+app.use(express.json());
+
+const openai = new OpenAI({
+  apiKey: process.env.VAPI_API_KEY,
+  baseURL: 'https://api.vapi.ai/chat'
+});
+
+app.post('/chat', async (req, res) => {
+  try {
+    const { message, assistantId, stream = false } = req.body;
+    
+    if (stream) {
+      res.setHeader('Content-Type', 'text/stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      
+      const stream = await openai.responses.create({
+        model: 'gpt-4o',
+        input: message,
+        stream: true,
+        assistantId: assistantId
+      });
+
+      for await (const event of stream) {
+        if (event.type === 'response.output_text.delta') {
+          res.write(`data: ${JSON.stringify({ delta: event.delta })}\n\n`);
+        }
+      }
+      
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else {
+      const response = await openai.responses.create({
+        model: 'gpt-4o',
+        input: message,
+        stream: false,
+        assistantId: assistantId
+      });
+      
+      res.json({ response: response.output[0].content[0].text });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.listen(3000);
+```
+
+### Corresponding curl tests
+
+```bash
+# Test non-streaming
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Hello, how are you?",
+    "assistantId": "your-assistant-id",
+    "stream": false
+  }'
+```
+
+```bash
+# Test streaming
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Tell me about space exploration",
+    "assistantId": "your-assistant-id",
+    "stream": true
+  }'
+```
+
+## Integration examples
+
+### Langchain integration
+
+```javascript
+import { ChatOpenAI } from "langchain/chat_models/openai";
+
+const chat = new ChatOpenAI({
+  openAIApiKey: "YOUR_VAPI_API_KEY",
+  configuration: {
+    baseURL: "https://api.vapi.ai/chat"
+  },
+  modelName: "gpt-4o",
+  streaming: true
+});
+
+// Use with custom parameters
+const response = await chat.call([
+  { role: "human", content: "What is machine learning?" }
+], {
+  assistantId: "your-assistant-id"
+});
+```
+
+### Vercel AI SDK integration
+
+```javascript
+import { openai } from '@ai-sdk/openai';
+import { generateText, streamText } from 'ai';
+
+const customOpenAI = openai({
+  apiKey: process.env.VAPI_API_KEY,
+  baseURL: 'https://api.vapi.ai/chat'
+});
+
+// Generate text
+const { text } = await generateText({
+  model: customOpenAI('gpt-4o'),
+  prompt: 'Explain quantum computing',
+  assistantId: 'your-assistant-id'
+});
+
+// Stream text
+const { textStream } = await streamText({
+  model: customOpenAI('gpt-4o'),
+  prompt: 'Write a story about AI',
+  assistantId: 'your-assistant-id'
+});
+
+for await (const delta of textStream) {
+  process.stdout.write(delta);
+}
+```
+
+## Configuration differences
+
+### Key differences from OpenAI
+
+| Parameter | OpenAI | Vapi | Notes |
+|-----------|--------|------|-------|
+| **API Key** | OpenAI API key | Vapi API key | Use your Vapi key |
+| **Base URL** | `https://api.openai.com/v1` | `https://api.vapi.ai/chat` | Required change |
+| **Assistant** | N/A | `assistantId` required | Specifies which Vapi assistant |
+| **Model** | Determines behavior | For compatibility only | Actual model set in assistant config |
+| **Context** | `messages` array | `previous_response_id` | Different context mechanism |
+
+### Parameter mapping
+
+```javascript
+// OpenAI style (traditional)
+const openaiRequest = {
+  model: "gpt-4",
+  messages: [
+    { role: "user", content: "Hello" }
+  ],
+  stream: true
+};
+
+// Vapi compatible style
+const vapiRequest = {
+  model: "gpt-4o", // For compatibility
+  input: "Hello", // Instead of messages array
+  assistantId: "your-assistant-id", // Required for Vapi
+  stream: true
+};
+```
+
+## Migration guide
+
+### From OpenAI to Vapi
+
+1. **Change the base URL**:
+   ```javascript
+   // Before
+   const openai = new OpenAI({
+     apiKey: 'sk-...'
+   });
+   
+   // After
+   const openai = new OpenAI({
+     apiKey: 'YOUR_VAPI_API_KEY',
+     baseURL: 'https://api.vapi.ai/chat'
+   });
+   ```
+
+2. **Add assistantId parameter**:
+   ```javascript
+   // Add to all requests
+   const response = await openai.responses.create({
+     model: 'gpt-4o',
+     input: 'Your message',
+     assistantId: 'your-assistant-id' // Required
+   });
+   ```
+
+3. **Update context handling**:
+   ```javascript
+   // Before: messages array
+   messages: [
+     { role: "user", content: "Previous message" },
+     { role: "assistant", content: "Previous response" },
+     { role: "user", content: "New message" }
+   ]
+   
+   // After: previous_response_id
+   previous_response_id: "previous_response_id",
+   input: "New message"
+   ```
+
+## Error handling
+
+```javascript
+async function robustVapiCall(input, assistantId) {
+  try {
+    const response = await openai.responses.create({
+      model: 'gpt-4o',
+      input: input,
+      assistantId: assistantId,
+      stream: false
+    });
+    
+    return response.output[0].content[0].text;
+  } catch (error) {
+    if (error.status === 401) {
+      throw new Error('Invalid Vapi API key');
+    } else if (error.status === 404) {
+      throw new Error('Assistant not found');
+    } else {
+      throw new Error(`Vapi API error: ${error.message}`);
+    }
+  }
+}
+```
+
+### Testing with curl
+
+```bash
+# Test error handling
+curl -X POST https://api.vapi.ai/chat/responses \
+  -H "Authorization: Bearer INVALID_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "Test message",
+    "assistantId": "invalid-assistant-id"
+  }'
+```
+
+## Best practices
+
+<Tip>
+**When to use OpenAI compatibility**
+- Migrating existing OpenAI integrations
+- Using third-party tools that expect OpenAI API
+- Working with teams familiar with OpenAI SDK
+- Quick prototyping with existing code
+</Tip>
+
+<Note>
+**Compatibility notes**
+- Use your Vapi API key, not OpenAI key
+- The `assistantId` parameter is always required
+- Model parameter is for compatibility only
+- Use `previous_response_id` instead of `previousChatId`
+</Note>
+
+## Next steps
+
+- Learn about [chat quickstart](/docs/chat/quickstart) for basic implementation
+- Explore [streaming](/docs/chat/streaming) and [non-streaming](/docs/chat/non-streaming) options
+- View the [API reference](/api-reference/chats/chat-controller-create-chat) for all parameters
+- Create and configure [assistants](/docs/assistants) for your use case 
