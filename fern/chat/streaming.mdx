@@ -1,438 +1,527 @@
 ---
 title: Streaming chat
-subtitle: Real-time, token-by-token responses for better user experience
+subtitle: Build real-time chat experiences with token-by-token responses like ChatGPT
 ---
 
 ## Overview
 
-Streaming chat provides real-time, token-by-token responses using Server-Sent Events (SSE). This creates a better user experience by showing responses as they're generated, similar to ChatGPT.
+Build a real-time chat interface that displays responses as they're generated, creating an engaging user experience similar to ChatGPT. Perfect for interactive applications where users expect immediate visual feedback.
 
-Benefits:
-- **Real-time output** - See responses as they're generated
-- **Better UX** - Reduces perceived latency
-- **Progressive rendering** - Display partial responses immediately
-- **Interruptible** - Can stop generation early if needed
+**What You'll Build:**
+* Real-time streaming chat interface with progressive text display
+* Professional typing indicators and response handling
+* Robust error handling with fallback to non-streaming
+* React component ready for production use
 
-## Basic streaming example
+**User Experience Benefits:**
+* Reduced perceived latency with immediate response start
+* Visual feedback that keeps users engaged
+* Ability to interrupt or stop generation early
+* Professional, modern chat interface
 
-Enable streaming by setting `stream: true` in your request:
+## Prerequisites
 
-```bash
-curl -X POST https://api.vapi.ai/chat \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "assistantId": "your-assistant-id",
-    "input": "Write me a short story",
-    "stream": true
-  }'
-```
+* Completed [Chat quickstart](/docs/chat/quickstart) tutorial
+* Basic knowledge of JavaScript promises and async/await
+* Understanding of Server-Sent Events (SSE) preferred but not required
 
-### JavaScript streaming
+## Scenario
 
-```javascript
-const response = await fetch('https://api.vapi.ai/chat', {
-  method: 'POST',
-  headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    assistantId: 'your-assistant-id',
-    input: 'Write me a short story',
-    stream: true
-  })
-});
+We'll enhance the TechFlow support chat from the quickstart to provide real-time streaming responses. Users will see text appear progressively as the AI generates it, creating a more engaging experience for longer responses.
 
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
+---
 
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  
-  const chunk = decoder.decode(value);
-  const lines = chunk.split('\n').filter(line => line.trim());
-  
-  for (const line of lines) {
-    if (line.startsWith('data: ')) {
-      const data = JSON.parse(line.slice(6));
-      // Stream events have format: { id, path, delta }
-      if (data.path && data.delta) {
-        process.stdout.write(data.delta); // Print each token as it arrives
+## 1. Enable Streaming in Your Requests
+
+<Steps>
+  <Step title="Add the stream parameter">
+    Modify your chat request to enable streaming by adding `"stream": true`:
+    
+    ```bash title="Streaming Chat Request"
+    curl -X POST https://api.vapi.ai/chat \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistantId": "your-assistant-id",
+        "input": "Explain how to set up API authentication in detail",
+        "stream": true
+      }'
+    ```
+  </Step>
+  <Step title="Understand the streaming response format">
+    Instead of a single JSON response, you'll receive Server-Sent Events (SSE):
+    
+    ```javascript title="SSE Event Format"
+    data: {"id":"stream_123","path":"chat.output[0].content","delta":"Hello"}
+    data: {"id":"stream_123","path":"chat.output[0].content","delta":" there!"}
+    data: {"id":"stream_123","path":"chat.output[0].content","delta":" How can"}
+    data: {"id":"stream_123","path":"chat.output[0].content","delta":" I help?"}
+    ```
+    
+    Each event contains:
+    - `id`: Stream identifier
+    - `path`: Location in response structure  
+    - `delta`: New text token to append
+  </Step>
+</Steps>
+
+---
+
+## 2. Implement Basic JavaScript Streaming
+
+<Steps>
+  <Step title="Create a streaming chat function">
+    Here's a basic streaming implementation:
+    
+    ```javascript title="streaming-chat.js"
+    async function streamChatMessage(message, onToken) {
+      const response = await fetch('https://api.vapi.ai/chat', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer YOUR_API_KEY',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          assistantId: 'your-assistant-id',
+          input: message,
+          stream: true
+        })
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim());
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.path && data.delta) {
+                fullResponse += data.delta;
+                onToken(data.delta, fullResponse);
+              }
+            } catch (e) {
+              console.warn('Failed to parse SSE event:', e);
+            }
+          }
+        }
       }
+      
+      return fullResponse;
     }
-  }
-}
-```
-
-## Streaming response format
-
-When streaming is enabled, the response is sent as Server-Sent Events (SSE). Each event contains:
-
-```javascript
-{
-  "id": "stream_123456",
-  "path": "chat.output[0].content",
-  "delta": "Hello"
-}
-```
-
-The `path` indicates where in the response structure the content is being appended, following the format `chat.output[{index}].content`.
-
-## Complete streaming implementation
-
-```bash
-# Streaming with curl (will show SSE events)
-curl -X POST https://api.vapi.ai/chat \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "assistantId": "your-assistant-id",
-    "input": "Explain quantum computing in simple terms",
-    "stream": true
-  }'
-```
-
-### Advanced JavaScript streaming handler
-
-```javascript
-async function streamChat(input) {
-  const response = await fetch('https://api.vapi.ai/chat', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer YOUR_API_KEY',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      assistantId: 'your-assistant-id',
-      input: input,
-      stream: true
-    })
-  });
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    ```
+  </Step>
+  <Step title="Test the streaming function">
+    Try it out with a callback to display tokens:
     
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop(); // Keep incomplete line in buffer
+    ```javascript title="Test Streaming"
+    streamChatMessage(
+      "Explain API rate limiting in detail",
+      (token, fullResponse) => {
+        console.log('New token:', token);
+        console.log('Full response so far:', fullResponse);
+      }
+    );
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 3. Build a Production-Ready Streaming Handler
+
+<Steps>
+  <Step title="Create a robust streaming implementation">
+    This version handles buffering and errors properly:
     
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
+    ```javascript title="robust-streaming.js"
+    async function robustStreamChat(message, options = {}) {
+      const {
+        onToken = () => {},
+        onComplete = () => {},
+        onError = () => {},
+        previousChatId = null
+      } = options;
+
+      try {
+        const response = await fetch('https://api.vapi.ai/chat', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer YOUR_API_KEY',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            assistantId: 'your-assistant-id',
+            input: message,
+            stream: true,
+            ...(previousChatId && { previousChatId })
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullContent = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // Keep incomplete line in buffer
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6));
+                if (event.path && event.delta) {
+                  fullContent += event.delta;
+                  onToken(event.delta, fullContent);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE event:', parseError);
+              }
+            }
+          }
+        }
+        
+        onComplete(fullContent);
+        return fullContent;
+        
+      } catch (error) {
+        console.error('Streaming error:', error);
+        onError(error);
+        
+        // Fallback to non-streaming
         try {
-          const event = JSON.parse(line.slice(6));
-          if (event.path && event.delta) {
-            // Extract content index from path like "chat.output[0].content"
-            const match = event.path.match(/output\[(\d+)\]\.content/);
-            if (match) {
-              process.stdout.write(event.delta);
-              fullContent += event.delta;
-            }
-          }
-        } catch (e) {
-          console.error('Failed to parse event:', e);
+          const fallbackResponse = await fetch('https://api.vapi.ai/chat', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer YOUR_API_KEY',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              assistantId: 'your-assistant-id',
+              input: message,
+              stream: false,
+              ...(previousChatId && { previousChatId })
+            })
+          });
+          
+          const fallbackData = await fallbackResponse.json();
+          const response = fallbackData.output[0].content;
+          onComplete(response);
+          return response;
+        } catch (fallbackError) {
+          throw new Error('Both streaming and fallback failed');
         }
       }
     }
-  }
-  
-  console.log('\n\nFull response:', fullContent);
-}
-
-// Usage
-streamChat('Tell me about the benefits of renewable energy');
-```
-
-## Streaming with context
-
-### Using previous chat
-
-```bash
-# First message
-curl -X POST https://api.vapi.ai/chat \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "assistantId": "your-assistant-id",
-    "input": "I want to learn about space exploration",
-    "stream": true
-  }'
-```
-
-```bash
-# Continue with streaming
-curl -X POST https://api.vapi.ai/chat \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "assistantId": "your-assistant-id",
-    "previousChatId": "chat_abc123",
-    "input": "Tell me more about Mars missions",
-    "stream": true
-  }'
-```
-
-### JavaScript with session
-
-```javascript
-// Create session first
-const sessionResponse = await fetch('https://api.vapi.ai/session', {
-  method: 'POST',
-  headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    assistantId: 'your-assistant-id'
-  })
-});
-
-const session = await sessionResponse.json();
-
-// Stream with session context
-const response = await fetch('https://api.vapi.ai/chat', {
-  method: 'POST',
-  headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    sessionId: session.id,
-    input: 'Write a poem about coding',
-    stream: true
-  })
-});
-
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  
-  const chunk = decoder.decode(value);
-  const lines = chunk.split('\n').filter(line => line.trim());
-  
-  for (const line of lines) {
-    if (line.startsWith('data: ')) {
-      const data = JSON.parse(line.slice(6));
-      if (data.path && data.delta) {
-        process.stdout.write(data.delta);
-      }
-    }
-  }
-}
-```
-
-## Web browser implementation
-
-### Using EventSource (alternative approach)
-
-```javascript
-// Note: This approach may require server-side proxy for CORS
-function streamChatWithEventSource(input) {
-  const eventSource = new EventSource('/api/chat-proxy', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      assistantId: 'your-assistant-id',
-      input: input,
-      stream: true
-    })
-  });
-
-  eventSource.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-    if (data.path && data.delta) {
-      document.getElementById('chat-output').textContent += data.delta;
-    }
-  };
-
-  eventSource.onerror = function(event) {
-    console.error('EventSource failed:', event);
-    eventSource.close();
-  };
-}
-```
-
-### React streaming component
-
-```javascript
-import { useState, useCallback } from 'react';
-
-function StreamingChat() {
-  const [messages, setMessages] = useState([]);
-  const [currentMessage, setCurrentMessage] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-
-  const sendMessage = useCallback(async (input) => {
-    setIsStreaming(true);
-    setCurrentMessage('');
+    ```
+  </Step>
+  <Step title="Test with comprehensive error handling">
+    Test the robust version with proper callbacks:
     
-    const response = await fetch('https://api.vapi.ai/chat', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer YOUR_API_KEY',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        assistantId: 'your-assistant-id',
-        input: input,
-        stream: true
-      })
-    });
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.path && event.delta) {
-              setCurrentMessage(prev => prev + event.delta);
-            }
-          } catch (e) {
-            console.error('Parse error:', e);
-          }
+    ```javascript title="Test Robust Streaming"
+    robustStreamChat(
+      "What are the best practices for API security?",
+      {
+        onToken: (token, fullResponse) => {
+          // Update your UI with each new token
+          document.getElementById('chat-response').textContent = fullResponse;
+        },
+        onComplete: (finalResponse) => {
+          console.log('Streaming complete:', finalResponse);
+          // Hide loading indicators, enable input, etc.
+        },
+        onError: (error) => {
+          console.error('Streaming failed:', error);
+          // Show error message to user
         }
       }
-    }
+    );
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 4. Create a React Streaming Component
+
+<Steps>
+  <Step title="Build a streaming chat component">
+    Here's a complete React component for streaming chat:
     
-    setIsStreaming(false);
-    setMessages(prev => [...prev, { role: 'user', content: input }, { role: 'assistant', content: currentMessage }]);
-    setCurrentMessage('');
-  }, [currentMessage]);
+    ```javascript title="StreamingChat.jsx"
+    import { useState, useCallback } from 'react';
 
-  return (
-    <div>
-      {messages.map((msg, i) => (
-        <div key={i}>{msg.role}: {msg.content}</div>
-      ))}
-      {isStreaming && (
-        <div>Assistant: {currentMessage}<span className="cursor">|</span></div>
-      )}
-    </div>
-  );
-}
-```
+    function StreamingChat() {
+      const [messages, setMessages] = useState([]);
+      const [currentResponse, setCurrentResponse] = useState('');
+      const [isStreaming, setIsStreaming] = useState(false);
+      const [input, setInput] = useState('');
 
-## Error handling
+      const sendMessage = useCallback(async (userMessage) => {
+        if (!userMessage.trim() || isStreaming) return;
 
-```javascript
-async function robustStreamChat(input) {
-  try {
-    const response = await fetch('https://api.vapi.ai/chat', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer YOUR_API_KEY',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        assistantId: 'your-assistant-id',
-        input: input,
-        stream: true
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.path && event.delta) {
-              process.stdout.write(event.delta);
+        // Add user message to chat
+        setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+        setInput('');
+        setIsStreaming(true);
+        setCurrentResponse('');
+        
+        try {
+          await robustStreamChat(userMessage, {
+            onToken: (token, fullResponse) => {
+              setCurrentResponse(fullResponse);
+            },
+            onComplete: (finalResponse) => {
+              setMessages(prev => [...prev, { role: 'assistant', content: finalResponse }]);
+              setCurrentResponse('');
+              setIsStreaming(false);
+            },
+            onError: (error) => {
+              console.error('Chat error:', error);
+              setCurrentResponse('Sorry, I encountered an error. Please try again.');
+              setIsStreaming(false);
             }
-          } catch (parseError) {
-            console.warn('Failed to parse SSE event:', parseError);
-            // Continue processing other events
-          }
+          });
+        } catch (error) {
+          console.error('Unexpected error:', error);
+          setIsStreaming(false);
         }
-      }
+      }, [isStreaming]);
+
+      return (
+        <div className="chat-container">
+          <div className="messages">
+            {messages.map((msg, i) => (
+              <div key={i} className={`message ${msg.role}`}>
+                <strong>{msg.role === 'user' ? 'You' : 'Assistant'}:</strong>
+                <span>{msg.content}</span>
+              </div>
+            ))}
+            {isStreaming && (
+              <div className="message assistant streaming">
+                <strong>Assistant:</strong>
+                <span>{currentResponse}<span className="cursor">|</span></span>
+              </div>
+            )}
+          </div>
+          
+          <div className="input-area">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && sendMessage(input)}
+              placeholder="Type your message..."
+              disabled={isStreaming}
+            />
+            <button 
+              onClick={() => sendMessage(input)}
+              disabled={isStreaming || !input.trim()}
+            >
+              {isStreaming ? 'Sending...' : 'Send'}
+            </button>
+          </div>
+        </div>
+      );
     }
-  } catch (error) {
-    console.error('Streaming error:', error);
-    // Fallback to non-streaming
-    const fallbackResponse = await fetch('https://api.vapi.ai/chat', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer YOUR_API_KEY',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        assistantId: 'your-assistant-id',
-        input: input,
-        stream: false
-      })
-    });
+
+    export default StreamingChat;
+    ```
+  </Step>
+  <Step title="Add CSS for a polished look">
+    Include this CSS for better visual presentation:
     
-    const fallbackData = await fallbackResponse.json();
-    console.log(fallbackData.output[0].content);
-  }
-}
-```
+    ```css title="streaming-chat.css"
+    .chat-container {
+      max-width: 600px;
+      margin: 0 auto;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+    }
 
-## Best practices
+    .messages {
+      height: 400px;
+      overflow-y: auto;
+      padding: 16px;
+      background: #f9f9f9;
+    }
 
-<Tip>
-**When to use streaming**
-- Interactive chat interfaces
-- Long-form content generation
-- Real-time user experience requirements
-- When you want to show progressive results
-</Tip>
+    .message {
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      max-width: 80%;
+    }
 
-<Note>
-**Performance considerations**
-- Streaming uses more resources than non-streaming
-- Handle network interruptions gracefully
-- Implement proper buffering for incomplete JSON
-- Consider fallback to non-streaming on errors
-</Note>
+    .message.user {
+      background: #007bff;
+      color: white;
+      margin-left: auto;
+      text-align: right;
+    }
 
-<Warning>
-**Browser limitations**
-- Some browsers may buffer SSE responses
-- CORS policies may require server-side proxy
-- Mobile browsers may have different behavior
-</Warning>
+    .message.assistant {
+      background: white;
+      border: 1px solid #eee;
+    }
 
-## Next steps
+    .message.streaming .cursor {
+      animation: blink 1s infinite;
+    }
 
-- Learn about [non-streaming chat](/docs/chat/non-streaming) for simpler use cases
-- Explore [OpenAI compatibility](/docs/chat/openai-compatibility) for existing tools
-- View the [API reference](/api-reference/chats/chat-controller-create-chat) for all parameters
-- Implement [webhooks](/docs/webhooks) for advanced event handling 
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+
+    .input-area {
+      display: flex;
+      padding: 16px;
+      background: white;
+      border-top: 1px solid #ddd;
+    }
+
+    .input-area input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-right: 8px;
+    }
+
+    .input-area button {
+      padding: 8px 16px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .input-area button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 5. Test Your Streaming Implementation
+
+<Steps>
+  <Step title="Test with different message types">
+    Try these test cases to verify streaming works correctly:
+    
+    ```bash title="Test Case 1: Long Technical Response"
+    curl -X POST https://api.vapi.ai/chat \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistantId": "your-assistant-id",
+        "input": "Explain the complete process of setting up OAuth 2.0 authentication with detailed steps",
+        "stream": true
+      }'
+    ```
+    
+    ```bash title="Test Case 2: Multi-part Question"
+    curl -X POST https://api.vapi.ai/chat \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistantId": "your-assistant-id",
+        "input": "What are webhooks, how do they work, and when should I use them instead of polling?",
+        "stream": true
+      }'
+    ```
+  </Step>
+  <Step title="Test conversation context with streaming">
+    Verify that streaming works with conversation continuity:
+    
+    ```bash title="Context + Streaming Test"
+    # First message
+    curl -X POST https://api.vapi.ai/chat \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistantId": "your-assistant-id",
+        "input": "I need help with database optimization",
+        "stream": true
+      }'
+      
+    # Follow-up with streaming
+    curl -X POST https://api.vapi.ai/chat \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistantId": "your-assistant-id",
+        "previousChatId": "chat_abc123",
+        "input": "Can you provide specific indexing strategies?",
+        "stream": true
+      }'
+    ```
+  </Step>
+  <Step title="Test error scenarios">
+    Verify your error handling works:
+    
+    ```bash title="Test with Invalid Assistant ID"
+    curl -X POST https://api.vapi.ai/chat \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistantId": "invalid-assistant-id",
+        "input": "This should trigger error handling",
+        "stream": true
+      }'
+    ```
+  </Step>
+</Steps>
+
+## What You've Built
+
+Congratulations! You now have:
+
+✅ **Real-time streaming chat** with progressive text display  
+✅ **Professional React component** ready for production use  
+✅ **Robust error handling** with automatic fallback to non-streaming  
+✅ **Polished user interface** with typing indicators and smooth interactions  
+✅ **Context-aware streaming** that maintains conversation history  
+
+## Best Practices You've Implemented
+
+* **Proper buffering** prevents partial JSON parsing errors
+* **Graceful degradation** falls back to non-streaming on failure  
+* **User feedback** with loading states and typing indicators
+* **Error boundaries** that don't break the user experience
+* **Performance optimization** with efficient text concatenation
+
+## Next Steps
+
+Enhance your streaming chat further:
+
+* **[OpenAI compatibility](/docs/chat/openai-compatibility)** - Use OpenAI SDK for streaming with familiar syntax
+* **[Advanced patterns](/docs/chat/non-streaming)** - Learn about sessions and complex conversation management
+* **[Add tools](/docs/tools/custom-tools)** - Enable your assistant to call external APIs while streaming
+* **[Voice integration](/docs/calls/call-outbound)** - Combine text streaming with voice capabilities
+
+<Callout>
+Need help? Chat with the team on our [Discord](https://discord.com/invite/pUFNcf2WmH) or mention us on [X/Twitter](https://x.com/Vapi_AI).
+</Callout>
