@@ -391,7 +391,7 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
         if (done) break;
 
         const chunk = decoder.decode(value);
-        // Process SSE events here
+        // Process SSE events here...
         console.log(chunk);
       }
     }
@@ -413,7 +413,6 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
     const app = express();
     app.use(express.json());
 
-    // Basic OpenAI-compatible chat endpoint
     app.post('/v1/chat/completions', async (req, res) => {
       const { messages, model, stream = false, assistant_id } = req.body;
       
@@ -471,112 +470,6 @@ We'll migrate "TechFlow's" existing OpenAI-powered customer support chat to use 
 </Steps>
 
 ---
-
-## 5. Test Your Migration
-
-<Steps>
-  <Step title="Test with existing OpenAI clients">
-    Use your production server with standard OpenAI clients:
-    
-    ```bash title="Test with curl (OpenAI format)"
-    curl -X POST http://localhost:3000/v1/chat/completions \
-      -H "Content-Type: application/json" \
-      -d '{
-        "model": "gpt-4o",
-        "messages": [
-          {"role": "user", "content": "Hello, I need technical support"}
-        ],
-        "assistant_id": "your-assistant-id",
-        "stream": false
-      }'
-    ```
-  </Step>
-  <Step title="Test streaming compatibility">
-    Verify streaming works with OpenAI format:
-    
-    ```typescript title="test-streaming-compatibility.ts"
-    import OpenAI from 'openai';
-
-    // Test with your local server
-    const localOpenAI = new OpenAI({
-      apiKey: 'api-key',
-      baseURL: 'http://localhost:3000/v1'
-    });
-
-    const stream = await localOpenAI.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'user', content: 'Explain cloud computing in detail' }
-      ],
-      stream: true,
-      // @ts-ignore - Custom parameter for Vapi compatibility
-      assistant_id: 'your-assistant-id'
-    });
-
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content || '';
-      process.stdout.write(content);
-    }
-    ```
-  </Step>
-  <Step title="Compare performance and responses">
-    Run side-by-side tests to validate migration quality:
-    
-    ```typescript title="migration-validation.ts"
-    import OpenAI from 'openai';
-
-    const openai = new OpenAI({
-      apiKey: 'YOUR_VAPI_API_KEY',
-      baseURL: 'https://api.vapi.ai/chat'
-    });
-
-    async function compareResponses(prompt: string): Promise<void> {
-      console.log('Testing prompt:', prompt);
-      console.log('---');
-
-      // Test Vapi response
-      const vapiResponse = await openai.responses.create({
-        model: 'gpt-4o',
-        input: prompt,
-        assistantId: 'your-assistant-id',
-        stream: false
-      });
-
-      console.log('Vapi Response:');
-      console.log(vapiResponse.output[0].content[0].text);
-      console.log('---');
-
-      // You could also test with original OpenAI here for comparison
-      // const openaiResponse = await originalOpenAI.chat.completions.create({...});
-    }
-
-    // Test various scenarios
-    await compareResponses("What are your customer support hours?");
-    await compareResponses("I'm having trouble with API authentication");
-    await compareResponses("Can you explain your pricing plans?");
-    ```
-  </Step>
-</Steps>
-
-## Key Differences from OpenAI
-
-| Aspect | OpenAI | Vapi Compatible |
-|--------|--------|-----------------|
-| **Endpoint** | `/chat/completions` | `/chat/responses` |
-| **Messages** | `messages` array | `input` string + `previousChatId` |
-| **Assistant** | Model determines behavior | `assistantId` required |
-| **Context** | Full message history | Efficient context linking |
-| **Base URL** | `api.openai.com/v1` | `api.vapi.ai/chat` |
-
-## Migration Checklist
-
-- [ ] Updated API keys and base URLs
-- [ ] Changed `chat.completions.create` to `responses.create`
-- [ ] Added `assistantId` to all requests
-- [ ] Updated context management to use `previousChatId`
-- [ ] Tested both streaming and non-streaming modes
-- [ ] Validated response quality matches expectations
-- [ ] Updated error handling for Vapi-specific errors
 
 ## Next Steps
 
