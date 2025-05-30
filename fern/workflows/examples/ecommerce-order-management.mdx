@@ -29,107 +29,499 @@ We will be creating an order management workflow for TechGear Online, an electro
 
 ## 1. Create a Knowledge Base
 
-<Steps>
-  <Step title="Download the spreadsheets">
-    <div className="flex gap-2">
-      <Download src="../../static/spreadsheets/ecommerce/customers.csv">
-        <Button intent="primary">Download customers.csv</Button>
-      </Download>
-      <Download src="../../static/spreadsheets/ecommerce/orders.csv">
-        <Button intent="primary">Download orders.csv</Button>
-      </Download>
-      <Download src="../../static/spreadsheets/ecommerce/products.csv">
-        <Button intent="primary">Download products.csv</Button>
-      </Download>
-      <Download src="../../static/spreadsheets/ecommerce/returns.csv">
-        <Button intent="primary">Download returns.csv</Button>
-      </Download>
-    </div>
-  </Step>
-  <Step title="Navigate to the Files section">
-    In your Vapi dashboard, click `Files` in the left sidebar.
-  </Step>
-  <Step title="Upload the spreadsheets">
-    - Click `Choose file`. Upload all four CSV files: `customers.csv`, `orders.csv`, `products.csv`, and `returns.csv`.
-    - Note the file IDs. We'll need them later to create tools.
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Download the spreadsheets">
+        <div className="flex gap-2">
+          <Download src="../../static/spreadsheets/ecommerce/customers.csv">
+            <Button intent="primary">Download customers.csv</Button>
+          </Download>
+          <Download src="../../static/spreadsheets/ecommerce/orders.csv">
+            <Button intent="primary">Download orders.csv</Button>
+          </Download>
+          <Download src="../../static/spreadsheets/ecommerce/products.csv">
+            <Button intent="primary">Download products.csv</Button>
+          </Download>
+        </div>
+      </Step>
+      <Step title="Navigate to the Files section">
+        In your Vapi dashboard, click `Files` in the left sidebar.
+      </Step>
+      <Step title="Upload the spreadsheets">
+        - Click `Choose file`. Upload all three CSV files: `customers.csv`, `orders.csv`, and `products.csv`.
+        - Note the file IDs. We'll need them later to create tools.
 
-<video autoPlay loop muted src="../../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+        <video autoPlay loop muted src="../../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Web SDK + TypeScript">
+    For web-based ecommerce applications:
+
+    ```bash
+    npm install @vapi-ai/web
+    ```
+
+    ```typescript
+    import Vapi from '@vapi-ai/web';
+
+    interface EcommerceOrderConfig {
+      publicApiKey: string;
+      workflowId: string;
+    }
+
+    function createEcommerceOrderWorkflow(config: EcommerceOrderConfig) {
+      const vapi = new Vapi(config.publicApiKey);
+      let isConnected = false;
+      let currentCustomer: any = null;
+
+      // Setup event listeners
+      vapi.on('call-start', () => {
+        isConnected = true;
+        console.log('Ecommerce order workflow call started');
+      });
+
+      vapi.on('call-end', () => {
+        isConnected = false;
+        console.log('Order workflow call ended');
+        processOrderOutcome();
+      });
+
+      vapi.on('message', (message) => {
+        if (message.type === 'transcript') {
+          console.log(`${message.role}: ${message.transcript}`);
+        } else if (message.type === 'function-call') {
+          handleOrderFunction(message.functionCall);
+        } else if (message.type === 'workflow-step') {
+          console.log('Order workflow step:', message.step);
+        }
+      });
+
+      vapi.on('error', (error) => {
+        console.error('Order workflow error:', error);
+      });
+
+      function handleOrderFunction(functionCall: { name: string; parameters: Record<string, unknown> }) {
+        switch (functionCall.name) {
+          case 'lookup_order':
+            console.log('Looking up order:', functionCall.parameters);
+            break;
+          case 'update_shipping':
+            console.log('Updating shipping:', functionCall.parameters);
+            break;
+          case 'process_return':
+            console.log('Processing return:', functionCall.parameters);
+            break;
+          case 'send_notification':
+            console.log('Sending notification:', functionCall.parameters);
+            break;
+          default:
+            console.log('Order function called:', functionCall.name, functionCall.parameters);
+        }
+      }
+
+      function processOrderOutcome() {
+        console.log('Processing order outcome for customer:', currentCustomer);
+      }
+
+      return {
+        startOrderCall: (customerData?: any) => {
+          if (!isConnected) {
+            currentCustomer = customerData;
+            vapi.start(config.workflowId);
+          }
+        },
+        endCall: () => {
+          if (isConnected) {
+            vapi.stop();
+          }
+        },
+        isConnected: () => isConnected
+      };
+    }
+
+    // Usage for ecommerce order management
+    const orderWorkflow = createEcommerceOrderWorkflow({
+      publicApiKey: 'YOUR_PUBLIC_API_KEY',
+      workflowId: 'YOUR_ORDER_WORKFLOW_ID'
+    });
+
+    // Start order support call
+    orderWorkflow.startOrderCall({
+      customerId: 'CUST123',
+      orderNumber: 'ORD-456789',
+      issue: 'shipping delay'
+    });
+    ```
+
+    <Note>
+      For actual file uploads (orders.csv, customers.csv, etc.), use the Server SDK or Dashboard. Web SDK is for managing live order support conversations.
+    </Note>
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+    import fs from 'fs';
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    async function uploadEcommerceFiles() {
+      try {
+        // Upload customers file
+        const customersFile = await vapi.files.create({
+          file: fs.createReadStream("customers.csv")
+        });
+
+        // Upload orders file
+        const ordersFile = await vapi.files.create({
+          file: fs.createReadStream("orders.csv")
+        });
+
+        // Upload products file
+        const productsFile = await vapi.files.create({
+          file: fs.createReadStream("products.csv")
+        });
+
+        console.log(`Customers file ID: ${customersFile.id}`);
+        console.log(`Orders file ID: ${ordersFile.id}`);
+        console.log(`Products file ID: ${productsFile.id}`);
+
+        return {
+          customersFileId: customersFile.id,
+          ordersFileId: ordersFile.id,
+          productsFileId: productsFile.id
+        };
+      } catch (error) {
+        console.error('Error uploading files:', error);
+        throw error;
+      }
+    }
+
+    // Upload all files
+    const fileIds = await uploadEcommerceFiles();
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    def upload_file(file_path):
+        url = "https://api.vapi.ai/file"
+        headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
+        
+        with open(file_path, 'rb') as file:
+            files = {'file': file}
+            response = requests.post(url, headers=headers, files=files)
+            return response.json()
+
+    # Upload all required files
+    customers_file = upload_file("customers.csv")
+    orders_file = upload_file("orders.csv")
+    products_file = upload_file("products.csv")
+
+    print(f"Customers file ID: {customers_file['id']}")
+    print(f"Orders file ID: {orders_file['id']}")
+    print(f"Products file ID: {products_file['id']}")
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Upload customers.csv
+    curl -X POST https://api.vapi.ai/file \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -F "file=@customers.csv"
+
+    # Upload orders.csv
+    curl -X POST https://api.vapi.ai/file \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -F "file=@orders.csv"
+
+    # Upload products.csv
+    curl -X POST https://api.vapi.ai/file \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -F "file=@products.csv"
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
 ## 2. Create Required Tools
 
-Before building the workflow, create the necessary tools in your dashboard:
+<Tabs>
+  <Tab title="Dashboard">
+    Before building the workflow, create the necessary tools in your dashboard:
 
-<Steps>
-  <Step title="Navigate to Tools">
-    In your Vapi dashboard, click **Tools** in the left sidebar.
-  </Step>
-  <Step title="Create Customer Lookup Tool">
-    Click **Create Tool** and configure:
-    - **Tool Name**: "Customer Lookup"
-    - **Tool Type**: "Function"
-    - **Function Name**: `lookup_customer`
-    - **Description**: "Look up customer account and order history"
-    - **Parameters**:
-      - `customer_id` (string): Customer ID to lookup
-    - **Server URL**: `https://jsonplaceholder.typicode.com/users`
-    
-    <Note>
-      This example uses JSONPlaceholder, a free testing API. In production, replace with your actual e-commerce API endpoint.
-    </Note>
-  </Step>
-  <Step title="Create Order Tracking Tool">
-    Create another tool:
-    - **Tool Name**: "Order Tracking"
-    - **Function Name**: `track_order`
-    - **Description**: "Track order status and shipping information"
-    - **Parameters**:
-      - `order_id` (string): Order ID to track
-    - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
-    
-    <Note>
-      This example uses JSONPlaceholder for demonstration. Replace with your shipping provider's API (FedEx, UPS, etc.) in production.
-    </Note>
-  </Step>
-  <Step title="Create Return Processing Tool">
-    Create a third tool:
-    - **Tool Name**: "Return Processing"
-    - **Function Name**: `process_return`
-    - **Description**: "Process return requests and generate return labels"
-    - **Parameters**:
-      - `order_id` (string): Original order ID
-      - `return_reason` (string): Reason for return
-    - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
-    
-    <Note>
-      This example uses JSONPlaceholder for demonstration. In production, integrate with your returns management system.
-    </Note>
-  </Step>
-</Steps>
+    <Steps>
+      <Step title="Navigate to Tools">
+        In your Vapi dashboard, click **Tools** in the left sidebar.
+      </Step>
+      <Step title="Create Customer Lookup Tool">
+        Click **Create Tool** and configure:
+        - **Tool Name**: "Customer Lookup"
+        - **Tool Type**: "Function"
+        - **Function Name**: `lookup_customer`
+        - **Description**: "Look up customer account and order history"
+        - **Parameters**:
+          - `customer_id` (string): Customer ID to lookup
+        - **Server URL**: `https://jsonplaceholder.typicode.com/users`
+        
+        <Note>
+          This example uses JSONPlaceholder, a free testing API. In production, replace with your actual e-commerce API endpoint.
+        </Note>
+      </Step>
+      <Step title="Create Order Tracking Tool">
+        Create another tool:
+        - **Tool Name**: "Order Tracking"
+        - **Function Name**: `track_order`
+        - **Description**: "Track order status and shipping information"
+        - **Parameters**:
+          - `order_id` (string): Order ID to track
+        - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
+        
+        <Note>
+          This example uses JSONPlaceholder for demonstration. Replace with your shipping provider's API (FedEx, UPS, etc.) in production.
+        </Note>
+      </Step>
+      <Step title="Create Return Processing Tool">
+        Create a third tool:
+        - **Tool Name**: "Return Processing"
+        - **Function Name**: `process_return`
+        - **Description**: "Process return requests and generate return labels"
+        - **Parameters**:
+          - `order_id` (string): Original order ID
+          - `return_reason` (string): Reason for return
+        - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
+        
+        <Note>
+          This example uses JSONPlaceholder for demonstration. In production, integrate with your returns management system.
+        </Note>
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Create Customer Lookup Tool
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "lookup_customer",
+             "description": "Look up customer account and order history",
+             "parameters": {
+               "type": "object",
+               "properties": {
+                 "customer_id": {
+                   "type": "string",
+                   "description": "Customer ID to lookup"
+                 }
+               },
+               "required": ["customer_id"]
+             }
+           },
+           "serverUrl": "https://jsonplaceholder.typicode.com/users"
+         }'
+
+    # Create Order Tracking Tool
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "track_order",
+             "description": "Track order status and shipping information",
+             "parameters": {
+               "type": "object",
+               "properties": {
+                 "order_id": {
+                   "type": "string",
+                   "description": "Order ID to track"
+                 }
+               },
+               "required": ["order_id"]
+             }
+           },
+           "serverUrl": "https://jsonplaceholder.typicode.com/posts"
+         }'
+
+    # Create Return Processing Tool
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "process_return",
+             "description": "Process return requests and generate return labels",
+             "parameters": {
+               "type": "object",
+               "properties": {
+                 "order_id": {
+                   "type": "string",
+                   "description": "Original order ID"
+                 },
+                 "return_reason": {
+                   "type": "string",
+                   "description": "Reason for return"
+                 }
+               },
+               "required": ["order_id", "return_reason"]
+             }
+           },
+           "serverUrl": "https://jsonplaceholder.typicode.com/posts"
+         }'
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    def upload_file(file_path):
+        url = "https://api.vapi.ai/file"
+        headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
+        
+        with open(file_path, 'rb') as file:
+            files = {'file': file}
+            response = requests.post(url, headers=headers, files=files)
+            return response.json()
+
+    # Upload all required files
+    customers_file = upload_file("customers.csv")
+    orders_file = upload_file("orders.csv")
+    products_file = upload_file("products.csv")
+
+    print(f"Customers file ID: {customers_file['id']}")
+    print(f"Orders file ID: {orders_file['id']}")
+    print(f"Products file ID: {products_file['id']}")
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
 ## 3. Create a Workflow
 
-<Steps>
-  <Step title="Open the Vapi Dashboard">
-    Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
-  </Step>
-  <Step title="Navigate to the Workflows section">
-    Click `Workflows` in the left sidebar.
-  </Step>
-  <Step title="Create a new workflow">
-    - Click `Create Workflow`.
-    - Enter workflow name: `TechGear E-commerce Support Workflow`.
-    - Select the default template (includes Call Start node).
-    - Click "Create Workflow".
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the Vapi Dashboard">
+        Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
+      </Step>
+      <Step title="Navigate to the Workflows section">
+        Click `Workflows` in the left sidebar.
+      </Step>
+      <Step title="Create a new workflow">
+        - Click `Create Workflow`.
+        - Enter workflow name: `TechGear E-commerce Support Workflow`.
+        - Select the default template (includes Call Start node).
+        - Click "Create Workflow".
 
-<video autoPlay loop muted src="../../static/videos/workflows/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+        <video autoPlay loop muted src="../../static/videos/workflows/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X POST https://api.vapi.ai/workflow \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "TechGear E-commerce Support Workflow",
+           "nodes": [
+             {
+               "id": "greeting",
+               "type": "conversation",
+               "firstMessage": "Hello! Thank you for calling TechGear Online customer service. This is Emma, your virtual assistant. I can help you track orders, process returns, answer product questions, or resolve any issues. How can I assist you today?",
+               "systemPrompt": "You are Emma, the friendly customer service representative for TechGear Online. Listen to the customer'\''s response and determine their inquiry type: order_tracking, return_exchange, product_inquiry, billing_payment, complaint, or general. Keep responses friendly and under 35 words.",
+               "extractVariables": [
+                 {
+                   "name": "inquiry_type",
+                   "type": "string",
+                   "description": "The customer'\''s inquiry type",
+                   "enum": ["order_tracking", "return_exchange", "product_inquiry", "billing_payment", "complaint", "general"]
+                 }
+               ]
+             }
+           ],
+           "edges": []
+         }'
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    def create_ecommerce_workflow():
+        url = "https://api.vapi.ai/workflow"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "name": "TechGear E-commerce Support Workflow",
+            "nodes": [
+                {
+                    "id": "greeting",
+                    "type": "conversation",
+                    "firstMessage": "Hello! Thank you for calling TechGear Online customer service. This is Emma, your virtual assistant. I can help you track orders, process returns, answer product questions, or resolve any issues. How can I assist you today?",
+                    "systemPrompt": "You are Emma, the friendly customer service representative for TechGear Online. Listen to the customer's response and determine their inquiry type: order_tracking, return_exchange, product_inquiry, billing_payment, complaint, or general. Keep responses friendly and under 35 words.",
+                    "extractVariables": [
+                        {
+                            "name": "inquiry_type",
+                            "type": "string",
+                            "description": "The customer's inquiry type",
+                            "enum": ["order_tracking", "return_exchange", "product_inquiry", "billing_payment", "complaint", "general"]
+                        }
+                    ]
+                }
+            ],
+            "edges": []
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    # Create the workflow
+    workflow = create_ecommerce_workflow()
+    print(f"Workflow created with ID: {workflow['id']}")
+    ```
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    const workflow = await vapi.workflows.create({
+      name: "TechGear E-commerce Support Workflow",
+      nodes: [
+        {
+          id: "greeting",
+          type: "conversation",
+          firstMessage: "Hello! Thank you for calling TechGear Online customer service. This is Emma, your virtual assistant. I can help you track orders, process returns, answer product questions, or resolve any issues. How can I assist you today?",
+          systemPrompt: "You are Emma, the friendly customer service representative for TechGear Online. Listen to the customer's response and determine their inquiry type: order_tracking, return_exchange, product_inquiry, billing_payment, complaint, or general. Keep responses friendly and under 35 words.",
+          extractVariables: [
+            {
+              name: "inquiry_type",
+              type: "string", 
+              description: "The customer's inquiry type",
+              enum: ["order_tracking", "return_exchange", "product_inquiry", "billing_payment", "complaint", "general"]
+            }
+          ]
+        }
+      ],
+      edges: []
+    });
+
+    console.log(`Workflow created with ID: ${workflow.id}`);
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
@@ -306,32 +698,160 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
 
 ## 5. Configure Phone Number
 
-<Steps>
-  <Step title="Navigate to Phone Numbers">
-    Click `Phone Numbers` in the left sidebar of your dashboard.
-  </Step>
-  <Step title="Create or Import Phone Number">
-    - Click `Create Phone Number` for a new Vapi number, or
-    - Click `Import Phone Number` to use your existing customer service number
-  </Step>
-  <Step title="Configure Inbound Settings">
-    **Workflow**: Select your `TechGear Customer Service Workflow`
-    
-    **Customer Service Configuration**:
-    - Enable call recording for quality assurance
-    - Set maximum call duration (e.g., 30 minutes for complex issues)
-    - Configure voicemail for after-hours support
-    - Enable priority routing for VIP customers
-  </Step>
-  <Step title="Test Customer Service Scenarios">
-    Test the workflow with various customer scenarios:
-    - Order tracking requests
-    - Return and exchange processing
-    - Product inquiries and recommendations
-    - Billing and payment issues
-    - Complaint resolution
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to Phone Numbers">
+        Click `Phone Numbers` in the left sidebar of your dashboard.
+      </Step>
+      <Step title="Create or Import Phone Number">
+        - Click `Create Phone Number` for a new Vapi number, or
+        - Click `Import Phone Number` to use your existing customer service number
+      </Step>
+      <Step title="Configure Inbound Settings">
+        **Workflow**: Select your `TechGear Customer Service Workflow`
+        
+        **Customer Service Configuration**:
+        - Enable call recording for quality assurance
+        - Set maximum call duration (e.g., 30 minutes for complex issues)
+        - Configure voicemail for after-hours support
+        - Enable priority routing for VIP customers
+      </Step>
+      <Step title="Test Customer Service Scenarios">
+        Test the workflow with various customer scenarios:
+        - Order tracking requests
+        - Return and exchange processing
+        - Product inquiries and recommendations
+        - Billing and payment issues
+        - Complaint resolution
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Create phone number with workflow
+    curl -X POST https://api.vapi.ai/phone-number \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "TechGear Customer Service Line",
+           "workflowId": "YOUR_WORKFLOW_ID",
+           "inboundSettings": {
+             "maxCallDurationMinutes": 30,
+             "recordingEnabled": true,
+             "voicemailDetectionEnabled": true,
+             "priorityRouting": true
+           }
+         }'
+
+    # Test order tracking scenario
+    curl -X POST https://api.vapi.ai/call \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "workflowId": "YOUR_WORKFLOW_ID",
+           "customer": {
+             "number": "+1234567890",
+             "name": "Test Customer"
+           }
+         }'
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    def create_ecommerce_phone_number(workflow_id):
+        url = "https://api.vapi.ai/phone-number"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "name": "TechGear Customer Service Line",
+            "workflowId": workflow_id,
+            "inboundSettings": {
+                "maxCallDurationMinutes": 30,
+                "recordingEnabled": True,
+                "voicemailDetectionEnabled": True,
+                "priorityRouting": True
+            }
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    def test_ecommerce_scenarios(workflow_id):
+        scenarios = [
+            {"customer": {"number": "+1234567890", "name": "Order Tracking Customer"}},
+            {"customer": {"number": "+1234567891", "name": "Return Customer"}},
+            {"customer": {"number": "+1234567892", "name": "Billing Issue Customer"}}
+        ]
+        
+        for scenario in scenarios:
+            url = "https://api.vapi.ai/call"
+            headers = {
+                "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "workflowId": workflow_id,
+                **scenario
+            }
+            
+            response = requests.post(url, headers=headers, json=data)
+            result = response.json()
+            print(f"Test call for {scenario['customer']['name']}: {result['id']}")
+
+    # Create phone number and test scenarios
+    phone_number = create_ecommerce_phone_number(workflow_id)
+    test_ecommerce_scenarios(workflow_id)
+
+    print(f"Customer service number: {phone_number['number']}")
+    ```
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    ```typescript
+    async function createEcommercePhoneNumber(workflowId: string) {
+      const phoneNumber = await vapi.phoneNumbers.create({
+        name: "TechGear Customer Service Line",
+        workflowId: workflowId,
+        inboundSettings: {
+          maxCallDurationMinutes: 30,
+          recordingEnabled: true,
+          voicemailDetectionEnabled: true,
+          priorityRouting: true
+        }
+      });
+
+      return phoneNumber;
+    }
+
+    async function testEcommerceScenarios(workflowId: string) {
+      const scenarios = [
+        { customer: { number: "+1234567890", name: "Order Tracking Customer" }},
+        { customer: { number: "+1234567891", name: "Return Customer" }},
+        { customer: { number: "+1234567892", name: "Billing Issue Customer" }}
+      ];
+
+      for (const scenario of scenarios) {
+        const call = await vapi.calls.create({
+          workflowId: workflowId,
+          ...scenario
+        });
+        
+        console.log(`Test call for ${scenario.customer.name}: ${call.id}`);
+      }
+    }
+
+    // Create phone number and test scenarios
+    const phoneNumber = await createEcommercePhoneNumber(workflowId);
+    await testEcommerceScenarios(workflowId);
+
+    console.log(`Customer service number: ${phoneNumber.number}`);
+    ```
+  </Tab>
+</Tabs>
 
 ## Integrating with Real Systems
 
