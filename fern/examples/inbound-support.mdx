@@ -26,7 +26,6 @@ Build a banking support agent with function tools, CSV knowledge bases, and voic
 
 We will be creating a customer support agent for VapiBank, a bank that wants to provide 24/7 support to consumers.
 
-
 ---
 
 ## 1. Create a Knowledge Base
@@ -42,36 +41,435 @@ We will be creating a customer support agent for VapiBank, a bank that wants to 
       </Download>
     </div>
   </Step>
-  <Step title="Navigate to the Files section">
-    In your Vapi dashboard, click `Files` in the left sidebar.
-  </Step>
-  <Step title="Upload the spreadsheets">
-    - Click `Choose file`. Upload both `accounts.csv` and `transactions.csv` files.
-    - Note the file IDs. We'll need them later to create tools.
+  <Step title="Upload the files">
+    <Tabs>
+      <Tab title="Dashboard">
+        1. Navigate to **Files** in your [Vapi Dashboard](https://dashboard.vapi.ai/)
+        2. Click **Choose file** and upload both `accounts.csv` and `transactions.csv`
+        3. Note the file IDs for use in creating tools
+
+        <video autoPlay loop muted src="../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Tab>
+      <Tab title="Web SDK + TypeScript">
+        For web applications managing banking files:
+
+        ```bash
+        npm install @vapi-ai/web
+        ```
+
+        ```typescript
+        import Vapi from '@vapi-ai/web';
+
+        interface BankingFilesConfig {
+          publicApiKey: string;
+          assistantId: string;
+        }
+
+        function createBankingFilesManager(config: BankingFilesConfig) {
+          const vapi = new Vapi(config.publicApiKey);
+          let isConnected = false;
+
+          // Setup event listeners for banking interactions
+          vapi.on('call-start', () => {
+            isConnected = true;
+            console.log('Banking support call started');
+          });
+
+          vapi.on('call-end', () => {
+            isConnected = false;
+            console.log('Banking support call ended');
+          });
+
+          vapi.on('message', (message) => {
+            if (message.type === 'transcript') {
+              console.log(`${message.role}: ${message.transcript}`);
+            } else if (message.type === 'function-call') {
+              handleBankingFunction(message.functionCall);
+            }
+          });
+
+          vapi.on('error', (error) => {
+            console.error('Banking support error:', error);
+          });
+
+          function handleBankingFunction(functionCall: { name: string; parameters: Record<string, unknown> }) {
+            switch (functionCall.name) {
+              case 'lookup_account':
+                console.log('Looking up account:', functionCall.parameters);
+                break;
+              case 'get_balance':
+                console.log('Getting balance:', functionCall.parameters);
+                break;
+              case 'get_recent_transactions':
+                console.log('Getting transactions:', functionCall.parameters);
+                break;
+              default:
+                console.log('Banking function called:', functionCall.name, functionCall.parameters);
+            }
+          }
+
+          return {
+            startBankingSupport: () => {
+              if (!isConnected) {
+                vapi.start(config.assistantId);
+              }
+            },
+            endCall: () => {
+              if (isConnected) {
+                vapi.stop();
+              }
+            },
+            isConnected: () => isConnected
+          };
+        }
+
+        // Usage for banking support
+        const bankingSupport = createBankingFilesManager({
+          publicApiKey: 'YOUR_PUBLIC_API_KEY',
+          assistantId: 'YOUR_BANKING_ASSISTANT_ID'
+        });
+
+        // Start banking support session
+        bankingSupport.startBankingSupport();
+        ```
+
+        <Note>
+          For actual file uploads (CSV files), use the Server SDK or Dashboard. Web SDK is for managing live banking conversations.
+        </Note>
+      </Tab>
+      <Tab title="Server SDK + TypeScript">
+        ```typescript
+        import { Vapi } from "@vapi-ai/server-sdk";
+        import fs from 'fs';
+
+        const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+        async function uploadBankingFiles() {
+          try {
+            // Upload accounts file
+            const accountsFile = await vapi.files.create({
+              file: fs.createReadStream("accounts.csv")
+            });
+
+            // Upload transactions file
+            const transactionsFile = await vapi.files.create({
+              file: fs.createReadStream("transactions.csv")
+            });
+
+            console.log(`Accounts file ID: ${accountsFile.id}`);
+            console.log(`Transactions file ID: ${transactionsFile.id}`);
+
+            return {
+              accountsFileId: accountsFile.id,
+              transactionsFileId: transactionsFile.id
+            };
+          } catch (error) {
+            console.error('Error uploading banking files:', error);
+            throw error;
+          }
+        }
+
+        // Upload banking files
+        const fileIds = await uploadBankingFiles();
+        ```
+      </Tab>
+      <Tab title="Server SDK + Python">
+        ```python
+        import requests
+
+        def upload_file(file_path):
+            url = "https://api.vapi.ai/file"
+            headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
+            
+            with open(file_path, 'rb') as file:
+                files = {'file': file}
+                response = requests.post(url, headers=headers, files=files)
+                return response.json()
+
+        # Upload both files
+        accounts_file = upload_file("accounts.csv")
+        transactions_file = upload_file("transactions.csv")
+
+        print(f"Accounts file ID: {accounts_file['id']}")
+        print(f"Transactions file ID: {transactions_file['id']}")
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        # Upload accounts.csv
+        curl -X POST https://api.vapi.ai/file \
+             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+             -F "file=@accounts.csv"
+
+        # Upload transactions.csv  
+        curl -X POST https://api.vapi.ai/file \
+             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+             -F "file=@transactions.csv"
+        ```
+      </Tab>
+    </Tabs>
   </Step>
 </Steps>
-
-<video autoPlay loop muted src="../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ---
 
 ## 2. Create an Assistant
 
-<Steps>
-  <Step title="Open the Vapi Dashboard">
-    Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
-  </Step>
-  <Step title="Navigate to the Assistants section">
-    Click `Assistants` in the left sidebar.
-  </Step>
-  <Step title="Create a new assistant">
-    - Click `Create Assistant`.
-    - Select `Blank Template` as your starting point.
-    - Change assistant name to `Tom`.
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to Assistants">
+        Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Assistants` in the left sidebar.
+      </Step>
+      <Step title="Create a new assistant">
+        - Click `Create Assistant`.
+        - Select `Blank Template` as your starting point.
+        - Change assistant name to `Tom`.
 
-<video autoPlay loop muted src="../static/videos/inbound-support/create-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+        <video autoPlay loop muted src="../static/videos/inbound-support/create-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Web SDK + TypeScript">
+    Create a web interface for your banking support assistant:
+
+    ```bash
+    npm install @vapi-ai/web
+    ```
+
+    ```typescript
+    import Vapi from '@vapi-ai/web';
+
+    function setupBankingToolsManager(publicApiKey: string) {
+      const vapi = new Vapi(publicApiKey);
+
+      vapi.on('message', (message) => {
+        if (message.type === 'function-call') {
+          handleBankingFunction(message.functionCall);
+        }
+      });
+
+      function handleBankingFunction(functionCall: { name: string; parameters: Record<string, unknown> }) {
+        console.log('Banking function called:', functionCall.name);
+        
+        switch (functionCall.name) {
+          case 'lookup_account':
+            console.log('Looking up account:', functionCall.parameters);
+            break;
+          case 'get_balance':
+            console.log('Getting balance for:', functionCall.parameters);
+            break;
+          case 'get_recent_transactions':
+            console.log('Getting transactions for:', functionCall.parameters);
+            break;
+          default:
+            console.log('Unknown function:', functionCall.name);
+        }
+      }
+
+      return {
+        startBankingSession: (assistantId: string) => {
+          vapi.start(assistantId);
+        },
+        stop: () => vapi.stop()
+      };
+    }
+
+    // Usage
+    const bankingTools = setupBankingToolsManager('YOUR_PUBLIC_API_KEY');
+    bankingTools.startBankingSession('YOUR_BANKING_ASSISTANT_ID');
+    ```
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    const systemPrompt = `# VapiBank - Phone Support Agent Prompt
+
+## Identity & Purpose
+You are **Tom**, VapiBank's friendly, 24x7 phone-support voice assistant. Do not introduce yourself after the first message.
+You help customers with account inquiries:
+
+1. **Check balance**
+2. **View recent transactions**
+
+## Data Sources
+You have access to CSV files with account and transaction data:
+- **accounts.csv**: account_id, name, phone_last4, balance, card_status, email
+- **transactions.csv**: transaction history for all accounts
+
+## Available Tools
+1. **lookup_account** → verify customer identity using phone number
+2. **get_balance** → returns current balance for verified account
+3. **get_recent_transactions** → returns recent transaction history
+
+## Conversation Flow
+1. **Greeting**
+  > "Hello, you've reached VapiBank customer support! My name is Tom, how may I assist you today?"
+
+2. **Account Verification**
+  * After caller provides phone digits → call **lookup_account**
+  * Read back the returned name for confirmation
+  * If no match after 2 tries → apologize and offer to transfer
+
+3. **Handle Request**
+  Ask: "How can I help you today—check your balance or review recent transactions?"
+
+  **Balance** → call **get_balance** → read current balance
+  **Transactions** → call **get_recent_transactions** → summarize recent activity
+
+4. **Close**
+  > "Is there anything else I can help you with today?"
+  If no → thank the caller and end the call
+
+## Style & Tone
+* Warm, concise, ≤ 30 words per reply
+* One question at a time
+* Repeat important numbers slowly and clearly
+* Professional but friendly tone
+
+## Edge Cases
+* **No account match** → offer to transfer to human agent
+* **Multiple requests** → handle each request, then ask if anything else needed
+* **Technical issues** → apologize and offer callback or transfer
+
+(Remember: only share account information with verified account holders.)`;
+
+    const assistant = await vapi.assistants.create({
+      name: "Tom",
+      firstMessage: "Hello, you've reached VapiBank customer support! My name is Tom, how may I assist you today?",
+      model: {
+        provider: "openai",
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt
+          }
+        ]
+      },
+      voice: {
+        provider: "11labs",
+        voiceId: "burt"
+      }
+    });
+
+    console.log(`Assistant created with ID: ${assistant.id}`);
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    url = "https://api.vapi.ai/assistant"
+    headers = {
+        "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    system_prompt = """# VapiBank - Phone Support Agent Prompt
+
+## Identity & Purpose
+You are **Tom**, VapiBank's friendly, 24x7 phone-support voice assistant. Do not introduce yourself after the first message.
+You help customers with account inquiries:
+
+1. **Check balance**
+2. **View recent transactions**
+
+## Data Sources
+You have access to CSV files with account and transaction data:
+- **accounts.csv**: `account_id, name, phone_last4, balance, card_status, email`
+- **transactions.csv**: transaction history for all accounts
+
+## Available Tools
+1. **lookup_account** → verify customer identity using phone number
+2. **get_balance** → returns current balance for verified account
+3. **get_recent_transactions** → returns recent transaction history
+
+## Conversation Flow
+1. **Greeting**
+  > "Hello, you've reached VapiBank customer support! My name is Tom, how may I assist you today?"
+
+2. **Account Verification**
+  * After caller provides phone digits → call **lookup_account**
+  * Read back the returned `name` for confirmation
+  * If no match after 2 tries → apologize and offer to transfer
+
+3. **Handle Request**
+  Ask: "How can I help you today—check your balance or review recent transactions?"
+
+  **Balance** → call **get_balance** → read current balance
+  **Transactions** → call **get_recent_transactions** → summarize recent activity
+
+4. **Close**
+  > "Is there anything else I can help you with today?"
+  If no → thank the caller and end the call
+
+## Style & Tone
+* Warm, concise, ≤ 30 words per reply
+* One question at a time
+* Repeat important numbers slowly and clearly
+* Professional but friendly tone
+
+## Edge Cases
+* **No account match** → offer to transfer to human agent
+* **Multiple requests** → handle each request, then ask if anything else needed
+* **Technical issues** → apologize and offer callback or transfer
+
+(Remember: only share account information with verified account holders.)"""
+
+    data = {
+        "name": "Tom",
+        "firstMessage": "Hello, you've reached VapiBank customer support! My name is Tom, how may I assist you today?",
+        "model": {
+            "provider": "openai",
+            "model": "gpt-4",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                }
+            ]
+        },
+        "voice": {
+            "provider": "11labs",
+            "voiceId": "burt"
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=data)
+    assistant = response.json()
+    print(f"Assistant created with ID: {assistant['id']}")
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X POST https://api.vapi.ai/assistant \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "Tom",
+           "firstMessage": "Hello, you'\''ve reached VapiBank customer support! My name is Tom, how may I assist you today?",
+           "model": {
+             "provider": "openai",
+             "model": "gpt-4",
+             "messages": [
+               {
+                 "role": "system",
+                 "content": "# VapiBank - Phone Support Agent Prompt\n\n## Identity & Purpose\nYou are **Tom**, VapiBank'\''s friendly, 24x7 phone-support voice assistant. Do not introduce yourself after the first message.\nYou help customers with account inquiries:\n\n1. **Check balance**\n2. **View recent transactions**\n\n## Data Sources\nYou have access to CSV files with account and transaction data:\n- **accounts.csv**: `account_id, name, phone_last4, balance, card_status, email`\n- **transactions.csv**: transaction history for all accounts\n\n## Available Tools\n1. **lookup_account** → verify customer identity using phone number\n2. **get_balance** → returns current balance for verified account\n3. **get_recent_transactions** → returns recent transaction history\n\n## Conversation Flow\n1. **Greeting**\n  > \"Hello, you'\''ve reached VapiBank customer support! My name is Tom, how may I assist you today?\"\n\n2. **Account Verification**\n  * After caller provides phone digits → call **lookup_account**\n  * Read back the returned `name` for confirmation\n  * If no match after 2 tries → apologize and offer to transfer\n\n3. **Handle Request**\n  Ask: \"How can I help you today—check your balance or review recent transactions?\"\n\n  **Balance** → call **get_balance** → read current balance\n  **Transactions** → call **get_recent_transactions** → summarize recent activity\n\n4. **Close**\n  > \"Is there anything else I can help you with today?\"\n  If no → thank the caller and end the call\n\n## Style & Tone\n* Warm, concise, ≤ 30 words per reply\n* One question at a time\n* Repeat important numbers slowly and clearly\n* Professional but friendly tone\n\n## Edge Cases\n* **No account match** → offer to transfer to human agent\n* **Multiple requests** → handle each request, then ask if anything else needed\n* **Technical issues** → apologize and offer callback or transfer\n\n(Remember: only share account information with verified account holders.)"
+               }
+             ]
+           },
+           "voice": {
+             "provider": "11labs",
+             "voiceId": "burt"
+           }
+         }'
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
@@ -142,163 +540,927 @@ You have access to CSV files with account and transaction data:
 ```
   </Step>
   <Step title="Configure LLM settings (optional)">
-    Configure the LLM settings to your liking.
-    - Select any provider and model you like (you will see cost and latency estimates).
-    - You can configure the files available to the LLM as knowledge base.
-    - You can specify the temperature and max tokens of the LLM.
+    <Tabs>
+      <Tab title="Dashboard">
+        Configure the LLM settings to your liking.
+        - Select any provider and model you like (you will see cost and latency estimates).
+        - You can configure the files available to the LLM as knowledge base.
+        - You can specify the temperature and max tokens of the LLM.
+      </Tab>
+      <Tab title="Web SDK + TypeScript">
+        Configure LLM settings through the Web SDK:
+
+        ```typescript
+        import Vapi from '@vapi-ai/web';
+
+        function configureBankingAssistant(publicApiKey: string) {
+          const vapi = new Vapi(publicApiKey);
+
+          // Note: Web SDK doesn't configure LLM settings directly
+          // This would be done through assistant configuration in dashboard or server SDK
+          
+          vapi.on('message', (message) => {
+            if (message.type === 'transcript') {
+              console.log(`${message.role}: ${message.transcript}`);
+            }
+          });
+
+          return {
+            startBankingCall: (assistantId: string) => {
+              vapi.start(assistantId);
+            },
+            stop: () => vapi.stop()
+          };
+        }
+
+        // Usage
+        const bankingAssistant = configureBankingAssistant('YOUR_PUBLIC_API_KEY');
+        ```
+
+        <Note>
+          LLM configuration is handled through assistant setup in Dashboard or Server SDK. Web SDK manages live conversations.
+        </Note>
+      </Tab>
+      <Tab title="Server SDK + TypeScript">
+        ```typescript
+        import { Vapi } from "@vapi-ai/server-sdk";
+
+        const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+        async function updateAssistantLLMSettings(assistantId: string) {
+          const updatedAssistant = await vapi.assistants.update(assistantId, {
+            model: {
+              provider: "openai",
+              model: "gpt-4",
+              temperature: 0.7,
+              maxTokens: 150,
+              messages: [
+                {
+                  role: "system",
+                  content: "You are Tom, VapiBank's customer support assistant..."
+                }
+              ]
+            }
+          });
+
+          return updatedAssistant;
+        }
+
+        // Update LLM settings
+        const assistant = await updateAssistantLLMSettings('YOUR_ASSISTANT_ID');
+        console.log('Assistant LLM settings updated');
+        ```
+      </Tab>
+      <Tab title="Server SDK + Python">
+        ```python
+        import requests
+
+        def update_assistant_llm_settings(assistant_id):
+            url = f"https://api.vapi.ai/assistant/{assistant_id}"
+            headers = {
+                "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.7,
+                    "maxTokens": 150,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are Tom, VapiBank's customer support assistant..."
+                        }
+                    ]
+                }
+            }
+            
+            response = requests.patch(url, headers=headers, json=data)
+            return response.json()
+
+        # Update LLM settings
+        assistant = update_assistant_llm_settings('YOUR_ASSISTANT_ID')
+        print("Assistant LLM settings updated")
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "model": {
+                 "provider": "openai",
+                 "model": "gpt-4",
+                 "temperature": 0.7,
+                 "maxTokens": 150,
+                 "messages": [
+                   {
+                     "role": "system",
+                     "content": "You are Tom, VapiBank'\''s customer support assistant..."
+                   }
+                 ]
+               }
+             }'
+        ```
+      </Tab>
+    </Tabs>
   </Step>
   <Step title="Publish your assistant">
-    Click `Publish` to save your changes.
+    <Tabs>
+      <Tab title="Dashboard">
+        Click `Publish` to save your changes.
+      </Tab>
+      <Tab title="Web SDK + TypeScript">
+        Publishing is done through Dashboard or Server SDK:
+
+        ```typescript
+        // Note: Web SDK doesn't publish assistants directly
+        // Use Dashboard or Server SDK for assistant configuration
+        import Vapi from '@vapi-ai/web';
+
+        function testPublishedAssistant(publicApiKey: string, assistantId: string) {
+          const vapi = new Vapi(publicApiKey);
+
+          vapi.on('call-start', () => {
+            console.log('Testing published banking assistant');
+          });
+
+          return {
+            testAssistant: () => vapi.start(assistantId)
+          };
+        }
+
+        // Test the published assistant
+        const tester = testPublishedAssistant('YOUR_PUBLIC_API_KEY', 'YOUR_ASSISTANT_ID');
+        tester.testAssistant();
+        ```
+      </Tab>
+      <Tab title="Server SDK + TypeScript">
+        ```typescript
+        import { Vapi } from "@vapi-ai/server-sdk";
+
+        const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+        async function publishAssistant(assistantId: string) {
+          // Assistant changes are automatically saved when updated
+          const assistant = await vapi.assistants.get(assistantId);
+          console.log(`Assistant "${assistant.name}" is ready for use`);
+          return assistant;
+        }
+
+        // Verify assistant is published
+        const publishedAssistant = await publishAssistant('YOUR_ASSISTANT_ID');
+        ```
+      </Tab>
+      <Tab title="Server SDK + Python">
+        ```python
+        import requests
+
+        def verify_assistant_published(assistant_id):
+            url = f"https://api.vapi.ai/assistant/{assistant_id}"
+            headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
+            
+            response = requests.get(url, headers=headers)
+            assistant = response.json()
+            print(f"Assistant '{assistant['name']}' is ready for use")
+            return assistant
+
+        # Verify assistant is published
+        published_assistant = verify_assistant_published('YOUR_ASSISTANT_ID')
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        # Verify assistant is published
+        curl https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+             -H "Authorization: Bearer YOUR_VAPI_API_KEY"
+        ```
+      </Tab>
+    </Tabs>
   </Step>
   <Step title="Test your assistant">
-    Click `Talk to Assistant` to test it out.
+    <Tabs>
+      <Tab title="Dashboard">
+        Click `Talk to Assistant` to test it out.
+
+        <video autoPlay loop muted src="../static/videos/inbound-support/configure-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Tab>
+      <Tab title="Web SDK + TypeScript">
+        Test your assistant with the Web SDK:
+
+        ```typescript
+        import Vapi from '@vapi-ai/web';
+
+        function testBankingAssistant(publicApiKey: string, assistantId: string) {
+          const vapi = new Vapi(publicApiKey);
+
+          vapi.on('call-start', () => {
+            console.log('Banking assistant test started');
+          });
+
+          vapi.on('message', (message) => {
+            if (message.type === 'transcript') {
+              console.log(`${message.role}: ${message.transcript}`);
+            }
+          });
+
+          vapi.on('call-end', () => {
+            console.log('Banking assistant test ended');
+          });
+
+          return {
+            startTest: () => vapi.start(assistantId),
+            endTest: () => vapi.stop()
+          };
+        }
+
+        // Test the banking assistant
+        const tester = testBankingAssistant('YOUR_PUBLIC_API_KEY', 'YOUR_ASSISTANT_ID');
+        tester.startTest();
+        ```
+      </Tab>
+      <Tab title="Server SDK + TypeScript">
+        ```typescript
+        import { Vapi } from "@vapi-ai/server-sdk";
+
+        const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+        async function testAssistantWithCall(assistantId: string) {
+          const call = await vapi.calls.create({
+            assistantId: assistantId,
+            customer: {
+              number: "+1234567890" // Your test number
+            }
+          });
+
+          console.log(`Test call created: ${call.id}`);
+          return call;
+        }
+
+        // Create a test call
+        const testCall = await testAssistantWithCall('YOUR_ASSISTANT_ID');
+        ```
+      </Tab>
+      <Tab title="Server SDK + Python">
+        ```python
+        import requests
+
+        def test_assistant_with_call(assistant_id):
+            url = "https://api.vapi.ai/call"
+            headers = {
+                "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "assistantId": assistant_id,
+                "customer": {
+                    "number": "+1234567890"  # Your test number
+                }
+            }
+            
+            response = requests.post(url, headers=headers, json=data)
+            call = response.json()
+            print(f"Test call created: {call['id']}")
+            return call
+
+        # Create a test call
+        test_call = test_assistant_with_call('YOUR_ASSISTANT_ID')
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        # Create a test call
+        curl -X POST https://api.vapi.ai/call \
+             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "assistantId": "YOUR_ASSISTANT_ID",
+               "customer": {
+                 "number": "+1234567890"
+               }
+             }'
+        ```
+      </Tab>
+    </Tabs>
   </Step>
 </Steps>
-
-<video autoPlay loop muted src="../static/videos/inbound-support/configure-assistant.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
 
 ---
 
 ## 4. Add Tools to an Assistant
 
-<Steps>
-  <Step title="Navigate to Tools">
-    Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Tools` in the left sidebar.
-  </Step>
-  <Step title="Create a tool for retrieving account balance">
-    - Click `Create Tool`.
-    - Select `Function` as your tool type.
-    - Change tool name to `get_balance`.
-    - Add the following function description:
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to Tools">
+        Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Tools` in the left sidebar.
+      </Step>
+      <Step title="Create a tool for retrieving account balance">
+        - Click `Create Tool`.
+        - Select `Function` as your tool type.
+        - Change tool name to `get_balance`.
+        - Add the following function description:
 
-      ```txt title="Function Description" wordWrap
-      Retrieve the balance for an account based on provided account holder name and last 4 digits of the phone number.
-      ```
-    - Scroll down to the `Knowledge Bases` section and add the following knowledge base:
+          ```txt title="Function Description" wordWrap
+          Retrieve the balance for an account based on provided account holder name and last 4 digits of the phone number.
+          ```
+        - Scroll down to the `Knowledge Bases` section and add the following knowledge base:
 
-      - Name: `accounts`<br />
-        Description: `Use this to retrieve account information`<br />
-        File IDs: `<File ID of your accounts.csv file>`
-  </Step>
-  <Step title="Create a tool for retrieving account transactions">
-    - Click `Create Tool`.
-    - Select `Function` as your tool type.
-    - Change tool name to `get_recent_transactions`.
-    - Add the following function description:
+          - Name: `accounts`<br />
+            Description: `Use this to retrieve account information`<br />
+            File IDs: `<File ID of your accounts.csv file>`
+      </Step>
+      <Step title="Create a tool for retrieving account transactions">
+        - Click `Create Tool`.
+        - Select `Function` as your tool type.
+        - Change tool name to `get_recent_transactions`.
+        - Add the following function description:
 
-      ```txt title="Function Description" wordWrap
-      Return the three most recent transactions for a specific account.
-      ```
-    - Scroll down to the `Knowledge Bases` section and add the following knowledge bases:
+          ```txt title="Function Description" wordWrap
+          Return the three most recent transactions for a specific account.
+          ```
+        - Scroll down to the `Knowledge Bases` section and add the following knowledge bases:
 
-      - Name: `accounts`<br />
-        Description: `Use this to retrieve account information`<br />
-        File IDs: `<File ID of your accounts.csv file>`
+          - Name: `accounts`<br />
+            Description: `Use this to retrieve account information`<br />
+            File IDs: `<File ID of your accounts.csv file>`
 
-      - Name: `transactions`<br />
-        Description: `Use this to retrieve transactions`<br />
-        File IDs: `<File ID of your transactions.csv file>`
-  </Step>
-  <Step title="Create a tool for looking up account">
-    - Click `Create Tool`.
-    - Select `Function` as your tool type.
-    - Change tool name to `lookup_account`.
-    - Add the following function description:
+          - Name: `transactions`<br />
+            Description: `Use this to retrieve transactions`<br />
+            File IDs: `<File ID of your transactions.csv file>`
+      </Step>
+      <Step title="Create a tool for looking up account">
+        - Click `Create Tool`.
+        - Select `Function` as your tool type.
+        - Change tool name to `lookup_account`.
+        - Add the following function description:
 
-      ```txt title="Function Description" wordWrap
-      Look up account based on provided name and last 4 digits of the phone number.
-      ```
-    - Scroll down to the `Knowledge Bases` section and add the following knowledge bases:
+          ```txt title="Function Description" wordWrap
+          Look up account based on provided name and last 4 digits of the phone number.
+          ```
+        - Scroll down to the `Knowledge Bases` section and add the following knowledge bases:
 
-      - Name: `accounts`<br />
-        Description: `Use this to retrieve account information`<br />
-        File IDs: `<File ID of your accounts.csv file>`
-  </Step>
-  <Step title="Add tools to assistant">
-    - Click `Assistants` in the left sidebar.
-    - Make sure `Tom` is selected in the list of assistants.
-    - Scroll down until you see `Tools` accordion. Expand it.
-    - In the expanded accordion, add `get_balance` and `get_recent_transactions` tools.
-    - Click `Publish` to save your changes.
-  </Step>
-  <Step title="Add predefined functions to assistant">
-    - While we're here, let's give our assistant ability to hang up.
-    - Expand the `Predefined Functions` accordion.
-    - Toggle `Enable End Call Function` to `On`.
-    - Here you can add a forwarding phone number to transfer the call to (in case assistant is unable to resolve the issue).
-    - Click `Publish` to save your changes.
-  </Step>
-</Steps>
+          - Name: `accounts`<br />
+            Description: `Use this to retrieve account information`<br />
+            File IDs: `<File ID of your accounts.csv file>`
+      </Step>
+      <Step title="Add tools to assistant">
+        - Click `Assistants` in the left sidebar.
+        - Make sure `Tom` is selected in the list of assistants.
+        - Scroll down until you see `Tools` accordion. Expand it.
+        - In the expanded accordion, add `get_balance` and `get_recent_transactions` tools.
+        - Click `Publish` to save your changes.
 
-<video autoPlay loop muted src="../static/videos/inbound-support/assistant-tools.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+        <video autoPlay loop muted src="../static/videos/inbound-support/assistant-tools.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Web SDK + TypeScript">
+    Monitor test suite execution in real-time:
+
+    ```typescript
+    import Vapi from '@vapi-ai/web';
+
+    function setupTestRunner(publicApiKey: string) {
+      const vapi = new Vapi(publicApiKey);
+
+      // Note: Web SDK cannot directly run test suites
+      // Test suite execution requires server-side operations
+      
+      function monitorLiveTest(assistantId: string) {
+        // Start a live test session to validate functionality
+        vapi.start(assistantId);
+        
+        const testSteps = [
+          "Hi, I need to check my account balance",
+          "My phone number ends in 1234",
+          "Can you also show me my recent transactions?"
+        ];
+        
+        let currentStep = 0;
+        
+        vapi.on('call-start', () => {
+          console.log('Live test session started');
+        });
+
+        vapi.on('message', (message) => {
+          if (message.type === 'transcript' && message.role === 'assistant') {
+            console.log(`Assistant: ${message.transcript}`);
+            
+            // Auto-respond with next test step
+            if (currentStep < testSteps.length) {
+              setTimeout(() => {
+                console.log(`Test Step ${currentStep + 1}: ${testSteps[currentStep]}`);
+                // In a real implementation, you'd send this via voice
+                currentStep++;
+              }, 2000);
+            }
+          } else if (message.type === 'function-call') {
+            console.log('✓ Tool executed:', message.functionCall.name);
+          }
+        });
+
+        vapi.on('call-end', () => {
+          console.log('Live test session completed');
+        });
+      }
+
+      return {
+        monitorLiveTest: monitorLiveTest
+      };
+    }
+
+    // Usage for live testing
+    const testRunner = setupTestRunner('YOUR_PUBLIC_API_KEY');
+    testRunner.monitorLiveTest('YOUR_BANKING_ASSISTANT_ID');
+    ```
+
+    <Note>
+      Web SDK cannot run test suites directly. Use Server SDK for automated test execution.
+    </Note>
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    Create test suites using the TypeScript SDK:
+
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    const testSuite = await vapi.testSuites.create({
+      name: "Support Hotline Test Suite",
+      assistantId: "YOUR_ASSISTANT_ID",
+      phoneNumberId: "YOUR_PHONE_NUMBER_ID",
+      testCases: [
+        {
+          name: "Account verification and balance check",
+          description: "Test that the assistant can verify a customer account using phone number, retrieve their current balance, and provide recent transaction history.",
+          steps: [
+            {
+              type: "userMessage",
+              content: "Hi, I need to check my account balance"
+            },
+            {
+              type: "assertion",
+              condition: "Assistant asks for phone number verification"
+            },
+            {
+              type: "userMessage",
+              content: "My phone number ends in 1234"
+            },
+            {
+              type: "assertion",
+              condition: "Assistant provides balance information"
+            }
+          ]
+        }
+      ]
+    });
+
+    console.log(`Test suite created with ID: ${testSuite.id}`);
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    def create_tool(name, description, knowledge_bases):
+        url = "https://api.vapi.ai/tool"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description
+            },
+            "knowledgeBases": knowledge_bases
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    # Create all three tools
+    get_balance_tool = create_tool(
+        "get_balance",
+        "Retrieve the balance for an account based on provided account holder name and last 4 digits of the phone number.",
+        [{"name": "accounts", "description": "Use this to retrieve account information", "fileIds": [accounts_file_id]}]
+    )
+
+    get_transactions_tool = create_tool(
+        "get_recent_transactions", 
+        "Return the three most recent transactions for a specific account.",
+        [
+            {"name": "accounts", "description": "Use this to retrieve account information", "fileIds": [accounts_file_id]},
+            {"name": "transactions", "description": "Use this to retrieve transactions", "fileIds": [transactions_file_id]}
+        ]
+    )
+
+    lookup_account_tool = create_tool(
+        "lookup_account",
+        "Look up account based on provided name and last 4 digits of the phone number.",
+        [{"name": "accounts", "description": "Use this to retrieve account information", "fileIds": [accounts_file_id]}]
+    )
+
+    # Update assistant with tools
+    def update_assistant_with_tools(assistant_id, tool_ids):
+        url = f"https://api.vapi.ai/assistant/{assistant_id}"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": {
+                "toolIds": tool_ids
+            }
+        }
+        
+        response = requests.patch(url, headers=headers, json=data)
+        return response.json()
+
+    # Add tools to assistant
+    tool_ids = [get_balance_tool['id'], get_transactions_tool['id'], lookup_account_tool['id']]
+    updated_assistant = update_assistant_with_tools(assistant_id, tool_ids)
+    print("Assistant updated with tools!")
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "get_balance",
+             "description": "Retrieve the balance for an account based on provided account holder name and last 4 digits of the phone number."
+           },
+           "knowledgeBases": [
+             {
+               "name": "accounts",
+               "description": "Use this to retrieve account information",
+               "fileIds": ["YOUR_ACCOUNTS_FILE_ID"]
+             }
+           ]
+         }'
+
+    # Create get_recent_transactions tool
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "get_recent_transactions",
+             "description": "Return the three most recent transactions for a specific account."
+           },
+           "knowledgeBases": [
+             {
+               "name": "accounts",
+               "description": "Use this to retrieve account information",
+               "fileIds": ["YOUR_ACCOUNTS_FILE_ID"]
+             },
+             {
+               "name": "transactions",
+               "description": "Use this to retrieve transactions",
+               "fileIds": ["YOUR_TRANSACTIONS_FILE_ID"]
+             }
+           ]
+         }'
+
+    # Create lookup_account tool
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "lookup_account",
+             "description": "Look up account based on provided name and last 4 digits of the phone number."
+           },
+           "knowledgeBases": [
+             {
+               "name": "accounts",
+               "description": "Use this to retrieve account information",
+               "fileIds": ["YOUR_ACCOUNTS_FILE_ID"]
+             }
+           ]
+         }'
+
+    # Update assistant with tools
+    curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "model": {
+             "toolIds": ["get_balance_tool_id", "get_recent_transactions_tool_id", "lookup_account_tool_id"]
+           }
+         }'
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
 ## 5. Assign a Phone Number to an Assistant
 
-<Steps>
-  <Step title="Navigate to Phone Numbers">
-    Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Phone Numbers` in the left sidebar.
-  </Step>
-  <Step title="Create a new phone number">
-    - Click `Create Phone Number`.
-    - Stick with `Free Vapi Number`.
-    - Enter your preferred area code (e.g. `530`).
-  </Step>
-  <Step title="Configure the phone number">
-    - Set the `Phone Number Name` to `Vapi Support Hotline`.
-    - Under `Inbound Settings` find `Assistant` dropdown and select `Tom` from the list.
-    - Changes are saved automatically.
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to Phone Numbers">
+        Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Phone Numbers` in the left sidebar.
+      </Step>
+      <Step title="Create a new phone number">
+        - Click `Create Phone Number`.
+        - Stick with `Free Vapi Number`.
+        - Enter your preferred area code (e.g. `530`).
+      </Step>
+      <Step title="Configure the phone number">
+        - Set the `Phone Number Name` to `Vapi Support Hotline`.
+        - Under `Inbound Settings` find `Assistant` dropdown and select `Tom` from the list.
+        - Changes are saved automatically.
 
-<video autoPlay loop muted src="../static/videos/inbound-support/assign-phone-number.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+        <video autoPlay loop muted src="../static/videos/inbound-support/assign-phone-number.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Web SDK + TypeScript">
+    Configure phone number management for web applications:
+
+    ```typescript
+    import Vapi from '@vapi-ai/web';
+
+    function setupPhoneNumberManager(publicApiKey: string) {
+      const vapi = new Vapi(publicApiKey);
+
+      // Note: Web SDK cannot directly manage phone numbers
+      // Phone number management requires server-side operations
+      
+      function testInboundFlow(assistantId: string) {
+        // Test the inbound flow via web call
+        vapi.start(assistantId);
+        
+        vapi.on('call-start', () => {
+          console.log('Testing inbound banking support flow');
+        });
+
+        vapi.on('message', (message) => {
+          if (message.type === 'transcript') {
+            console.log(`Banking flow: ${message.role}: ${message.transcript}`);
+          }
+        });
+      }
+
+      return {
+        testInboundFlow: testInboundFlow
+      };
+    }
+
+    // Usage for testing
+    const phoneManager = setupPhoneNumberManager('YOUR_PUBLIC_API_KEY');
+    phoneManager.testInboundFlow('YOUR_BANKING_ASSISTANT_ID');
+    ```
+
+    <Note>
+      Web SDK cannot manage phone numbers directly. Use Server SDK for phone number operations.
+    </Note>
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    const phoneNumber = await vapi.phoneNumbers.create({
+      name: "Vapi Support Hotline",
+      assistantId: "YOUR_ASSISTANT_ID"
+    });
+
+    console.log(`Phone number created: ${phoneNumber.number}`);
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    def create_phone_number(name, assistant_id):
+        url = "https://api.vapi.ai/phone-number"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "name": name,
+            "assistantId": assistant_id
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    # Create phone number for Tom
+    phone_number = create_phone_number("Vapi Support Hotline", assistant_id)
+    print(f"Phone number created: {phone_number['number']}")
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Create a phone number
+    curl -X POST https://api.vapi.ai/phone-number \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "Vapi Support Hotline",
+           "assistantId": "YOUR_ASSISTANT_ID"
+         }'
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
 ## 6. Create a Test Suite for an Assistant
 
-<Steps>
-  <Step title="Navigate to Test Suites page">
-    - Open your [dashboard.vapi.ai](https://dashboard.vapi.ai).
-    - Below the `Build` section, find and expand the `Test` section.
-    - In the expanded section, click `Voice Test Suites`.
-  </Step>
-  <Step title="Create a new test suite">
-    - On the `Test Suites` page, click `Create Test Suite`.
-    - Click on `New Test Suite` and change the name to `Support Hotline Test Suite`.
-    - Set the `Assistant` to `Bobby`.
-    - Set the `Phone Number` to `Vapi Support Hotline`.
-    - Under `Test Cases`, click `Generate Tests`.
-    - Use the following prompt to generate the test case:
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to Test Suites page">
+        - Open your [dashboard.vapi.ai](https://dashboard.vapi.ai).
+        - Below the `Build` section, find and expand the `Test` section.
+        - In the expanded section, click `Voice Test Suites`.
+      </Step>
+      <Step title="Create a new test suite">
+        - On the `Test Suites` page, click `Create Test Suite`.
+        - Click on `New Test Suite` and change the name to `Support Hotline Test Suite`.
+        - Set the `Assistant` to `Tom`.
+        - Set the `Phone Number` to `Vapi Support Hotline`.
+        - Under `Test Cases`, click `Generate Tests`.
+        - Use the following prompt to generate the test case:
 
-    ```txt title="Test Case Prompt" wordWrap
-    Test that the assistant can verify a customer account using phone number, retrieve their current balance, and provide recent transaction history.
+        ```txt title="Test Case Prompt" wordWrap
+        Test that the assistant can verify a customer account using phone number, retrieve their current balance, and provide recent transaction history.
+        ```
+
+        - Accept the generated test case.
+
+        <video autoPlay loop muted src="../static/videos/inbound-support/create-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Web SDK + TypeScript">
+    Monitor test suite execution in real-time:
+
+    ```typescript
+    import Vapi from '@vapi-ai/web';
+
+    function setupTestRunner(publicApiKey: string) {
+      const vapi = new Vapi(publicApiKey);
+
+      // Note: Web SDK cannot directly run test suites
+      // Test suite execution requires server-side operations
+      
+      function monitorLiveTest(assistantId: string) {
+        // Start a live test session to validate functionality
+        vapi.start(assistantId);
+        
+        const testSteps = [
+          "Hi, I need to check my account balance",
+          "My phone number ends in 1234",
+          "Can you also show me my recent transactions?"
+        ];
+        
+        let currentStep = 0;
+        
+        vapi.on('call-start', () => {
+          console.log('Live test session started');
+        });
+
+        vapi.on('message', (message) => {
+          if (message.type === 'transcript' && message.role === 'assistant') {
+            console.log(`Assistant: ${message.transcript}`);
+            
+            // Auto-respond with next test step
+            if (currentStep < testSteps.length) {
+              setTimeout(() => {
+                console.log(`Test Step ${currentStep + 1}: ${testSteps[currentStep]}`);
+                // In a real implementation, you'd send this via voice
+                currentStep++;
+              }, 2000);
+            }
+          } else if (message.type === 'function-call') {
+            console.log('✓ Tool executed:', message.functionCall.name);
+          }
+        });
+
+        vapi.on('call-end', () => {
+          console.log('Live test session completed');
+        });
+      }
+
+      return {
+        monitorLiveTest: monitorLiveTest
+      };
+    }
+
+    // Usage for live testing
+    const testRunner = setupTestRunner('YOUR_PUBLIC_API_KEY');
+    testRunner.monitorLiveTest('YOUR_BANKING_ASSISTANT_ID');
     ```
 
-    - Accept the generated test case.
-  </Step>
-</Steps>
+    <Note>
+      Web SDK cannot run test suites directly. Use Server SDK for automated test execution.
+    </Note>
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    Create test suites using the TypeScript SDK:
 
-<video autoPlay loop muted src="../static/videos/inbound-support/create-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
 
----
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
 
-## 7. Run the Test Suite on an Assistant
+    const testSuite = await vapi.testSuites.create({
+      name: "Support Hotline Test Suite",
+      assistantId: "YOUR_ASSISTANT_ID",
+      phoneNumberId: "YOUR_PHONE_NUMBER_ID",
+      testCases: [
+        {
+          name: "Account verification and balance check",
+          description: "Test that the assistant can verify a customer account using phone number, retrieve their current balance, and provide recent transaction history.",
+          steps: [
+            {
+              type: "userMessage",
+              content: "Hi, I need to check my account balance"
+            },
+            {
+              type: "assertion",
+              condition: "Assistant asks for phone number verification"
+            },
+            {
+              type: "userMessage",
+              content: "My phone number ends in 1234"
+            },
+            {
+              type: "assertion",
+              condition: "Assistant provides balance information"
+            }
+          ]
+        }
+      ]
+    });
 
-<Steps>
-  <Step title="Navigate to Test Suites page">
-    Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Assistants` in the left sidebar.
-  </Step>
-  <Step title="Run the test suite">
-    - Click on `Support Hotline Test Suite` in the list of test suites.
-    - Click on `Run Test Suite` button.
-    - Wait for the test suite to finish running.
-    - You will see the results of the test suite in the `Test Results` section.
-  </Step>
-</Steps>
+    console.log(`Test suite created with ID: ${testSuite.id}`);
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+    import time
 
-<video autoPlay loop muted src="../static/videos/inbound-support/run-test-suite.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+    def run_test_suite(test_suite_id):
+        url = f"https://api.vapi.ai/test-suite/{test_suite_id}/run"
+        headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
+        
+        response = requests.post(url, headers=headers)
+        return response.json()
+
+    def get_test_results(test_suite_id):
+        url = f"https://api.vapi.ai/test-suite/{test_suite_id}/results"
+        headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
+        
+        response = requests.get(url, headers=headers)
+        return response.json()
+
+    # Run test suite and wait for results
+    test_run = run_test_suite(test_suite_id)
+    print(f"Test suite started: {test_run['id']}")
+
+    # Wait for completion (you might want to poll this in a real implementation)
+    time.sleep(30)
+    results = get_test_results(test_suite_id)
+    print("Test results:", results)
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Run test suite
+    curl -X POST https://api.vapi.ai/test-suite/YOUR_TEST_SUITE_ID/run \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY"
+
+    # Check test results
+    curl https://api.vapi.ai/test-suite/YOUR_TEST_SUITE_ID/results \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY"
+    ```
+  </Tab>
+</Tabs>
 
 ## Next Steps
 
