@@ -1,7 +1,7 @@
 ---
-title: Outbound sales workflow
+title: Lead qualification workflow
 subtitle: Build an AI sales workflow that qualifies leads and schedules appointments using Vapi workflows.
-slug: workflows/examples/outbound-sales
+slug: workflows/examples/lead-qualification
 description: Build a voice AI outbound sales workflow with lead qualification, CRM integration, and automated follow-up using Vapi's visual workflow builder.
 ---
 
@@ -144,11 +144,12 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
     
     **Node Name**: `opening_and_permission`
     
-    **Prompt**:
-    ```txt
+    ```txt title="First Message"
+    Hi, this is Alex calling from TechFlow Solutions. I hope I'm catching you at a good time. I'm reaching out because I noticed your company might benefit from our workflow automation platform. Do you have just 2 minutes to chat?
+    ```
+    
+    ```txt title="Prompt"
     You are Alex, a professional outbound sales representative for TechFlow Solutions.
-
-    Start with: "Hi, this is Alex calling from TechFlow Solutions. I hope I'm catching you at a good time. I'm reaching out because I noticed your company might benefit from our workflow automation platform. Do you have just 2 minutes to chat?"
 
     Listen for their response and determine:
     - "permission_granted" if they agree to talk
@@ -169,6 +170,10 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
   <Step title="Add Lead Lookup Tool Node">
     Add a **Tool** node that runs before the opening:
     
+    ```txt title="Condition"
+    Call initiated
+    ```
+    
     **Tool**: Select your pre-configured "Lead Lookup" tool from the dropdown. This tool should be created in the **Tools** section of your dashboard with:
     - **Function Name**: `lookup_lead`
     - **Description**: "Retrieve lead information and call history"
@@ -181,48 +186,123 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
     Create branching paths based on the prospect's response. Add multiple conversation nodes:
 
     **Discovery Questions Node**:
-    - **Node Name**: `discovery_questions`
-    - **Prompt**: `Great! I appreciate your time. To better understand how we might help, can you tell me about your current workflow challenges? Specifically, what manual processes are taking up most of your team's time?`
+    
+    ```txt title="Condition"
+    Permission granted to continue conversation
+    ```
+    
+    **Node Name**: `discovery_questions`
+    
+    ```txt title="First Message"
+    Great! I appreciate your time. To better understand how we might help, can you tell me about your current workflow challenges? Specifically, what manual processes are taking up most of your team's time?
+    ```
+    
+    ```txt title="Prompt"
+    You are conducting discovery to understand their business challenges.
+    
+    Ask open-ended questions about their pain points and workflows.
+    Listen for automation opportunities and budget indicators.
+    Keep responses under 35 words and be genuinely curious.
+    ```
 
     **Reschedule Node**:
-    - **Node Name**: `schedule_callback`
-    - **Prompt**: `I completely understand. When would be a better time for a quick 5-minute conversation? I have availability tomorrow morning or afternoon.`
+    
+    ```txt title="Condition"
+    Prospect is busy but willing to reschedule
+    ```
+    
+    **Node Name**: `schedule_callback`
+    
+    ```txt title="First Message"
+    I completely understand. When would be a better time for a quick 5-minute conversation? I have availability tomorrow morning or afternoon.
+    ```
+    
+    ```txt title="Prompt"
+    You are scheduling a callback with a busy prospect.
+    
+    Be flexible with their schedule and offer specific time options.
+    Confirm the callback time and set a reminder.
+    Keep responses under 25 words.
+    ```
 
     **Objection Handling Node**:
-    - **Node Name**: `handle_initial_objection`
-    - **Prompt**: `I understand you might not be looking for new solutions right now. Can I ask what you're currently using for workflow automation? I might have some insights that could be valuable.`
+    
+    ```txt title="Condition"
+    Prospect shows initial resistance or not interested
+    ```
+    
+    **Node Name**: `handle_initial_objection`
+    
+    ```txt title="First Message"
+    I understand you might not be looking for new solutions right now. Can I ask what you're currently using for workflow automation? I might have some insights that could be valuable.
+    ```
+    
+    ```txt title="Prompt"
+    You are handling initial objections with curiosity and value.
+    
+    Don't be pushy. Ask questions to understand their current situation.
+    Offer insights rather than pushing for a sale.
+    Keep responses under 30 words.
+    ```
 
     **Gatekeeper Node**:
-    - **Node Name**: `gatekeeper_routing`
-    - **Prompt**: `I appreciate you taking the call. I'm looking to speak with whoever handles software decisions or operations. Would that be you, or could you point me in the right direction?`
+    
+    ```txt title="Condition"
+    Speaking with gatekeeper or non-decision maker
+    ```
+    
+    **Node Name**: `gatekeeper_routing`
+    
+    ```txt title="First Message"
+    I appreciate you taking the call. I'm looking to speak with whoever handles software decisions or operations. Would that be you, or could you point me in the right direction?
+    ```
+    
+    ```txt title="Prompt"
+    You are working with a gatekeeper to reach the decision maker.
+    
+    Be respectful and professional. Get the right contact or decision maker.
+    Build rapport with the gatekeeper as they can help or hinder.
+    Keep responses under 30 words.
+    ```
   </Step>
 
   <Step title="Configure Flow Conditions">
     Connect the nodes with conditions for the LLM to interpret:
 
-    **From opening_and_permission to discovery_questions**:
-    - Condition: `{{ permission_status == "permission_granted" }}`
+    **To Discovery Questions Node**:
+    - Condition: `Permission granted to continue conversation`
 
-    **From opening_and_permission to schedule_callback**:
-    - Condition: `{{ permission_status == "busy_reschedule" }}`
+    **To Reschedule Node**:
+    - Condition: `Prospect is busy but willing to reschedule`
 
-    **From opening_and_permission to handle_initial_objection**:
-    - Condition: `{{ permission_status == "not_interested" }}`
+    **To Objection Handling Node**:
+    - Condition: `Prospect shows initial resistance or not interested`
 
-    **From opening_and_permission to gatekeeper_routing**:
-    - Condition: `{{ permission_status == "gatekeeper" }}`
+    **To Gatekeeper Node**:
+    - Condition: `Speaking with gatekeeper or non-decision maker`
   </Step>
 
   <Step title="Add Global Objection Handler">
     Create a global node that handles objections throughout the call:
     
+    ```txt title="Condition"
+    Objection detected or negative sentiment
+    ```
+    
     **Node Name**: `objection_handler`
     **Global Node**: `enabled = true`
     **Enter Condition**: `{{ objection_detected == true or negative_sentiment == true }}`
     
-    **Prompt**:
-    ```txt
+    ```txt title="First Message"
     I hear your concern, and that's completely valid. Many of our clients had similar thoughts initially. Let me address that specific point and see if we can find a solution that makes sense for your situation.
+    ```
+    
+    ```txt title="Prompt"
+    You are handling an objection with empathy and understanding.
+    
+    Acknowledge their concern as valid. Use social proof.
+    Address the specific objection with relevant information.
+    Keep responses under 35 words.
     ```
     
     This global node will activate whenever an objection is detected, regardless of where they are in the sales conversation.
@@ -232,96 +312,226 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
     For prospects who engage, add these qualification nodes:
 
     **BANT Qualification Node**:
-    - **Node Name**: `bant_qualification`
-    - Extract budget, authority, need, and timeline information
+    
+    ```txt title="Condition"
+    Prospect engaged and willing to discuss needs
+    ```
+    
+    **Node Name**: `bant_qualification`
+    
+    ```txt title="First Message"
+    That's helpful context. To better understand if we're a fit, can you tell me about your budget range for workflow automation tools? Also, who typically makes software purchasing decisions at your company?
+    ```
+    
+    ```txt title="Prompt"
+    You are qualifying the prospect using BANT criteria (Budget, Authority, Need, Timeline).
+    
+    Ask about budget, decision-making process, specific needs, and timeline.
+    Be natural - don't make it feel like an interrogation.
+    Keep responses under 35 words.
+    ```
+    
+    **Extract Variables**:
+    - Variable: `budget_range`
+    - Type: `String`
+    - Description: `Budget information provided`
+    <br />
+    - Variable: `decision_authority`
+    - Type: `String`
+    - Description: `Decision-making authority level`
+    <br />
+    - Variable: `timeline`
+    - Type: `String`
+    - Description: `Purchase timeline or urgency`
 
     **Lead Scoring Tool Node**:
+    
+    ```txt title="Condition"
+    BANT qualification completed
+    ```
+    
     - Add a **Tool** node that calls lead scoring API based on qualification responses
 
     **Qualification Results Node**:
-    - **Node Name**: `route_by_score`
+    
+    ```txt title="Condition"
+    Lead score calculated
+    ```
+    
+    **Node Name**: `route_by_score`
+    
+    ```txt title="First Message"
+    Based on what you've shared, it sounds like there could be a great fit here. Let me show you how we've helped similar companies in your industry.
+    ```
+    
+    ```txt title="Prompt"
+    You are routing the conversation based on lead qualification score.
+    
+    High scores get immediate demo offers.
+    Medium scores get value proposition and nurturing.
+    Low scores get educational content and future follow-up.
+    Keep responses under 30 words.
+    ```
+    
     - Route based on lead score (hot, warm, cold)
   </Step>
 
   <Step title="Add Value Proposition Flow">
     **Industry-Specific Pitch Node**:
-    - **Node Name**: `tailored_pitch`
+    
+    ```txt title="Condition"
+    Qualified prospect ready for value proposition
+    ```
+    
+    **Node Name**: `tailored_pitch`
+    
+    ```txt title="First Message"
+    Given your challenges with [specific pain point], let me share how we helped [similar company] reduce their manual processes by 60% and save 15 hours per week.
+    ```
+    
+    ```txt title="Prompt"
+    You are presenting a tailored value proposition based on their specific situation.
+    
+    Use relevant case studies and specific benefits.
+    Connect features to their stated pain points.
+    Keep responses under 40 words.
+    ```
+    
     - Present value proposition based on their industry and pain points
 
     **ROI Demonstration Node**:
-    - **Node Name**: `show_roi`
+    
+    ```txt title="Condition"
+    Interest shown in value proposition
+    ```
+    
+    **Node Name**: `show_roi`
+    
+    ```txt title="First Message"
+    Here's what that looks like in real numbers: if your team spends 20 hours a week on manual processes, our platform could save you $50,000 annually in productivity gains.
+    ```
+    
+    ```txt title="Prompt"
+    You are demonstrating concrete ROI with specific numbers.
+    
+    Use their company size and situation to calculate relevant savings.
+    Make the ROI tangible and compelling.
+    Keep responses under 35 words.
+    ```
+    
     - Provide specific ROI examples and case studies
 
     **Demo Offer Node**:
-    - **Node Name**: `offer_demo`
+    
+    ```txt title="Condition"
+    Strong interest and ROI demonstrated
+    ```
+    
+    **Node Name**: `offer_demo`
+    
+    ```txt title="First Message"
+    I'd love to show you exactly how this would work for your specific workflow. Could we schedule a 15-minute demo where I can walk you through a custom setup for your team?
+    ```
+    
+    ```txt title="Prompt"
+    You are proposing a product demonstration meeting.
+    
+    Make the demo offer specific and time-bounded.
+    Emphasize the custom/personalized aspect.
+    Be confident but not pushy. Keep responses under 30 words.
+    ```
+    
     - Propose a product demonstration meeting
   </Step>
 
   <Step title="Add Appointment Scheduling Flow">
     **Calendar Check Tool Node**:
+    
+    ```txt title="Condition"
+    Demo requested and prospect interested
+    ```
+    
     - Add a **Tool** node that checks sales team calendar for available demo slots
 
     **Appointment Confirmation Node**:
-    - **Node Name**: `confirm_appointment`
+    
+    ```txt title="Condition"
+    Demo slot available
+    ```
+    
+    **Node Name**: `confirm_appointment`
+    
+    ```txt title="First Message"
+    Perfect! I have availability for a demo on [date] at [time]. I'll send you a calendar invite with a Zoom link. Should I include anyone else from your team?
+    ```
+    
+    ```txt title="Prompt"
+    You are confirming the demo appointment details.
+    
+    Confirm date, time, and attendees. Offer to include other stakeholders.
+    Set expectations for what they'll see in the demo.
+    Keep responses under 35 words.
+    ```
+    
     - Confirm meeting details and send calendar invite
 
     **CRM Update Tool Node**:
+    
+    ```txt title="Condition"
+    Appointment confirmed
+    ```
+    
     - Add a **Tool** node that records call outcome and next steps in CRM
   </Step>
 
   <Step title="Add Transfer and Follow-up Options">
     **Transfer to Sales Rep Node**:
-    - **Node Type**: `Transfer`
-    - **Destination**: `+1-555-SALES-1` (your sales team number)
+    
+    ```txt title="Condition"
+    High-value prospect requests immediate consultation
+    ```
+    
+    **Node Type**: `Transfer`
+    **Destination**: `+1-555-SALES-1` (your sales team number)
 
     **Schedule Follow-up Node**:
-    - **Node Name**: `schedule_followup`
+    
+    ```txt title="Condition"
+    Prospect interested but not ready for demo
+    ```
+    
+    **Node Name**: `schedule_followup`
+    
+    ```txt title="First Message"
+    I understand you need some time to think it over. When would be a good time for me to follow up? I can also send you some relevant case studies in the meantime.
+    ```
+    
+    ```txt title="Prompt"
+    You are scheduling a follow-up call for future nurturing.
+    
+    Be patient and respectful of their timeline.
+    Offer valuable content to keep them engaged.
+    Keep responses under 30 words.
+    ```
+    
     - Set automated follow-up call for future date
 
     **End Call Node**:
-    - **Node Type**: `Hangup`
+    
+    ```txt title="Condition"
+    Prospect not qualified or requests no further contact
+    ```
+    
+    **Node Type**: `Hangup`
     - Use when prospect is not qualified or requests no further contact
   </Step>
 </Steps>
 
----
+## Final Workflow
 
-## 5. Configure Phone Number for Outbound Calls
-
-<Steps>
-  <Step title="Navigate to Phone Numbers">
-    Click `Phone Numbers` in the left sidebar of your dashboard.
-  </Step>
-  <Step title="Create or Import Phone Number">
-    - Click `Create Phone Number` for a new Vapi number, or
-    - Click `Import Phone Number` to use your existing number from Twilio/Telnyx
-  </Step>
-  <Step title="Configure Outbound Settings">
-    **Assistant**: Select your `Alex - Sales Agent` assistant
-    **Workflow**: Ensure it's linked to your `TechFlow Sales Qualification Workflow`
-    
-    **Outbound Configuration**:
-    - Enable outbound calling capabilities
-    - Set caller ID name to "TechFlow Solutions"
-    - Configure voicemail detection and handling
-    - Set maximum call duration (e.g., 10 minutes)
-  </Step>
-  <Step title="Test Outbound Calling">
-    Use the Vapi API to initiate test outbound calls:
-    ```bash
-    curl -X POST https://api.vapi.ai/call \
-      -H "Authorization: Bearer YOUR_API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "phoneNumberId": "your-phone-number-id",
-        "customer": {
-          "number": "+1234567890"
-        },
-        "assistantId": "your-assistant-id"
-      }'
-    ```
-  </Step>
-</Steps>
+<Frame caption="Complete outbound sales qualification workflow with lead scoring, objection handling, and automated CRM integration">
+  <img src="../../static/images/workflows/examples/lead-qualification.png" alt="Sales qualification workflow showing lead lookup, permission-based routing, BANT qualification, demo scheduling, and CRM updates" />
+</Frame>
 
 ## Integrating with Real Systems
 
