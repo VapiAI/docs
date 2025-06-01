@@ -1,0 +1,266 @@
+---
+title: Appointment scheduling workflow
+subtitle: Build an AI receptionist workflow that schedules, reschedules, and cancels appointments using Vapi workflows.
+slug: workflows/examples/appointment-scheduling
+description: Build a voice AI appointment scheduling workflow with calendar integration, availability checking, and automated confirmations using Vapi's workflow builder.
+---
+
+## Overview
+
+Build an AI-powered appointment scheduling workflow that handles inbound calls for booking, rescheduling, and canceling appointments. The workflow uses visual nodes to create branching logic, integrates with calendar systems, checks availability in real-time, and sends confirmation messages.
+
+**What You'll Build:**
+* Visual workflow with branching appointment logic
+* Real-time calendar integration and availability checking
+* Customer database with automated confirmations
+* Global nodes for error handling and validation
+* 24/7 phone booking with conditional routing
+
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/).
+* A Google Calendar account (or other calendar service).
+
+## Scenario
+
+We will be creating an appointment scheduling workflow for Tony's Barbershop, a traditional barbershop that wants to automate their phone booking process with sophisticated branching logic to handle different appointment scenarios.
+
+---
+
+## 1. Create a Knowledge Base
+
+<Steps>
+  <Step title="Download the spreadsheets">
+    <div className="flex gap-2">
+      <Download src="../../static/spreadsheets/appointment-scheduling/services.csv">
+        <Button intent="primary">Download services.csv</Button>
+      </Download>
+      <Download src="../../static/spreadsheets/appointment-scheduling/customers.csv">
+        <Button intent="primary">Download customers.csv</Button>
+      </Download>
+      <Download src="../../static/spreadsheets/appointment-scheduling/appointments.csv">
+        <Button intent="primary">Download appointments.csv</Button>
+      </Download>
+    </div>
+  </Step>
+  <Step title="Navigate to the Files section">
+    In your Vapi dashboard, click `Files` in the left sidebar.
+  </Step>
+  <Step title="Upload the spreadsheets">
+    - Click `Choose file`. Upload all three CSV files: `services.csv`, `customers.csv`, and `appointments.csv`.
+    - Note the file IDs. We'll need them later to create tools.
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 2. Create a Workflow
+
+<Steps>
+  <Step title="Open the Vapi Dashboard">
+    Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
+  </Step>
+  <Step title="Navigate to the Workflows section">
+    Click `Workflows` in the left sidebar.
+  </Step>
+  <Step title="Create a new workflow">
+    - Click `Create Workflow`.
+    - Enter workflow name: `Barbershop Appointment Workflow`.
+    - Select the default template (includes Call Start node).
+    - Click "Create Workflow".
+  </Step>
+  <Step title="Configure Workflow Settings">
+    - Configure workflow variables for customer data and appointment information
+  </Step>
+</Steps>
+
+<video autoPlay loop muted src="../../static/videos/workflows/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+
+---
+
+## 3. Build the Workflow
+
+You'll start with a default template that includes a "Call Start" node. We'll modify the existing nodes and add new ones to create our appointment scheduling workflow.
+
+<Steps>
+  <Step title="Configure the Initial Conversation Node">
+    The default template includes a conversation node. Click on it and configure:
+    
+    **First Message**:
+    ```txt
+    Hello! Thank you for calling Tony's Barbershop. This is Sarah, your booking assistant. I can help you schedule, reschedule, or cancel appointments. How can I help you today?
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are Sarah, the friendly booking assistant for Tony's Barbershop. 
+
+    Listen to the customer's response and determine their intent:
+    - "schedule" for new appointments
+    - "reschedule" for changing existing appointments  
+    - "cancel" for canceling appointments
+    - "status" for checking appointment details
+    - "other" for anything else
+
+    Keep responses under 35 words. Ask clarifying questions if intent is unclear.
+    ```
+
+    **Extract Variables**:
+    - Variable: `intent`
+    - Type: `String`
+    - Description: `The customer's primary intent`
+    - Enum Values: `schedule`, `reschedule`, `cancel`, `status`, `other`
+  </Step>
+
+  <Step title="Add Customer Verification Node">
+    Click the + button below the greeting node and add a new **Conversation** node:
+    
+    **Prompt**:
+    ```txt
+    Now I need to verify your information. Can you please provide your phone number or full name so I can look up your account?
+
+    If they provide a phone number, extract it. If they provide a name, extract it.
+    Be friendly and reassuring about privacy.
+    ```
+
+    **Extract Variables**:
+    - Variable: `phone_number`
+    - Type: `String` 
+    - Description: `Customer's phone number if provided`
+    - Variable: `customer_name`
+    - Type: `String`
+    - Description: `Customer's full name if provided`
+  </Step>
+
+  <Step title="Add Customer Lookup Tool Node">
+    Add a **Tool** node:
+    
+    **Select Tool**: Choose your pre-configured customer lookup tool from the dropdown. This tool will use the extracted `phone_number` and `customer_name` variables to find the customer in your database.
+  </Step>
+
+  <Step title="Add Intent Routing Logic">
+    Create branching paths based on the customer's intent. Add multiple conversation nodes:
+
+    **Schedule New Appointment Node**:
+    - **Prompt**: `Great! I can help you schedule a new appointment. What type of service would you like? We offer haircuts, beard trims, shampoo and styling, and full grooming packages.`
+
+    **Reschedule Appointment Node**:
+    - **Prompt**: `I can help you reschedule your appointment. Let me first look up your current booking details.`
+
+    **Cancel Appointment Node**:
+    - **Prompt**: `I can help you cancel your appointment. Let me look up your current booking to confirm the details.`
+  </Step>
+
+  <Step title="Configure Edge Conditions">
+    Connect the nodes with conditional edges:
+
+    **To Schedule Appointment Node**:
+    - Condition: `if the user said yes` (AI condition)
+    - Alternative: `{{ intent == "schedule" }}` (Logic condition)
+
+    **To Reschedule Appointment Node**:
+    - Condition: `if the user said yes` (AI condition)
+    - Alternative: `{{ intent == "reschedule" }}` (Logic condition)
+
+    **To Cancel Appointment Node**:
+    - Condition: `if the user said yes` (AI condition)
+    - Alternative: `{{ intent == "cancel" }}` (Logic condition)
+  </Step>
+
+  <Step title="Add Global Error Handling Node">
+    Create a global conversation node that checks for errors after every step:
+    
+    **Enable Global Node**: Toggle this on to make the node available from any point in the conversation
+    
+    **Prompt**:
+    ```txt
+    I apologize for any confusion. Let me transfer you to one of our human staff members who can better assist you. Please hold for just a moment.
+    ```
+    
+    This global node will activate whenever there's an error or the customer becomes frustrated, regardless of where they are in the workflow.
+  </Step>
+
+  <Step title="Add Availability Checking Flow">
+    For the schedule appointment flow, add these nodes:
+
+    **Service Selection Node** (Conversation):
+    - **Prompt**: `What type of service would you like to book? Also, do you have a preferred date and time?`
+    - **Extract Variables**: `service_type`, `preferred_date`, `preferred_time`
+
+    **Availability Check Tool Node**:
+    - **Select Tool**: Choose "Check Availability" from the pre-defined calendar tools
+    - This will automatically check available slots based on the extracted preferences
+
+    **Availability Results Node** (Conversation):
+    - **Prompt**: `Based on your preferences, here are the available time slots. Which one works best for you?`
+    - Use conditional logic to offer alternatives if preferred time unavailable
+  </Step>
+
+  <Step title="Add Confirmation and Booking Flow">
+    **Booking Confirmation Node** (Conversation):
+    - **Prompt**: `Perfect! Let me confirm your appointment details: [service] on [date] at [time]. Is this correct?`
+    - **Extract Variables**: `confirmation_status`
+
+    **Create Appointment Tool Node**:
+    - **Select Tool**: Choose "Schedule Event" from the pre-defined calendar tools
+    - This will book the appointment in your calendar system
+
+    **Send Confirmation Node** (Tool):
+    - **Select Tool**: Choose your pre-configured SMS/email confirmation tool
+
+    **Completion Node** (Conversation):
+    - **Prompt**: `Great! Your appointment is confirmed. You'll receive a confirmation message shortly. Is there anything else I can help you with today?`
+  </Step>
+
+  <Step title="Add Transfer and Hangup Options">
+    **Transfer to Human Node**:
+    - **Node Type**: `Transfer Call`
+    - **Phone to transfer to**: `+1-555-BARBER-1` (your barbershop number)
+
+    **End Call Node**:
+    - **Node Type**: `End Call`
+    - **First Message**: `Thank you for calling Tony's Barbershop. Have a great day!`
+    - Use when customer is satisfied and no further assistance needed
+  </Step>
+</Steps>
+
+---
+
+## 4. Configure Phone Number
+
+<Steps>
+  <Step title="Navigate to Phone Numbers">
+    Click `Phone Numbers` in the left sidebar of your dashboard.
+  </Step>
+  <Step title="Create or Import Phone Number">
+    - Click `Create Phone Number` for a new Vapi number, or
+    - Click `Import Phone Number` to use your existing number from Twilio/Telnyx
+  </Step>
+  <Step title="Configure Inbound Settings">
+    **Workflow**: Select your `Barbershop Appointment Workflow`
+    
+    **Advanced Settings**:
+    - Enable call recording for quality assurance
+    - Set maximum call duration (e.g., 15 minutes)
+    - Configure voicemail detection if needed
+  </Step>
+  <Step title="Test Your Phone Number">
+    Call your Vapi phone number to test the complete workflow:
+    - Test different appointment scenarios
+    - Verify branching logic works correctly
+    - Ensure global nodes trigger appropriately
+    - Test error handling and recovery flows
+  </Step>
+</Steps>
+
+## Next Steps
+
+Just like that, you've built an automated appointment scheduling workflow that can handle inbound calls, manage bookings, and provide 24/7 availability for your barbershop.
+
+Consider reading the following guides to further enhance your workflow:
+
+* [**Custom Tools**](/tools/custom-tools) - Create custom tools for calendar integration and customer management.
+* [**Voice Formatting Plan**](/assistants/voice-formatting-plan) - Configure speech formatting for clear appointment communication.
+* [**Dynamic Variables**](/assistants/dynamic-variables) - Use variables to personalize appointment confirmations. 
