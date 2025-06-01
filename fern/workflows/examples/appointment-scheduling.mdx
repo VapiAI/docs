@@ -117,18 +117,30 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
   <Step title="Add Customer Verification Node">
     Click the + button below the greeting node and add a new **Conversation** node:
     
-    **Prompt**:
+    **Condition**:
+    ```txt
+    Intent identified
+    ```
+
+    **First Message**:
     ```txt
     Now I need to verify your information. Can you please provide your phone number or full name so I can look up your account?
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are collecting customer identification information to look them up in the system.
 
-    If they provide a phone number, extract it. If they provide a name, extract it.
-    Be friendly and reassuring about privacy.
+    If they provide a phone number, extract it in a clean format (numbers only).
+    If they provide a name, extract their full name.
+    Be friendly and reassuring about privacy. Keep responses under 25 words.
     ```
 
     **Extract Variables**:
     - Variable: `phone_number`
     - Type: `String` 
     - Description: `Customer's phone number if provided`
+    <br />
     - Variable: `customer_name`
     - Type: `String`
     - Description: `Customer's full name if provided`
@@ -137,6 +149,11 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
   <Step title="Add Customer Lookup Tool Node">
     Add a **Tool** node:
     
+    **Condition**:
+    ```txt
+    Customer information collected
+    ```
+    
     **Select Tool**: Choose your pre-configured customer lookup tool from the dropdown. This tool will use the extracted `phone_number` and `customer_name` variables to find the customer in your database.
   </Step>
 
@@ -144,29 +161,78 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
     Create branching paths based on the customer's intent. Add multiple conversation nodes:
 
     **Schedule New Appointment Node**:
-    - **Prompt**: `Great! I can help you schedule a new appointment. What type of service would you like? We offer haircuts, beard trims, shampoo and styling, and full grooming packages.`
+    
+    **Condition**:
+    ```txt
+    Customer verified and intent is schedule
+    ```
+    
+    **First Message**:
+    ```txt
+    Great! I can help you schedule a new appointment. What type of service would you like? We offer haircuts, beard trims, shampoo and styling, and full grooming packages.
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are helping the customer schedule a new appointment.
+    
+    Listen for the service they want and any preferred dates/times they mention.
+    Be enthusiastic and helpful. Keep responses under 30 words.
+    If they're unsure about services, briefly describe each option.
+    ```
 
     **Reschedule Appointment Node**:
-    - **Prompt**: `I can help you reschedule your appointment. Let me first look up your current booking details.`
+    
+    **Condition**:
+    ```txt
+    Customer verified and intent is reschedule
+    ```
+    
+    **First Message**:
+    ```txt
+    I can help you reschedule your appointment. Let me first look up your current booking details.
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are helping the customer reschedule an existing appointment.
+    
+    Be understanding and accommodating. Look up their current appointment first.
+    Keep responses under 25 words while being empathetic.
+    ```
 
     **Cancel Appointment Node**:
-    - **Prompt**: `I can help you cancel your appointment. Let me look up your current booking to confirm the details.`
+    
+    **Condition**:
+    ```txt
+    Customer verified and intent is cancel
+    ```
+    
+    **First Message**:
+    ```txt
+    I can help you cancel your appointment. Let me look up your current booking to confirm the details.
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are helping the customer cancel their appointment.
+    
+    Be understanding and offer to reschedule instead if appropriate.
+    Confirm cancellation details before proceeding. Keep responses under 25 words.
+    ```
   </Step>
 
   <Step title="Configure Edge Conditions">
     Connect the nodes with conditional edges:
 
     **To Schedule Appointment Node**:
-    - Condition: `if the user said yes` (AI condition)
-    - Alternative: `{{ intent == "schedule" }}` (Logic condition)
+    - Condition: `Customer verified and intent is schedule`
 
     **To Reschedule Appointment Node**:
-    - Condition: `if the user said yes` (AI condition)
-    - Alternative: `{{ intent == "reschedule" }}` (Logic condition)
+    - Condition: `Customer verified and intent is reschedule`
 
     **To Cancel Appointment Node**:
-    - Condition: `if the user said yes` (AI condition)
-    - Alternative: `{{ intent == "cancel" }}` (Logic condition)
+    - Condition: `Customer verified and intent is cancel`
   </Step>
 
   <Step title="Add Global Error Handling Node">
@@ -174,9 +240,22 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
     
     **Enable Global Node**: Toggle this on to make the node available from any point in the conversation
     
-    **Prompt**:
+    **Condition**:
+    ```txt
+    Customer confused or error detected
+    ```
+    
+    **First Message**:
     ```txt
     I apologize for any confusion. Let me transfer you to one of our human staff members who can better assist you. Please hold for just a moment.
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are handling an error or confused customer situation.
+    
+    Be apologetic and professional. Prepare them for transfer to human staff.
+    Keep the message brief and reassuring.
     ```
     
     This global node will activate whenever there's an error or the customer becomes frustrated, regardless of where they are in the workflow.
@@ -186,42 +265,158 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
     For the schedule appointment flow, add these nodes:
 
     **Service Selection Node** (Conversation):
-    - **Prompt**: `What type of service would you like to book? Also, do you have a preferred date and time?`
-    - **Extract Variables**: `service_type`, `preferred_date`, `preferred_time`
+    
+    **Condition**:
+    ```txt
+    Service type mentioned or requested
+    ```
+    
+    **First Message**:
+    ```txt
+    Perfect! And when would you prefer to come in? What date and time work best for you?
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are collecting appointment preferences for scheduling.
+    
+    Listen for specific dates, times, or general preferences like "morning" or "next week".
+    Be flexible and offer to check availability. Keep responses under 25 words.
+    ```
+    
+    **Extract Variables**: 
+    - Variable: `service_type`
+    - Type: `String`
+    - Description: `Type of service requested`
+    <br />
+    - Variable: `preferred_date`
+    - Type: `String`
+    - Description: `Customer's preferred date`
+    <br />
+    - Variable: `preferred_time`
+    - Type: `String`
+    - Description: `Customer's preferred time`
 
     **Availability Check Tool Node**:
-    - **Select Tool**: Choose "Check Availability" from the pre-defined calendar tools
+    
+    **Condition**:
+    ```txt
+    Preferences collected
+    ```
+    
+    **Select Tool**: Choose "Check Availability" from the pre-defined calendar tools
     - This will automatically check available slots based on the extracted preferences
 
     **Availability Results Node** (Conversation):
-    - **Prompt**: `Based on your preferences, here are the available time slots. Which one works best for you?`
-    - Use conditional logic to offer alternatives if preferred time unavailable
+    
+    **Condition**:
+    ```txt
+    Availability checked
+    ```
+    
+    **First Message**:
+    ```txt
+    Based on your preferences, here are the available time slots. Which one works best for you?
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are presenting available appointment times to the customer.
+    
+    Present 2-3 options clearly with dates and times.
+    If their preferred time isn't available, offer the closest alternatives.
+    Be helpful and accommodating. Keep responses under 35 words.
+    ```
   </Step>
 
   <Step title="Add Confirmation and Booking Flow">
     **Booking Confirmation Node** (Conversation):
-    - **Prompt**: `Perfect! Let me confirm your appointment details: [service] on [date] at [time]. Is this correct?`
-    - **Extract Variables**: `confirmation_status`
+    
+    **Condition**:
+    ```txt
+    Time slot selected
+    ```
+    
+    **First Message**:
+    ```txt
+    Perfect! Let me confirm your appointment details: [service] on [date] at [time]. Is this correct?
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are confirming appointment details before booking.
+    
+    Read back the service type, date, and time clearly.
+    Wait for their confirmation before proceeding.
+    Be thorough but concise. Keep responses under 30 words.
+    ```
+    
+    **Extract Variables**: 
+    - Variable: `confirmation_status`
+    - Type: `String`
+    - Description: `Whether customer confirms the appointment details`
 
     **Create Appointment Tool Node**:
-    - **Select Tool**: Choose "Schedule Event" from the pre-defined calendar tools
+    
+    **Condition**:
+    ```txt
+    Appointment details confirmed
+    ```
+    
+    **Select Tool**: Choose "Schedule Event" from the pre-defined calendar tools
     - This will book the appointment in your calendar system
 
     **Send Confirmation Node** (Tool):
-    - **Select Tool**: Choose your pre-configured SMS/email confirmation tool
+    
+    **Condition**:
+    ```txt
+    Appointment created successfully
+    ```
+    
+    **Select Tool**: Choose your pre-configured SMS/email confirmation tool
 
     **Completion Node** (Conversation):
-    - **Prompt**: `Great! Your appointment is confirmed. You'll receive a confirmation message shortly. Is there anything else I can help you with today?`
+    
+    **Condition**:
+    ```txt
+    Confirmation sent
+    ```
+    
+    **First Message**:
+    ```txt
+    Great! Your appointment is confirmed. You'll receive a confirmation message shortly. Is there anything else I can help you with today?
+    ```
+    
+    **Prompt**:
+    ```txt
+    You are wrapping up a successful appointment booking.
+    
+    Be friendly and offer additional assistance.
+    If they say no, prepare to end the call politely.
+    Keep responses under 25 words.
+    ```
   </Step>
 
   <Step title="Add Transfer and Hangup Options">
     **Transfer to Human Node**:
-    - **Node Type**: `Transfer Call`
-    - **Phone to transfer to**: `+1-555-BARBER-1` (your barbershop number)
+    
+    **Condition**:
+    ```txt
+    Customer requests human assistance
+    ```
+    
+    **Node Type**: `Transfer Call`
+    **Phone to transfer to**: `+1-555-BARBER-1` (your barbershop number)
 
     **End Call Node**:
-    - **Node Type**: `End Call`
-    - **First Message**: `Thank you for calling Tony's Barbershop. Have a great day!`
+    
+    **Condition**:
+    ```txt
+    Customer satisfied and no further assistance needed
+    ```
+    
+    **Node Type**: `End Call`
+    **First Message**: `Thank you for calling Tony's Barbershop. Have a great day!`
     - Use when customer is satisfied and no further assistance needed
   </Step>
 </Steps>
