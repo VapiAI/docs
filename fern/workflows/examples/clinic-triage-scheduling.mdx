@@ -29,110 +29,582 @@ We will be creating a triage and scheduling workflow for Riverside Family Clinic
 
 ## 1. Create a Knowledge Base
 
-<Steps>
-  <Step title="Download the spreadsheets">
-    <div className="flex gap-2">
-      <Download src="../../static/spreadsheets/clinic/patients.csv">
-        <Button intent="primary">Download patients.csv</Button>
-      </Download>
-      <Download src="../../static/spreadsheets/clinic/providers.csv">
-        <Button intent="primary">Download providers.csv</Button>
-      </Download>
-      <Download src="../../static/spreadsheets/clinic/triage_protocols.csv">
-        <Button intent="primary">Download triage_protocols.csv</Button>
-      </Download>
-      <Download src="../../static/spreadsheets/clinic/appointments.csv">
-        <Button intent="primary">Download appointments.csv</Button>
-      </Download>
-    </div>
-  </Step>
-  <Step title="Navigate to the Files section">
-    In your Vapi dashboard, click `Files` in the left sidebar.
-  </Step>
-  <Step title="Upload the spreadsheets">
-    - Click `Choose file`. Upload all four CSV files: `patients.csv`, `providers.csv`, `triage_protocols.csv`, and `appointments.csv`.
-    - Note the file IDs. We'll need them later to create tools.
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Download the spreadsheets">
+        <div className="flex gap-2">
+          <Download src="../../static/spreadsheets/clinic/patients.csv">
+            <Button intent="primary">Download patients.csv</Button>
+          </Download>
+          <Download src="../../static/spreadsheets/clinic/providers.csv">
+            <Button intent="primary">Download providers.csv</Button>
+          </Download>
+          <Download src="../../static/spreadsheets/clinic/appointments.csv">
+            <Button intent="primary">Download appointments.csv</Button>
+          </Download>
+        </div>
+      </Step>
+      <Step title="Navigate to the Files section">
+        In your Vapi dashboard, click `Files` in the left sidebar.
+      </Step>
+      <Step title="Upload the spreadsheets">
+        - Click `Choose file`. Upload all three CSV files: `patients.csv`, `providers.csv`, and `appointments.csv`.
+        - Note the file IDs. We'll need them later to create tools.
 
-<video autoPlay loop muted src="../../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+        <video autoPlay loop muted src="../../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Web SDK + TypeScript">
+    For web-based clinic applications:
+
+    ```bash
+    npm install @vapi-ai/web
+    ```
+
+    ```typescript
+    import Vapi from '@vapi-ai/web';
+
+    interface ClinicTriageConfig {
+      publicApiKey: string;
+      workflowId: string;
+    }
+
+    function createClinicTriageWorkflow(config: ClinicTriageConfig) {
+      const vapi = new Vapi(config.publicApiKey);
+      let isConnected = false;
+      let currentPatient: any = null;
+
+      // Setup event listeners
+      vapi.on('call-start', () => {
+        isConnected = true;
+        console.log('Clinic triage call started');
+      });
+
+      vapi.on('call-end', () => {
+        isConnected = false;
+        console.log('Clinic triage call ended');
+        processTriageResults();
+      });
+
+      vapi.on('message', (message) => {
+        if (message.type === 'transcript') {
+          console.log(`${message.role}: ${message.transcript}`);
+        } else if (message.type === 'function-call') {
+          handleTriageFunction(message.functionCall);
+        } else if (message.type === 'workflow-step') {
+          console.log('Triage step:', message.step);
+        }
+      });
+
+      vapi.on('error', (error) => {
+        console.error('Clinic triage error:', error);
+      });
+
+      function handleTriageFunction(functionCall: { name: string; parameters: Record<string, unknown> }) {
+        switch (functionCall.name) {
+          case 'check_symptoms':
+            console.log('Checking symptoms:', functionCall.parameters);
+            break;
+          case 'assess_urgency':
+            console.log('Assessing urgency:', functionCall.parameters);
+            break;
+          case 'schedule_appointment':
+            console.log('Scheduling appointment:', functionCall.parameters);
+            break;
+          default:
+            console.log('Triage function called:', functionCall.name, functionCall.parameters);
+        }
+      }
+
+      function processTriageResults() {
+        console.log('Processing triage results for patient:', currentPatient);
+      }
+
+      return {
+        startTriageCall: (patientData?: any) => {
+          if (!isConnected) {
+            currentPatient = patientData;
+            vapi.start(config.workflowId);
+          }
+        },
+        endCall: () => {
+          if (isConnected) {
+            vapi.stop();
+          }
+        },
+        isConnected: () => isConnected
+      };
+    }
+
+    // Usage
+    const clinicTriage = createClinicTriageWorkflow({
+      publicApiKey: 'YOUR_PUBLIC_API_KEY',
+      workflowId: 'YOUR_CLINIC_WORKFLOW_ID'
+    });
+
+    // Start triage call
+    clinicTriage.startTriageCall({
+      name: 'John Doe',
+      symptoms: ['fever', 'cough']
+    });
+    ```
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+    import fs from 'fs';
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    async function uploadClinicFiles() {
+      try {
+        // Upload patients file
+        const patientsFile = await vapi.files.create({
+          file: fs.createReadStream("patients.csv")
+        });
+
+        // Upload providers file
+        const providersFile = await vapi.files.create({
+          file: fs.createReadStream("providers.csv")
+        });
+
+        // Upload appointments file
+        const appointmentsFile = await vapi.files.create({
+          file: fs.createReadStream("appointments.csv")
+        });
+
+        console.log(`Patients file ID: ${patientsFile.id}`);
+        console.log(`Providers file ID: ${providersFile.id}`);
+        console.log(`Appointments file ID: ${appointmentsFile.id}`);
+
+        return {
+          patientsFileId: patientsFile.id,
+          providersFileId: providersFile.id,
+          appointmentsFileId: appointmentsFile.id
+        };
+      } catch (error) {
+        console.error('Error uploading files:', error);
+        throw error;
+      }
+    }
+
+    // Upload all files
+    const fileIds = await uploadClinicFiles();
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    def upload_file(file_path):
+        url = "https://api.vapi.ai/file"
+        headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
+        
+        with open(file_path, 'rb') as file:
+            files = {'file': file}
+            response = requests.post(url, headers=headers, files=files)
+            return response.json()
+
+    # Upload all required files
+    patients_file = upload_file("patients.csv")
+    providers_file = upload_file("providers.csv")
+    appointments_file = upload_file("appointments.csv")
+
+    print(f"Patients file ID: {patients_file['id']}")
+    print(f"Providers file ID: {providers_file['id']}")
+    print(f"Appointments file ID: {appointments_file['id']}")
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Upload patients.csv
+    curl -X POST https://api.vapi.ai/file \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -F "file=@patients.csv"
+
+    # Upload providers.csv
+    curl -X POST https://api.vapi.ai/file \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -F "file=@providers.csv"
+
+    # Upload appointments.csv
+    curl -X POST https://api.vapi.ai/file \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -F "file=@appointments.csv"
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
 ## 2. Create Required Tools
 
-Before building the workflow, create the necessary tools in your dashboard:
+<Tabs>
+  <Tab title="Dashboard">
+    Before building the workflow, create the necessary tools in your dashboard:
 
-<Steps>
-  <Step title="Navigate to Tools">
-    In your Vapi dashboard, click **Tools** in the left sidebar.
-  </Step>
-  <Step title="Create Patient Lookup Tool">
-    Click **Create Tool** and configure:
-    - **Tool Name**: "Patient Lookup"
-    - **Tool Type**: "Function"
-    - **Function Name**: `lookup_patient`
-    - **Description**: "Look up patient record by ID"
-    - **Parameters**:
-      - `patient_id` (string, required): Patient's ID number
-    - **Server URL**: `https://jsonplaceholder.typicode.com/users`
-    
-    <Note>
-      This example uses JSONPlaceholder for demonstration. In production, replace with your EHR system API (Epic, Cerner, etc.).
-    </Note>
-  </Step>
-  <Step title="Create Triage Assessment Tool">
-    Create another tool:
-    - **Tool Name**: "Triage Assessment"
-    - **Function Name**: `conduct_triage`
-    - **Description**: "Assess patient symptoms and determine urgency level"
-    - **Parameters**:
-      - `symptoms` (string): Description of patient symptoms
-      - `onset` (string): When symptoms started
-      - `severity` (string): Severity level (1-10)
-    - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
-    
-    <Note>
-      This example uses JSONPlaceholder for demonstration. Replace with your medical triage system in production.
-    </Note>
-  </Step>
-  <Step title="Create Appointment Scheduling Tool">
-    Create a third tool:
-    - **Tool Name**: "Schedule Appointment"
-    - **Function Name**: `schedule_appointment`
-    - **Description**: "Schedule patient appointments based on availability"
-    - **Parameters**:
-      - `patient_id` (string): Patient identifier
-      - `appointment_type` (string): Type of appointment needed
-      - `urgency_level` (string): Urgency classification
-    - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
-    
-    <Note>
-      This example uses JSONPlaceholder for demonstration. In production, integrate with your appointment scheduling system.
-    </Note>
-  </Step>
-</Steps>
+    <Steps>
+      <Step title="Navigate to Tools">
+        In your Vapi dashboard, click **Tools** in the left sidebar.
+      </Step>
+      <Step title="Create Patient Lookup Tool">
+        Click **Create Tool** and configure:
+        - **Tool Name**: "Patient Lookup"
+        - **Tool Type**: "Function"
+        - **Function Name**: `lookup_patient`
+        - **Description**: "Look up patient record by ID"
+        - **Parameters**:
+          - `patient_id` (string, required): Patient's ID number
+        - **Server URL**: `https://jsonplaceholder.typicode.com/users`
+        
+        <Note>
+          This example uses JSONPlaceholder for demonstration. In production, replace with your EHR system API (Epic, Cerner, etc.).
+        </Note>
+      </Step>
+      <Step title="Create Triage Assessment Tool">
+        Create another tool:
+        - **Tool Name**: "Triage Assessment"
+        - **Function Name**: `conduct_triage`
+        - **Description**: "Assess patient symptoms and determine urgency level"
+        - **Parameters**:
+          - `symptoms` (string): Description of patient symptoms
+          - `onset` (string): When symptoms started
+          - `severity` (string): Severity level (1-10)
+        - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
+        
+        <Note>
+          This example uses JSONPlaceholder for demonstration. Replace with your medical triage system in production.
+        </Note>
+      </Step>
+      <Step title="Create Appointment Scheduling Tool">
+        Create a third tool:
+        - **Tool Name**: "Schedule Appointment"
+        - **Function Name**: `schedule_appointment`
+        - **Description**: "Schedule patient appointments based on availability"
+        - **Parameters**:
+          - `patient_id` (string): Patient identifier
+          - `appointment_type` (string): Type of appointment needed
+          - `urgency_level` (string): Urgency classification
+        - **Server URL**: `https://jsonplaceholder.typicode.com/posts`
+        
+        <Note>
+          This example uses JSONPlaceholder for demonstration. In production, integrate with your appointment scheduling system.
+        </Note>
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Create Patient Lookup Tool
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "lookup_patient",
+             "description": "Look up patient record by ID",
+             "parameters": {
+               "type": "object",
+               "properties": {
+                 "patient_id": {
+                   "type": "string",
+                   "description": "Patient ID number"
+                 }
+               },
+               "required": ["patient_id"]
+             }
+           },
+           "serverUrl": "https://jsonplaceholder.typicode.com/users"
+         }'
+
+    # Create Triage Assessment Tool
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "conduct_triage",
+             "description": "Assess patient symptoms and determine urgency level",
+             "parameters": {
+               "type": "object",
+               "properties": {
+                 "symptoms": {
+                   "type": "string",
+                   "description": "Description of patient symptoms"
+                 },
+                 "onset": {
+                   "type": "string",
+                   "description": "When symptoms started"
+                 },
+                 "severity": {
+                   "type": "string",
+                   "description": "Severity level (1-10)"
+                 }
+               },
+               "required": ["symptoms"]
+             }
+           },
+           "serverUrl": "https://jsonplaceholder.typicode.com/posts"
+         }'
+
+    # Create Appointment Scheduling Tool
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "function",
+           "function": {
+             "name": "schedule_appointment",
+             "description": "Schedule patient appointments based on availability",
+             "parameters": {
+               "type": "object",
+               "properties": {
+                 "patient_id": {
+                   "type": "string",
+                   "description": "Patient identifier"
+                 },
+                 "appointment_type": {
+                   "type": "string",
+                   "description": "Type of appointment needed"
+                 },
+                 "urgency_level": {
+                   "type": "string",
+                   "description": "Urgency classification"
+                 }
+               },
+               "required": ["patient_id", "appointment_type"]
+             }
+           },
+           "serverUrl": "https://jsonplaceholder.typicode.com/posts"
+         }'
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    def create_medical_tool(name, function_name, description, parameters, server_url):
+        url = "https://api.vapi.ai/tool"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "type": "function",
+            "function": {
+                "name": function_name,
+                "description": description,
+                "parameters": parameters
+            },
+            "serverUrl": server_url
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    # Create Patient Lookup Tool
+    patient_lookup_tool = create_medical_tool(
+        "Patient Lookup",
+        "lookup_patient",
+        "Look up patient record by ID",
+        {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "string",
+                    "description": "Patient ID number"
+                }
+            },
+            "required": ["patient_id"]
+        },
+        "https://jsonplaceholder.typicode.com/users"
+    )
+
+    # Create Triage Assessment Tool
+    triage_tool = create_medical_tool(
+        "Triage Assessment",
+        "conduct_triage",
+        "Assess patient symptoms and determine urgency level",
+        {
+            "type": "object",
+            "properties": {
+                "symptoms": {
+                    "type": "string",
+                    "description": "Description of patient symptoms"
+                },
+                "onset": {
+                    "type": "string",
+                    "description": "When symptoms started"
+                },
+                "severity": {
+                    "type": "string",
+                    "description": "Severity level (1-10)"
+                }
+            },
+            "required": ["symptoms"]
+        },
+        "https://jsonplaceholder.typicode.com/posts"
+    )
+
+    # Create Appointment Scheduling Tool
+    scheduling_tool = create_medical_tool(
+        "Schedule Appointment",
+        "schedule_appointment",
+        "Schedule patient appointments based on availability",
+        {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "string",
+                    "description": "Patient identifier"
+                },
+                "appointment_type": {
+                    "type": "string",
+                    "description": "Type of appointment needed"
+                },
+                "urgency_level": {
+                    "type": "string",
+                    "description": "Urgency classification"
+                }
+            },
+            "required": ["patient_id", "appointment_type"]
+        },
+        "https://jsonplaceholder.typicode.com/posts"
+    )
+
+    print(f"Patient Lookup Tool ID: {patient_lookup_tool['id']}")
+    print(f"Triage Tool ID: {triage_tool['id']}")
+    print(f"Scheduling Tool ID: {scheduling_tool['id']}")
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
 ## 3. Create a Workflow
 
-<Steps>
-  <Step title="Open the Vapi Dashboard">
-    Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
-  </Step>
-  <Step title="Navigate to the Workflows section">
-    Click `Workflows` in the left sidebar.
-  </Step>
-  <Step title="Create a new workflow">
-    - Click `Create Workflow`.
-    - Enter workflow name: `Clinic Triage & Scheduling Workflow`.
-    - Select the default template (includes Call Start node).
-    - Click "Create Workflow".
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the Vapi Dashboard">
+        Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
+      </Step>
+      <Step title="Navigate to the Workflows section">
+        Click `Workflows` in the left sidebar.
+      </Step>
+      <Step title="Create a new workflow">
+        - Click `Create Workflow`.
+        - Enter workflow name: `Clinic Triage & Scheduling Workflow`.
+        - Select the default template (includes Call Start node).
+        - Click "Create Workflow".
 
-<video autoPlay loop muted src="../../static/videos/workflows/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+        <video autoPlay loop muted src="../../static/videos/workflows/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X POST https://api.vapi.ai/workflow \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "Clinic Triage & Scheduling Workflow",
+           "nodes": [
+             {
+               "id": "greeting",
+               "type": "conversation",
+               "firstMessage": "Hello, you'\''ve reached Riverside Family Clinic. This is Nurse Kelly, your medical assistant. I can help you schedule appointments, assess your symptoms, or direct you to appropriate care. How may I assist you today?",
+               "systemPrompt": "You are Nurse Kelly, a licensed medical assistant for Riverside Family Clinic. Listen to the patient'\''s response and determine their primary need: symptoms, appointment, prescription, emergency, or general. Keep responses professional and under 30 words.",
+               "extractVariables": [
+                 {
+                   "name": "call_purpose",
+                   "type": "string",
+                   "description": "The patient'\''s primary need",
+                   "enum": ["symptoms", "appointment", "prescription", "emergency", "general"]
+                 }
+               ]
+             }
+           ],
+           "edges": []
+         }'
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    import requests
+
+    def create_clinic_workflow():
+        url = "https://api.vapi.ai/workflow"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "name": "Clinic Triage & Scheduling Workflow",
+            "nodes": [
+                {
+                    "id": "greeting",
+                    "type": "conversation",
+                    "firstMessage": "Hello, you've reached Riverside Family Clinic. This is Nurse Kelly, your medical assistant. I can help you schedule appointments, assess your symptoms, or direct you to appropriate care. How may I assist you today?",
+                    "systemPrompt": "You are Nurse Kelly, a licensed medical assistant for Riverside Family Clinic. Listen to the patient's response and determine their primary need: symptoms, appointment, prescription, emergency, or general. Keep responses professional and under 30 words.",
+                    "extractVariables": [
+                        {
+                            "name": "call_purpose",
+                            "type": "string",
+                            "description": "The patient's primary need",
+                            "enum": ["symptoms", "appointment", "prescription", "emergency", "general"]
+                        }
+                    ]
+                }
+            ],
+            "edges": []
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    # Create the workflow
+    workflow = create_clinic_workflow()
+    print(f"Workflow created with ID: {workflow['id']}")
+    ```
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    const workflow = await vapi.workflows.create({
+      name: "Clinic Triage & Scheduling Workflow",
+      nodes: [
+        {
+          id: "greeting",
+          type: "conversation",
+          firstMessage: "Hello, you've reached Riverside Family Clinic. This is Nurse Kelly, your medical assistant. I can help you schedule appointments, assess your symptoms, or direct you to appropriate care. How may I assist you today?",
+          systemPrompt: "You are Nurse Kelly, a licensed medical assistant for Riverside Family Clinic. Listen to the patient's response and determine their primary need: symptoms, appointment, prescription, emergency, or general. Keep responses professional and under 30 words.",
+          extractVariables: [
+            {
+              name: "call_purpose",
+              type: "string",
+              description: "The patient's primary need",
+              enum: ["symptoms", "appointment", "prescription", "emergency", "general"]
+            }
+          ]
+        }
+      ],
+      edges: []
+    });
+
+    console.log(`Workflow created with ID: ${workflow.id}`);
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
@@ -313,32 +785,160 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
 
 ## 5. Configure Phone Number
 
-<Steps>
-  <Step title="Navigate to Phone Numbers">
-    Click `Phone Numbers` in the left sidebar of your dashboard.
-  </Step>
-  <Step title="Create or Import Phone Number">
-    - Click `Create Phone Number` for a new Vapi number, or
-    - Click `Import Phone Number` to use your existing clinic number
-  </Step>
-  <Step title="Configure Inbound Settings">
-    **Workflow**: Select your `Clinic Triage & Scheduling Workflow`
-    
-    **Medical Configuration**:
-    - Enable call recording for medical documentation
-    - Set maximum call duration (e.g., 20 minutes for complex cases)
-    - Configure voicemail for after-hours calls
-    - Enable emergency transfer capabilities
-  </Step>
-  <Step title="Test Medical Scenarios">
-    Test the workflow with various medical scenarios:
-    - Routine appointment requests
-    - Urgent symptom assessments
-    - Emergency situations (test routing only)
-    - Prescription refill requests
-    - After-hours calls
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to Phone Numbers">
+        Click `Phone Numbers` in the left sidebar of your dashboard.
+      </Step>
+      <Step title="Create or Import Phone Number">
+        - Click `Create Phone Number` for a new Vapi number, or
+        - Click `Import Phone Number` to use your existing clinic number
+      </Step>
+      <Step title="Configure Inbound Settings">
+        **Workflow**: Select your `Clinic Triage & Scheduling Workflow`
+        
+        **Medical Configuration**:
+        - Enable call recording for medical documentation
+        - Set maximum call duration (e.g., 20 minutes for complex cases)
+        - Configure voicemail for after-hours calls
+        - Enable emergency transfer capabilities
+      </Step>
+      <Step title="Test Medical Scenarios">
+        Test the workflow with various medical scenarios:
+        - Routine appointment requests
+        - Urgent symptom assessments
+        - Emergency situations (test routing only)
+        - Prescription refill requests
+        - After-hours calls
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Create phone number with medical workflow
+    curl -X POST https://api.vapi.ai/phone-number \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "Riverside Family Clinic Line",
+           "workflowId": "YOUR_WORKFLOW_ID",
+           "inboundSettings": {
+             "maxCallDurationMinutes": 20,
+             "recordingEnabled": true,
+             "voicemailDetectionEnabled": true,
+             "emergencyTransferEnabled": true
+           }
+         }'
+
+    # Test routine appointment scenario
+    curl -X POST https://api.vapi.ai/call \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "workflowId": "YOUR_WORKFLOW_ID",
+           "customer": {
+             "number": "+1234567890",
+             "name": "Test Patient"
+           }
+         }'
+    ```
+  </Tab>
+  <Tab title="Server SDK + Python">
+    ```python
+    def create_clinic_phone_number(workflow_id):
+        url = "https://api.vapi.ai/phone-number"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "name": "Riverside Family Clinic Line",
+            "workflowId": workflow_id,
+            "inboundSettings": {
+                "maxCallDurationMinutes": 20,
+                "recordingEnabled": True,
+                "voicemailDetectionEnabled": True,
+                "emergencyTransferEnabled": True
+            }
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    def test_medical_scenarios(workflow_id):
+        scenarios = [
+            {"customer": {"number": "+1234567890", "name": "Routine Appointment Patient"}},
+            {"customer": {"number": "+1234567891", "name": "Urgent Symptom Patient"}},
+            {"customer": {"number": "+1234567892", "name": "Prescription Refill Patient"}}
+        ]
+        
+        for scenario in scenarios:
+            url = "https://api.vapi.ai/call"
+            headers = {
+                "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "workflowId": workflow_id,
+                **scenario
+            }
+            
+            response = requests.post(url, headers=headers, json=data)
+            result = response.json()
+            print(f"Test call for {scenario['customer']['name']}: {result['id']}")
+
+    # Create phone number and test scenarios
+    phone_number = create_clinic_phone_number(workflow_id)
+    test_medical_scenarios(workflow_id)
+
+    print(f"Clinic phone number: {phone_number['number']}")
+    ```
+  </Tab>
+  <Tab title="Server SDK + TypeScript">
+    ```typescript
+    async function createClinicPhoneNumber(workflowId: string) {
+      const phoneNumber = await vapi.phoneNumbers.create({
+        name: "Riverside Family Clinic Line",
+        workflowId: workflowId,
+        inboundSettings: {
+          maxCallDurationMinutes: 20,
+          recordingEnabled: true,
+          voicemailDetectionEnabled: true,
+          emergencyTransferEnabled: true
+        }
+      });
+
+      return phoneNumber;
+    }
+
+    async function testMedicalScenarios(workflowId: string) {
+      const scenarios = [
+        { customer: { number: "+1234567890", name: "Routine Appointment Patient" }},
+        { customer: { number: "+1234567891", name: "Urgent Symptom Patient" }},
+        { customer: { number: "+1234567892", name: "Prescription Refill Patient" }}
+      ];
+
+      for (const scenario of scenarios) {
+        const call = await vapi.calls.create({
+          workflowId: workflowId,
+          ...scenario
+        });
+        
+        console.log(`Test call for ${scenario.customer.name}: ${call.id}`);
+      }
+    }
+
+    // Create phone number and test scenarios
+    const phoneNumber = await createClinicPhoneNumber(workflowId);
+    await testMedicalScenarios(workflowId);
+
+    console.log(`Clinic phone number: ${phoneNumber.number}`);
+    ```
+  </Tab>
+</Tabs>
 
 ## Integrating with Real Systems
 
