@@ -20,7 +20,7 @@ You'll learn to:
 ## Prerequisites
 
 - [Vapi account](https://dashboard.vapi.ai/) with API access
-- Documentation content - use your `llms-full.txt` file ([example](https://docs.vapi.ai/llms-full.txt)), available out-of-box on [Fern](https://buildwithfern.com/learn/docs/developer-tools/llms-txt) or [Mintlify](https://mintlify.com/docs/ai-ingestion#%2Fllms-full-txt)
+- Documentation content - `llms.txt` file ([example](https://docs.vapi.ai/llms.txt)) could work great; it could be available out-of-box with your documentation framework (e.g. [Fern](https://buildwithfern.com/learn/docs/developer-tools/llms-txt), [Mintlify](https://mintlify.com/docs/ai-ingestion#%2Fllms-full-txt))
 - [LlamaCloud account](https://cloud.llamaindex.ai/) for indexing
 
 ## Get started
@@ -58,68 +58,14 @@ You'll learn to:
            - **Body**: Configure to send the query parameter
         5. Save the tool and note the tool ID
       </Tab>
-      <Tab title="Web SDK + TypeScript">
-        Install the Web SDK and create a voice interface:
-
-        ```bash
-        npm install @vapi-ai/web
-        ```
-
-        ```typescript
-        import Vapi from '@vapi-ai/web';
-
-        // Initialize Vapi for client-side interactions
-        const vapi = new Vapi('YOUR_PUBLIC_API_KEY');
-
-        // Start a call with docs agent
-        function startDocsCall() {
-          vapi.start('YOUR_DOCS_ASSISTANT_ID');
-        }
-
-        // Listen for messages to handle tool calls
-        vapi.on('message', (message) => {
-          if (message.type === 'function-call' && message.functionCall.name === 'docsquery') {
-            console.log('Docs query:', message.functionCall.parameters.query);
-          }
-        });
-
-        // Complete web integration example
-        function setupDocsVoiceWidget(publicApiKey: string, assistantId: string) {
-          const vapiInstance = new Vapi(publicApiKey);
-
-          // Setup event listeners
-          vapiInstance.on('call-start', () => {
-            console.log('Docs conversation started');
-          });
-
-          vapiInstance.on('message', (message) => {
-            if (message.type === 'transcript') {
-              console.log(`${message.role}: ${message.transcript}`);
-            }
-          });
-
-          return {
-            start: () => vapiInstance.start(assistantId),
-            stop: () => vapiInstance.stop()
-          };
-        }
-
-        // Usage
-        const docsWidget = setupDocsVoiceWidget(
-          'YOUR_PUBLIC_API_KEY',
-          'YOUR_DOCS_ASSISTANT_ID'
-        );
-
-        // Start conversation
-        docsWidget.start();
-        ```
-      </Tab>
-      <Tab title="Server SDK + TypeScript">
+      <Tab title="TypeScript (Server SDK)">
         ```typescript
         import { Vapi } from "@vapi-ai/server-sdk";
 
+        // Initialize Vapi server SDK
         const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
 
+        // Create the documentation query tool
         const tool = await vapi.tools.create({
           type: "apiRequest",
           name: "docsquery",
@@ -136,6 +82,7 @@ You'll learn to:
               required: ["query"]
             }
           },
+          // LlamaCloud API endpoint for your pipeline
           url: `https://api.cloud.llamaindex.ai/api/v1/pipelines/${YOUR_PIPELINE_ID}/retrieve`,
           method: "POST",
           headers: {
@@ -145,6 +92,7 @@ You'll learn to:
               "Authorization": { type: "string", value: `Bearer ${YOUR_LLAMACLOUD_API_KEY}` }
             }
           },
+          // Send user query to LlamaCloud
           body: {
             type: "object",
             properties: {
@@ -156,16 +104,18 @@ You'll learn to:
         console.log(`Tool created with ID: ${tool.id}`);
         ```
       </Tab>
-      <Tab title="Server SDK + Python">
+      <Tab title="Python (Server SDK)">
         ```python
         import requests
 
+        # Vapi API configuration
         url = "https://api.vapi.ai/tool"
         headers = {
             "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
             "Content-Type": "application/json"
         }
 
+        # Define the documentation query tool
         data = {
             "type": "apiRequest",
             "name": "docsquery",
@@ -182,6 +132,7 @@ You'll learn to:
                     "required": ["query"]
                 }
             },
+            # LlamaCloud API endpoint for your pipeline
             "url": f"https://api.cloud.llamaindex.ai/api/v1/pipelines/{YOUR_PIPELINE_ID}/retrieve",
             "method": "POST",
             "headers": {
@@ -191,6 +142,7 @@ You'll learn to:
                     "Authorization": {"type": "string", "value": f"Bearer {YOUR_LLAMACLOUD_API_KEY}"}
                 }
             },
+            # Send user query to LlamaCloud
             "body": {
                 "type": "object",
                 "properties": {
@@ -199,6 +151,7 @@ You'll learn to:
             }
         }
 
+        # Create the tool
         response = requests.post(url, headers=headers, json=data)
         tool = response.json()
         print(f"Tool created with ID: {tool['id']}")
@@ -266,125 +219,65 @@ You'll learn to:
         2. Click **Create Assistant**
         3. Configure the assistant:
            - **Name**: `Docs agent`
-           - **Model**: Claude 3.5 Sonnet (Anthropic)
+           - **Model**: Claude Sonnet 4 (Anthropic)
            - **Voice**: Harry (Vapi)
            - **First Message**: `Hey I'm Harry, a support agent. How can I help you today? You can ask me questions about Vapi, how to get started or our documentation.`
-           - **System Prompt**: Use our [complete documentation agent prompt](/docs-agent-prompt.txt)
+           - **System Prompt**: Use a helpful documentation assistant prompt with guidelines for using the docsquery tool
         4. Add the `docsquery` tool in the Tools section
         5. Configure analysis plan for call monitoring
         6. Publish the assistant
       </Tab>
-      <Tab title="Web SDK + TypeScript">
-        Create a web interface that uses your docs assistant:
-
-        ```bash
-        npm install @vapi-ai/web
-        ```
-
-        ```typescript
-        import Vapi from '@vapi-ai/web';
-
-        interface DocsAssistantConfig {
-          publicApiKey: string;
-          assistantId: string;
-        }
-
-        function createDocsAssistant(config: DocsAssistantConfig) {
-          const vapi = new Vapi(config.publicApiKey);
-          let isConnected = false;
-
-          // Setup event listeners
-          vapi.on('call-start', () => {
-            isConnected = true;
-            console.log('Docs assistant connected');
-          });
-
-          vapi.on('call-end', () => {
-            isConnected = false;
-            console.log('Docs assistant disconnected');
-          });
-
-          vapi.on('message', (message) => {
-            if (message.type === 'transcript') {
-              handleTranscript(message.role, message.transcript);
-            } else if (message.type === 'function-call') {
-              handleFunctionCall(message.functionCall);
-            }
-          });
-
-          vapi.on('error', (error) => {
-            console.error('Docs assistant error:', error);
-          });
-
-          function handleTranscript(role: string, text: string) {
-            console.log(`${role}: ${text}`);
-            // Update UI with conversation
-          }
-
-          function handleFunctionCall(functionCall: any) {
-            if (functionCall.name === 'docsquery') {
-              console.log('Searching docs for:', functionCall.parameters.query);
-              // Optional: Show search indicator in UI
-            }
-          }
-
-          return {
-            start: () => {
-              if (!isConnected) {
-                vapi.start(config.assistantId);
-              }
-            },
-            stop: () => {
-              if (isConnected) {
-                vapi.stop();
-              }
-            },
-            isConnected: () => isConnected
-          };
-        }
-
-        // Usage
-        const docsAssistant = createDocsAssistant({
-          publicApiKey: 'YOUR_PUBLIC_API_KEY',
-          assistantId: 'YOUR_DOCS_ASSISTANT_ID'
-        });
-
-        // Start conversation
-        docsAssistant.start();
-        ```
-      </Tab>
-      <Tab title="Server SDK + TypeScript">
+      <Tab title="TypeScript (Server SDK)">
         ```typescript
         import { Vapi } from "@vapi-ai/server-sdk";
 
+        // Initialize Vapi server SDK
         const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
 
+        // Define system prompt for documentation assistant
+        const systemPrompt = `You are a helpful documentation assistant. Use the docsquery tool to find relevant information when users ask questions about the documentation.
+
+Guidelines:
+- Always be helpful, friendly, and concise
+- Provide accurate information based on the documentation
+- When you don't know something, say so clearly
+- Keep responses conversational for voice interaction
+- Use the docsquery tool whenever users ask specific questions about features, setup, or implementation
+- Summarize complex information in an easy-to-understand way
+- Ask clarifying questions if the user's request is unclear
+- Provide step-by-step guidance when explaining processes`;
+
+        // Create the documentation assistant
         const assistant = await vapi.assistants.create({
           name: "Docs agent",
           model: {
             provider: "anthropic",
-            model: "claude-3-5-sonnet-20241022",
+            model: "claude-sonnet-4-20250514", // Updated to current model
             maxTokens: 400,
             messages: [
               {
                 role: "system",
-                content: "You are a helpful documentation assistant. Use the docsquery tool to find relevant information. Always be helpful, friendly, and concise. Provide accurate information based on the documentation. When you don't know something, say so clearly. Keep responses conversational for voice interaction."
+                content: systemPrompt
               }
             ],
-            toolIds: [YOUR_TOOL_ID_FROM_STEP_2]
+            toolIds: [YOUR_TOOL_ID_FROM_STEP_2] // Replace with actual tool ID
           },
+          // Configure voice settings
           voice: {
             provider: "vapi",
             voiceId: "Harry"
           },
+          // Configure transcription
           transcriber: {
             provider: "deepgram",
             model: "nova-3",
             language: "en"
           },
+          // Set greeting message
           firstMessage: "Hey I'm Harry, a support agent. How can I help you today? You can ask me questions about Vapi, how to get started or our documentation.",
           endCallMessage: "Goodbye.",
           backgroundSound: "off",
+          // Enable call analysis for continuous improvement
           analysisPlan: {
             summaryPlan: {
               enabled: true,
@@ -401,23 +294,36 @@ You'll learn to:
         console.log(`Assistant created with ID: ${assistant.id}`);
         ```
       </Tab>
-      <Tab title="Server SDK + Python">
+      <Tab title="Python (Server SDK)">
         ```python
         import requests
 
+        # Vapi API configuration
         url = "https://api.vapi.ai/assistant"
         headers = {
             "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
             "Content-Type": "application/json"
         }
 
-        system_prompt = """You are a helpful documentation assistant. Use the docsquery tool to find relevant information. Always be helpful, friendly, and concise. Provide accurate information based on the documentation. When you don'\''t know something, say so clearly. Keep responses conversational for voice interaction."""
+        # Define system prompt for documentation assistant
+        system_prompt = """You are a helpful documentation assistant. Use the docsquery tool to find relevant information when users ask questions about the documentation.
 
+Guidelines:
+- Always be helpful, friendly, and concise
+- Provide accurate information based on the documentation
+- When you don'\''t know something, say so clearly
+- Keep responses conversational for voice interaction
+- Use the docsquery tool whenever users ask specific questions about features, setup, or implementation
+- Summarize complex information in an easy-to-understand way
+- Ask clarifying questions if the user'\''s request is unclear
+- Provide step-by-step guidance when explaining processes"""
+
+        # Create the documentation assistant
         data = {
             "name": "Docs agent",
             "model": {
                 "provider": "anthropic",
-                "model": "claude-3-5-sonnet-20241022",
+                "model": "claude-sonnet-4-20250514", # Updated to current model
                 "maxTokens": 400,
                 "messages": [
                     {
@@ -425,20 +331,24 @@ You'll learn to:
                         "content": system_prompt
                     }
                 ],
-                "toolIds": [YOUR_TOOL_ID_FROM_STEP_2]
+                "toolIds": [YOUR_TOOL_ID_FROM_STEP_2] # Replace with actual tool ID
             },
+            # Configure voice settings
             "voice": {
                 "provider": "vapi",
                 "voiceId": "Harry"
             },
+            # Configure transcription
             "transcriber": {
                 "provider": "deepgram",
                 "model": "nova-3",
                 "language": "en"
             },
+            # Set greeting and ending messages
             "firstMessage": "Hey I'\''m Harry, a support agent. How can I help you today? You can ask me questions about Vapi, how to get started or our documentation.",
             "endCallMessage": "Goodbye.",
             "backgroundSound": "off",
+            # Enable call analysis for continuous improvement
             "analysisPlan": {
                 "summaryPlan": {
                     "enabled": True,
@@ -452,6 +362,7 @@ You'll learn to:
             }
         }
 
+        # Create the assistant
         response = requests.post(url, headers=headers, json=data)
         assistant = response.json()
         print(f"Assistant created with ID: {assistant['id']}")
@@ -466,12 +377,12 @@ You'll learn to:
                "name": "Docs agent",
                "model": {
                  "provider": "anthropic",
-                 "model": "claude-3-5-sonnet-20241022",
+                 "model": "claude-sonnet-4-20250514",
                  "maxTokens": 400,
                  "messages": [
                    {
                      "role": "system",
-                     "content": "You are a helpful documentation assistant. Use the docsquery tool to find relevant information. Always be helpful, friendly, and concise. Provide accurate information based on the documentation. When you don'\''t know something, say so clearly. Keep responses conversational for voice interaction."
+                     "content": "You are a helpful documentation assistant. Use the docsquery tool to find relevant information when users ask questions about the documentation.\n\nGuidelines:\n- Always be helpful, friendly, and concise\n- Provide accurate information based on the documentation\n- When you don'\''t know something, say so clearly\n- Keep responses conversational for voice interaction\n- Use the docsquery tool whenever users ask specific questions about features, setup, or implementation\n- Summarize complex information in an easy-to-understand way\n- Ask clarifying questions if the user'\''s request is unclear\n- Provide step-by-step guidance when explaining processes"
                    }
                  ],
                  "toolIds": ["YOUR_TOOL_ID_FROM_STEP_2"]
@@ -511,14 +422,236 @@ You'll learn to:
     </Tip>
   </Step>
 
-  <Step title="Create a web component">
-    Use the Vapi Web SDK to create a voice widget.
+  <Step title="Update assistant properties">
+    Customize your assistant's behavior and responses after creation.
 
     <Tabs>
-      <Tab title="React/TypeScript">
+      <Tab title="Dashboard">
+        1. Navigate to your assistant in the [Vapi Dashboard](https://dashboard.vapi.ai/)
+        2. Edit any properties like system prompt, first message, or voice settings
+        3. Changes apply immediately - no republishing needed
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        import { Vapi } from "@vapi-ai/server-sdk";
+
+        const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+        // Update the assistant's first message
+        const updatedAssistant = await vapi.assistants.update("YOUR_ASSISTANT_ID", {
+          firstMessage: "Hello! I'm your documentation assistant. What would you like to know about our platform?",
+          // Update system prompt for better responses
+          model: {
+            provider: "anthropic",
+            model: "claude-sonnet-4-20250514",
+            messages: [
+              {
+                role: "system", 
+                content: "Enhanced system prompt with more specific guidelines for documentation assistance"
+              }
+            ]
+          }
+        });
+
+        console.log("Assistant updated successfully");
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        import requests
+
+        # Update assistant properties
+        url = f"https://api.vapi.ai/assistant/{YOUR_ASSISTANT_ID}"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        # Update first message and system prompt
+        data = {
+            "firstMessage": "Hello! I'm your documentation assistant. What would you like to know about our platform?",
+            "model": {
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-20250514",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "Enhanced system prompt with more specific guidelines for documentation assistance"
+                    }
+                ]
+            }
+        }
+
+        response = requests.patch(url, headers=headers, json=data)
+        print("Assistant updated successfully")
+        ```
+      </Tab>
+      <Tab title="cURL">
         ```bash
+        curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "firstMessage": "Hello! I'\''m your documentation assistant. What would you like to know about our platform?",
+               "model": {
+                 "provider": "anthropic", 
+                 "model": "claude-sonnet-4-20250514",
+                 "messages": [
+                   {
+                     "role": "system",
+                     "content": "Enhanced system prompt with more specific guidelines for documentation assistance"
+                   }
+                 ]
+               }
+             }'
+        ```
+      </Tab>
+    </Tabs>
+
+    <Note>
+      SDK changes apply immediately. Unlike Dashboard publishing, programmatic updates take effect right away.
+    </Note>
+  </Step>
+
+  <Step title="Create test suite">
+    Create test scenarios to validate your documentation assistant's responses.
+
+    <Tabs>
+      <Tab title="Dashboard">
+        1. Navigate to **Test** > **Voice Test Suites** in your dashboard  
+        2. Click **Create Test Suite**
+        3. Add test scenarios with expected behaviors
+        4. Run tests to validate assistant performance
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        import { Vapi } from "@vapi-ai/server-sdk";
+
+        const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+        // Create test suite for documentation assistant
+        const testSuite = await vapi.testSuites.create({
+          name: "Documentation Assistant Tests",
+          assistantId: "YOUR_ASSISTANT_ID",
+          testCases: [
+            {
+              name: "Basic greeting test",
+              scenario: "User says hello",
+              expectedBehavior: "Assistant responds with greeting and asks how to help"
+            },
+            {
+              name: "Documentation query test", 
+              scenario: "User asks about API endpoints",
+              expectedBehavior: "Assistant uses docsquery tool and provides relevant information"
+            },
+            {
+              name: "Unknown topic test",
+              scenario: "User asks about unrelated topic",
+              expectedBehavior: "Assistant politely redirects to documentation topics"
+            }
+          ]
+        });
+
+        console.log(`Test suite created with ID: ${testSuite.id}`);
+        console.log("Next: Go to Dashboard to run the test suite");
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        import requests
+
+        # Create test suite for documentation assistant
+        url = "https://api.vapi.ai/test-suite"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        data = {
+            "name": "Documentation Assistant Tests",
+            "assistantId": "YOUR_ASSISTANT_ID",
+            "testCases": [
+                {
+                    "name": "Basic greeting test",
+                    "scenario": "User says hello", 
+                    "expectedBehavior": "Assistant responds with greeting and asks how to help"
+                },
+                {
+                    "name": "Documentation query test",
+                    "scenario": "User asks about API endpoints",
+                    "expectedBehavior": "Assistant uses docsquery tool and provides relevant information"
+                },
+                {
+                    "name": "Unknown topic test",
+                    "scenario": "User asks about unrelated topic",
+                    "expectedBehavior": "Assistant politely redirects to documentation topics"
+                }
+            ]
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        test_suite = response.json()
+        print(f"Test suite created with ID: {test_suite['id']}")
+        print("Next: Go to Dashboard to run the test suite")
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST https://api.vapi.ai/test-suite \
+             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "name": "Documentation Assistant Tests",
+               "assistantId": "YOUR_ASSISTANT_ID", 
+               "testCases": [
+                 {
+                   "name": "Basic greeting test",
+                   "scenario": "User says hello",
+                   "expectedBehavior": "Assistant responds with greeting and asks how to help"
+                 },
+                 {
+                   "name": "Documentation query test", 
+                   "scenario": "User asks about API endpoints",
+                   "expectedBehavior": "Assistant uses docsquery tool and provides relevant information"
+                 },
+                 {
+                   "name": "Unknown topic test",
+                   "scenario": "User asks about unrelated topic", 
+                   "expectedBehavior": "Assistant politely redirects to documentation topics"
+                 }
+               ]
+             }'
+        ```
+      </Tab>
+    </Tabs>
+
+    <Note>
+      Test suites can only be executed through the Dashboard. Navigate to **Test** > **Voice Test Suites** to run your created tests.
+    </Note>
+  </Step>
+
+  <Step title="Create a web component">
+    Use the Vapi Web SDK to create a voice widget for your documentation assistant.
+
+    <Tabs>
+      <Tab title="TypeScript (Web SDK)">
+        <CodeBlocks>
+        ```bash title="npm"
         npm install @vapi-ai/web
         ```
+
+        ```bash title="yarn"
+        yarn add @vapi-ai/web
+        ```
+
+        ```bash title="pnpm"
+        pnpm add @vapi-ai/web
+        ```
+
+        ```bash title="bun"
+        bun add @vapi-ai/web
+        ```
+        </CodeBlocks>
 
         Replace `YOUR_PUBLIC_API_KEY` and `YOUR_ASSISTANT_ID` with your actual values:
 
@@ -532,20 +665,26 @@ You'll learn to:
           const [transcript, setTranscript] = useState([]);
 
           useEffect(() => {
+            // Initialize Vapi Web SDK for client-side voice interactions
             const vapiInstance = new Vapi('YOUR_PUBLIC_API_KEY');
             setVapi(vapiInstance);
 
+            // Handle call lifecycle events
             vapiInstance.on('call-start', () => setIsConnected(true));
             vapiInstance.on('call-end', () => setIsConnected(false));
+            
+            // Handle real-time conversation messages
             vapiInstance.on('message', (msg) => {
               if (msg.type === 'transcript') {
                 setTranscript(prev => [...prev, { role: msg.role, text: msg.transcript }]);
               }
             });
 
+            // Cleanup on component unmount
             return () => vapiInstance?.stop();
           }, []);
 
+          // Start voice conversation with documentation assistant
           const startCall = () => vapi?.start('YOUR_ASSISTANT_ID');
           const endCall = () => vapi?.stop();
 
@@ -576,93 +715,6 @@ You'll learn to:
         }
         ```
       </Tab>
-      <Tab title="JavaScript">
-        ```html
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Vapi Documentation Assistant</title>
-        </head>
-        <body>
-            <div id="voice-widget"></div>
-            
-            <script src="https://unpkg.com/@vapi-ai/web@latest/dist/index.umd.js"></script>
-            <script>
-                const vapi = new VapiSDK.Vapi('YOUR_PUBLIC_API_KEY');
-                const widgetContainer = document.getElementById('voice-widget');
-                
-                let isConnected = false;
-                
-                function updateWidget() {
-                    if (!isConnected) {
-                        widgetContainer.innerHTML = `
-                            <button onclick="startCall()" style="background: #12A594; color: #fff; border: none; border-radius: 8px; padding: 12px 24px;">
-                                Start Voice Chat
-                            </button>
-                        `;
-                    } else {
-                        widgetContainer.innerHTML = `
-                            <div>
-                                <p>Connected to documentation assistant...</p>
-                                <button onclick="endCall()" style="background: #e5e7eb; color: #000; border: none; border-radius: 8px; padding: 8px 16px;">
-                                    End Call
-                                </button>
-                            </div>
-                        `;
-                    }
-                }
-                
-                function startCall() {
-                    vapi.start('YOUR_ASSISTANT_ID');
-                }
-                
-                function endCall() {
-                    vapi.stop();
-                }
-                
-                vapi.on('call-start', () => {
-                    isConnected = true;
-                    updateWidget();
-                });
-                
-                vapi.on('call-end', () => {
-                    isConnected = false;
-                    updateWidget();
-                });
-                
-                // Initialize widget
-                updateWidget();
-            </script>
-        </body>
-        </html>
-        ```
-      </Tab>
-      <Tab title="Python (outbound calls)">
-        ```python
-        import requests
-
-        def make_outbound_call(customer_phone):
-            url = "https://api.vapi.ai/call"
-            headers = {
-                "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            
-            data = {
-                "assistantId": "YOUR_ASSISTANT_ID",
-                "customer": {
-                    "number": customer_phone
-                }
-            }
-            
-            response = requests.post(url, headers=headers, json=data)
-            return response.json()
-
-        # Make an outbound call
-        call = make_outbound_call("+1234567890")
-        print(f"Call initiated with ID: {call['id']}")
-        ```
-      </Tab>
     </Tabs>
 
     <Tip>
@@ -680,85 +732,85 @@ You'll learn to:
         3. Review summary and success evaluation
         4. Use insights to improve your assistant's prompts and responses
       </Tab>
-      <Tab title="Web SDK + TypeScript">
-        Access call analysis through the Web SDK:
-
-        ```typescript
-        import Vapi from '@vapi-ai/web';
-
-        function setupDocsAnalytics(publicApiKey: string) {
-          const vapi = new Vapi(publicApiKey);
-
-          vapi.on('call-end', (callData) => {
-            // Call ended, analysis will be available shortly
-            console.log('Call ended, analysis processing...');
-            
-            // Wait a moment for analysis to complete, then fetch
-            setTimeout(() => {
-              fetchCallAnalysis(callData.callId);
-            }, 5000);
-          });
-
-          vapi.on('message', (message) => {
-            if (message.type === 'function-call') {
-              // Track function usage for analytics
-              console.log('Docs query:', message.functionCall.parameters);
-            }
-          });
-
-          function fetchCallAnalysis(callId: string) {
-            // Note: Web SDK doesn't directly access call analysis
-            // This would need to be routed through your backend
-            console.log(`Analysis for call ${callId} would be fetched via backend`);
-          }
-
-          return vapi;
-        }
-
-        const analytics = setupDocsAnalytics('YOUR_PUBLIC_API_KEY');
-        ```
-
-        <Note>
-          Web SDK cannot directly access call analysis. Route analysis requests through your backend using the Server SDK.
-        </Note>
-      </Tab>
-      <Tab title="Server SDK + TypeScript">
+      <Tab title="TypeScript (Server SDK)">
         ```typescript
         import { Vapi } from "@vapi-ai/server-sdk";
 
         const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
 
+        // Retrieve call analysis for continuous improvement
         async function getCallAnalysis(callId: string) {
-          const call = await vapi.calls.get(callId);
-          
-          if (call.analysis) {
-            console.log("Call Summary:", call.analysis.summary);
-            console.log("Success Score:", call.analysis.successEvaluation);
+          try {
+            const call = await vapi.calls.get(callId);
+            
+            if (call.analysis) {
+              console.log("Call Summary:", call.analysis.summary);
+              console.log("Success Score:", call.analysis.successEvaluation);
+              
+              // Use analysis data to improve prompts
+              return {
+                summary: call.analysis.summary,
+                successScore: call.analysis.successEvaluation,
+                improvements: extractImprovements(call.analysis)
+              };
+            }
+          } catch (error) {
+            console.error("Error fetching call analysis:", error);
           }
           
           return call;
+        }
+
+        // Extract improvement suggestions from analysis
+        function extractImprovements(analysis: any) {
+          // Analyze patterns to suggest prompt improvements
+          return {
+            promptSuggestions: "Based on call analysis...",
+            commonQueries: "Users frequently ask about...",
+            successFactors: "Successful calls typically..."
+          };
         }
 
         // Get analysis for a specific call
         const analysis = await getCallAnalysis("CALL_ID");
         ```
       </Tab>
-      <Tab title="Server SDK + Python">
+      <Tab title="Python (Server SDK)">
         ```python
         import requests
 
         def get_call_analysis(call_id):
+            """Retrieve and analyze call data for continuous improvement"""
             url = f"https://api.vapi.ai/call/{call_id}"
             headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
             
-            response = requests.get(url, headers=headers)
-            call_data = response.json()
-            
-            if 'analysis' in call_data:
-                print("Call Summary:", call_data['analysis']['summary'])
-                print("Success Score:", call_data['analysis']['successEvaluation'])
+            try:
+                response = requests.get(url, headers=headers)
+                call_data = response.json()
+                
+                if 'analysis' in call_data:
+                    print("Call Summary:", call_data['analysis']['summary'])
+                    print("Success Score:", call_data['analysis']['successEvaluation'])
+                    
+                    # Extract insights for improvement
+                    return {
+                        'summary': call_data['analysis']['summary'],
+                        'success_score': call_data['analysis']['successEvaluation'],
+                        'improvements': extract_improvements(call_data['analysis'])
+                    }
+                    
+            except Exception as error:
+                print(f"Error fetching call analysis: {error}")
             
             return call_data
+
+        def extract_improvements(analysis):
+            """Extract improvement suggestions from analysis data"""
+            return {
+                'prompt_suggestions': "Based on call analysis...",
+                'common_queries': "Users frequently ask about...", 
+                'success_factors': "Successful calls typically..."
+            }
 
         # Get analysis for a specific call
         analysis = get_call_analysis("CALL_ID")
