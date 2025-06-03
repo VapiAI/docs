@@ -53,96 +53,7 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
       </Step>
     </Steps>
   </Tab>
-  <Tab title="Web SDK + TypeScript">
-    For web-based sales applications:
-
-    ```bash
-    npm install @vapi-ai/web
-    ```
-
-    ```typescript
-    import Vapi from '@vapi-ai/web';
-
-    interface SalesConfig {
-      publicApiKey: string;
-      workflowId: string;
-    }
-
-    function createSalesWorkflowManager(config: SalesConfig) {
-      const vapi = new Vapi(config.publicApiKey);
-      let isConnected = false;
-
-      // Setup event listeners
-      vapi.on('call-start', () => {
-        isConnected = true;
-        console.log('Sales workflow call started');
-      });
-
-      vapi.on('call-end', () => {
-        isConnected = false;
-        console.log('Sales workflow call ended');
-      });
-
-      vapi.on('message', (message) => {
-        if (message.type === 'transcript') {
-          console.log(`${message.role}: ${message.transcript}`);
-        } else if (message.type === 'function-call') {
-          handleSalesFunction(message.functionCall);
-        } else if (message.type === 'workflow-step') {
-          console.log('Sales workflow step:', message.step);
-        }
-      });
-
-      vapi.on('error', (error) => {
-        console.error('Sales workflow error:', error);
-      });
-
-      function handleSalesFunction(functionCall: { name: string; parameters: Record<string, unknown> }) {
-        switch (functionCall.name) {
-          case 'lookup_lead':
-            console.log('Looking up lead:', functionCall.parameters);
-            break;
-          case 'qualify_prospect':
-            console.log('Qualifying prospect:', functionCall.parameters);
-            break;
-          case 'schedule_demo':
-            console.log('Scheduling demo:', functionCall.parameters);
-            break;
-          default:
-            console.log('Sales function called:', functionCall.name, functionCall.parameters);
-        }
-      }
-
-      return {
-        startSalesCall: () => {
-          if (!isConnected) {
-            vapi.start(config.workflowId);
-          }
-        },
-        endCall: () => {
-          if (isConnected) {
-            vapi.stop();
-          }
-        },
-        isConnected: () => isConnected
-      };
-    }
-
-    // Usage for sales workflow
-    const salesManager = createSalesWorkflowManager({
-      publicApiKey: 'YOUR_PUBLIC_API_KEY',
-      workflowId: 'YOUR_SALES_WORKFLOW_ID'
-    });
-
-    // Start sales conversation
-    salesManager.startSalesCall();
-    ```
-
-    <Note>
-      For actual file uploads (leads.csv, products.csv, etc.), use the Server SDK or Dashboard. Web SDK is for managing live sales conversations.
-    </Note>
-  </Tab>
-  <Tab title="Server SDK + TypeScript">
+  <Tab title="TypeScript (Server SDK)">
     ```typescript
     import { Vapi } from "@vapi-ai/server-sdk";
     import fs from 'fs';
@@ -151,12 +62,12 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
 
     async function uploadSalesFiles() {
       try {
-        // Upload leads file
+        // Upload leads file for prospect data
         const leadsFile = await vapi.files.create({
           file: fs.createReadStream("leads.csv")
         });
 
-        // Upload products file
+        // Upload products file for product information
         const productsFile = await vapi.files.create({
           file: fs.createReadStream("products.csv")
         });
@@ -174,15 +85,16 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
       }
     }
 
-    // Upload all files
+    // Upload all files for the sales workflow
     const fileIds = await uploadSalesFiles();
     ```
   </Tab>
-  <Tab title="Server SDK + Python">
+  <Tab title="Python (Server SDK)">
     ```python
     import requests
 
     def upload_file(file_path):
+        """Upload a file to Vapi for use in sales workflow"""
         url = "https://api.vapi.ai/file"
         headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
         
@@ -191,7 +103,7 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
             response = requests.post(url, headers=headers, files=files)
             return response.json()
 
-    # Upload all required files
+    # Upload all required files for sales workflow
     leads_file = upload_file("leads.csv")
     products_file = upload_file("products.csv")
 
@@ -201,12 +113,12 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
   </Tab>
   <Tab title="cURL">
     ```bash
-    # Upload leads.csv
+    # Upload leads.csv for prospect information
     curl -X POST https://api.vapi.ai/file \
          -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
          -F "file=@leads.csv"
 
-    # Upload products.csv
+    # Upload products.csv for product information
     curl -X POST https://api.vapi.ai/file \
          -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
          -F "file=@products.csv"
@@ -272,6 +184,217 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
         </Note>
       </Step>
     </Steps>
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    async function createSalesTools() {
+      try {
+        // Create lead lookup tool for retrieving prospect information
+        const leadLookupTool = await vapi.tools.create({
+          type: "function",
+          function: {
+            name: "lookup_lead",
+            description: "Retrieve lead information and call history",
+            parameters: {
+              type: "object",
+              properties: {
+                lead_id: {
+                  type: "string",
+                  description: "Lead ID to lookup"
+                }
+              },
+              required: ["lead_id"]
+            }
+          },
+          serverUrl: "https://jsonplaceholder.typicode.com/users"
+        });
+
+        // Create lead scoring tool for BANT qualification
+        const leadScoringTool = await vapi.tools.create({
+          type: "function",
+          function: {
+            name: "score_lead",
+            description: "Score leads based on qualification responses",
+            parameters: {
+              type: "object",
+              properties: {
+                budget: {
+                  type: "string",
+                  description: "Budget information"
+                },
+                authority: {
+                  type: "string", 
+                  description: "Decision-making authority"
+                },
+                need: {
+                  type: "string",
+                  description: "Business need assessment"
+                },
+                timeline: {
+                  type: "string",
+                  description: "Purchase timeline"
+                }
+              },
+              required: ["budget", "authority", "need", "timeline"]
+            }
+          },
+          serverUrl: "https://jsonplaceholder.typicode.com/posts"
+        });
+
+        // Create CRM update tool for recording call outcomes
+        const crmUpdateTool = await vapi.tools.create({
+          type: "function",
+          function: {
+            name: "update_crm",
+            description: "Update CRM with call outcomes and next steps",
+            parameters: {
+              type: "object",
+              properties: {
+                lead_id: {
+                  type: "string",
+                  description: "Lead identifier"
+                },
+                call_outcome: {
+                  type: "string",
+                  description: "Result of the call"
+                },
+                next_steps: {
+                  type: "string",
+                  description: "Planned follow-up actions"
+                }
+              },
+              required: ["lead_id", "call_outcome"]
+            }
+          },
+          serverUrl: "https://jsonplaceholder.typicode.com/posts"
+        });
+
+        console.log(`Lead Lookup Tool ID: ${leadLookupTool.id}`);
+        console.log(`Lead Scoring Tool ID: ${leadScoringTool.id}`);
+        console.log(`CRM Update Tool ID: ${crmUpdateTool.id}`);
+
+        return {
+          leadLookupToolId: leadLookupTool.id,
+          leadScoringToolId: leadScoringTool.id,
+          crmUpdateToolId: crmUpdateTool.id
+        };
+      } catch (error) {
+        console.error('Error creating tools:', error);
+        throw error;
+      }
+    }
+
+    // Create all tools required for the sales workflow
+    const toolIds = await createSalesTools();
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    import requests
+
+    def create_sales_tool(name, function_name, description, parameters, server_url):
+        """Create a tool for the sales workflow"""
+        url = "https://api.vapi.ai/tool"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "type": "function",
+            "function": {
+                "name": function_name,
+                "description": description,
+                "parameters": parameters
+            },
+            "serverUrl": server_url
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    # Create lead lookup tool for retrieving prospect information
+    lead_lookup_tool = create_sales_tool(
+        "Lead Lookup",
+        "lookup_lead",
+        "Retrieve lead information and call history",
+        {
+            "type": "object",
+            "properties": {
+                "lead_id": {
+                    "type": "string",
+                    "description": "Lead ID to lookup"
+                }
+            },
+            "required": ["lead_id"]
+        },
+        "https://jsonplaceholder.typicode.com/users"
+    )
+
+    # Create lead scoring tool for BANT qualification
+    lead_scoring_tool = create_sales_tool(
+        "Lead Scoring",
+        "score_lead",
+        "Score leads based on qualification responses",
+        {
+            "type": "object",
+            "properties": {
+                "budget": {
+                    "type": "string",
+                    "description": "Budget information"
+                },
+                "authority": {
+                    "type": "string",
+                    "description": "Decision-making authority"
+                },
+                "need": {
+                    "type": "string",
+                    "description": "Business need assessment"
+                },
+                "timeline": {
+                    "type": "string",
+                    "description": "Purchase timeline"
+                }
+            },
+            "required": ["budget", "authority", "need", "timeline"]
+        },
+        "https://jsonplaceholder.typicode.com/posts"
+    )
+
+    # Create CRM update tool for recording call outcomes
+    crm_update_tool = create_sales_tool(
+        "CRM Update",
+        "update_crm",
+        "Update CRM with call outcomes and next steps",
+        {
+            "type": "object",
+            "properties": {
+                "lead_id": {
+                    "type": "string",
+                    "description": "Lead identifier"
+                },
+                "call_outcome": {
+                    "type": "string",
+                    "description": "Result of the call"
+                },
+                "next_steps": {
+                    "type": "string",
+                    "description": "Planned follow-up actions"
+                }
+            },
+            "required": ["lead_id", "call_outcome"]
+        },
+        "https://jsonplaceholder.typicode.com/posts"
+    )
+
+    print(f"Lead Lookup Tool ID: {lead_lookup_tool['id']}")
+    print(f"Lead Scoring Tool ID: {lead_scoring_tool['id']}")
+    print(f"CRM Update Tool ID: {crm_update_tool['id']}")
+    ```
   </Tab>
   <Tab title="cURL">
     ```bash
@@ -365,109 +488,6 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
          }'
     ```
   </Tab>
-  <Tab title="Server SDK + Python">
-    ```python
-    import requests
-
-    def create_sales_tool(name, function_name, description, parameters, server_url):
-        url = "https://api.vapi.ai/tool"
-        headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "type": "function",
-            "function": {
-                "name": function_name,
-                "description": description,
-                "parameters": parameters
-            },
-            "serverUrl": server_url
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        return response.json()
-
-    # Create Lead Lookup Tool
-    lead_lookup_tool = create_sales_tool(
-        "Lead Lookup",
-        "lookup_lead",
-        "Retrieve lead information and call history",
-        {
-            "type": "object",
-            "properties": {
-                "lead_id": {
-                    "type": "string",
-                    "description": "Lead ID to lookup"
-                }
-            },
-            "required": ["lead_id"]
-        },
-        "https://jsonplaceholder.typicode.com/users"
-    )
-
-    # Create Lead Scoring Tool
-    lead_scoring_tool = create_sales_tool(
-        "Lead Scoring",
-        "score_lead",
-        "Score leads based on qualification responses",
-        {
-            "type": "object",
-            "properties": {
-                "budget": {
-                    "type": "string",
-                    "description": "Budget information"
-                },
-                "authority": {
-                    "type": "string",
-                    "description": "Decision-making authority"
-                },
-                "need": {
-                    "type": "string",
-                    "description": "Business need assessment"
-                },
-                "timeline": {
-                    "type": "string",
-                    "description": "Purchase timeline"
-                }
-            },
-            "required": ["budget", "authority", "need", "timeline"]
-        },
-        "https://jsonplaceholder.typicode.com/posts"
-    )
-
-    # Create CRM Update Tool
-    crm_update_tool = create_sales_tool(
-        "CRM Update",
-        "update_crm",
-        "Update CRM with call outcomes and next steps",
-        {
-            "type": "object",
-            "properties": {
-                "lead_id": {
-                    "type": "string",
-                    "description": "Lead identifier"
-                },
-                "call_outcome": {
-                    "type": "string",
-                    "description": "Result of the call"
-                },
-                "next_steps": {
-                    "type": "string",
-                    "description": "Planned follow-up actions"
-                }
-            },
-            "required": ["lead_id", "call_outcome"]
-        },
-        "https://jsonplaceholder.typicode.com/posts"
-    )
-
-    print(f"Lead Lookup Tool ID: {lead_lookup_tool['id']}")
-    print(f"Lead Scoring Tool ID: {lead_scoring_tool['id']}")
-    print(f"CRM Update Tool ID: {crm_update_tool['id']}")
-    ```
-  </Tab>
 </Tabs>
 
 ---
@@ -475,119 +495,71 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
 ## 3. Create a Workflow
 
 <Tabs>
-  <Tab title="Web SDK + TypeScript">
-    Use the Web SDK to manage sales workflow interactions:
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the Vapi Dashboard">
+        Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
+      </Step>
+      <Step title="Navigate to the Workflows section">
+        Click `Workflows` in the left sidebar.
+      </Step>
+      <Step title="Create a new workflow">
+        - Click `Create Workflow`.
+        - Enter workflow name: `TechFlow Sales Qualification Workflow`.
+        - Select the default template (includes Call Start node).
+        - Click "Create Workflow".
 
-    ```bash
-    npm install @vapi-ai/web
-    ```
-
-    ```typescript
-    import Vapi from '@vapi-ai/web';
-
-    interface SalesWorkflowConfig {
-      publicApiKey: string;
-      workflowId: string;
-    }
-
-    function createOutboundSalesWorkflow(config: SalesWorkflowConfig) {
-      const vapi = new Vapi(config.publicApiKey);
-      let isConnected = false;
-      let currentLead: any = null;
-
-      // Setup event listeners
-      vapi.on('call-start', () => {
-        isConnected = true;
-        console.log('Outbound sales call started');
-      });
-
-      vapi.on('call-end', () => {
-        isConnected = false;
-        console.log('Sales call ended');
-        processSalesOutcome();
-      });
-
-      vapi.on('message', (message) => {
-        if (message.type === 'transcript') {
-          console.log(`${message.role}: ${message.transcript}`);
-        } else if (message.type === 'function-call') {
-          handleSalesFunction(message.functionCall);
-        } else if (message.type === 'workflow-step') {
-          console.log('Sales workflow step:', message.step);
-        }
-      });
-
-      vapi.on('error', (error) => {
-        console.error('Sales workflow error:', error);
-      });
-
-      function handleSalesFunction(functionCall: { name: string; parameters: Record<string, unknown> }) {
-        switch (functionCall.name) {
-          case 'qualify_lead':
-            console.log('Qualifying lead:', functionCall.parameters);
-            break;
-          case 'present_product':
-            console.log('Presenting product:', functionCall.parameters);
-            break;
-          case 'schedule_demo':
-            console.log('Scheduling demo:', functionCall.parameters);
-            break;
-          case 'update_crm':
-            console.log('Updating CRM:', functionCall.parameters);
-            break;
-          default:
-            console.log('Sales function called:', functionCall.name, functionCall.parameters);
-        }
-      }
-
-      function processSalesOutcome() {
-        console.log('Processing sales outcome for lead:', currentLead);
-      }
-
-      return {
-        startSalesCall: (leadData?: any) => {
-          if (!isConnected) {
-            currentLead = leadData;
-            vapi.start(config.workflowId);
-          }
-        },
-        endCall: () => {
-          if (isConnected) {
-            vapi.stop();
-          }
-        },
-        isConnected: () => isConnected
-      };
-    }
-
-    // Usage for outbound sales
-    const outboundSales = createOutboundSalesWorkflow({
-      publicApiKey: 'YOUR_PUBLIC_API_KEY',
-      workflowId: 'YOUR_SALES_WORKFLOW_ID'
-    });
-
-    // Start sales call
-    outboundSales.startSalesCall({
-      name: 'Jane Smith',
-      company: 'ACME Corp',
-      interest: 'automation tools'
-    });
-    ```
-
-    <Note>
-      For web-based sales interfaces, workflows provide structured lead management. Use Server SDK for automated phone-based sales calls.
-    </Note>
+        <video autoPlay loop muted src="../../static/videos/workflows/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Step>
+    </Steps>
   </Tab>
-  <Tab title="Server SDK + Python">
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
+    // Define system prompt for the opening conversation
+    const openingSystemPrompt = `You are Alex, a professional outbound sales representative for TechFlow Solutions. Listen for their response and determine: permission_granted, busy_reschedule, not_interested, or gatekeeper. Keep responses under 30 words and be respectful of their time.`;
+
+    const workflow = await vapi.workflows.create({
+      name: "TechFlow Sales Qualification Workflow",
+      nodes: [
+        {
+          id: "opening",
+          type: "conversation",
+          firstMessage: "Hi, this is Alex calling from TechFlow Solutions. I hope I'm catching you at a good time. I'm reaching out because I noticed your company might benefit from our workflow automation platform. Do you have just 2 minutes to chat?",
+          systemPrompt: openingSystemPrompt,
+          extractVariables: [
+            {
+              name: "permission_status",
+              type: "string",
+              description: "The prospect's response to the initial request",
+              enum: ["permission_granted", "busy_reschedule", "not_interested", "gatekeeper"]
+            }
+          ]
+        }
+      ],
+      edges: []
+    });
+
+    console.log(`Workflow created with ID: ${workflow.id}`);
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
     ```python
     import requests
 
     def create_sales_workflow():
+        """Create the outbound sales qualification workflow"""
         url = "https://api.vapi.ai/workflow"
         headers = {
             "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
             "Content-Type": "application/json"
         }
+        
+        # Define system prompt for the opening conversation
+        opening_system_prompt = "You are Alex, a professional outbound sales representative for TechFlow Solutions. Listen for their response and determine: permission_granted, busy_reschedule, not_interested, or gatekeeper. Keep responses under 30 words and be respectful of their time."
         
         data = {
             "name": "TechFlow Sales Qualification Workflow",
@@ -596,7 +568,7 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
                     "id": "opening",
                     "type": "conversation",
                     "firstMessage": "Hi, this is Alex calling from TechFlow Solutions. I hope I'm catching you at a good time. I'm reaching out because I noticed your company might benefit from our workflow automation platform. Do you have just 2 minutes to chat?",
-                    "systemPrompt": "You are Alex, a professional outbound sales representative for TechFlow Solutions. Listen for their response and determine: permission_granted, busy_reschedule, not_interested, or gatekeeper. Keep responses under 30 words and be respectful of their time.",
+                    "systemPrompt": opening_system_prompt,
                     "extractVariables": [
                         {
                             "name": "permission_status",
@@ -617,54 +589,6 @@ We will be creating an outbound sales workflow for TechFlow Solutions, a B2B sof
     workflow = create_sales_workflow()
     print(f"Workflow created with ID: {workflow['id']}")
     ```
-  </Tab>
-  <Tab title="Server SDK + TypeScript">
-    ```typescript
-    import { Vapi } from "@vapi-ai/server-sdk";
-
-    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
-
-    const workflow = await vapi.workflows.create({
-      name: "TechFlow Sales Qualification Workflow",
-      nodes: [
-        {
-          id: "opening",
-          type: "conversation",
-          firstMessage: "Hi, this is Alex calling from TechFlow Solutions. I hope I'm catching you at a good time. I'm reaching out because I noticed your company might benefit from our workflow automation platform. Do you have just 2 minutes to chat?",
-          systemPrompt: "You are Alex, a professional outbound sales representative for TechFlow Solutions. Listen for their response and determine: permission_granted, busy_reschedule, not_interested, or gatekeeper. Keep responses under 30 words and be respectful of their time.",
-          extractVariables: [
-            {
-              name: "permission_status",
-              type: "string",
-              description: "The prospect's response to the initial request",
-              enum: ["permission_granted", "busy_reschedule", "not_interested", "gatekeeper"]
-            }
-          ]
-        }
-      ],
-      edges: []
-    });
-
-    console.log(`Workflow created with ID: ${workflow.id}`);
-    ```
-  </Tab>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="Open the Vapi Dashboard">
-        Go to [dashboard.vapi.ai](https://dashboard.vapi.ai) and log in to your account.
-      </Step>
-      <Step title="Navigate to the Workflows section">
-        Click `Workflows` in the left sidebar.
-      </Step>
-      <Step title="Create a new workflow">
-        - Click `Create Workflow`.
-        - Enter workflow name: `TechFlow Sales Qualification Workflow`.
-        - Select the default template (includes Call Start node).
-        - Click "Create Workflow".
-
-        <video autoPlay loop muted src="../../static/videos/workflows/create-workflow.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
-      </Step>
-    </Steps>
   </Tab>
   <Tab title="cURL">
     ```bash
@@ -862,8 +786,7 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
         - Click `Import Phone Number` to use your existing number from Twilio/Telnyx
       </Step>
       <Step title="Configure Outbound Settings">
-        **Assistant**: Select your `Alex - Sales Agent` assistant
-        **Workflow**: Ensure it's linked to your `TechFlow Sales Qualification Workflow`
+        **Workflow**: Select your `TechFlow Sales Qualification Workflow`
         
         **Outbound Configuration**:
         - Enable outbound calling capabilities
@@ -878,107 +801,21 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
           -H "Authorization: Bearer YOUR_API_KEY" \
           -H "Content-Type: application/json" \
           -d '{
-            "phoneNumberId": "your-phone-number-id",
+            "workflowId": "YOUR_WORKFLOW_ID",
             "customer": {
               "number": "+1234567890"
-            },
-            "assistantId": "your-assistant-id"
+            }
           }'
         ```
       </Step>
     </Steps>
   </Tab>
-  <Tab title="cURL">
-    ```bash
-    # Create phone number for outbound sales
-    curl -X POST https://api.vapi.ai/phone-number \
-         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
-         -H "Content-Type: application/json" \
-         -d '{
-           "name": "TechFlow Sales Line",
-           "workflowId": "YOUR_WORKFLOW_ID",
-           "outboundSettings": {
-             "enabled": true,
-             "callerIdName": "TechFlow Solutions",
-             "maxCallDurationMinutes": 10,
-             "voicemailDetectionEnabled": true
-           }
-         }'
-
-    # Initiate outbound sales call
-    curl -X POST https://api.vapi.ai/call \
-         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
-         -H "Content-Type: application/json" \
-         -d '{
-           "workflowId": "YOUR_WORKFLOW_ID",
-           "customer": {
-             "number": "+1234567890",
-             "name": "Prospect Name"
-           }
-         }'
-    ```
-  </Tab>
-  <Tab title="Server SDK + Python">
-    ```python
-    def create_sales_phone_number(workflow_id):
-        url = "https://api.vapi.ai/phone-number"
-        headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "name": "TechFlow Sales Line",
-            "workflowId": workflow_id,
-            "outboundSettings": {
-                "enabled": True,
-                "callerIdName": "TechFlow Solutions",
-                "maxCallDurationMinutes": 10,
-                "voicemailDetectionEnabled": True
-            }
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        return response.json()
-
-    def initiate_sales_call(workflow_id, prospect_number, prospect_name):
-        url = "https://api.vapi.ai/call"
-        headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "workflowId": workflow_id,
-            "customer": {
-                "number": prospect_number,
-                "name": prospect_name
-            }
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        return response.json()
-
-    def run_sales_campaign(workflow_id, prospects):
-        for prospect in prospects:
-            call = initiate_sales_call(workflow_id, prospect["number"], prospect["name"])
-            print(f"Sales call initiated for {prospect['name']}: {call['id']}")
-
-    # Create phone number and run campaign
-    phone_number = create_sales_phone_number(workflow_id)
-    
-    prospects = [
-        {"number": "+1234567890", "name": "John Smith"},
-        {"number": "+1234567891", "name": "Jane Doe"},
-        {"number": "+1234567892", "name": "Bob Johnson"}
-    ]
-    
-    run_sales_campaign(workflow_id, prospects)
-    print(f"Sales phone number: {phone_number['number']}")
-    ```
-  </Tab>
-  <Tab title="Server SDK + TypeScript">
+  <Tab title="TypeScript (Server SDK)">
     ```typescript
+    import { Vapi } from "@vapi-ai/server-sdk";
+
+    const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
+
     async function createSalesPhoneNumber(workflowId: string) {
       const phoneNumber = await vapi.phoneNumbers.create({
         name: "TechFlow Sales Line",
@@ -1024,6 +861,100 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
     
     await runSalesCampaign(workflowId, prospects);
     console.log(`Sales phone number: ${phoneNumber.number}`);
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    import requests
+
+    def create_sales_phone_number(workflow_id):
+        """Create a phone number configured for outbound sales calls"""
+        url = "https://api.vapi.ai/phone-number"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "name": "TechFlow Sales Line",
+            "workflowId": workflow_id,
+            "outboundSettings": {
+                "enabled": True,
+                "callerIdName": "TechFlow Solutions",
+                "maxCallDurationMinutes": 10,
+                "voicemailDetectionEnabled": True
+            }
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    def initiate_sales_call(workflow_id, prospect_number, prospect_name):
+        """Initiate an outbound sales call to a prospect"""
+        url = "https://api.vapi.ai/call"
+        headers = {
+            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "workflowId": workflow_id,
+            "customer": {
+                "number": prospect_number,
+                "name": prospect_name
+            }
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.json()
+
+    def run_sales_campaign(workflow_id, prospects):
+        """Run an outbound sales campaign for multiple prospects"""
+        for prospect in prospects:
+            call = initiate_sales_call(workflow_id, prospect["number"], prospect["name"])
+            print(f"Sales call initiated for {prospect['name']}: {call['id']}")
+
+    # Create phone number and run campaign
+    phone_number = create_sales_phone_number(workflow_id)
+    
+    prospects = [
+        {"number": "+1234567890", "name": "John Smith"},
+        {"number": "+1234567891", "name": "Jane Doe"},
+        {"number": "+1234567892", "name": "Bob Johnson"}
+    ]
+    
+    run_sales_campaign(workflow_id, prospects)
+    print(f"Sales phone number: {phone_number['number']}")
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Create phone number for outbound sales
+    curl -X POST https://api.vapi.ai/phone-number \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "TechFlow Sales Line",
+           "workflowId": "YOUR_WORKFLOW_ID",
+           "outboundSettings": {
+             "enabled": true,
+             "callerIdName": "TechFlow Solutions",
+             "maxCallDurationMinutes": 10,
+             "voicemailDetectionEnabled": true
+           }
+         }'
+
+    # Initiate outbound sales call
+    curl -X POST https://api.vapi.ai/call \
+         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "workflowId": "YOUR_WORKFLOW_ID",
+           "customer": {
+             "number": "+1234567890",
+             "name": "Prospect Name"
+           }
+         }'
     ```
   </Tab>
 </Tabs>
