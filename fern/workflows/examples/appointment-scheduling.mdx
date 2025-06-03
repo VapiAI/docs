@@ -62,96 +62,7 @@ We will be creating an appointment scheduling workflow for Tony's Barbershop, a 
       </Step>
     </Steps>
   </Tab>
-  <Tab title="Web SDK + TypeScript">
-    For web-based appointment applications, you can manage files through the Web SDK:
-
-    ```bash
-    npm install @vapi-ai/web
-    ```
-
-    ```typescript
-    import Vapi from '@vapi-ai/web';
-
-    interface AppointmentConfig {
-      publicApiKey: string;
-      workflowId: string;
-    }
-
-    function createAppointmentWorkflowManager(config: AppointmentConfig) {
-      const vapi = new Vapi(config.publicApiKey);
-      let isConnected = false;
-
-      // Setup event listeners
-      vapi.on('call-start', () => {
-        isConnected = true;
-        console.log('Appointment workflow call started');
-      });
-
-      vapi.on('call-end', () => {
-        isConnected = false;
-        console.log('Appointment workflow call ended');
-      });
-
-      vapi.on('message', (message) => {
-        if (message.type === 'transcript') {
-          console.log(`${message.role}: ${message.transcript}`);
-        } else if (message.type === 'function-call') {
-          handleAppointmentFunction(message.functionCall);
-        } else if (message.type === 'workflow-step') {
-          console.log('Workflow step:', message.step);
-        }
-      });
-
-      vapi.on('error', (error) => {
-        console.error('Appointment workflow error:', error);
-      });
-
-      function handleAppointmentFunction(functionCall: any) {
-        switch (functionCall.name) {
-          case 'check_availability':
-            console.log('Checking availability:', functionCall.parameters);
-            break;
-          case 'schedule_appointment':
-            console.log('Scheduling appointment:', functionCall.parameters);
-            break;
-          case 'send_confirmation':
-            console.log('Sending confirmation:', functionCall.parameters);
-            break;
-          default:
-            console.log('Appointment function called:', functionCall.name, functionCall.parameters);
-        }
-      }
-
-      return {
-        startAppointmentCall: () => {
-          if (!isConnected) {
-            vapi.start(config.workflowId);
-          }
-        },
-        endCall: () => {
-          if (isConnected) {
-            vapi.stop();
-          }
-        },
-        isConnected: () => isConnected
-      };
-    }
-
-    // Usage for appointment workflow
-    const appointmentManager = createAppointmentWorkflowManager({
-      publicApiKey: 'YOUR_PUBLIC_API_KEY',
-      workflowId: 'YOUR_APPOINTMENT_WORKFLOW_ID'
-    });
-
-    // Start appointment conversation
-    appointmentManager.startAppointmentCall();
-    ```
-
-    <Note>
-      For actual file uploads (services.csv, customers.csv, etc.), use the Server SDK or Dashboard. Web SDK is for managing live appointment conversations.
-    </Note>
-  </Tab>
-  <Tab title="Server SDK + TypeScript">
+  <Tab title="TypeScript (Server SDK)">
     ```typescript
     import { Vapi } from "@vapi-ai/server-sdk";
     import fs from 'fs';
@@ -165,7 +76,7 @@ We will be creating an appointment scheduling workflow for Tony's Barbershop, a 
           file: fs.createReadStream("services.csv")
         });
 
-        // Upload customers file
+        // Upload customers file  
         const customersFile = await vapi.files.create({
           file: fs.createReadStream("customers.csv")
         });
@@ -190,27 +101,33 @@ We will be creating an appointment scheduling workflow for Tony's Barbershop, a 
       }
     }
 
-    // Upload all files
+    // Upload all files for appointment workflow
     const fileIds = await uploadAppointmentFiles();
     ```
   </Tab>
-  <Tab title="Server SDK + Python">
+  <Tab title="Python (Server SDK)">
     ```python
     import requests
 
-    def upload_file(file_path):
+    def upload_appointment_file(file_path):
+        """Upload a CSV file for appointment workflow data"""
         url = "https://api.vapi.ai/file"
         headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
         
-        with open(file_path, 'rb') as file:
-            files = {'file': file}
-            response = requests.post(url, headers=headers, files=files)
-            return response.json()
+        try:
+            with open(file_path, 'rb') as file:
+                files = {'file': file}
+                response = requests.post(url, headers=headers, files=files)
+                response.raise_for_status()
+                return response.json()
+        except requests.exceptions.RequestException as error:
+            print(f"Error uploading {file_path}: {error}")
+            raise
 
-    # Upload all required files
-    services_file = upload_file("services.csv")
-    customers_file = upload_file("customers.csv")
-    appointments_file = upload_file("appointments.csv")
+    # Upload all required files for appointment workflow
+    services_file = upload_appointment_file("services.csv")
+    customers_file = upload_appointment_file("customers.csv")
+    appointments_file = upload_appointment_file("appointments.csv")
 
     print(f"Services file ID: {services_file['id']}")
     print(f"Customers file ID: {customers_file['id']}")
@@ -263,145 +180,54 @@ We will be creating an appointment scheduling workflow for Tony's Barbershop, a 
       </Step>
     </Steps>
   </Tab>
-  <Tab title="Web SDK + TypeScript">
-    Use the Web SDK to manage appointment workflow interactions:
-
-    ```bash
-    npm install @vapi-ai/web
-    ```
-
-    ```typescript
-    import Vapi from '@vapi-ai/web';
-
-    interface AppointmentWorkflowConfig {
-      publicApiKey: string;
-      workflowId: string;
-    }
-
-    function createBarbershopWorkflow(config: AppointmentWorkflowConfig) {
-      const vapi = new Vapi(config.publicApiKey);
-      let isConnected = false;
-      let currentCustomer: any = null;
-
-      // Setup event listeners
-      vapi.on('call-start', () => {
-        isConnected = true;
-        console.log('Barbershop appointment call started');
-      });
-
-      vapi.on('call-end', () => {
-        isConnected = false;
-        console.log('Appointment call ended');
-        processAppointmentOutcome();
-      });
-
-      vapi.on('message', (message) => {
-        if (message.type === 'transcript') {
-          console.log(`${message.role}: ${message.transcript}`);
-        } else if (message.type === 'function-call') {
-          handleAppointmentFunction(message.functionCall);
-        } else if (message.type === 'workflow-step') {
-          console.log('Workflow step:', message.step);
-        }
-      });
-
-      vapi.on('error', (error) => {
-        console.error('Appointment workflow error:', error);
-      });
-
-      function handleAppointmentFunction(functionCall: any) {
-        switch (functionCall.name) {
-          case 'check_availability':
-            console.log('Checking availability:', functionCall.parameters);
-            break;
-          case 'book_appointment':
-            console.log('Booking appointment:', functionCall.parameters);
-            break;
-          case 'send_confirmation':
-            console.log('Sending confirmation:', functionCall.parameters);
-            break;
-          case 'update_calendar':
-            console.log('Updating calendar:', functionCall.parameters);
-            break;
-          default:
-            console.log('Appointment function called:', functionCall.name, functionCall.parameters);
-        }
-      }
-
-      function processAppointmentOutcome() {
-        // Process appointment results, send confirmations, update calendar
-        console.log('Processing appointment outcome for customer:', currentCustomer);
-      }
-
-      return {
-        startAppointmentCall: (customerData?: any) => {
-          if (!isConnected) {
-            currentCustomer = customerData;
-            vapi.start(config.workflowId);
-          }
-        },
-        endCall: () => {
-          if (isConnected) {
-            vapi.stop();
-          }
-        },
-        isConnected: () => isConnected
-      };
-    }
-
-    // Usage for barbershop appointments
-    const barbershopWorkflow = createBarbershopWorkflow({
-      publicApiKey: 'YOUR_PUBLIC_API_KEY',
-      workflowId: 'YOUR_APPOINTMENT_WORKFLOW_ID'
-    });
-
-    // Start appointment booking call
-    barbershopWorkflow.startAppointmentCall({
-      name: 'John Doe',
-      phone: '+1234567890',
-      preferredService: 'haircut'
-    });
-    ```
-
-    <Note>
-      For web-based appointment interfaces, workflows provide structured booking management. Use Server SDK for automated phone-based appointment confirmations.
-    </Note>
-  </Tab>
-  <Tab title="Server SDK + TypeScript">
+  <Tab title="TypeScript (Server SDK)">
     ```typescript
     import { Vapi } from "@vapi-ai/server-sdk";
 
     const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
 
-    const workflow = await vapi.workflows.create({
-      name: "Barbershop Appointment Workflow",
-      nodes: [
-        {
-          id: "greeting",
-          type: "conversation",
-          firstMessage: "Hello! Thank you for calling Tony's Barbershop. This is Sarah, your booking assistant. I can help you schedule, reschedule, or cancel appointments. How can I help you today?",
-          systemPrompt: "You are Sarah, the friendly booking assistant for Tony's Barbershop. Listen to the customer's response and determine their intent: schedule, reschedule, cancel, status, or other. Keep responses under 35 words.",
-          extractVariables: [
+    async function createAppointmentWorkflow() {
+      try {
+        // Create workflow with initial greeting node
+        const workflow = await vapi.workflows.create({
+          name: "Barbershop Appointment Workflow",
+          nodes: [
             {
-              name: "intent",
-              type: "string",
-              description: "The customer's primary intent",
-              enum: ["schedule", "reschedule", "cancel", "status", "other"]
+              id: "greeting",
+              type: "conversation",
+              firstMessage: "Hello! Thank you for calling Tony's Barbershop. This is Sarah, your booking assistant. I can help you schedule, reschedule, or cancel appointments. How can I help you today?",
+              systemPrompt: "You are Sarah, the friendly booking assistant for Tony's Barbershop. Listen to the customer's response and determine their intent: schedule, reschedule, cancel, status, or other. Keep responses under 35 words.",
+              extractVariables: [
+                {
+                  name: "intent",
+                  type: "string", 
+                  description: "The customer's primary intent",
+                  enum: ["schedule", "reschedule", "cancel", "status", "other"]
+                }
+              ]
             }
-          ]
-        }
-      ],
-      edges: []
-    });
+          ],
+          edges: []
+        });
 
-    console.log(`Workflow created with ID: ${workflow.id}`);
+        console.log(`Workflow created with ID: ${workflow.id}`);
+        return workflow;
+      } catch (error) {
+        console.error('Error creating workflow:', error);
+        throw error;
+      }
+    }
+
+    // Create the appointment workflow
+    const workflow = await createAppointmentWorkflow();
     ```
   </Tab>
-  <Tab title="Server SDK + Python">
+  <Tab title="Python (Server SDK)">
     ```python
     import requests
 
     def create_appointment_workflow():
+        """Create a new appointment scheduling workflow"""
         url = "https://api.vapi.ai/workflow"
         headers = {
             "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
@@ -429,10 +255,15 @@ We will be creating an appointment scheduling workflow for Tony's Barbershop, a 
             "edges": []
         }
         
-        response = requests.post(url, headers=headers, json=data)
-        return response.json()
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as error:
+            print(f"Error creating workflow: {error}")
+            raise
 
-    # Create the workflow
+    # Create the appointment workflow
     workflow = create_appointment_workflow()
     print(f"Workflow created with ID: {workflow['id']}")
     ```
@@ -788,93 +619,49 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
       </Step>
     </Steps>
   </Tab>
-  <Tab title="Web SDK + TypeScript">
-    Configure phone number management for web appointment applications:
-
-    ```typescript
-    import Vapi from '@vapi-ai/web';
-
-    interface AppointmentPhoneConfig {
-      publicApiKey: string;
-      workflowId: string;
-    }
-
-    function setupAppointmentPhoneManagement(config: AppointmentPhoneConfig) {
-      const vapi = new Vapi(config.publicApiKey);
-
-      // Note: Web SDK cannot directly manage phone numbers
-      // Phone number management requires server-side operations
-      
-      function testAppointmentWorkflow() {
-        // Test the appointment workflow via web call
-        vapi.start(config.workflowId);
-        
-        vapi.on('call-start', () => {
-          console.log('Testing appointment booking workflow');
-        });
-
-        vapi.on('message', (message) => {
-          if (message.type === 'transcript') {
-            console.log(`Appointment flow: ${message.role}: ${message.transcript}`);
-          } else if (message.type === 'workflow-step') {
-            console.log('Appointment workflow step:', message.step);
-          }
-        });
-
-        vapi.on('call-end', () => {
-          console.log('Appointment workflow test completed');
-        });
-      }
-
-      return {
-        testAppointmentFlow: testAppointmentWorkflow
-      };
-    }
-
-    // Usage for testing appointment workflow
-    const appointmentPhone = setupAppointmentPhoneManagement({
-      publicApiKey: 'YOUR_PUBLIC_API_KEY',
-      workflowId: 'YOUR_APPOINTMENT_WORKFLOW_ID'
-    });
-
-    appointmentPhone.testAppointmentFlow();
-    ```
-
-    <Note>
-      Web SDK cannot manage phone numbers directly. Use Server SDK for phone number operations and workflow configuration.
-    </Note>
-  </Tab>
-  <Tab title="Server SDK + TypeScript">
+  <Tab title="TypeScript (Server SDK)">
     ```typescript
     import { Vapi } from "@vapi-ai/server-sdk";
 
     const vapi = new Vapi({ apiKey: "YOUR_VAPI_API_KEY" });
 
     async function createAppointmentPhoneNumber(workflowId: string) {
-      const phoneNumber = await vapi.phoneNumbers.create({
-        name: "Barbershop Booking Line",
-        workflowId: workflowId,
-        inboundSettings: {
-          maxCallDurationMinutes: 15,
-          recordingEnabled: true,
-          voicemailDetectionEnabled: true
-        }
-      });
+      try {
+        // Create phone number for appointment workflow
+        const phoneNumber = await vapi.phoneNumbers.create({
+          name: "Barbershop Booking Line",
+          workflowId: workflowId,
+          inboundSettings: {
+            maxCallDurationMinutes: 15,
+            recordingEnabled: true,
+            voicemailDetectionEnabled: true
+          }
+        });
 
-      console.log(`Appointment phone number created: ${phoneNumber.number}`);
-      return phoneNumber;
+        console.log(`Appointment phone number created: ${phoneNumber.number}`);
+        return phoneNumber;
+      } catch (error) {
+        console.error('Error creating phone number:', error);
+        throw error;
+      }
     }
 
     async function testAppointmentWorkflow(workflowId: string, testNumber: string) {
-      const call = await vapi.calls.create({
-        workflowId: workflowId,
-        customer: {
-          number: testNumber
-        }
-      });
+      try {
+        // Test the appointment workflow with an outbound call
+        const call = await vapi.calls.create({
+          workflowId: workflowId,
+          customer: {
+            number: testNumber
+          }
+        });
 
-      console.log(`Appointment workflow test call created: ${call.id}`);
-      return call;
+        console.log(`Appointment workflow test call created: ${call.id}`);
+        return call;
+      } catch (error) {
+        console.error('Error testing workflow:', error);
+        throw error;
+      }
     }
 
     // Create phone number and test workflow
@@ -882,11 +669,12 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
     const testCall = await testAppointmentWorkflow('YOUR_WORKFLOW_ID', '+1234567890');
     ```
   </Tab>
-  <Tab title="Server SDK + Python">
+  <Tab title="Python (Server SDK)">
     ```python
     import requests
 
     def create_appointment_phone_number(workflow_id):
+        """Create phone number for appointment workflow"""
         url = "https://api.vapi.ai/phone-number"
         headers = {
             "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
@@ -903,10 +691,16 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
             }
         }
         
-        response = requests.post(url, headers=headers, json=data)
-        return response.json()
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as error:
+            print(f"Error creating phone number: {error}")
+            raise
 
     def test_appointment_workflow(workflow_id, test_number):
+        """Test appointment workflow with outbound call"""
         url = "https://api.vapi.ai/call"
         headers = {
             "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
@@ -920,8 +714,13 @@ You'll start with a default template that includes a "Call Start" node. We'll mo
             }
         }
         
-        response = requests.post(url, headers=headers, json=data)
-        return response.json()
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as error:
+            print(f"Error testing workflow: {error}")
+            raise
 
     # Create phone number and test
     phone_number = create_appointment_phone_number('YOUR_WORKFLOW_ID')
