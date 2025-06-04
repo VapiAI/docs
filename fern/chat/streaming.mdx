@@ -1,0 +1,221 @@
+---
+title: Streaming chat
+subtitle: Build real-time chat experiences with token-by-token responses like ChatGPT
+slug: chat/streaming
+---
+
+## Overview
+
+Build a real-time chat interface that displays responses as they're generated, creating an engaging user experience similar to ChatGPT. Perfect for interactive applications where users expect immediate visual feedback.
+
+**What You'll Build:**
+* Real-time streaming chat interface with progressive text display
+* Context management across multiple messages
+* Basic TypeScript implementation ready for production use
+
+## Prerequisites
+
+* Completed [Chat quickstart](/chat/quickstart) tutorial
+* Basic knowledge of TypeScript/JavaScript and async/await
+
+## Scenario
+
+We'll enhance the TechFlow support chat from the quickstart to provide real-time streaming responses. Users will see text appear progressively as the AI generates it.
+
+---
+
+## 1. Enable Streaming in Your Requests
+
+<Steps>
+  <Step title="Add the stream parameter">
+    Modify your chat request to enable streaming by adding `"stream": true`:
+    
+    ```bash title="Streaming Chat Request"
+    curl -X POST https://api.vapi.ai/chat \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistantId": "your-assistant-id",
+        "input": "Explain how to set up API authentication in detail",
+        "stream": true
+      }'
+    ```
+  </Step>
+  <Step title="Understand the streaming response format">
+    Instead of a single JSON response, you'll receive Server-Sent Events (SSE):
+    
+    ```typescript title="SSE Event Format"
+    // Example SSE events received:
+    data: {"id":"stream_123","path":"chat.output[0].content","delta":"Hello"}
+    data: {"id":"stream_123","path":"chat.output[0].content","delta":" there!"}
+    data: {"id":"stream_123","path":"chat.output[0].content","delta":" How can"}
+    data: {"id":"stream_123","path":"chat.output[0].content","delta":" I help?"}
+
+    // TypeScript interface for SSE events:
+    interface SSEEvent {
+      id: string;
+      path: string;
+      delta: string;
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 2. Basic TypeScript Streaming Implementation
+
+<Steps>
+  <Step title="Create a simple streaming function">
+    Here's a basic streaming implementation:
+    
+    ```typescript title="streaming-chat.ts"
+    async function streamChatMessage(
+      message: string, 
+      previousChatId?: string
+    ): Promise<string> {
+      const response = await fetch('https://api.vapi.ai/chat', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer YOUR_API_KEY',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          assistantId: 'your-assistant-id',
+          input: message,
+          stream: true,
+          ...(previousChatId && { previousChatId })
+        })
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader available');
+      
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim());
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            if (data.path && data.delta) {
+              fullResponse += data.delta;
+              process.stdout.write(data.delta);
+            }
+          }
+        }
+      }
+      
+      return fullResponse;
+    }
+    ```
+  </Step>
+  <Step title="Test the streaming function">
+    Try it out:
+    
+    ```typescript title="Test Streaming"
+    const response = await streamChatMessage("Explain API rate limiting in detail");
+    console.log('\nComplete response:', response);
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 3. Streaming with Context Management
+
+<Steps>
+  <Step title="Handle conversation context">
+    Maintain context across multiple streaming messages:
+    
+    ```typescript title="context-streaming.ts"
+    async function createStreamingConversation() {
+      let lastChatId: string | undefined;
+
+      async function sendMessage(input: string): Promise<string> {
+        const response = await fetch('https://api.vapi.ai/chat', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer YOUR_API_KEY',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            assistantId: 'your-assistant-id',
+            input: input,
+            stream: true,
+            ...(lastChatId && { previousChatId: lastChatId })
+          })
+        });
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No reader available');
+        
+        const decoder = new TextDecoder();
+        let fullContent = '';
+        let currentChatId: string | undefined;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(line => line.trim());
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const event = JSON.parse(line.slice(6));
+              
+              if (event.id && !currentChatId) {
+                currentChatId = event.id;
+              }
+              
+              if (event.path && event.delta) {
+                fullContent += event.delta;
+                process.stdout.write(event.delta);
+              }
+            }
+          }
+        }
+        
+        if (currentChatId) {
+          lastChatId = currentChatId;
+        }
+        
+        return fullContent;
+      }
+
+      return { sendMessage };
+    }
+    ```
+  </Step>
+  <Step title="Use the conversation manager">
+    ```typescript title="Test Context"
+    const conversation = await createStreamingConversation();
+
+    await conversation.sendMessage("My name is Alice");
+    console.log('\n---');
+    await conversation.sendMessage("What's my name?"); // Should remember Alice
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Next Steps
+
+Enhance your streaming chat further:
+
+* **[OpenAI compatibility](/chat/openai-compatibility)** - Use OpenAI SDK for streaming with familiar syntax
+* **[Non-streaming patterns](/chat/non-streaming)** - Learn about sessions and complex conversation management
+* **[Session management](/chat/session-management)** - Learn about context management with sessions and previousChatId in streaming
+* **[Add tools](/tools)** - Enable your assistant to call external APIs while streaming
+
+<Callout>
+Need help? Chat with the team on our [Discord](https://discord.com/invite/pUFNcf2WmH) or mention us on [X/Twitter](https://x.com/Vapi_AI).
+</Callout>
