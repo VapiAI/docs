@@ -1,0 +1,313 @@
+---
+title: Customer join timeout
+subtitle: Configure web call join timeout for better success rates
+slug: calls/customer-join-timeout
+description: Set maximum time for users to join web calls before automatic termination
+---
+
+## Overview
+
+**Customer join timeout** sets the maximum time users have to join a web call before it's automatically terminated. This parameter helps you optimize call success rates by accounting for real-world connection challenges.
+
+**You'll learn to:**
+
+- Configure timeout values for different user scenarios
+- Monitor join success rates and failures
+- Troubleshoot timeout-related call issues
+
+<Note>
+  This setting applies only to **web calls**. Phone calls are not affected by
+  this parameter.
+</Note>
+
+## How it works
+
+When a web call starts, users must complete several steps within the timeout window:
+
+<CardGroup cols={3}>
+  <Card title="Network Connection" icon="wifi" iconType="solid">
+    Establish connection to Vapi servers
+  </Card>
+  <Card title="Permissions" icon="microphone" iconType="solid">
+    Grant browser microphone access
+  </Card>
+  <Card title="WebRTC Setup" icon="share-nodes" iconType="solid">
+    Complete audio handshake process
+  </Card>
+</CardGroup>
+
+**Default timeout:** 15 seconds  
+**Available range:** 1-60 seconds
+
+<Warning>
+  If users don't complete all steps within the timeout, the call ends with an
+  `assistant-did-not-receive-customer-audio` error.
+</Warning>
+
+## Configuration
+
+Configure `customerJoinTimeoutSeconds` through the Vapi API for both permanent and transient assistants.
+
+<Tabs>
+  <Tab title="Create Assistant">
+    Set timeout when creating a new assistant:
+
+    <CodeBlocks>
+    ```typescript title="TypeScript (Server SDK)"
+    import { VapiClient } from "@vapi-ai/server-sdk";
+
+    const client = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+    const assistant = await client.assistants.create({
+      name: "Customer Support Assistant",
+      model: {
+        provider: "openai",
+        model: "gpt-4"
+      },
+      voice: {
+        provider: "11labs",
+        voiceId: "21m00Tcm4TlvDq8ikWAM"
+      },
+      customerJoinTimeoutSeconds: 30
+    });
+    ```
+    ```python title="Python (Server SDK)"
+    from vapi import Vapi
+
+    client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+    assistant = client.assistants.create(
+      name="Customer Support Assistant",
+      model={"provider": "openai", "model": "gpt-4"},
+      voice={"provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM"},
+      customer_join_timeout_seconds=30
+    )
+    ```
+    ```bash title="cURL"
+    curl -X POST "https://api.vapi.ai/assistant" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "Customer Support Assistant",
+           "model": {"provider": "openai", "model": "gpt-4"},
+           "voice": {"provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM"},
+           "customerJoinTimeoutSeconds": 30
+         }'
+    ```
+    </CodeBlocks>
+
+  </Tab>
+
+  <Tab title="Update Existing">
+    Modify timeout for an existing assistant:
+
+    <CodeBlocks>
+    ```typescript title="TypeScript (Server SDK)"
+    const updatedAssistant = await client.assistants.update("assistant-id", {
+      customerJoinTimeoutSeconds: 45
+    });
+    ```
+    ```python title="Python (Server SDK)"
+    updated_assistant = client.assistants.update(
+      "assistant-id",
+      customer_join_timeout_seconds=45
+    )
+    ```
+    ```bash title="cURL"
+    curl -X PATCH "https://api.vapi.ai/assistant/assistant-id" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{"customerJoinTimeoutSeconds": 45}'
+    ```
+    </CodeBlocks>
+
+  </Tab>
+
+  <Tab title="Transient Assistant">
+    Use timeout with inline assistant configuration:
+
+    <CodeBlocks>
+    ```typescript title="TypeScript (Server SDK)"
+    const call = await client.calls.createWeb({
+      assistant: {
+        model: { provider: "openai", model: "gpt-3.5-turbo" },
+        voice: { provider: "playht", voiceId: "jennifer" },
+        customerJoinTimeoutSeconds: 60
+      }
+    });
+    ```
+    ```python title="Python (Server SDK)"
+    call = client.calls.create_web(
+      assistant={
+        "model": {"provider": "openai", "model": "gpt-3.5-turbo"},
+        "voice": {"provider": "playht", "voiceId": "jennifer"},
+        "customer_join_timeout_seconds": 60
+      }
+    )
+    ```
+    ```bash title="cURL"
+    curl -X POST "https://api.vapi.ai/call/web" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "assistant": {
+             "model": {"provider": "openai", "model": "gpt-3.5-turbo"},
+             "voice": {"provider": "playht", "voiceId": "jennifer"},
+             "customerJoinTimeoutSeconds": 60
+           }
+         }'
+    ```
+    </CodeBlocks>
+
+  </Tab>
+
+  <Tab title="Assistant Overrides">
+    Override timeout for specific calls:
+
+    <CodeBlocks>
+    ```typescript title="TypeScript (Server SDK)"
+    const call = await client.calls.createWeb({
+      assistantId: "your-assistant-id",
+      assistantOverrides: {
+        customerJoinTimeoutSeconds: 60
+      }
+    });
+    ```
+    ```python title="Python (Server SDK)"
+    call = client.calls.create_web(
+      assistant_id="your-assistant-id",
+      assistant_overrides={
+        "customer_join_timeout_seconds": 60
+      }
+    )
+    ```
+    ```bash title="cURL"
+    curl -X POST "https://api.vapi.ai/call/web" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "assistantId": "your-assistant-id",
+           "assistantOverrides": {
+             "customerJoinTimeoutSeconds": 60
+           }
+         }'
+    ```
+    </CodeBlocks>
+
+  </Tab>
+</Tabs>
+
+## Optimization guidelines
+
+### Recommended timeout values
+
+Choose timeout values based on your user scenarios:
+
+| User Type               | Recommended Timeout | Reason                              |
+| ----------------------- | ------------------- | ----------------------------------- |
+| **Corporate users**     | 45-60 seconds       | Security policies, proxy delays     |
+| **Mobile users**        | 30-45 seconds       | Permission prompts, slower networks |
+| **International users** | 30-60 seconds       | Higher latency connections          |
+| **First-time users**    | 45-60 seconds       | Unfamiliar with interface           |
+| **Returning users**     | 20-30 seconds       | Familiar with flow                  |
+
+### Balancing considerations
+
+<CardGroup cols={2}>
+  <Card title="Higher Timeouts" icon="clock" iconType="solid">
+    **Benefits:** - Improved join success rates - Better user experience - Fewer
+    support requests **Trade-offs:** - Resources tied up longer - Delayed error
+    detection
+  </Card>
+  <Card title="Lower Timeouts" icon="timer" iconType="solid">
+    **Benefits:** - Faster resource cleanup - Quick failure detection - Reduced
+    server load **Trade-offs:** - More failed joins - Frustrated users
+  </Card>
+</CardGroup>
+
+## Monitoring and troubleshooting
+
+### Key metrics to track
+
+Monitor these call ended reasons to optimize your timeout settings:
+
+<AccordionGroup>
+  <Accordion title="assistant-did-not-receive-customer-audio">
+    **Meaning:** Customer didn't complete join process within timeout
+
+    **Actions:**
+    - Increase `customerJoinTimeoutSeconds` value
+    - Analyze user feedback for connection issues
+    - Consider user base demographics
+
+  </Accordion>
+
+  <Accordion title="customer-did-not-give-microphone-permission">
+    **Meaning:** Legacy reason replaced by above (for better clarity)
+
+    **Actions:**
+    - Review your browser permission prompts
+    - Add user guidance for microphone access
+    - Consider increasing timeout for permission flow
+
+  </Accordion>
+</AccordionGroup>
+
+### Example scenario analysis
+
+A user attempting to join needs:
+
+- **5 seconds:** Network connection establishment
+- **10 seconds:** Microphone permission prompt and user response
+- **8 seconds:** WebRTC handshake completion
+- **Total:** 23 seconds required
+
+**With 15-second timeout:** Call fails  
+**With 30+ second timeout:** Call succeeds
+
+<Tip>
+  Start with 30-60 seconds and adjust based on your success rate analytics.
+</Tip>
+
+### "Meeting has ended" message
+
+This message appears when a call ends naturally and is **informational only**—not an error.
+
+## Best practices
+
+<Steps>
+  <Step title="Start conservatively">
+    Begin with 30-60 second timeouts to establish baseline success rates.
+  </Step>
+
+{" "}
+
+<Step title="Monitor analytics">
+  Track join success rates and timeout-related call ended reasons in your
+  dashboard.
+</Step>
+
+{" "}
+
+<Step title="Test thoroughly">
+  Validate timeout settings in staging environment before production deployment.
+</Step>
+
+{" "}
+
+<Step title="Segment users">
+  Consider different timeout values for different user types or regions.
+</Step>
+
+  <Step title="Provide user feedback">
+    Show loading indicators and connection status during the join process.
+  </Step>
+</Steps>
+
+## Next steps
+
+Now that you understand customer join timeouts:
+
+- **Monitor your metrics:** Check your [call analytics](/dashboard) for timeout-related failures
+- **Explore call features:** Learn about [real-time call control](/calls/call-features)
+- **Understand call failures:** Review [call ended reasons](/calls/call-ended-reason) for comprehensive troubleshooting

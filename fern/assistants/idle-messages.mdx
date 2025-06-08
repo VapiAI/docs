@@ -1,0 +1,327 @@
+---
+title: Idle messages
+subtitle: Keep users engaged during conversation pauses
+slug: assistants/idle-messages
+---
+
+## Overview
+
+Idle messages automatically prompt users during periods of inactivity to maintain engagement and reduce call abandonment. They work alongside silence timeout messages to handle conversation flow during calls.
+
+**Idle messages help you:**
+
+- Re-engage users who become distracted or experience audio delays
+- Reduce call abandonment rates during silent periods
+- Provide proactive assistance when users hesitate or need guidance
+
+<Tip>
+  Idle messages are automatically disabled during tool calls and warm transfers
+  to avoid interrupting system processes.
+</Tip>
+
+## How idle messages work
+
+When a user stops speaking, Vapi starts a timer. After the configured timeout period, it randomly selects and speaks one of your idle messages. This process repeats until either the user responds or the maximum message count is reached.
+
+<CardGroup cols={3}>
+  <Card title="Detection" icon="timer" iconType="solid">
+    Timer starts when user stops speaking
+  </Card>
+  <Card title="Activation" icon="message" iconType="solid">
+    Random message plays after timeout
+  </Card>
+  <Card title="Reset" icon="refresh" iconType="solid">
+    Counter resets when user responds (optional)
+  </Card>
+</CardGroup>
+
+## Configuration
+
+Configure idle messages in your assistant's `messagePlan`:
+
+<CodeBlocks>
+```typescript title="TypeScript (Server SDK)"
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const client = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+const assistant = await client.assistants.create({
+name: "Support Assistant",
+messagePlan: {
+idleMessages: [
+"Are you still there?",
+"Can I help you with anything else?",
+"I'm here whenever you're ready to continue."
+],
+idleTimeoutSeconds: 15,
+idleMessageMaxSpokenCount: 3,
+idleMessageResetCountOnUserSpeechEnabled: true
+}
+});
+
+````
+
+```python title="Python (Server SDK)"
+from vapi import Vapi
+
+client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+assistant = client.assistants.create(
+    name="Support Assistant",
+    message_plan={
+        "idle_messages": [
+            "Are you still there?",
+            "Can I help you with anything else?",
+            "I'm here whenever you're ready to continue."
+        ],
+        "idle_timeout_seconds": 15,
+        "idle_message_max_spoken_count": 3,
+        "idle_message_reset_count_on_user_speech_enabled": True
+    }
+)
+````
+
+```bash title="cURL"
+curl -X POST "https://api.vapi.ai/assistant" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Support Assistant",
+    "messagePlan": {
+      "idleMessages": [
+        "Are you still there?",
+        "Can I help you with anything else?",
+        "I'"'"'m here whenever you'"'"'re ready to continue."
+      ],
+      "idleTimeoutSeconds": 15,
+      "idleMessageMaxSpokenCount": 3,
+      "idleMessageResetCountOnUserSpeechEnabled": true
+    }
+  }'
+```
+
+</CodeBlocks>
+
+## Configuration options
+
+### Core settings
+
+| Parameter                                  | Type       | Range            | Default     | Description                               |
+| ------------------------------------------ | ---------- | ---------------- | ----------- | ----------------------------------------- |
+| `idleMessages`                             | `string[]` | ≤1000 chars each | `undefined` | Array of messages to randomly select from |
+| `idleTimeoutSeconds`                       | `number`   | 5-60 seconds     | 10          | Timeout before triggering first message   |
+| `idleMessageMaxSpokenCount`                | `number`   | 1-10 messages    | 3           | Maximum times to repeat messages          |
+| `idleMessageResetCountOnUserSpeechEnabled` | `boolean`  | -                | `false`     | Reset count when user speaks              |
+
+### Advanced configuration
+
+<Tabs>
+  <Tab title="Basic setup">
+    ```json
+    {
+      "messagePlan": {
+        "idleMessages": ["Are you still there?"],
+        "idleTimeoutSeconds": 10
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="With reset counter">
+    ```json
+    {
+      "messagePlan": {
+        "idleMessages": ["Hello, are you there?"],
+        "idleTimeoutSeconds": 15,
+        "idleMessageMaxSpokenCount": 5,
+        "idleMessageResetCountOnUserSpeechEnabled": true
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="With silence timeout">
+    ```json
+    {
+      "messagePlan": {
+        "idleMessages": ["Can I help you with anything else?"],
+        "idleTimeoutSeconds": 20,
+        "silenceTimeoutMessage": "I'll end our call now. Thank you!"
+      },
+      "silenceTimeoutSeconds": 60
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Multilingual support
+
+Handle multiple languages by creating language-specific assistants or dynamically updating messages:
+
+<Tabs>
+  <Tab title="Language-specific assistants">
+    ```typescript
+    // English assistant
+    const enAssistant = await client.assistants.create({
+      name: "EN Support",
+      messagePlan: {
+        idleMessages: [
+          "Are you still there?",
+          "Can I help you with anything else?"
+        ]
+      }
+    });
+
+    // Spanish assistant
+    const esAssistant = await client.assistants.create({
+      name: "ES Support",
+      messagePlan: {
+        idleMessages: [
+          "¿Sigues ahí?",
+          "¿Puedo ayudarte con algo más?"
+        ]
+      }
+    });
+    ```
+
+  </Tab>
+  <Tab title="Dynamic updates">
+    ```typescript
+    async function updateIdleMessagesForLanguage(
+      assistantId: string, 
+      detectedLanguage: string
+    ) {
+      const languageMessages = {
+        en: ['Are you still there?', 'Can I help you with anything else?'],
+        es: ['¿Sigues ahí?', '¿Puedo ayudarte con algo más?'],
+        fr: ['Êtes-vous toujours là?', 'Puis-je vous aider avec autre chose?']
+      };
+
+      await client.assistants.update(assistantId, {
+        messagePlan: {
+          idleMessages: languageMessages[detectedLanguage] || languageMessages['en']
+        }
+      });
+    }
+    ```
+
+  </Tab>
+</Tabs>
+
+## Best practices
+
+### Message content guidelines
+
+- **Keep messages concise** - Users may be distracted, so shorter is better
+- **Use encouraging tone** - Avoid demanding or impatient language
+- **Offer specific help** - Guide users toward productive next steps
+
+<Check>
+  **Good examples:** - "Are you still there?" - "Is there anything specific you
+  need help with?" - "I'm here whenever you're ready to continue."
+</Check>
+
+<Error>
+  **Avoid:** - "Why aren't you responding?" - "Hello? Hello? Are you there?" -
+  Long explanations or complex questions
+</Error>
+
+### Timing recommendations
+
+Choose timeout duration based on your use case:
+
+<CardGroup cols={3}>
+  <Card title="Urgent calls" icon="clock">
+    **5-10 seconds** For transactional or time-sensitive interactions
+  </Card>
+  <Card title="Support calls" icon="headset">
+    **10-20 seconds** For general customer service and assistance
+  </Card>
+  <Card title="Complex topics" icon="brain">
+    **20-30 seconds** For problem-solving or decision-making conversations
+  </Card>
+</CardGroup>
+
+### Frequency management
+
+Balance engagement with user experience:
+
+```json
+{
+  "idleMessageMaxSpokenCount": 2,
+  "idleMessageResetCountOnUserSpeechEnabled": true,
+  "idleTimeoutSeconds": 15
+}
+```
+
+<Note>
+  Enable `idleMessageResetCountOnUserSpeechEnabled` to give users multiple
+  chances to engage throughout long conversations.
+</Note>
+
+## Troubleshooting
+
+### Messages not triggering
+
+<Steps>
+  <Step title="Verify configuration">
+    Check that idle messages are properly configured:
+    ```typescript
+    const assistant = await client.assistants.get(assistantId);
+    console.log('Idle config:', assistant.messagePlan);
+    ```
+  </Step>
+  <Step title="Check timeout duration">
+    Account for audio processing delays (2-3 seconds):
+    ```json
+    { "idleTimeoutSeconds": 12 }
+    ```  
+  </Step>
+  <Step title="Verify message limits">
+    Ensure the maximum count hasn't been reached:
+    ```json
+    {
+      "idleMessageMaxSpokenCount": 5,
+      "idleMessageResetCountOnUserSpeechEnabled": true
+    }
+    ```
+  </Step>
+</Steps>
+
+### Common issues and solutions
+
+<AccordionGroup>
+  <Accordion title="Messages trigger too frequently">
+    **Solution:** Increase the timeout duration
+    ```json
+    { "idleTimeoutSeconds": 25 }
+    ```
+  </Accordion>
+  
+  <Accordion title="Max count reached too quickly">
+    **Solution:** Enable reset on user speech and increase max count
+    ```json
+    {
+      "idleMessageMaxSpokenCount": 5,
+      "idleMessageResetCountOnUserSpeechEnabled": true  
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Messages interrupt processing">
+    **Solution:** This shouldn't happen - idle messages are automatically disabled during tool calls and transfers. If it persists, contact support.
+  </Accordion>
+</AccordionGroup>
+
+## Limitations
+
+- **Static content**: Messages cannot be dynamically generated based on conversation context
+- **No context awareness**: Messages don't adapt to the current conversation topic
+- **Character limits**: Each message is limited to 1000 characters
+- **Processing delays**: Account for 2-3 seconds of audio processing time in your timeout settings
+
+## Next steps
+
+Now that you have idle messages configured:
+
+- **[Background messages](/assistants/background-messages):** Add contextual information silently
+- **[Assistant hooks](/assistants/assistant-hooks):** Handle call events and state changes
+- **[Voice formatting plan](/assistants/voice-formatting-plan):** Control speech patterns and delivery

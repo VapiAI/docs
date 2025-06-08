@@ -1,0 +1,231 @@
+---
+title: Flush syntax
+subtitle: Control voice transmission timing for responsive conversations
+slug: assistants/flush-syntax
+description: Force immediate voice transmission with VAPI's flush syntax for real-time interactions
+---
+
+## Overview
+
+The flush syntax is a VAPI audio control token that forces immediate transmission of LLM output to voice providers, eliminating buffering delays for real-time voice interactions.
+
+**When to use flush syntax:**
+
+- Acknowledge user requests immediately during processing
+- Provide feedback during long-running tool executions
+- Create natural conversation pauses
+- Support custom LLM integrations with processing delays
+
+<Tip>
+  Use flush strategically—overuse can cause audio fragmentation and degrade
+  conversation quality.
+</Tip>
+
+## How it works
+
+The flush syntax bypasses normal buffering to provide immediate audio feedback:
+
+1. **Detection**: VAPI scans LLM output for flush syntax using regex pattern
+2. **Split**: Text is divided at the flush position
+3. **Immediate Send**: Content before flush is sent instantly to voice provider
+4. **Continue**: Remaining text follows normal buffering
+
+<CodeBlocks>
+```typescript title="Processing Example"
+const { sendToTTS, flush, remainingBuffer } = ttsBuffer(buffer, voice);
+if (sendToTTS.length > 0) {
+  pushBuffer(sendToTTS, flush); // flush=true triggers immediate send
+  buffer = remainingBuffer;
+}
+```
+```python title="Conceptual Flow"
+# 1. LLM generates: "I'm processing your request... <flush /> Here's the result"
+# 2. VAPI detects flush syntax
+# 3. Sends "I'm processing your request..." immediately to voice
+# 4. Continues with "Here's the result" using normal buffering
+```
+</CodeBlocks>
+
+## Syntax formats
+
+VAPI supports three flush formats with case-insensitive matching:
+
+<CodeBlocks>
+  ```html title="Self-closing (Recommended)"
+  <flush />
+  ``` ```html title="Opening tag"
+  <flush>``` ```html title="Closing tag"</flush>
+  ```
+</CodeBlocks>
+
+<Note>
+All formats use regex pattern `/<\s*flush\s*\/?>|<\s*\/\s*flush\s*>/i` allowing whitespace variations.
+</Note>
+
+## Configuration requirements
+
+Flush syntax requires proper voice configuration:
+
+<CodeBlocks>
+```json title="Assistant Configuration"
+{
+  "voice": {
+    "chunkPlan": {
+      "enabled": true  // Required for flush to work
+    }
+  }
+}
+```
+```typescript title="TypeScript SDK"
+const assistant = await vapi.assistants.create({
+  voice: {
+    chunkPlan: {
+      enabled: true
+    }
+  }
+  // ... other configuration
+});
+```
+</CodeBlocks>
+
+<Warning>
+  Flush will NOT work when `chunkPlan.enabled: false`. The tags will appear in
+  voice output instead of being processed.
+</Warning>
+
+## Usage examples
+
+### Basic acknowledgment
+
+```javascript
+"I'm processing your request... <flush /> Let me check that for you.";
+```
+
+### Tool processing feedback
+
+```javascript
+"Looking up that information... <flush /> This may take a moment.";
+```
+
+### Conversation flow
+
+```javascript
+"That's a great question. <flush /> Based on the data I have...";
+```
+
+### Custom LLM integration
+
+```javascript
+"Here's your answer: 42. <flush /> Would you like an explanation?";
+```
+
+## Best practices
+
+### When to use flush
+
+<CardGroup cols={2}>
+  <Card title="Acknowledge requests" icon="check">
+    Immediately confirm you've received and understood the user's request
+  </Card>
+  <Card title="Long operations" icon="clock">
+    Provide feedback during tool calls or processing that takes time
+  </Card>
+  <Card title="Natural pauses" icon="pause">
+    Create conversation breaks at logical points
+  </Card>
+  <Card title="Custom delays" icon="gear">
+    Support external LLM integrations with processing delays
+  </Card>
+</CardGroup>
+
+### When to avoid flush
+
+- **Every response** - Causes audio fragmentation
+- **Mid-sentence** - Breaks natural speech flow
+- **Short responses** - Normal buffering is sufficient
+- **Multiple per response** - Can create choppy audio
+
+### Implementation guidelines
+
+1. **Place at natural boundaries** - Use between complete thoughts or sentences
+2. **Test with your voice provider** - Effectiveness varies by provider
+3. **Monitor conversation quality** - Ensure audio remains smooth and natural
+4. **Document usage** - Include in code comments for team understanding
+
+## Advanced usage
+
+### Dynamic insertion
+
+```typescript
+const acknowledgment = "I understand your request";
+const detailedResponse = await processRequest(userInput);
+const responseWithFlush = `${acknowledgment} <flush /> ${detailedResponse}`;
+```
+
+### System prompt integration
+
+```javascript
+const systemPrompt = `When providing lengthy responses, use <flush /> after acknowledging the user's request to provide immediate feedback.`;
+```
+
+### Nested handling
+
+```javascript
+"Starting process... <flush> Step 1 complete </flush> Moving to step 2...";
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Flush tags appear in voice output">
+    **Cause**: `chunkPlan.enabled` is set to `false` or missing **Solution**: -
+    Verify `chunkPlan.enabled: true` in voice configuration - Check assistant
+    configuration in dashboard or API calls - Test with a minimal configuration
+    to isolate the issue
+  </Accordion>
+
+{" "}
+<Accordion title="Syntax not recognized">
+  **Cause**: Malformed flush syntax or typos **Solution**: - Use exact formats:
+  `<flush />
+  `, `<flush>`, or `</flush>` - Avoid extra parameters or attributes - Check for
+  typos in tag spelling
+</Accordion>
+
+  <Accordion title="Audio sounds choppy or fragmented">
+    **Cause**: Overuse of flush syntax 
+    **Solution**: 
+    - Reduce flush frequency in responses 
+    - Place only at sentence boundaries 
+    - Test with real users to
+    validate experience
+  </Accordion>
+</AccordionGroup>
+
+## Technical considerations
+
+### Provider compatibility
+
+- **Effectiveness varies** by voice provider
+- **Test thoroughly** with your chosen provider
+- **Monitor performance** impact on response times
+
+### Cost implications
+
+- **Increased API calls** to voice provider
+- **Higher usage** on usage-based pricing
+- **Monitor billing** if using flush frequently
+
+### VAPI-only feature
+
+- **Platform exclusive** - not available on other voice platforms
+- **Configuration dependent** - requires chunking enabled
+- **Version specific** - ensure using compatible VAPI version
+
+## Next steps
+
+Now that you understand flush syntax:
+
+- **[Voice formatting plan](/assistants/voice-formatting-plan):** Control voice output formatting and timing
+- **[Background messages](/assistants/background-messages):** Send messages during conversations
+- **[Custom tools](/tools/custom-tools):** Build tools that benefit from flush syntax feedback
