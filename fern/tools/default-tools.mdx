@@ -1,10 +1,10 @@
 ---
 title: Default Tools
-subtitle: 'Adding Transfer Call, End Call, and Dial Keypad capabilities to your assistants.'
+subtitle: 'Adding Transfer Call, End Call, Dial Keypad, and API Request capabilities to your assistants.'
 slug: tools/default-tools
 ---
 
-Vapi voice assistants are given additional functions: `transferCall`,`endCall`, and `dtmf` (to dial a keypad with [DTMF](https://en.wikipedia.org/wiki/DTMF)). These functions can be used to transfer calls, hang up calls, and enter digits on the keypad.
+Vapi voice assistants are given additional functions: `transferCall`, `endCall`, `dtmf` (to dial a keypad with [DTMF](https://en.wikipedia.org/wiki/DTMF)), and `apiRequest` (to make HTTP requests to your existing APIs). These functions can be used to transfer calls, hang up calls, enter digits on the keypad, and integrate with your existing business systems.
 
 <Info>
 To add Default Tools to your agent, you need to add them in the `tools` array of your assistant. You can do this in your api request, or by creating a new tool in the dashboard tools page, and assigning it to your assistant.
@@ -147,6 +147,145 @@ We called and navigated through the IVRs using three different strategies:
 
 The tool's effectiveness depends on the IVR system's configuration and DTMF capturing method. We are working to improve compatibility and reduce transmission delays for broader and more reliable support.
 
+#### API Request
+
+This tool allows your assistant to make HTTP requests to any external API endpoint during conversations. This tool fills the gap between Vapi and your existing business logic, bringing your own endpoints into the conversation flow.
+See configuration options [here](/api-reference/tools/create).
+
+##### Dynamic Variables with LiquidJS
+
+Use **LiquidJS syntax** to reference conversation variables and user data in your URLs, headers, and request bodies. This allows your API requests to adapt dynamically based on the conversation context.
+
+##### Basic Examples
+
+**GET Request Example**
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You help users check their order status. When they provide an order number, use the checkOrderStatus function."
+      }
+    ],
+    "tools": [
+      {
+        "type": "apiRequest",
+        "function": {
+          "name": "api_request_tool"
+        },
+        "name": "checkOrderStatus",
+        "url": "https://api.yourcompany.com/orders/{{orderNumber}}",
+        "method": "GET",
+        "body": {
+          "type": "object",
+          "properties": {
+            "orderNumber": {
+              "description": "The user's order number",
+              "type": "string"
+            }
+          },
+          "required": ["orderNumber"]
+        }
+      }
+    ]
+  }
+}
+```
+
+**POST Request Example**
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You help users book appointments. When they want to schedule, use the bookAppointment function."
+      }
+    ],
+    "tools": [
+      {
+        "type": "apiRequest",
+        "function": {
+          "name": "api_request_tool"
+        },
+        "name": "bookAppointment",
+        "url": "https://api.yourcompany.com/appointments",
+        "method": "POST",
+        "headers": {
+          "type": "object",
+          "properties": {
+            "x-api-key": {
+              "type": "string",
+              "value": "123456789"
+            }
+          }
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "description": "The date of the appointment",
+              "type": "string"
+            },
+            "customerName": {
+              "description": "The name of the customer",
+              "type": "string"
+            },
+            "customerPhoneNumber": {
+              "description": "The phone number of the customer",
+              "type": "string"
+            }
+          },
+          "required": [
+            "date",
+            "customerName",
+            "customerPhoneNumber"
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+##### Advanced Configuration
+
+**With Retry Logic**
+```json
+{
+  "type": "apiRequest",
+  "function": {
+    "name": "api_request_tool"
+  },
+  "name": "checkOrderStatus",
+  "url": "https://api.yourcompany.com/orders/{{orderNumber}}",
+  "method": "GET",
+  "body": {
+    "type": "object",
+    "properties": {
+      "orderNumber": {
+        "description": "The user's order number",
+        "type": "string"
+      }
+    },
+    "required": [
+      "orderNumber"
+    ]
+  },
+  "backoffPlan": {
+    "initialDelayMs": 1000,
+    "maxDelayMs": 10000,
+    "backoffMultiplier": 2.0,
+    "maxRetries": 3
+  },
+  "timeoutSeconds": 45
+}
+```
 
 <Accordion title="Custom Functions: Deprecated">
 ### Custom Functions
