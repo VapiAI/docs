@@ -13448,20 +13448,28 @@
             ]
           },
           "model": {
-            "description": "This is the model for the Conversation Task.",
+            "description": "This is the model for the node.\n\nThis overrides `workflow.model`.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/WorkflowOpenAIModel",
-                "title": "OpenAI"
+                "title": "WorkflowOpenAIModel"
               },
               {
                 "$ref": "#/components/schemas/WorkflowAnthropicModel",
-                "title": "Anthropic"
+                "title": "WorkflowAnthropicModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowGoogleModel",
+                "title": "WorkflowGoogleModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowCustomModel",
+                "title": "WorkflowCustomModel"
               }
             ]
           },
           "transcriber": {
-            "description": "These are the options for the assistant's transcriber.",
+            "description": "This is the transcriber for the node.\n\nThis overrides `workflow.transcriber`.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/AssemblyAITranscriber",
@@ -13510,7 +13518,7 @@
             ]
           },
           "voice": {
-            "description": "These are the options for the assistant's voice.",
+            "description": "This is the voice for the node.\n\nThis overrides `workflow.voice`.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/AzureVoice",
@@ -13774,6 +13782,663 @@
           "to"
         ]
       },
+      "CompliancePlan": {
+        "type": "object",
+        "properties": {
+          "hipaaEnabled": {
+            "type": "boolean",
+            "description": "When this is enabled, no logs, recordings, or transcriptions will be stored.\nAt the end of the call, you will still receive an end-of-call-report message to store on your server. Defaults to false.",
+            "example": {
+              "hipaaEnabled": false
+            }
+          },
+          "pciEnabled": {
+            "type": "boolean",
+            "description": "When this is enabled, the user will be restricted to use PCI-compliant providers, and no logs or transcripts are stored.\nAt the end of the call, you will receive an end-of-call-report message to store on your server. Defaults to false.",
+            "example": {
+              "pciEnabled": false
+            }
+          }
+        }
+      },
+      "StructuredDataPlan": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "description": "These are the messages used to generate the structured data.\n\n@default: ```\n[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are an expert data extractor. You will be given a transcript of a call. Extract structured data per the JSON Schema. DO NOT return anything except the structured data.\\n\\nJson Schema:\\\\n{{schema}}\\n\\nOnly respond with the JSON.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Here is the transcript:\\n\\n{{transcript}}\\n\\n. Here is the ended reason of the call:\\n\\n{{endedReason}}\\n\\n\"\n  }\n]```\n\nYou can customize by providing any messages you want.\n\nHere are the template variables available:\n- {{transcript}}: the transcript of the call from `call.artifact.transcript`- {{systemPrompt}}: the system prompt of the call from `assistant.model.messages[type=system].content`- {{schema}}: the schema of the structured data from `structuredDataPlan.schema`- {{endedReason}}: the ended reason of the call from `call.endedReason`",
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "This determines whether structured data is generated and stored in `call.analysis.structuredData`. Defaults to false.\n\nUsage:\n- If you want to extract structured data, set this to true and provide a `schema`.\n\n@default false"
+          },
+          "schema": {
+            "description": "This is the schema of the structured data. The output is stored in `call.analysis.structuredData`.\n\nComplete guide on JSON Schema can be found [here](https://ajv.js.org/json-schema.html#json-data-type).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JsonSchema"
+              }
+            ]
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is how long the request is tried before giving up. When request times out, `call.analysis.structuredData` will be empty.\n\nUsage:\n- To guarantee the structured data is generated, set this value high. Note, this will delay the end of call report in cases where model is slow to respond.\n\n@default 5 seconds",
+            "minimum": 1,
+            "maximum": 60
+          }
+        }
+      },
+      "StructuredDataMultiPlan": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "This is the key of the structured data plan in the catalog."
+          },
+          "plan": {
+            "description": "This is an individual structured data plan in the catalog.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StructuredDataPlan"
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "plan"
+        ]
+      },
+      "SuccessEvaluationPlan": {
+        "type": "object",
+        "properties": {
+          "rubric": {
+            "type": "string",
+            "enum": [
+              "NumericScale",
+              "DescriptiveScale",
+              "Checklist",
+              "Matrix",
+              "PercentageScale",
+              "LikertScale",
+              "AutomaticRubric",
+              "PassFail"
+            ],
+            "description": "This enforces the rubric of the evaluation. The output is stored in `call.analysis.successEvaluation`.\n\nOptions include:\n- 'NumericScale': A scale of 1 to 10.\n- 'DescriptiveScale': A scale of Excellent, Good, Fair, Poor.\n- 'Checklist': A checklist of criteria and their status.\n- 'Matrix': A grid that evaluates multiple criteria across different performance levels.\n- 'PercentageScale': A scale of 0% to 100%.\n- 'LikertScale': A scale of Strongly Agree, Agree, Neutral, Disagree, Strongly Disagree.\n- 'AutomaticRubric': Automatically break down evaluation into several criteria, each with its own score.\n- 'PassFail': A simple 'true' if call passed, 'false' if not.\n\nDefault is 'PassFail'."
+          },
+          "messages": {
+            "description": "These are the messages used to generate the success evaluation.\n\n@default: ```\n[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are an expert call evaluator. You will be given a transcript of a call and the system prompt of the AI participant. Determine if the call was successful based on the objectives inferred from the system prompt. DO NOT return anything except the result.\\n\\nRubric:\\\\n{{rubric}}\\n\\nOnly respond with the result.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Here is the transcript:\\n\\n{{transcript}}\\n\\n\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Here was the system prompt of the call:\\n\\n{{systemPrompt}}\\n\\n. Here is the ended reason of the call:\\n\\n{{endedReason}}\\n\\n\"\n  }\n]```\n\nYou can customize by providing any messages you want.\n\nHere are the template variables available:\n- {{transcript}}: the transcript of the call from `call.artifact.transcript`- {{systemPrompt}}: the system prompt of the call from `assistant.model.messages[type=system].content`- {{rubric}}: the rubric of the success evaluation from `successEvaluationPlan.rubric`- {{endedReason}}: the ended reason of the call from `call.endedReason`",
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "This determines whether a success evaluation is generated and stored in `call.analysis.successEvaluation`. Defaults to true.\n\nUsage:\n- If you want to disable the success evaluation, set this to false.\n\n@default true"
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is how long the request is tried before giving up. When request times out, `call.analysis.successEvaluation` will be empty.\n\nUsage:\n- To guarantee the success evaluation is generated, set this value high. Note, this will delay the end of call report in cases where model is slow to respond.\n\n@default 5 seconds",
+            "minimum": 1,
+            "maximum": 60
+          }
+        }
+      },
+      "AnalysisPlan": {
+        "type": "object",
+        "properties": {
+          "minMessagesThreshold": {
+            "type": "number",
+            "description": "The minimum number of messages required to run the analysis plan.\nIf the number of messages is less than this, analysis will be skipped.\n@default 2",
+            "minimum": 0
+          },
+          "summaryPlan": {
+            "description": "This is the plan for generating the summary of the call. This outputs to `call.analysis.summary`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SummaryPlan"
+              }
+            ]
+          },
+          "structuredDataPlan": {
+            "description": "This is the plan for generating the structured data from the call. This outputs to `call.analysis.structuredData`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StructuredDataPlan"
+              }
+            ]
+          },
+          "structuredDataMultiPlan": {
+            "description": "This is an array of structured data plan catalogs. Each entry includes a `key` and a `plan` for generating the structured data from the call. This outputs to `call.analysis.structuredDataMulti`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StructuredDataMultiPlan"
+            }
+          },
+          "successEvaluationPlan": {
+            "description": "This is the plan for generating the success evaluation of the call. This outputs to `call.analysis.successEvaluation`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SuccessEvaluationPlan"
+              }
+            ]
+          }
+        }
+      },
+      "RegexOption": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of the regex option. Options are:\n- `ignore-case`: Ignores the case of the text being matched. Add\n- `whole-word`: Matches whole words only.\n- `multi-line`: Matches across multiple lines.",
+            "enum": [
+              "ignore-case",
+              "whole-word",
+              "multi-line"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "This is whether to enable the option.\n\n@default false"
+          }
+        },
+        "required": [
+          "type",
+          "enabled"
+        ]
+      },
+      "AssistantCustomEndpointingRule": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This endpointing rule is based on the last assistant message before customer started speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the last assistant message\n- If a match is found based on `regex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you have yes/no questions in your use case like \"are you interested in a loan?\", you can set a shorter timeout.\n- If you have questions where the customer may pause to look up information like \"what's my account number?\", you can set a longer timeout.",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "regex": {
+            "type": "string",
+            "description": "This is the regex pattern to match.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
+          },
+          "regexOptions": {
+            "description": "These are the options for the regex match. Defaults to all disabled.\n\n@default []",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegexOption"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
+            "minimum": 0,
+            "maximum": 15
+          }
+        },
+        "required": [
+          "type",
+          "regex",
+          "timeoutSeconds"
+        ]
+      },
+      "CustomerCustomEndpointingRule": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This endpointing rule is based on current customer message as they are speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the current customer transcription\n- If a match is found based on `regex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you want to wait longer while customer is speaking numbers, you can set a longer timeout.",
+            "enum": [
+              "customer"
+            ]
+          },
+          "regex": {
+            "type": "string",
+            "description": "This is the regex pattern to match.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
+          },
+          "regexOptions": {
+            "description": "These are the options for the regex match. Defaults to all disabled.\n\n@default []",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegexOption"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
+            "minimum": 0,
+            "maximum": 15
+          }
+        },
+        "required": [
+          "type",
+          "regex",
+          "timeoutSeconds"
+        ]
+      },
+      "BothCustomEndpointingRule": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This endpointing rule is based on both the last assistant message and the current customer message as they are speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the last assistant message and the current customer transcription\n- If assistant message matches `assistantRegex` AND customer message matches `customerRegex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you want to wait longer while customer is speaking numbers, you can set a longer timeout.",
+            "enum": [
+              "both"
+            ]
+          },
+          "assistantRegex": {
+            "type": "string",
+            "description": "This is the regex pattern to match the assistant's message.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
+          },
+          "assistantRegexOptions": {
+            "description": "These are the options for the assistant's message regex match. Defaults to all disabled.\n\n@default []",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegexOption"
+            }
+          },
+          "customerRegex": {
+            "type": "string"
+          },
+          "customerRegexOptions": {
+            "description": "These are the options for the customer's message regex match. Defaults to all disabled.\n\n@default []",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegexOption"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
+            "minimum": 0,
+            "maximum": 15
+          }
+        },
+        "required": [
+          "type",
+          "assistantRegex",
+          "customerRegex",
+          "timeoutSeconds"
+        ]
+      },
+      "VapiSmartEndpointingPlan": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "This is the provider for the smart endpointing plan.",
+            "enum": [
+              "vapi",
+              "livekit"
+            ],
+            "example": "vapi"
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "LivekitSmartEndpointingPlan": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "This is the provider for the smart endpointing plan.",
+            "enum": [
+              "vapi",
+              "livekit"
+            ],
+            "example": "livekit"
+          },
+          "waitFunction": {
+            "type": "string",
+            "description": "This expression describes how long the bot will wait to start speaking based on the likelihood that the user has reached an endpoint.\n\nThis is a millisecond valued function. It maps probabilities (real numbers on [0,1]) to milliseconds that the bot should wait before speaking ([0, \\infty]). Any negative values that are returned are set to zero (the bot can't start talking in the past).\n\nA probability of zero represents very high confidence that the caller has stopped speaking, and would like the bot to speak to them. A probability of one represents very high confidence that the caller is still speaking.\n\nUnder the hood, this is parsed into a mathjs expression. Whatever you use to write your expression needs to be valid with respect to mathjs\n\n@default \"20 + 500 * sqrt(x) + 2500 * x^3\"",
+            "examples": [
+              "70 + 4000 * x",
+              "200 + 8000 * x",
+              "4000 * (1 - cos(pi * x))"
+            ]
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "TranscriptionEndpointingPlan": {
+        "type": "object",
+        "properties": {
+          "onPunctuationSeconds": {
+            "type": "number",
+            "description": "The minimum number of seconds to wait after transcription ending with punctuation before sending a request to the model. Defaults to 0.1.\n\nThis setting exists because the transcriber punctuates the transcription when it's more confident that customer has completed a thought.\n\n@default 0.1",
+            "minimum": 0,
+            "maximum": 3,
+            "example": 0.1
+          },
+          "onNoPunctuationSeconds": {
+            "type": "number",
+            "description": "The minimum number of seconds to wait after transcription ending without punctuation before sending a request to the model. Defaults to 1.5.\n\nThis setting exists to catch the cases where the transcriber was not confident enough to punctuate the transcription, but the customer is done and has been silent for a long time.\n\n@default 1.5",
+            "minimum": 0,
+            "maximum": 3,
+            "example": 1.5
+          },
+          "onNumberSeconds": {
+            "type": "number",
+            "description": "The minimum number of seconds to wait after transcription ending with a number before sending a request to the model. Defaults to 0.4.\n\nThis setting exists because the transcriber will sometimes punctuate the transcription ending with a number, even though the customer hasn't uttered the full number. This happens commonly for long numbers when the customer reads the number in chunks.\n\n@default 0.5",
+            "minimum": 0,
+            "maximum": 3,
+            "example": 0.5
+          }
+        }
+      },
+      "StartSpeakingPlan": {
+        "type": "object",
+        "properties": {
+          "waitSeconds": {
+            "type": "number",
+            "description": "This is how long assistant waits before speaking. Defaults to 0.4.\n\nThis is the minimum it will wait but if there is latency is the pipeline, this minimum will be exceeded. This is intended as a stopgap in case the pipeline is moving too fast.\n\nExample:\n- If model generates tokens and voice generates bytes within 100ms, the pipeline still waits 300ms before outputting speech.\n\nUsage:\n- If the customer is taking long pauses, set this to a higher value.\n- If the assistant is accidentally jumping in too much, set this to a higher value.\n\n@default 0.4",
+            "minimum": 0,
+            "maximum": 5,
+            "example": 0.4
+          },
+          "smartEndpointingEnabled": {
+            "example": false,
+            "deprecated": true,
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "livekit"
+                ]
+              }
+            ]
+          },
+          "smartEndpointingPlan": {
+            "description": "This is the plan for smart endpointing. Pick between Vapi smart endpointing or LiveKit smart endpointing (or nothing). We strongly recommend using livekit endpointing when working in English. LiveKit endpointing is not supported in other languages, yet.\n\nIf this is set, it will override and take precedence over `transcriptionEndpointingPlan`.\nThis plan will still be overridden by any matching `customEndpointingRules`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VapiSmartEndpointingPlan",
+                "title": "Vapi"
+              },
+              {
+                "$ref": "#/components/schemas/LivekitSmartEndpointingPlan",
+                "title": "Livekit"
+              }
+            ]
+          },
+          "customEndpointingRules": {
+            "type": "array",
+            "description": "These are the custom endpointing rules to set an endpointing timeout based on a regex on the customer's speech or the assistant's last message.\n\nUsage:\n- If you have yes/no questions like \"are you interested in a loan?\", you can set a shorter timeout.\n- If you have questions where the customer may pause to look up information like \"what's my account number?\", you can set a longer timeout.\n- If you want to wait longer while customer is enumerating a list of numbers, you can set a longer timeout.\n\nThese rules have the highest precedence and will override both `smartEndpointingPlan` and `transcriptionEndpointingPlan` when a rule is matched.\n\nThe rules are evaluated in order and the first one that matches will be used.\n\nOrder of precedence for endpointing:\n1. customEndpointingRules (if any match)\n2. smartEndpointingPlan (if set)\n3. transcriptionEndpointingPlan\n\n@default []",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AssistantCustomEndpointingRule",
+                  "title": "Assistant"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomerCustomEndpointingRule",
+                  "title": "Customer"
+                },
+                {
+                  "$ref": "#/components/schemas/BothCustomEndpointingRule",
+                  "title": "Both"
+                }
+              ]
+            }
+          },
+          "transcriptionEndpointingPlan": {
+            "description": "This determines how a customer speech is considered done (endpointing) using the transcription of customer's speech.\n\nOnce an endpoint is triggered, the request is sent to `assistant.model`.\n\nNote: This plan is only used if `smartEndpointingPlan` is not set. If both are provided, `smartEndpointingPlan` takes precedence.\nThis plan will also be overridden by any matching `customEndpointingRules`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TranscriptionEndpointingPlan"
+              }
+            ]
+          }
+        }
+      },
+      "StopSpeakingPlan": {
+        "type": "object",
+        "properties": {
+          "numWords": {
+            "type": "number",
+            "description": "This is the number of words that the customer has to say before the assistant will stop talking.\n\nWords like \"stop\", \"actually\", \"no\", etc. will always interrupt immediately regardless of this value.\n\nWords like \"okay\", \"yeah\", \"right\" will never interrupt.\n\nWhen set to 0, `voiceSeconds` is used in addition to the transcriptions to determine the customer has started speaking.\n\nDefaults to 0.\n\n@default 0",
+            "minimum": 0,
+            "maximum": 10,
+            "example": 0
+          },
+          "voiceSeconds": {
+            "type": "number",
+            "description": "This is the seconds customer has to speak before the assistant stops talking. This uses the VAD (Voice Activity Detection) spike to determine if the customer has started speaking.\n\nConsiderations:\n- A lower value might be more responsive but could potentially pick up non-speech sounds.\n- A higher value reduces false positives but might slightly delay the detection of speech onset.\n\nThis is only used if `numWords` is set to 0.\n\nDefaults to 0.2\n\n@default 0.2",
+            "minimum": 0,
+            "maximum": 0.5,
+            "example": 0.2
+          },
+          "backoffSeconds": {
+            "type": "number",
+            "description": "This is the seconds to wait before the assistant will start talking again after being interrupted.\n\nDefaults to 1.\n\n@default 1",
+            "minimum": 0,
+            "maximum": 10,
+            "example": 1
+          },
+          "acknowledgementPhrases": {
+            "description": "These are the phrases that will never interrupt the assistant, even if numWords threshold is met.\nThese are typically acknowledgement or backchanneling phrases.",
+            "example": [
+              "i understand",
+              "i see",
+              "i got it",
+              "i hear you",
+              "im listening",
+              "im with you",
+              "right",
+              "okay",
+              "ok",
+              "sure",
+              "alright",
+              "got it",
+              "understood",
+              "yeah",
+              "yes",
+              "uh-huh",
+              "mm-hmm",
+              "gotcha",
+              "mhmm",
+              "ah",
+              "yeah okay",
+              "yeah sure"
+            ],
+            "default": [
+              "i understand",
+              "i see",
+              "i got it",
+              "i hear you",
+              "im listening",
+              "im with you",
+              "right",
+              "okay",
+              "ok",
+              "sure",
+              "alright",
+              "got it",
+              "understood",
+              "yeah",
+              "yes",
+              "uh-huh",
+              "mm-hmm",
+              "gotcha",
+              "mhmm",
+              "ah",
+              "yeah okay",
+              "yeah sure"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 240
+            }
+          },
+          "interruptionPhrases": {
+            "description": "These are the phrases that will always interrupt the assistant immediately, regardless of numWords.\nThese are typically phrases indicating disagreement or desire to stop.",
+            "example": [
+              "stop",
+              "shut",
+              "up",
+              "enough",
+              "quiet",
+              "silence",
+              "but",
+              "dont",
+              "not",
+              "no",
+              "hold",
+              "wait",
+              "cut",
+              "pause",
+              "nope",
+              "nah",
+              "nevermind",
+              "never",
+              "bad",
+              "actually"
+            ],
+            "default": [
+              "stop",
+              "shut",
+              "up",
+              "enough",
+              "quiet",
+              "silence",
+              "but",
+              "dont",
+              "not",
+              "no",
+              "hold",
+              "wait",
+              "cut",
+              "pause",
+              "nope",
+              "nah",
+              "nevermind",
+              "never",
+              "bad",
+              "actually"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        }
+      },
+      "MonitorPlan": {
+        "type": "object",
+        "properties": {
+          "listenEnabled": {
+            "type": "boolean",
+            "description": "This determines whether the assistant's calls allow live listening. Defaults to true.\n\nFetch `call.monitor.listenUrl` to get the live listening URL.\n\n@default true",
+            "example": false
+          },
+          "listenAuthenticationEnabled": {
+            "type": "boolean",
+            "description": "This enables authentication on the `call.monitor.listenUrl`.\n\nIf `listenAuthenticationEnabled` is `true`, the `call.monitor.listenUrl` will require an `Authorization: Bearer <vapi-public-api-key>` header.\n\n@default false",
+            "example": false
+          },
+          "controlEnabled": {
+            "type": "boolean",
+            "description": "This determines whether the assistant's calls allow live control. Defaults to true.\n\nFetch `call.monitor.controlUrl` to get the live control URL.\n\nTo use, send any control message via a POST request to `call.monitor.controlUrl`. Here are the types of controls supported: https://docs.vapi.ai/api-reference/messages/client-inbound-message\n\n@default true",
+            "example": false
+          },
+          "controlAuthenticationEnabled": {
+            "type": "boolean",
+            "description": "This enables authentication on the `call.monitor.controlUrl`.\n\nIf `controlAuthenticationEnabled` is `true`, the `call.monitor.controlUrl` will require an `Authorization: Bearer <vapi-public-api-key>` header.\n\n@default false",
+            "example": false
+          }
+        }
+      },
+      "SmartDenoisingPlan": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether smart denoising using Krisp is enabled.",
+            "default": false
+          }
+        }
+      },
+      "FourierDenoisingPlan": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether Fourier denoising is enabled. Note that this is experimental and may not work as expected.",
+            "default": false
+          },
+          "mediaDetectionEnabled": {
+            "type": "boolean",
+            "description": "Whether automatic media detection is enabled. When enabled, the filter will automatically\ndetect consistent background TV/music/radio and switch to more aggressive filtering settings.\nOnly applies when enabled is true.",
+            "example": true,
+            "default": true
+          },
+          "staticThreshold": {
+            "type": "number",
+            "description": "Static threshold in dB used as fallback when no baseline is established.",
+            "example": -35,
+            "minimum": -80,
+            "maximum": 0,
+            "default": -35
+          },
+          "baselineOffsetDb": {
+            "type": "number",
+            "description": "How far below the rolling baseline to filter audio, in dB.\nLower values (e.g., -10) are more aggressive, higher values (e.g., -20) are more conservative.",
+            "example": -15,
+            "minimum": -30,
+            "maximum": -5,
+            "default": -15
+          },
+          "windowSizeMs": {
+            "type": "number",
+            "description": "Rolling window size in milliseconds for calculating the audio baseline.\nLarger windows adapt more slowly but are more stable.",
+            "example": 3000,
+            "minimum": 1000,
+            "maximum": 30000,
+            "default": 3000
+          },
+          "baselinePercentile": {
+            "type": "number",
+            "description": "Percentile to use for baseline calculation (1-99).\nHigher percentiles (e.g., 85) focus on louder speech, lower percentiles (e.g., 50) include quieter speech.",
+            "example": 85,
+            "minimum": 1,
+            "maximum": 99,
+            "default": 85
+          }
+        }
+      },
+      "BackgroundSpeechDenoisingPlan": {
+        "type": "object",
+        "properties": {
+          "smartDenoisingPlan": {
+            "description": "Whether smart denoising using Krisp is enabled.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SmartDenoisingPlan"
+              }
+            ]
+          },
+          "fourierDenoisingPlan": {
+            "description": "Whether Fourier denoising is enabled. Note that this is experimental and may not work as expected.\n\nThis can be combined with smart denoising, and will be run afterwards.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FourierDenoisingPlan"
+              }
+            ]
+          }
+        }
+      },
       "WorkflowUserEditable": {
         "type": "object",
         "properties": {
@@ -13790,6 +14455,387 @@
                   "title": "ToolNode"
                 }
               ]
+            }
+          },
+          "transcriber": {
+            "description": "This is the transcriber for the workflow.\n\nThis can be overridden at node level using `nodes[n].transcriber`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssemblyAITranscriber",
+                "title": "AssemblyAITranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/AzureSpeechTranscriber",
+                "title": "AzureSpeechTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/CustomTranscriber",
+                "title": "CustomTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/DeepgramTranscriber",
+                "title": "DeepgramTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/ElevenLabsTranscriber",
+                "title": "ElevenLabsTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/GladiaTranscriber",
+                "title": "GladiaTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/GoogleTranscriber",
+                "title": "GoogleTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechmaticsTranscriber",
+                "title": "SpeechmaticsTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/TalkscriberTranscriber",
+                "title": "TalkscriberTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAITranscriber",
+                "title": "OpenAITranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/CartesiaTranscriber",
+                "title": "CartesiaTranscriber"
+              }
+            ]
+          },
+          "voice": {
+            "description": "This is the voice for the workflow.\n\nThis can be overridden at node level using `nodes[n].voice`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AzureVoice",
+                "title": "AzureVoice"
+              },
+              {
+                "$ref": "#/components/schemas/CartesiaVoice",
+                "title": "CartesiaVoice"
+              },
+              {
+                "$ref": "#/components/schemas/CustomVoice",
+                "title": "CustomVoice"
+              },
+              {
+                "$ref": "#/components/schemas/DeepgramVoice",
+                "title": "DeepgramVoice"
+              },
+              {
+                "$ref": "#/components/schemas/ElevenLabsVoice",
+                "title": "ElevenLabsVoice"
+              },
+              {
+                "$ref": "#/components/schemas/HumeVoice",
+                "title": "HumeVoice"
+              },
+              {
+                "$ref": "#/components/schemas/LMNTVoice",
+                "title": "LMNTVoice"
+              },
+              {
+                "$ref": "#/components/schemas/NeuphonicVoice",
+                "title": "NeuphonicVoice"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAIVoice",
+                "title": "OpenAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/PlayHTVoice",
+                "title": "PlayHTVoice"
+              },
+              {
+                "$ref": "#/components/schemas/RimeAIVoice",
+                "title": "RimeAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/SmallestAIVoice",
+                "title": "SmallestAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/TavusVoice",
+                "title": "TavusVoice"
+              },
+              {
+                "$ref": "#/components/schemas/VapiVoice",
+                "title": "VapiVoice"
+              },
+              {
+                "$ref": "#/components/schemas/SesameVoice",
+                "title": "SesameVoice"
+              }
+            ]
+          },
+          "observabilityPlan": {
+            "description": "This is the plan for observability of workflow's calls.\n\nCurrently, only Langfuse is supported.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LangfuseObservabilityPlan",
+                "title": "Langfuse"
+              }
+            ],
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LangfuseObservabilityPlan"
+              }
+            ]
+          },
+          "credentials": {
+            "type": "array",
+            "description": "These are dynamic credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can supplement an additional credentials using this. Dynamic credentials override existing credentials.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CreateAnthropicCredentialDTO",
+                  "title": "AnthropicCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAnyscaleCredentialDTO",
+                  "title": "AnyscaleCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAssemblyAICredentialDTO",
+                  "title": "AssemblyAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAzureCredentialDTO",
+                  "title": "AzureCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAzureOpenAICredentialDTO",
+                  "title": "AzureOpenAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateByoSipTrunkCredentialDTO",
+                  "title": "ByoSipTrunkCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCartesiaCredentialDTO",
+                  "title": "CartesiaCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCerebrasCredentialDTO",
+                  "title": "CerebrasCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCloudflareCredentialDTO",
+                  "title": "CloudflareCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCustomLLMCredentialDTO",
+                  "title": "CustomLLMCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepgramCredentialDTO",
+                  "title": "DeepgramCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepInfraCredentialDTO",
+                  "title": "DeepInfraCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepSeekCredentialDTO",
+                  "title": "DeepSeekCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateElevenLabsCredentialDTO",
+                  "title": "ElevenLabsCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGcpCredentialDTO",
+                  "title": "GcpCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGladiaCredentialDTO",
+                  "title": "GladiaCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelCredentialDTO",
+                  "title": "GhlCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCredentialDTO",
+                  "title": "GoogleCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGroqCredentialDTO",
+                  "title": "GroqCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateHumeCredentialDTO",
+                  "title": "HumeCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateInflectionAICredentialDTO",
+                  "title": "InflectionAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateLangfuseCredentialDTO",
+                  "title": "LangfuseCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateLmntCredentialDTO",
+                  "title": "LmntCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMakeCredentialDTO",
+                  "title": "MakeCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMistralCredentialDTO",
+                  "title": "MistralCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateNeuphonicCredentialDTO",
+                  "title": "NeuphonicCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateOpenAICredentialDTO",
+                  "title": "OpenAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateOpenRouterCredentialDTO",
+                  "title": "OpenRouterCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreatePerplexityAICredentialDTO",
+                  "title": "PerplexityAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreatePlayHTCredentialDTO",
+                  "title": "PlayHTCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateRimeAICredentialDTO",
+                  "title": "RimeAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateRunpodCredentialDTO",
+                  "title": "RunpodCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateS3CredentialDTO",
+                  "title": "S3Credential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSmallestAICredentialDTO",
+                  "title": "SmallestAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSpeechmaticsCredentialDTO",
+                  "title": "SpeechmaticsCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSupabaseCredentialDTO",
+                  "title": "SupabaseCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTavusCredentialDTO",
+                  "title": "TavusCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTogetherAICredentialDTO",
+                  "title": "TogetherAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTrieveCredentialDTO",
+                  "title": "TrieveCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTwilioCredentialDTO",
+                  "title": "TwilioCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateVonageCredentialDTO",
+                  "title": "VonageCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateWebhookCredentialDTO",
+                  "title": "WebhookCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateXAiCredentialDTO",
+                  "title": "XAiCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarOAuth2ClientCredentialDTO",
+                  "title": "GoogleCalendarOAuth2ClientCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarOAuth2AuthorizationCredentialDTO",
+                  "title": "GoogleCalendarOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleSheetsOAuth2AuthorizationCredentialDTO",
+                  "title": "GoogleSheetsOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSlackOAuth2AuthorizationCredentialDTO",
+                  "title": "SlackOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelMCPCredentialDTO",
+                  "title": "GoHighLevelMCPCredential"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "provider",
+                "mapping": {
+                  "11labs": "#/components/schemas/CreateElevenLabsCredentialDTO",
+                  "anthropic": "#/components/schemas/CreateAnthropicCredentialDTO",
+                  "anyscale": "#/components/schemas/CreateAnyscaleCredentialDTO",
+                  "assembly-ai": "#/components/schemas/CreateAssemblyAICredentialDTO",
+                  "azure-openai": "#/components/schemas/CreateAzureOpenAICredentialDTO",
+                  "azure": "#/components/schemas/CreateAzureCredentialDTO",
+                  "byo-sip-trunk": "#/components/schemas/CreateByoSipTrunkCredentialDTO",
+                  "cartesia": "#/components/schemas/CreateCartesiaCredentialDTO",
+                  "cerebras": "#/components/schemas/CreateCerebrasCredentialDTO",
+                  "cloudflare": "#/components/schemas/CreateCloudflareCredentialDTO",
+                  "custom-llm": "#/components/schemas/CreateCustomLLMCredentialDTO",
+                  "deepgram": "#/components/schemas/CreateDeepgramCredentialDTO",
+                  "deepinfra": "#/components/schemas/CreateDeepInfraCredentialDTO",
+                  "deep-seek": "#/components/schemas/CreateDeepSeekCredentialDTO",
+                  "gcp": "#/components/schemas/CreateGcpCredentialDTO",
+                  "gladia": "#/components/schemas/CreateGladiaCredentialDTO",
+                  "gohighlevel": "#/components/schemas/CreateGoHighLevelCredentialDTO",
+                  "google": "#/components/schemas/CreateGoogleCredentialDTO",
+                  "groq": "#/components/schemas/CreateGroqCredentialDTO",
+                  "inflection-ai": "#/components/schemas/CreateInflectionAICredentialDTO",
+                  "langfuse": "#/components/schemas/CreateLangfuseCredentialDTO",
+                  "lmnt": "#/components/schemas/CreateLmntCredentialDTO",
+                  "make": "#/components/schemas/CreateMakeCredentialDTO",
+                  "openai": "#/components/schemas/CreateOpenAICredentialDTO",
+                  "openrouter": "#/components/schemas/CreateOpenRouterCredentialDTO",
+                  "perplexity-ai": "#/components/schemas/CreatePerplexityAICredentialDTO",
+                  "playht": "#/components/schemas/CreatePlayHTCredentialDTO",
+                  "rime-ai": "#/components/schemas/CreateRimeAICredentialDTO",
+                  "runpod": "#/components/schemas/CreateRunpodCredentialDTO",
+                  "s3": "#/components/schemas/CreateS3CredentialDTO",
+                  "supabase": "#/components/schemas/CreateSupabaseCredentialDTO",
+                  "smallest-ai": "#/components/schemas/CreateSmallestAICredentialDTO",
+                  "tavus": "#/components/schemas/CreateTavusCredentialDTO",
+                  "together-ai": "#/components/schemas/CreateTogetherAICredentialDTO",
+                  "twilio": "#/components/schemas/CreateTwilioCredentialDTO",
+                  "vonage": "#/components/schemas/CreateVonageCredentialDTO",
+                  "webhook": "#/components/schemas/CreateWebhookCredentialDTO",
+                  "xai": "#/components/schemas/CreateXAiCredentialDTO",
+                  "neuphonic": "#/components/schemas/CreateNeuphonicCredentialDTO",
+                  "hume": "#/components/schemas/CreateHumeCredentialDTO",
+                  "mistral": "#/components/schemas/CreateMistralCredentialDTO",
+                  "speechmatics": "#/components/schemas/CreateSpeechmaticsCredentialDTO",
+                  "trieve": "#/components/schemas/CreateTrieveCredentialDTO",
+                  "google.calendar.oauth2-client": "#/components/schemas/CreateGoogleCalendarOAuth2ClientCredentialDTO",
+                  "google.calendar.oauth2-authorization": "#/components/schemas/CreateGoogleCalendarOAuth2AuthorizationCredentialDTO",
+                  "google.sheets.oauth2-authorization": "#/components/schemas/CreateGoogleSheetsOAuth2AuthorizationCredentialDTO",
+                  "slack.oauth2-authorization": "#/components/schemas/CreateSlackOAuth2AuthorizationCredentialDTO",
+                  "ghl.oauth2-authorization": "#/components/schemas/CreateGoHighLevelMCPCredentialDTO"
+                }
+              }
             }
           },
           "name": {
@@ -13813,6 +14859,69 @@
                 "$ref": "#/components/schemas/Server"
               }
             ]
+          },
+          "compliancePlan": {
+            "description": "This is the compliance plan for the workflow. It allows you to configure HIPAA and other compliance settings.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CompliancePlan"
+              }
+            ]
+          },
+          "analysisPlan": {
+            "description": "This is the plan for analysis of workflow's calls. Stored in `call.analysis`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisPlan"
+              }
+            ]
+          },
+          "artifactPlan": {
+            "description": "This is the plan for artifacts generated during workflow's calls. Stored in `call.artifact`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactPlan"
+              }
+            ]
+          },
+          "startSpeakingPlan": {
+            "description": "This is the plan for when the workflow nodes should start talking.\n\nYou should configure this if you're running into these issues:\n- The assistant is too slow to start talking after the customer is done speaking.\n- The assistant is too fast to start talking after the customer is done speaking.\n- The assistant is so fast that it's actually interrupting the customer.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StartSpeakingPlan"
+              }
+            ]
+          },
+          "stopSpeakingPlan": {
+            "description": "This is the plan for when workflow nodes should stop talking on customer interruption.\n\nYou should configure this if you're running into these issues:\n- The assistant is too slow to recognize customer's interruption.\n- The assistant is too fast to recognize customer's interruption.\n- The assistant is getting interrupted by phrases that are just acknowledgments.\n- The assistant is getting interrupted by background noises.\n- The assistant is not properly stopping -- it starts talking right after getting interrupted.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StopSpeakingPlan"
+              }
+            ]
+          },
+          "monitorPlan": {
+            "description": "This is the plan for real-time monitoring of the workflow's calls.\n\nUsage:\n- To enable live listening of the workflow's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the workflow's calls, set `monitorPlan.controlEnabled` to `true`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MonitorPlan"
+              }
+            ]
+          },
+          "backgroundSpeechDenoisingPlan": {
+            "description": "This enables filtering of noise and background speech while the user is talking.\n\nFeatures:\n- Smart denoising using Krisp\n- Fourier denoising\n\nBoth can be used together. Order of precedence:\n- Smart denoising\n- Fourier denoising",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackgroundSpeechDenoisingPlan"
+              }
+            ]
+          },
+          "credentialIds": {
+            "description": "These are the credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can provide a subset using this.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -14169,28 +15278,6 @@
           "type",
           "key",
           "value"
-        ]
-      },
-      "RegexOption": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of the regex option. Options are:\n- `ignore-case`: Ignores the case of the text being matched. Add\n- `whole-word`: Matches whole words only.\n- `multi-line`: Matches across multiple lines.",
-            "enum": [
-              "ignore-case",
-              "whole-word",
-              "multi-line"
-            ]
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "This is whether to enable the option.\n\n@default false"
-          }
-        },
-        "required": [
-          "type",
-          "enabled"
         ]
       },
       "RegexReplacement": {
@@ -17151,85 +18238,6 @@
           "provider"
         ]
       },
-      "SmartDenoisingPlan": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "description": "Whether smart denoising using Krisp is enabled.",
-            "default": false
-          }
-        }
-      },
-      "FourierDenoisingPlan": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "description": "Whether Fourier denoising is enabled. Note that this is experimental and may not work as expected.",
-            "default": false
-          },
-          "mediaDetectionEnabled": {
-            "type": "boolean",
-            "description": "Whether automatic media detection is enabled. When enabled, the filter will automatically\ndetect consistent background TV/music/radio and switch to more aggressive filtering settings.\nOnly applies when enabled is true.",
-            "example": true,
-            "default": true
-          },
-          "staticThreshold": {
-            "type": "number",
-            "description": "Static threshold in dB used as fallback when no baseline is established.",
-            "example": -35,
-            "minimum": -80,
-            "maximum": 0,
-            "default": -35
-          },
-          "baselineOffsetDb": {
-            "type": "number",
-            "description": "How far below the rolling baseline to filter audio, in dB.\nLower values (e.g., -10) are more aggressive, higher values (e.g., -20) are more conservative.",
-            "example": -15,
-            "minimum": -30,
-            "maximum": -5,
-            "default": -15
-          },
-          "windowSizeMs": {
-            "type": "number",
-            "description": "Rolling window size in milliseconds for calculating the audio baseline.\nLarger windows adapt more slowly but are more stable.",
-            "example": 3000,
-            "minimum": 1000,
-            "maximum": 30000,
-            "default": 3000
-          },
-          "baselinePercentile": {
-            "type": "number",
-            "description": "Percentile to use for baseline calculation (1-99).\nHigher percentiles (e.g., 85) focus on louder speech, lower percentiles (e.g., 50) include quieter speech.",
-            "example": 85,
-            "minimum": 1,
-            "maximum": 99,
-            "default": 85
-          }
-        }
-      },
-      "BackgroundSpeechDenoisingPlan": {
-        "type": "object",
-        "properties": {
-          "smartDenoisingPlan": {
-            "description": "Whether smart denoising using Krisp is enabled.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SmartDenoisingPlan"
-              }
-            ]
-          },
-          "fourierDenoisingPlan": {
-            "description": "Whether Fourier denoising is enabled. Note that this is experimental and may not work as expected.\n\nThis can be combined with smart denoising, and will be run afterwards.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/FourierDenoisingPlan"
-              }
-            ]
-          }
-        }
-      },
       "CreateAnthropicCredentialDTO": {
         "type": "object",
         "properties": {
@@ -19235,153 +20243,6 @@
           "provider"
         ]
       },
-      "CompliancePlan": {
-        "type": "object",
-        "properties": {
-          "hipaaEnabled": {
-            "type": "boolean",
-            "description": "When this is enabled, no logs, recordings, or transcriptions will be stored.\nAt the end of the call, you will still receive an end-of-call-report message to store on your server. Defaults to false.",
-            "example": {
-              "hipaaEnabled": false
-            }
-          },
-          "pciEnabled": {
-            "type": "boolean",
-            "description": "When this is enabled, the user will be restricted to use PCI-compliant providers, and no logs or transcripts are stored.\nAt the end of the call, you will receive an end-of-call-report message to store on your server. Defaults to false.",
-            "example": {
-              "pciEnabled": false
-            }
-          }
-        }
-      },
-      "StructuredDataPlan": {
-        "type": "object",
-        "properties": {
-          "messages": {
-            "description": "These are the messages used to generate the structured data.\n\n@default: ```\n[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are an expert data extractor. You will be given a transcript of a call. Extract structured data per the JSON Schema. DO NOT return anything except the structured data.\\n\\nJson Schema:\\\\n{{schema}}\\n\\nOnly respond with the JSON.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Here is the transcript:\\n\\n{{transcript}}\\n\\n. Here is the ended reason of the call:\\n\\n{{endedReason}}\\n\\n\"\n  }\n]```\n\nYou can customize by providing any messages you want.\n\nHere are the template variables available:\n- {{transcript}}: the transcript of the call from `call.artifact.transcript`- {{systemPrompt}}: the system prompt of the call from `assistant.model.messages[type=system].content`- {{schema}}: the schema of the structured data from `structuredDataPlan.schema`- {{endedReason}}: the ended reason of the call from `call.endedReason`",
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "This determines whether structured data is generated and stored in `call.analysis.structuredData`. Defaults to false.\n\nUsage:\n- If you want to extract structured data, set this to true and provide a `schema`.\n\n@default false"
-          },
-          "schema": {
-            "description": "This is the schema of the structured data. The output is stored in `call.analysis.structuredData`.\n\nComplete guide on JSON Schema can be found [here](https://ajv.js.org/json-schema.html#json-data-type).",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/JsonSchema"
-              }
-            ]
-          },
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is how long the request is tried before giving up. When request times out, `call.analysis.structuredData` will be empty.\n\nUsage:\n- To guarantee the structured data is generated, set this value high. Note, this will delay the end of call report in cases where model is slow to respond.\n\n@default 5 seconds",
-            "minimum": 1,
-            "maximum": 60
-          }
-        }
-      },
-      "StructuredDataMultiPlan": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "This is the key of the structured data plan in the catalog."
-          },
-          "plan": {
-            "description": "This is an individual structured data plan in the catalog.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/StructuredDataPlan"
-              }
-            ]
-          }
-        },
-        "required": [
-          "key",
-          "plan"
-        ]
-      },
-      "SuccessEvaluationPlan": {
-        "type": "object",
-        "properties": {
-          "rubric": {
-            "type": "string",
-            "enum": [
-              "NumericScale",
-              "DescriptiveScale",
-              "Checklist",
-              "Matrix",
-              "PercentageScale",
-              "LikertScale",
-              "AutomaticRubric",
-              "PassFail"
-            ],
-            "description": "This enforces the rubric of the evaluation. The output is stored in `call.analysis.successEvaluation`.\n\nOptions include:\n- 'NumericScale': A scale of 1 to 10.\n- 'DescriptiveScale': A scale of Excellent, Good, Fair, Poor.\n- 'Checklist': A checklist of criteria and their status.\n- 'Matrix': A grid that evaluates multiple criteria across different performance levels.\n- 'PercentageScale': A scale of 0% to 100%.\n- 'LikertScale': A scale of Strongly Agree, Agree, Neutral, Disagree, Strongly Disagree.\n- 'AutomaticRubric': Automatically break down evaluation into several criteria, each with its own score.\n- 'PassFail': A simple 'true' if call passed, 'false' if not.\n\nDefault is 'PassFail'."
-          },
-          "messages": {
-            "description": "These are the messages used to generate the success evaluation.\n\n@default: ```\n[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are an expert call evaluator. You will be given a transcript of a call and the system prompt of the AI participant. Determine if the call was successful based on the objectives inferred from the system prompt. DO NOT return anything except the result.\\n\\nRubric:\\\\n{{rubric}}\\n\\nOnly respond with the result.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Here is the transcript:\\n\\n{{transcript}}\\n\\n\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Here was the system prompt of the call:\\n\\n{{systemPrompt}}\\n\\n. Here is the ended reason of the call:\\n\\n{{endedReason}}\\n\\n\"\n  }\n]```\n\nYou can customize by providing any messages you want.\n\nHere are the template variables available:\n- {{transcript}}: the transcript of the call from `call.artifact.transcript`- {{systemPrompt}}: the system prompt of the call from `assistant.model.messages[type=system].content`- {{rubric}}: the rubric of the success evaluation from `successEvaluationPlan.rubric`- {{endedReason}}: the ended reason of the call from `call.endedReason`",
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "This determines whether a success evaluation is generated and stored in `call.analysis.successEvaluation`. Defaults to true.\n\nUsage:\n- If you want to disable the success evaluation, set this to false.\n\n@default true"
-          },
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is how long the request is tried before giving up. When request times out, `call.analysis.successEvaluation` will be empty.\n\nUsage:\n- To guarantee the success evaluation is generated, set this value high. Note, this will delay the end of call report in cases where model is slow to respond.\n\n@default 5 seconds",
-            "minimum": 1,
-            "maximum": 60
-          }
-        }
-      },
-      "AnalysisPlan": {
-        "type": "object",
-        "properties": {
-          "minMessagesThreshold": {
-            "type": "number",
-            "description": "The minimum number of messages required to run the analysis plan.\nIf the number of messages is less than this, analysis will be skipped.\n@default 2",
-            "minimum": 0
-          },
-          "summaryPlan": {
-            "description": "This is the plan for generating the summary of the call. This outputs to `call.analysis.summary`.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SummaryPlan"
-              }
-            ]
-          },
-          "structuredDataPlan": {
-            "description": "This is the plan for generating the structured data from the call. This outputs to `call.analysis.structuredData`.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/StructuredDataPlan"
-              }
-            ]
-          },
-          "structuredDataMultiPlan": {
-            "description": "This is an array of structured data plan catalogs. Each entry includes a `key` and a `plan` for generating the structured data from the call. This outputs to `call.analysis.structuredDataMulti`.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/StructuredDataMultiPlan"
-            }
-          },
-          "successEvaluationPlan": {
-            "description": "This is the plan for generating the success evaluation of the call. This outputs to `call.analysis.successEvaluation`.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SuccessEvaluationPlan"
-              }
-            ]
-          }
-        }
-      },
       "MessagePlan": {
         "type": "object",
         "properties": {
@@ -19413,415 +20274,6 @@
             "type": "string",
             "description": "This is the message that the assistant will say if the call ends due to silence.\n\nIf unspecified, it will hang up without saying anything.",
             "maxLength": 1000
-          }
-        }
-      },
-      "AssistantCustomEndpointingRule": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This endpointing rule is based on the last assistant message before customer started speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the last assistant message\n- If a match is found based on `regex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you have yes/no questions in your use case like \"are you interested in a loan?\", you can set a shorter timeout.\n- If you have questions where the customer may pause to look up information like \"what's my account number?\", you can set a longer timeout.",
-            "enum": [
-              "assistant"
-            ]
-          },
-          "regex": {
-            "type": "string",
-            "description": "This is the regex pattern to match.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
-          },
-          "regexOptions": {
-            "description": "These are the options for the regex match. Defaults to all disabled.\n\n@default []",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RegexOption"
-            }
-          },
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
-            "minimum": 0,
-            "maximum": 15
-          }
-        },
-        "required": [
-          "type",
-          "regex",
-          "timeoutSeconds"
-        ]
-      },
-      "CustomerCustomEndpointingRule": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This endpointing rule is based on current customer message as they are speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the current customer transcription\n- If a match is found based on `regex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you want to wait longer while customer is speaking numbers, you can set a longer timeout.",
-            "enum": [
-              "customer"
-            ]
-          },
-          "regex": {
-            "type": "string",
-            "description": "This is the regex pattern to match.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
-          },
-          "regexOptions": {
-            "description": "These are the options for the regex match. Defaults to all disabled.\n\n@default []",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RegexOption"
-            }
-          },
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
-            "minimum": 0,
-            "maximum": 15
-          }
-        },
-        "required": [
-          "type",
-          "regex",
-          "timeoutSeconds"
-        ]
-      },
-      "BothCustomEndpointingRule": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This endpointing rule is based on both the last assistant message and the current customer message as they are speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the last assistant message and the current customer transcription\n- If assistant message matches `assistantRegex` AND customer message matches `customerRegex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you want to wait longer while customer is speaking numbers, you can set a longer timeout.",
-            "enum": [
-              "both"
-            ]
-          },
-          "assistantRegex": {
-            "type": "string",
-            "description": "This is the regex pattern to match the assistant's message.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
-          },
-          "assistantRegexOptions": {
-            "description": "These are the options for the assistant's message regex match. Defaults to all disabled.\n\n@default []",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RegexOption"
-            }
-          },
-          "customerRegex": {
-            "type": "string"
-          },
-          "customerRegexOptions": {
-            "description": "These are the options for the customer's message regex match. Defaults to all disabled.\n\n@default []",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RegexOption"
-            }
-          },
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
-            "minimum": 0,
-            "maximum": 15
-          }
-        },
-        "required": [
-          "type",
-          "assistantRegex",
-          "customerRegex",
-          "timeoutSeconds"
-        ]
-      },
-      "VapiSmartEndpointingPlan": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "description": "This is the provider for the smart endpointing plan.",
-            "enum": [
-              "vapi",
-              "livekit"
-            ],
-            "example": "vapi"
-          }
-        },
-        "required": [
-          "provider"
-        ]
-      },
-      "LivekitSmartEndpointingPlan": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "description": "This is the provider for the smart endpointing plan.",
-            "enum": [
-              "vapi",
-              "livekit"
-            ],
-            "example": "livekit"
-          },
-          "waitFunction": {
-            "type": "string",
-            "description": "This expression describes how long the bot will wait to start speaking based on the likelihood that the user has reached an endpoint.\n\nThis is a millisecond valued function. It maps probabilities (real numbers on [0,1]) to milliseconds that the bot should wait before speaking ([0, \\infty]). Any negative values that are returned are set to zero (the bot can't start talking in the past).\n\nA probability of zero represents very high confidence that the caller has stopped speaking, and would like the bot to speak to them. A probability of one represents very high confidence that the caller is still speaking.\n\nUnder the hood, this is parsed into a mathjs expression. Whatever you use to write your expression needs to be valid with respect to mathjs\n\n@default \"20 + 500 * sqrt(x) + 2500 * x^3\"",
-            "examples": [
-              "70 + 4000 * x",
-              "200 + 8000 * x",
-              "4000 * (1 - cos(pi * x))"
-            ]
-          }
-        },
-        "required": [
-          "provider"
-        ]
-      },
-      "TranscriptionEndpointingPlan": {
-        "type": "object",
-        "properties": {
-          "onPunctuationSeconds": {
-            "type": "number",
-            "description": "The minimum number of seconds to wait after transcription ending with punctuation before sending a request to the model. Defaults to 0.1.\n\nThis setting exists because the transcriber punctuates the transcription when it's more confident that customer has completed a thought.\n\n@default 0.1",
-            "minimum": 0,
-            "maximum": 3,
-            "example": 0.1
-          },
-          "onNoPunctuationSeconds": {
-            "type": "number",
-            "description": "The minimum number of seconds to wait after transcription ending without punctuation before sending a request to the model. Defaults to 1.5.\n\nThis setting exists to catch the cases where the transcriber was not confident enough to punctuate the transcription, but the customer is done and has been silent for a long time.\n\n@default 1.5",
-            "minimum": 0,
-            "maximum": 3,
-            "example": 1.5
-          },
-          "onNumberSeconds": {
-            "type": "number",
-            "description": "The minimum number of seconds to wait after transcription ending with a number before sending a request to the model. Defaults to 0.4.\n\nThis setting exists because the transcriber will sometimes punctuate the transcription ending with a number, even though the customer hasn't uttered the full number. This happens commonly for long numbers when the customer reads the number in chunks.\n\n@default 0.5",
-            "minimum": 0,
-            "maximum": 3,
-            "example": 0.5
-          }
-        }
-      },
-      "StartSpeakingPlan": {
-        "type": "object",
-        "properties": {
-          "waitSeconds": {
-            "type": "number",
-            "description": "This is how long assistant waits before speaking. Defaults to 0.4.\n\nThis is the minimum it will wait but if there is latency is the pipeline, this minimum will be exceeded. This is intended as a stopgap in case the pipeline is moving too fast.\n\nExample:\n- If model generates tokens and voice generates bytes within 100ms, the pipeline still waits 300ms before outputting speech.\n\nUsage:\n- If the customer is taking long pauses, set this to a higher value.\n- If the assistant is accidentally jumping in too much, set this to a higher value.\n\n@default 0.4",
-            "minimum": 0,
-            "maximum": 5,
-            "example": 0.4
-          },
-          "smartEndpointingEnabled": {
-            "example": false,
-            "deprecated": true,
-            "oneOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "string",
-                "enum": [
-                  "livekit"
-                ]
-              }
-            ]
-          },
-          "smartEndpointingPlan": {
-            "description": "This is the plan for smart endpointing. Pick between Vapi smart endpointing or LiveKit smart endpointing (or nothing). We strongly recommend using livekit endpointing when working in English. LiveKit endpointing is not supported in other languages, yet.\n\nIf this is set, it will override and take precedence over `transcriptionEndpointingPlan`.\nThis plan will still be overridden by any matching `customEndpointingRules`.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/VapiSmartEndpointingPlan",
-                "title": "Vapi"
-              },
-              {
-                "$ref": "#/components/schemas/LivekitSmartEndpointingPlan",
-                "title": "Livekit"
-              }
-            ]
-          },
-          "customEndpointingRules": {
-            "type": "array",
-            "description": "These are the custom endpointing rules to set an endpointing timeout based on a regex on the customer's speech or the assistant's last message.\n\nUsage:\n- If you have yes/no questions like \"are you interested in a loan?\", you can set a shorter timeout.\n- If you have questions where the customer may pause to look up information like \"what's my account number?\", you can set a longer timeout.\n- If you want to wait longer while customer is enumerating a list of numbers, you can set a longer timeout.\n\nThese rules have the highest precedence and will override both `smartEndpointingPlan` and `transcriptionEndpointingPlan` when a rule is matched.\n\nThe rules are evaluated in order and the first one that matches will be used.\n\nOrder of precedence for endpointing:\n1. customEndpointingRules (if any match)\n2. smartEndpointingPlan (if set)\n3. transcriptionEndpointingPlan\n\n@default []",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/AssistantCustomEndpointingRule",
-                  "title": "Assistant"
-                },
-                {
-                  "$ref": "#/components/schemas/CustomerCustomEndpointingRule",
-                  "title": "Customer"
-                },
-                {
-                  "$ref": "#/components/schemas/BothCustomEndpointingRule",
-                  "title": "Both"
-                }
-              ]
-            }
-          },
-          "transcriptionEndpointingPlan": {
-            "description": "This determines how a customer speech is considered done (endpointing) using the transcription of customer's speech.\n\nOnce an endpoint is triggered, the request is sent to `assistant.model`.\n\nNote: This plan is only used if `smartEndpointingPlan` is not set. If both are provided, `smartEndpointingPlan` takes precedence.\nThis plan will also be overridden by any matching `customEndpointingRules`.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/TranscriptionEndpointingPlan"
-              }
-            ]
-          }
-        }
-      },
-      "StopSpeakingPlan": {
-        "type": "object",
-        "properties": {
-          "numWords": {
-            "type": "number",
-            "description": "This is the number of words that the customer has to say before the assistant will stop talking.\n\nWords like \"stop\", \"actually\", \"no\", etc. will always interrupt immediately regardless of this value.\n\nWords like \"okay\", \"yeah\", \"right\" will never interrupt.\n\nWhen set to 0, `voiceSeconds` is used in addition to the transcriptions to determine the customer has started speaking.\n\nDefaults to 0.\n\n@default 0",
-            "minimum": 0,
-            "maximum": 10,
-            "example": 0
-          },
-          "voiceSeconds": {
-            "type": "number",
-            "description": "This is the seconds customer has to speak before the assistant stops talking. This uses the VAD (Voice Activity Detection) spike to determine if the customer has started speaking.\n\nConsiderations:\n- A lower value might be more responsive but could potentially pick up non-speech sounds.\n- A higher value reduces false positives but might slightly delay the detection of speech onset.\n\nThis is only used if `numWords` is set to 0.\n\nDefaults to 0.2\n\n@default 0.2",
-            "minimum": 0,
-            "maximum": 0.5,
-            "example": 0.2
-          },
-          "backoffSeconds": {
-            "type": "number",
-            "description": "This is the seconds to wait before the assistant will start talking again after being interrupted.\n\nDefaults to 1.\n\n@default 1",
-            "minimum": 0,
-            "maximum": 10,
-            "example": 1
-          },
-          "acknowledgementPhrases": {
-            "description": "These are the phrases that will never interrupt the assistant, even if numWords threshold is met.\nThese are typically acknowledgement or backchanneling phrases.",
-            "example": [
-              "i understand",
-              "i see",
-              "i got it",
-              "i hear you",
-              "im listening",
-              "im with you",
-              "right",
-              "okay",
-              "ok",
-              "sure",
-              "alright",
-              "got it",
-              "understood",
-              "yeah",
-              "yes",
-              "uh-huh",
-              "mm-hmm",
-              "gotcha",
-              "mhmm",
-              "ah",
-              "yeah okay",
-              "yeah sure"
-            ],
-            "default": [
-              "i understand",
-              "i see",
-              "i got it",
-              "i hear you",
-              "im listening",
-              "im with you",
-              "right",
-              "okay",
-              "ok",
-              "sure",
-              "alright",
-              "got it",
-              "understood",
-              "yeah",
-              "yes",
-              "uh-huh",
-              "mm-hmm",
-              "gotcha",
-              "mhmm",
-              "ah",
-              "yeah okay",
-              "yeah sure"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string",
-              "maxLength": 240
-            }
-          },
-          "interruptionPhrases": {
-            "description": "These are the phrases that will always interrupt the assistant immediately, regardless of numWords.\nThese are typically phrases indicating disagreement or desire to stop.",
-            "example": [
-              "stop",
-              "shut",
-              "up",
-              "enough",
-              "quiet",
-              "silence",
-              "but",
-              "dont",
-              "not",
-              "no",
-              "hold",
-              "wait",
-              "cut",
-              "pause",
-              "nope",
-              "nah",
-              "nevermind",
-              "never",
-              "bad",
-              "actually"
-            ],
-            "default": [
-              "stop",
-              "shut",
-              "up",
-              "enough",
-              "quiet",
-              "silence",
-              "but",
-              "dont",
-              "not",
-              "no",
-              "hold",
-              "wait",
-              "cut",
-              "pause",
-              "nope",
-              "nah",
-              "nevermind",
-              "never",
-              "bad",
-              "actually"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string",
-              "maxLength": 240
-            }
-          }
-        }
-      },
-      "MonitorPlan": {
-        "type": "object",
-        "properties": {
-          "listenEnabled": {
-            "type": "boolean",
-            "description": "This determines whether the assistant's calls allow live listening. Defaults to true.\n\nFetch `call.monitor.listenUrl` to get the live listening URL.\n\n@default true",
-            "example": false
-          },
-          "listenAuthenticationEnabled": {
-            "type": "boolean",
-            "description": "This enables authentication on the `call.monitor.listenUrl`.\n\nIf `listenAuthenticationEnabled` is `true`, the `call.monitor.listenUrl` will require an `Authorization: Bearer <vapi-public-api-key>` header.\n\n@default false",
-            "example": false
-          },
-          "controlEnabled": {
-            "type": "boolean",
-            "description": "This determines whether the assistant's calls allow live control. Defaults to true.\n\nFetch `call.monitor.controlUrl` to get the live control URL.\n\nTo use, send any control message via a POST request to `call.monitor.controlUrl`. Here are the types of controls supported: https://docs.vapi.ai/api-reference/messages/client-inbound-message\n\n@default true",
-            "example": false
-          },
-          "controlAuthenticationEnabled": {
-            "type": "boolean",
-            "description": "This enables authentication on the `call.monitor.controlUrl`.\n\nIf `controlAuthenticationEnabled` is `true`, the `call.monitor.controlUrl` will require an `Authorization: Bearer <vapi-public-api-key>` header.\n\n@default false",
-            "example": false
           }
         }
       },
@@ -20216,6 +20668,8 @@
           },
           "backgroundDenoisingEnabled": {
             "type": "boolean",
+            "description": "This enables filtering of noise and background speech while the user is talking.\n\nDefault `false` while in beta.\n\n@default false",
+            "deprecated": true,
             "example": false
           },
           "modelOutputInMessagesEnabled": {
@@ -20236,7 +20690,7 @@
             }
           },
           "observabilityPlan": {
-            "description": "This is the plan for observability configuration of assistant's calls.\nCurrently supports Langfuse for tracing and monitoring.",
+            "description": "This is the plan for observability of assistant's calls.\n\nCurrently, only Langfuse is supported.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/LangfuseObservabilityPlan",
@@ -20570,7 +21024,7 @@
             ]
           },
           "artifactPlan": {
-            "description": "This is the plan for artifacts generated during assistant's calls. Stored in `call.artifact`.\n\nNote: `recordingEnabled` is currently at the root level. It will be moved to `artifactPlan` in the future, but will remain backwards compatible.",
+            "description": "This is the plan for artifacts generated during assistant's calls. Stored in `call.artifact`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ArtifactPlan"
@@ -20602,7 +21056,7 @@
             ]
           },
           "monitorPlan": {
-            "description": "This is the plan for real-time monitoring of the assistant's calls.\n\nUsage:\n- To enable live listening of the assistant's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the assistant's calls, set `monitorPlan.controlEnabled` to `true`.\n\nNote, `serverMessages`, `clientMessages`, `serverUrl` and `serverUrlSecret` are currently at the root level but will be moved to `monitorPlan` in the future. Will remain backwards compatible",
+            "description": "This is the plan for real-time monitoring of the assistant's calls.\n\nUsage:\n- To enable live listening of the assistant's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the assistant's calls, set `monitorPlan.controlEnabled` to `true`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/MonitorPlan"
@@ -20996,6 +21450,8 @@
           },
           "backgroundDenoisingEnabled": {
             "type": "boolean",
+            "description": "This enables filtering of noise and background speech while the user is talking.\n\nDefault `false` while in beta.\n\n@default false",
+            "deprecated": true,
             "example": false
           },
           "modelOutputInMessagesEnabled": {
@@ -21016,7 +21472,7 @@
             }
           },
           "observabilityPlan": {
-            "description": "This is the plan for observability configuration of assistant's calls.\nCurrently supports Langfuse for tracing and monitoring.",
+            "description": "This is the plan for observability of assistant's calls.\n\nCurrently, only Langfuse is supported.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/LangfuseObservabilityPlan",
@@ -21354,7 +21810,7 @@
             ]
           },
           "artifactPlan": {
-            "description": "This is the plan for artifacts generated during assistant's calls. Stored in `call.artifact`.\n\nNote: `recordingEnabled` is currently at the root level. It will be moved to `artifactPlan` in the future, but will remain backwards compatible.",
+            "description": "This is the plan for artifacts generated during assistant's calls. Stored in `call.artifact`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ArtifactPlan"
@@ -21386,7 +21842,7 @@
             ]
           },
           "monitorPlan": {
-            "description": "This is the plan for real-time monitoring of the assistant's calls.\n\nUsage:\n- To enable live listening of the assistant's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the assistant's calls, set `monitorPlan.controlEnabled` to `true`.\n\nNote, `serverMessages`, `clientMessages`, `serverUrl` and `serverUrlSecret` are currently at the root level but will be moved to `monitorPlan` in the future. Will remain backwards compatible",
+            "description": "This is the plan for real-time monitoring of the assistant's calls.\n\nUsage:\n- To enable live listening of the assistant's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the assistant's calls, set `monitorPlan.controlEnabled` to `true`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/MonitorPlan"
@@ -21491,6 +21947,387 @@
               ]
             }
           },
+          "transcriber": {
+            "description": "This is the transcriber for the workflow.\n\nThis can be overridden at node level using `nodes[n].transcriber`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssemblyAITranscriber",
+                "title": "AssemblyAITranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/AzureSpeechTranscriber",
+                "title": "AzureSpeechTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/CustomTranscriber",
+                "title": "CustomTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/DeepgramTranscriber",
+                "title": "DeepgramTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/ElevenLabsTranscriber",
+                "title": "ElevenLabsTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/GladiaTranscriber",
+                "title": "GladiaTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/GoogleTranscriber",
+                "title": "GoogleTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechmaticsTranscriber",
+                "title": "SpeechmaticsTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/TalkscriberTranscriber",
+                "title": "TalkscriberTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAITranscriber",
+                "title": "OpenAITranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/CartesiaTranscriber",
+                "title": "CartesiaTranscriber"
+              }
+            ]
+          },
+          "voice": {
+            "description": "This is the voice for the workflow.\n\nThis can be overridden at node level using `nodes[n].voice`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AzureVoice",
+                "title": "AzureVoice"
+              },
+              {
+                "$ref": "#/components/schemas/CartesiaVoice",
+                "title": "CartesiaVoice"
+              },
+              {
+                "$ref": "#/components/schemas/CustomVoice",
+                "title": "CustomVoice"
+              },
+              {
+                "$ref": "#/components/schemas/DeepgramVoice",
+                "title": "DeepgramVoice"
+              },
+              {
+                "$ref": "#/components/schemas/ElevenLabsVoice",
+                "title": "ElevenLabsVoice"
+              },
+              {
+                "$ref": "#/components/schemas/HumeVoice",
+                "title": "HumeVoice"
+              },
+              {
+                "$ref": "#/components/schemas/LMNTVoice",
+                "title": "LMNTVoice"
+              },
+              {
+                "$ref": "#/components/schemas/NeuphonicVoice",
+                "title": "NeuphonicVoice"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAIVoice",
+                "title": "OpenAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/PlayHTVoice",
+                "title": "PlayHTVoice"
+              },
+              {
+                "$ref": "#/components/schemas/RimeAIVoice",
+                "title": "RimeAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/SmallestAIVoice",
+                "title": "SmallestAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/TavusVoice",
+                "title": "TavusVoice"
+              },
+              {
+                "$ref": "#/components/schemas/VapiVoice",
+                "title": "VapiVoice"
+              },
+              {
+                "$ref": "#/components/schemas/SesameVoice",
+                "title": "SesameVoice"
+              }
+            ]
+          },
+          "observabilityPlan": {
+            "description": "This is the plan for observability of workflow's calls.\n\nCurrently, only Langfuse is supported.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LangfuseObservabilityPlan",
+                "title": "Langfuse"
+              }
+            ],
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LangfuseObservabilityPlan"
+              }
+            ]
+          },
+          "credentials": {
+            "type": "array",
+            "description": "These are dynamic credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can supplement an additional credentials using this. Dynamic credentials override existing credentials.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CreateAnthropicCredentialDTO",
+                  "title": "AnthropicCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAnyscaleCredentialDTO",
+                  "title": "AnyscaleCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAssemblyAICredentialDTO",
+                  "title": "AssemblyAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAzureCredentialDTO",
+                  "title": "AzureCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAzureOpenAICredentialDTO",
+                  "title": "AzureOpenAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateByoSipTrunkCredentialDTO",
+                  "title": "ByoSipTrunkCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCartesiaCredentialDTO",
+                  "title": "CartesiaCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCerebrasCredentialDTO",
+                  "title": "CerebrasCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCloudflareCredentialDTO",
+                  "title": "CloudflareCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCustomLLMCredentialDTO",
+                  "title": "CustomLLMCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepgramCredentialDTO",
+                  "title": "DeepgramCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepInfraCredentialDTO",
+                  "title": "DeepInfraCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepSeekCredentialDTO",
+                  "title": "DeepSeekCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateElevenLabsCredentialDTO",
+                  "title": "ElevenLabsCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGcpCredentialDTO",
+                  "title": "GcpCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGladiaCredentialDTO",
+                  "title": "GladiaCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelCredentialDTO",
+                  "title": "GhlCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCredentialDTO",
+                  "title": "GoogleCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGroqCredentialDTO",
+                  "title": "GroqCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateHumeCredentialDTO",
+                  "title": "HumeCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateInflectionAICredentialDTO",
+                  "title": "InflectionAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateLangfuseCredentialDTO",
+                  "title": "LangfuseCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateLmntCredentialDTO",
+                  "title": "LmntCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMakeCredentialDTO",
+                  "title": "MakeCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMistralCredentialDTO",
+                  "title": "MistralCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateNeuphonicCredentialDTO",
+                  "title": "NeuphonicCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateOpenAICredentialDTO",
+                  "title": "OpenAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateOpenRouterCredentialDTO",
+                  "title": "OpenRouterCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreatePerplexityAICredentialDTO",
+                  "title": "PerplexityAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreatePlayHTCredentialDTO",
+                  "title": "PlayHTCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateRimeAICredentialDTO",
+                  "title": "RimeAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateRunpodCredentialDTO",
+                  "title": "RunpodCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateS3CredentialDTO",
+                  "title": "S3Credential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSmallestAICredentialDTO",
+                  "title": "SmallestAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSpeechmaticsCredentialDTO",
+                  "title": "SpeechmaticsCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSupabaseCredentialDTO",
+                  "title": "SupabaseCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTavusCredentialDTO",
+                  "title": "TavusCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTogetherAICredentialDTO",
+                  "title": "TogetherAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTrieveCredentialDTO",
+                  "title": "TrieveCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTwilioCredentialDTO",
+                  "title": "TwilioCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateVonageCredentialDTO",
+                  "title": "VonageCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateWebhookCredentialDTO",
+                  "title": "WebhookCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateXAiCredentialDTO",
+                  "title": "XAiCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarOAuth2ClientCredentialDTO",
+                  "title": "GoogleCalendarOAuth2ClientCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarOAuth2AuthorizationCredentialDTO",
+                  "title": "GoogleCalendarOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleSheetsOAuth2AuthorizationCredentialDTO",
+                  "title": "GoogleSheetsOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSlackOAuth2AuthorizationCredentialDTO",
+                  "title": "SlackOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelMCPCredentialDTO",
+                  "title": "GoHighLevelMCPCredential"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "provider",
+                "mapping": {
+                  "11labs": "#/components/schemas/CreateElevenLabsCredentialDTO",
+                  "anthropic": "#/components/schemas/CreateAnthropicCredentialDTO",
+                  "anyscale": "#/components/schemas/CreateAnyscaleCredentialDTO",
+                  "assembly-ai": "#/components/schemas/CreateAssemblyAICredentialDTO",
+                  "azure-openai": "#/components/schemas/CreateAzureOpenAICredentialDTO",
+                  "azure": "#/components/schemas/CreateAzureCredentialDTO",
+                  "byo-sip-trunk": "#/components/schemas/CreateByoSipTrunkCredentialDTO",
+                  "cartesia": "#/components/schemas/CreateCartesiaCredentialDTO",
+                  "cerebras": "#/components/schemas/CreateCerebrasCredentialDTO",
+                  "cloudflare": "#/components/schemas/CreateCloudflareCredentialDTO",
+                  "custom-llm": "#/components/schemas/CreateCustomLLMCredentialDTO",
+                  "deepgram": "#/components/schemas/CreateDeepgramCredentialDTO",
+                  "deepinfra": "#/components/schemas/CreateDeepInfraCredentialDTO",
+                  "deep-seek": "#/components/schemas/CreateDeepSeekCredentialDTO",
+                  "gcp": "#/components/schemas/CreateGcpCredentialDTO",
+                  "gladia": "#/components/schemas/CreateGladiaCredentialDTO",
+                  "gohighlevel": "#/components/schemas/CreateGoHighLevelCredentialDTO",
+                  "google": "#/components/schemas/CreateGoogleCredentialDTO",
+                  "groq": "#/components/schemas/CreateGroqCredentialDTO",
+                  "inflection-ai": "#/components/schemas/CreateInflectionAICredentialDTO",
+                  "langfuse": "#/components/schemas/CreateLangfuseCredentialDTO",
+                  "lmnt": "#/components/schemas/CreateLmntCredentialDTO",
+                  "make": "#/components/schemas/CreateMakeCredentialDTO",
+                  "openai": "#/components/schemas/CreateOpenAICredentialDTO",
+                  "openrouter": "#/components/schemas/CreateOpenRouterCredentialDTO",
+                  "perplexity-ai": "#/components/schemas/CreatePerplexityAICredentialDTO",
+                  "playht": "#/components/schemas/CreatePlayHTCredentialDTO",
+                  "rime-ai": "#/components/schemas/CreateRimeAICredentialDTO",
+                  "runpod": "#/components/schemas/CreateRunpodCredentialDTO",
+                  "s3": "#/components/schemas/CreateS3CredentialDTO",
+                  "supabase": "#/components/schemas/CreateSupabaseCredentialDTO",
+                  "smallest-ai": "#/components/schemas/CreateSmallestAICredentialDTO",
+                  "tavus": "#/components/schemas/CreateTavusCredentialDTO",
+                  "together-ai": "#/components/schemas/CreateTogetherAICredentialDTO",
+                  "twilio": "#/components/schemas/CreateTwilioCredentialDTO",
+                  "vonage": "#/components/schemas/CreateVonageCredentialDTO",
+                  "webhook": "#/components/schemas/CreateWebhookCredentialDTO",
+                  "xai": "#/components/schemas/CreateXAiCredentialDTO",
+                  "neuphonic": "#/components/schemas/CreateNeuphonicCredentialDTO",
+                  "hume": "#/components/schemas/CreateHumeCredentialDTO",
+                  "mistral": "#/components/schemas/CreateMistralCredentialDTO",
+                  "speechmatics": "#/components/schemas/CreateSpeechmaticsCredentialDTO",
+                  "trieve": "#/components/schemas/CreateTrieveCredentialDTO",
+                  "google.calendar.oauth2-client": "#/components/schemas/CreateGoogleCalendarOAuth2ClientCredentialDTO",
+                  "google.calendar.oauth2-authorization": "#/components/schemas/CreateGoogleCalendarOAuth2AuthorizationCredentialDTO",
+                  "google.sheets.oauth2-authorization": "#/components/schemas/CreateGoogleSheetsOAuth2AuthorizationCredentialDTO",
+                  "slack.oauth2-authorization": "#/components/schemas/CreateSlackOAuth2AuthorizationCredentialDTO",
+                  "ghl.oauth2-authorization": "#/components/schemas/CreateGoHighLevelMCPCredentialDTO"
+                }
+              }
+            }
+          },
           "name": {
             "type": "string",
             "maxLength": 80
@@ -21512,6 +22349,69 @@
                 "$ref": "#/components/schemas/Server"
               }
             ]
+          },
+          "compliancePlan": {
+            "description": "This is the compliance plan for the workflow. It allows you to configure HIPAA and other compliance settings.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CompliancePlan"
+              }
+            ]
+          },
+          "analysisPlan": {
+            "description": "This is the plan for analysis of workflow's calls. Stored in `call.analysis`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisPlan"
+              }
+            ]
+          },
+          "artifactPlan": {
+            "description": "This is the plan for artifacts generated during workflow's calls. Stored in `call.artifact`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactPlan"
+              }
+            ]
+          },
+          "startSpeakingPlan": {
+            "description": "This is the plan for when the workflow nodes should start talking.\n\nYou should configure this if you're running into these issues:\n- The assistant is too slow to start talking after the customer is done speaking.\n- The assistant is too fast to start talking after the customer is done speaking.\n- The assistant is so fast that it's actually interrupting the customer.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StartSpeakingPlan"
+              }
+            ]
+          },
+          "stopSpeakingPlan": {
+            "description": "This is the plan for when workflow nodes should stop talking on customer interruption.\n\nYou should configure this if you're running into these issues:\n- The assistant is too slow to recognize customer's interruption.\n- The assistant is too fast to recognize customer's interruption.\n- The assistant is getting interrupted by phrases that are just acknowledgments.\n- The assistant is getting interrupted by background noises.\n- The assistant is not properly stopping -- it starts talking right after getting interrupted.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StopSpeakingPlan"
+              }
+            ]
+          },
+          "monitorPlan": {
+            "description": "This is the plan for real-time monitoring of the workflow's calls.\n\nUsage:\n- To enable live listening of the workflow's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the workflow's calls, set `monitorPlan.controlEnabled` to `true`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MonitorPlan"
+              }
+            ]
+          },
+          "backgroundSpeechDenoisingPlan": {
+            "description": "This enables filtering of noise and background speech while the user is talking.\n\nFeatures:\n- Smart denoising using Krisp\n- Fourier denoising\n\nBoth can be used together. Order of precedence:\n- Smart denoising\n- Fourier denoising",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackgroundSpeechDenoisingPlan"
+              }
+            ]
+          },
+          "credentialIds": {
+            "description": "These are the credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can provide a subset using this.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -24582,6 +25482,8 @@
           },
           "backgroundDenoisingEnabled": {
             "type": "boolean",
+            "description": "This enables filtering of noise and background speech while the user is talking.\n\nDefault `false` while in beta.\n\n@default false",
+            "deprecated": true,
             "example": false
           },
           "modelOutputInMessagesEnabled": {
@@ -24602,7 +25504,7 @@
             }
           },
           "observabilityPlan": {
-            "description": "This is the plan for observability configuration of assistant's calls.\nCurrently supports Langfuse for tracing and monitoring.",
+            "description": "This is the plan for observability of assistant's calls.\n\nCurrently, only Langfuse is supported.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/LangfuseObservabilityPlan",
@@ -24936,7 +25838,7 @@
             ]
           },
           "artifactPlan": {
-            "description": "This is the plan for artifacts generated during assistant's calls. Stored in `call.artifact`.\n\nNote: `recordingEnabled` is currently at the root level. It will be moved to `artifactPlan` in the future, but will remain backwards compatible.",
+            "description": "This is the plan for artifacts generated during assistant's calls. Stored in `call.artifact`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ArtifactPlan"
@@ -24968,7 +25870,7 @@
             ]
           },
           "monitorPlan": {
-            "description": "This is the plan for real-time monitoring of the assistant's calls.\n\nUsage:\n- To enable live listening of the assistant's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the assistant's calls, set `monitorPlan.controlEnabled` to `true`.\n\nNote, `serverMessages`, `clientMessages`, `serverUrl` and `serverUrlSecret` are currently at the root level but will be moved to `monitorPlan` in the future. Will remain backwards compatible",
+            "description": "This is the plan for real-time monitoring of the assistant's calls.\n\nUsage:\n- To enable live listening of the assistant's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the assistant's calls, set `monitorPlan.controlEnabled` to `true`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/MonitorPlan"
@@ -25422,6 +26324,8 @@
           },
           "backgroundDenoisingEnabled": {
             "type": "boolean",
+            "description": "This enables filtering of noise and background speech while the user is talking.\n\nDefault `false` while in beta.\n\n@default false",
+            "deprecated": true,
             "example": false
           },
           "modelOutputInMessagesEnabled": {
@@ -25442,7 +26346,7 @@
             }
           },
           "observabilityPlan": {
-            "description": "This is the plan for observability configuration of assistant's calls.\nCurrently supports Langfuse for tracing and monitoring.",
+            "description": "This is the plan for observability of assistant's calls.\n\nCurrently, only Langfuse is supported.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/LangfuseObservabilityPlan",
@@ -25776,7 +26680,7 @@
             ]
           },
           "artifactPlan": {
-            "description": "This is the plan for artifacts generated during assistant's calls. Stored in `call.artifact`.\n\nNote: `recordingEnabled` is currently at the root level. It will be moved to `artifactPlan` in the future, but will remain backwards compatible.",
+            "description": "This is the plan for artifacts generated during assistant's calls. Stored in `call.artifact`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ArtifactPlan"
@@ -25808,7 +26712,7 @@
             ]
           },
           "monitorPlan": {
-            "description": "This is the plan for real-time monitoring of the assistant's calls.\n\nUsage:\n- To enable live listening of the assistant's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the assistant's calls, set `monitorPlan.controlEnabled` to `true`.\n\nNote, `serverMessages`, `clientMessages`, `serverUrl` and `serverUrlSecret` are currently at the root level but will be moved to `monitorPlan` in the future. Will remain backwards compatible",
+            "description": "This is the plan for real-time monitoring of the assistant's calls.\n\nUsage:\n- To enable live listening of the assistant's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the assistant's calls, set `monitorPlan.controlEnabled` to `true`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/MonitorPlan"
@@ -30836,6 +31740,387 @@
               ]
             }
           },
+          "transcriber": {
+            "description": "This is the transcriber for the workflow.\n\nThis can be overridden at node level using `nodes[n].transcriber`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssemblyAITranscriber",
+                "title": "AssemblyAITranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/AzureSpeechTranscriber",
+                "title": "AzureSpeechTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/CustomTranscriber",
+                "title": "CustomTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/DeepgramTranscriber",
+                "title": "DeepgramTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/ElevenLabsTranscriber",
+                "title": "ElevenLabsTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/GladiaTranscriber",
+                "title": "GladiaTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/GoogleTranscriber",
+                "title": "GoogleTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechmaticsTranscriber",
+                "title": "SpeechmaticsTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/TalkscriberTranscriber",
+                "title": "TalkscriberTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAITranscriber",
+                "title": "OpenAITranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/CartesiaTranscriber",
+                "title": "CartesiaTranscriber"
+              }
+            ]
+          },
+          "voice": {
+            "description": "This is the voice for the workflow.\n\nThis can be overridden at node level using `nodes[n].voice`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AzureVoice",
+                "title": "AzureVoice"
+              },
+              {
+                "$ref": "#/components/schemas/CartesiaVoice",
+                "title": "CartesiaVoice"
+              },
+              {
+                "$ref": "#/components/schemas/CustomVoice",
+                "title": "CustomVoice"
+              },
+              {
+                "$ref": "#/components/schemas/DeepgramVoice",
+                "title": "DeepgramVoice"
+              },
+              {
+                "$ref": "#/components/schemas/ElevenLabsVoice",
+                "title": "ElevenLabsVoice"
+              },
+              {
+                "$ref": "#/components/schemas/HumeVoice",
+                "title": "HumeVoice"
+              },
+              {
+                "$ref": "#/components/schemas/LMNTVoice",
+                "title": "LMNTVoice"
+              },
+              {
+                "$ref": "#/components/schemas/NeuphonicVoice",
+                "title": "NeuphonicVoice"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAIVoice",
+                "title": "OpenAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/PlayHTVoice",
+                "title": "PlayHTVoice"
+              },
+              {
+                "$ref": "#/components/schemas/RimeAIVoice",
+                "title": "RimeAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/SmallestAIVoice",
+                "title": "SmallestAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/TavusVoice",
+                "title": "TavusVoice"
+              },
+              {
+                "$ref": "#/components/schemas/VapiVoice",
+                "title": "VapiVoice"
+              },
+              {
+                "$ref": "#/components/schemas/SesameVoice",
+                "title": "SesameVoice"
+              }
+            ]
+          },
+          "observabilityPlan": {
+            "description": "This is the plan for observability of workflow's calls.\n\nCurrently, only Langfuse is supported.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LangfuseObservabilityPlan",
+                "title": "Langfuse"
+              }
+            ],
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LangfuseObservabilityPlan"
+              }
+            ]
+          },
+          "credentials": {
+            "type": "array",
+            "description": "These are dynamic credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can supplement an additional credentials using this. Dynamic credentials override existing credentials.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CreateAnthropicCredentialDTO",
+                  "title": "AnthropicCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAnyscaleCredentialDTO",
+                  "title": "AnyscaleCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAssemblyAICredentialDTO",
+                  "title": "AssemblyAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAzureCredentialDTO",
+                  "title": "AzureCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAzureOpenAICredentialDTO",
+                  "title": "AzureOpenAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateByoSipTrunkCredentialDTO",
+                  "title": "ByoSipTrunkCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCartesiaCredentialDTO",
+                  "title": "CartesiaCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCerebrasCredentialDTO",
+                  "title": "CerebrasCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCloudflareCredentialDTO",
+                  "title": "CloudflareCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCustomLLMCredentialDTO",
+                  "title": "CustomLLMCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepgramCredentialDTO",
+                  "title": "DeepgramCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepInfraCredentialDTO",
+                  "title": "DeepInfraCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepSeekCredentialDTO",
+                  "title": "DeepSeekCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateElevenLabsCredentialDTO",
+                  "title": "ElevenLabsCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGcpCredentialDTO",
+                  "title": "GcpCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGladiaCredentialDTO",
+                  "title": "GladiaCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelCredentialDTO",
+                  "title": "GhlCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCredentialDTO",
+                  "title": "GoogleCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGroqCredentialDTO",
+                  "title": "GroqCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateHumeCredentialDTO",
+                  "title": "HumeCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateInflectionAICredentialDTO",
+                  "title": "InflectionAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateLangfuseCredentialDTO",
+                  "title": "LangfuseCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateLmntCredentialDTO",
+                  "title": "LmntCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMakeCredentialDTO",
+                  "title": "MakeCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMistralCredentialDTO",
+                  "title": "MistralCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateNeuphonicCredentialDTO",
+                  "title": "NeuphonicCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateOpenAICredentialDTO",
+                  "title": "OpenAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateOpenRouterCredentialDTO",
+                  "title": "OpenRouterCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreatePerplexityAICredentialDTO",
+                  "title": "PerplexityAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreatePlayHTCredentialDTO",
+                  "title": "PlayHTCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateRimeAICredentialDTO",
+                  "title": "RimeAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateRunpodCredentialDTO",
+                  "title": "RunpodCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateS3CredentialDTO",
+                  "title": "S3Credential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSmallestAICredentialDTO",
+                  "title": "SmallestAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSpeechmaticsCredentialDTO",
+                  "title": "SpeechmaticsCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSupabaseCredentialDTO",
+                  "title": "SupabaseCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTavusCredentialDTO",
+                  "title": "TavusCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTogetherAICredentialDTO",
+                  "title": "TogetherAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTrieveCredentialDTO",
+                  "title": "TrieveCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTwilioCredentialDTO",
+                  "title": "TwilioCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateVonageCredentialDTO",
+                  "title": "VonageCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateWebhookCredentialDTO",
+                  "title": "WebhookCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateXAiCredentialDTO",
+                  "title": "XAiCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarOAuth2ClientCredentialDTO",
+                  "title": "GoogleCalendarOAuth2ClientCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarOAuth2AuthorizationCredentialDTO",
+                  "title": "GoogleCalendarOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleSheetsOAuth2AuthorizationCredentialDTO",
+                  "title": "GoogleSheetsOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSlackOAuth2AuthorizationCredentialDTO",
+                  "title": "SlackOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelMCPCredentialDTO",
+                  "title": "GoHighLevelMCPCredential"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "provider",
+                "mapping": {
+                  "11labs": "#/components/schemas/CreateElevenLabsCredentialDTO",
+                  "anthropic": "#/components/schemas/CreateAnthropicCredentialDTO",
+                  "anyscale": "#/components/schemas/CreateAnyscaleCredentialDTO",
+                  "assembly-ai": "#/components/schemas/CreateAssemblyAICredentialDTO",
+                  "azure-openai": "#/components/schemas/CreateAzureOpenAICredentialDTO",
+                  "azure": "#/components/schemas/CreateAzureCredentialDTO",
+                  "byo-sip-trunk": "#/components/schemas/CreateByoSipTrunkCredentialDTO",
+                  "cartesia": "#/components/schemas/CreateCartesiaCredentialDTO",
+                  "cerebras": "#/components/schemas/CreateCerebrasCredentialDTO",
+                  "cloudflare": "#/components/schemas/CreateCloudflareCredentialDTO",
+                  "custom-llm": "#/components/schemas/CreateCustomLLMCredentialDTO",
+                  "deepgram": "#/components/schemas/CreateDeepgramCredentialDTO",
+                  "deepinfra": "#/components/schemas/CreateDeepInfraCredentialDTO",
+                  "deep-seek": "#/components/schemas/CreateDeepSeekCredentialDTO",
+                  "gcp": "#/components/schemas/CreateGcpCredentialDTO",
+                  "gladia": "#/components/schemas/CreateGladiaCredentialDTO",
+                  "gohighlevel": "#/components/schemas/CreateGoHighLevelCredentialDTO",
+                  "google": "#/components/schemas/CreateGoogleCredentialDTO",
+                  "groq": "#/components/schemas/CreateGroqCredentialDTO",
+                  "inflection-ai": "#/components/schemas/CreateInflectionAICredentialDTO",
+                  "langfuse": "#/components/schemas/CreateLangfuseCredentialDTO",
+                  "lmnt": "#/components/schemas/CreateLmntCredentialDTO",
+                  "make": "#/components/schemas/CreateMakeCredentialDTO",
+                  "openai": "#/components/schemas/CreateOpenAICredentialDTO",
+                  "openrouter": "#/components/schemas/CreateOpenRouterCredentialDTO",
+                  "perplexity-ai": "#/components/schemas/CreatePerplexityAICredentialDTO",
+                  "playht": "#/components/schemas/CreatePlayHTCredentialDTO",
+                  "rime-ai": "#/components/schemas/CreateRimeAICredentialDTO",
+                  "runpod": "#/components/schemas/CreateRunpodCredentialDTO",
+                  "s3": "#/components/schemas/CreateS3CredentialDTO",
+                  "supabase": "#/components/schemas/CreateSupabaseCredentialDTO",
+                  "smallest-ai": "#/components/schemas/CreateSmallestAICredentialDTO",
+                  "tavus": "#/components/schemas/CreateTavusCredentialDTO",
+                  "together-ai": "#/components/schemas/CreateTogetherAICredentialDTO",
+                  "twilio": "#/components/schemas/CreateTwilioCredentialDTO",
+                  "vonage": "#/components/schemas/CreateVonageCredentialDTO",
+                  "webhook": "#/components/schemas/CreateWebhookCredentialDTO",
+                  "xai": "#/components/schemas/CreateXAiCredentialDTO",
+                  "neuphonic": "#/components/schemas/CreateNeuphonicCredentialDTO",
+                  "hume": "#/components/schemas/CreateHumeCredentialDTO",
+                  "mistral": "#/components/schemas/CreateMistralCredentialDTO",
+                  "speechmatics": "#/components/schemas/CreateSpeechmaticsCredentialDTO",
+                  "trieve": "#/components/schemas/CreateTrieveCredentialDTO",
+                  "google.calendar.oauth2-client": "#/components/schemas/CreateGoogleCalendarOAuth2ClientCredentialDTO",
+                  "google.calendar.oauth2-authorization": "#/components/schemas/CreateGoogleCalendarOAuth2AuthorizationCredentialDTO",
+                  "google.sheets.oauth2-authorization": "#/components/schemas/CreateGoogleSheetsOAuth2AuthorizationCredentialDTO",
+                  "slack.oauth2-authorization": "#/components/schemas/CreateSlackOAuth2AuthorizationCredentialDTO",
+                  "ghl.oauth2-authorization": "#/components/schemas/CreateGoHighLevelMCPCredentialDTO"
+                }
+              }
+            }
+          },
           "id": {
             "type": "string"
           },
@@ -30871,6 +32156,69 @@
                 "$ref": "#/components/schemas/Server"
               }
             ]
+          },
+          "compliancePlan": {
+            "description": "This is the compliance plan for the workflow. It allows you to configure HIPAA and other compliance settings.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CompliancePlan"
+              }
+            ]
+          },
+          "analysisPlan": {
+            "description": "This is the plan for analysis of workflow's calls. Stored in `call.analysis`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisPlan"
+              }
+            ]
+          },
+          "artifactPlan": {
+            "description": "This is the plan for artifacts generated during workflow's calls. Stored in `call.artifact`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactPlan"
+              }
+            ]
+          },
+          "startSpeakingPlan": {
+            "description": "This is the plan for when the workflow nodes should start talking.\n\nYou should configure this if you're running into these issues:\n- The assistant is too slow to start talking after the customer is done speaking.\n- The assistant is too fast to start talking after the customer is done speaking.\n- The assistant is so fast that it's actually interrupting the customer.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StartSpeakingPlan"
+              }
+            ]
+          },
+          "stopSpeakingPlan": {
+            "description": "This is the plan for when workflow nodes should stop talking on customer interruption.\n\nYou should configure this if you're running into these issues:\n- The assistant is too slow to recognize customer's interruption.\n- The assistant is too fast to recognize customer's interruption.\n- The assistant is getting interrupted by phrases that are just acknowledgments.\n- The assistant is getting interrupted by background noises.\n- The assistant is not properly stopping -- it starts talking right after getting interrupted.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StopSpeakingPlan"
+              }
+            ]
+          },
+          "monitorPlan": {
+            "description": "This is the plan for real-time monitoring of the workflow's calls.\n\nUsage:\n- To enable live listening of the workflow's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the workflow's calls, set `monitorPlan.controlEnabled` to `true`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MonitorPlan"
+              }
+            ]
+          },
+          "backgroundSpeechDenoisingPlan": {
+            "description": "This enables filtering of noise and background speech while the user is talking.\n\nFeatures:\n- Smart denoising using Krisp\n- Fourier denoising\n\nBoth can be used together. Order of precedence:\n- Smart denoising\n- Fourier denoising",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackgroundSpeechDenoisingPlan"
+              }
+            ]
+          },
+          "credentialIds": {
+            "description": "These are the credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can provide a subset using this.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -30901,6 +32249,387 @@
               ]
             }
           },
+          "transcriber": {
+            "description": "This is the transcriber for the workflow.\n\nThis can be overridden at node level using `nodes[n].transcriber`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssemblyAITranscriber",
+                "title": "AssemblyAITranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/AzureSpeechTranscriber",
+                "title": "AzureSpeechTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/CustomTranscriber",
+                "title": "CustomTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/DeepgramTranscriber",
+                "title": "DeepgramTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/ElevenLabsTranscriber",
+                "title": "ElevenLabsTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/GladiaTranscriber",
+                "title": "GladiaTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/GoogleTranscriber",
+                "title": "GoogleTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechmaticsTranscriber",
+                "title": "SpeechmaticsTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/TalkscriberTranscriber",
+                "title": "TalkscriberTranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAITranscriber",
+                "title": "OpenAITranscriber"
+              },
+              {
+                "$ref": "#/components/schemas/CartesiaTranscriber",
+                "title": "CartesiaTranscriber"
+              }
+            ]
+          },
+          "voice": {
+            "description": "This is the voice for the workflow.\n\nThis can be overridden at node level using `nodes[n].voice`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AzureVoice",
+                "title": "AzureVoice"
+              },
+              {
+                "$ref": "#/components/schemas/CartesiaVoice",
+                "title": "CartesiaVoice"
+              },
+              {
+                "$ref": "#/components/schemas/CustomVoice",
+                "title": "CustomVoice"
+              },
+              {
+                "$ref": "#/components/schemas/DeepgramVoice",
+                "title": "DeepgramVoice"
+              },
+              {
+                "$ref": "#/components/schemas/ElevenLabsVoice",
+                "title": "ElevenLabsVoice"
+              },
+              {
+                "$ref": "#/components/schemas/HumeVoice",
+                "title": "HumeVoice"
+              },
+              {
+                "$ref": "#/components/schemas/LMNTVoice",
+                "title": "LMNTVoice"
+              },
+              {
+                "$ref": "#/components/schemas/NeuphonicVoice",
+                "title": "NeuphonicVoice"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAIVoice",
+                "title": "OpenAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/PlayHTVoice",
+                "title": "PlayHTVoice"
+              },
+              {
+                "$ref": "#/components/schemas/RimeAIVoice",
+                "title": "RimeAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/SmallestAIVoice",
+                "title": "SmallestAIVoice"
+              },
+              {
+                "$ref": "#/components/schemas/TavusVoice",
+                "title": "TavusVoice"
+              },
+              {
+                "$ref": "#/components/schemas/VapiVoice",
+                "title": "VapiVoice"
+              },
+              {
+                "$ref": "#/components/schemas/SesameVoice",
+                "title": "SesameVoice"
+              }
+            ]
+          },
+          "observabilityPlan": {
+            "description": "This is the plan for observability of workflow's calls.\n\nCurrently, only Langfuse is supported.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LangfuseObservabilityPlan",
+                "title": "Langfuse"
+              }
+            ],
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LangfuseObservabilityPlan"
+              }
+            ]
+          },
+          "credentials": {
+            "type": "array",
+            "description": "These are dynamic credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can supplement an additional credentials using this. Dynamic credentials override existing credentials.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CreateAnthropicCredentialDTO",
+                  "title": "AnthropicCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAnyscaleCredentialDTO",
+                  "title": "AnyscaleCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAssemblyAICredentialDTO",
+                  "title": "AssemblyAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAzureCredentialDTO",
+                  "title": "AzureCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateAzureOpenAICredentialDTO",
+                  "title": "AzureOpenAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateByoSipTrunkCredentialDTO",
+                  "title": "ByoSipTrunkCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCartesiaCredentialDTO",
+                  "title": "CartesiaCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCerebrasCredentialDTO",
+                  "title": "CerebrasCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCloudflareCredentialDTO",
+                  "title": "CloudflareCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateCustomLLMCredentialDTO",
+                  "title": "CustomLLMCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepgramCredentialDTO",
+                  "title": "DeepgramCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepInfraCredentialDTO",
+                  "title": "DeepInfraCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDeepSeekCredentialDTO",
+                  "title": "DeepSeekCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateElevenLabsCredentialDTO",
+                  "title": "ElevenLabsCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGcpCredentialDTO",
+                  "title": "GcpCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGladiaCredentialDTO",
+                  "title": "GladiaCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelCredentialDTO",
+                  "title": "GhlCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCredentialDTO",
+                  "title": "GoogleCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGroqCredentialDTO",
+                  "title": "GroqCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateHumeCredentialDTO",
+                  "title": "HumeCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateInflectionAICredentialDTO",
+                  "title": "InflectionAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateLangfuseCredentialDTO",
+                  "title": "LangfuseCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateLmntCredentialDTO",
+                  "title": "LmntCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMakeCredentialDTO",
+                  "title": "MakeCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMistralCredentialDTO",
+                  "title": "MistralCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateNeuphonicCredentialDTO",
+                  "title": "NeuphonicCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateOpenAICredentialDTO",
+                  "title": "OpenAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateOpenRouterCredentialDTO",
+                  "title": "OpenRouterCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreatePerplexityAICredentialDTO",
+                  "title": "PerplexityAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreatePlayHTCredentialDTO",
+                  "title": "PlayHTCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateRimeAICredentialDTO",
+                  "title": "RimeAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateRunpodCredentialDTO",
+                  "title": "RunpodCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateS3CredentialDTO",
+                  "title": "S3Credential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSmallestAICredentialDTO",
+                  "title": "SmallestAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSpeechmaticsCredentialDTO",
+                  "title": "SpeechmaticsCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSupabaseCredentialDTO",
+                  "title": "SupabaseCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTavusCredentialDTO",
+                  "title": "TavusCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTogetherAICredentialDTO",
+                  "title": "TogetherAICredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTrieveCredentialDTO",
+                  "title": "TrieveCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTwilioCredentialDTO",
+                  "title": "TwilioCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateVonageCredentialDTO",
+                  "title": "VonageCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateWebhookCredentialDTO",
+                  "title": "WebhookCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateXAiCredentialDTO",
+                  "title": "XAiCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarOAuth2ClientCredentialDTO",
+                  "title": "GoogleCalendarOAuth2ClientCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarOAuth2AuthorizationCredentialDTO",
+                  "title": "GoogleCalendarOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleSheetsOAuth2AuthorizationCredentialDTO",
+                  "title": "GoogleSheetsOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSlackOAuth2AuthorizationCredentialDTO",
+                  "title": "SlackOAuth2AuthorizationCredential"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelMCPCredentialDTO",
+                  "title": "GoHighLevelMCPCredential"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "provider",
+                "mapping": {
+                  "11labs": "#/components/schemas/CreateElevenLabsCredentialDTO",
+                  "anthropic": "#/components/schemas/CreateAnthropicCredentialDTO",
+                  "anyscale": "#/components/schemas/CreateAnyscaleCredentialDTO",
+                  "assembly-ai": "#/components/schemas/CreateAssemblyAICredentialDTO",
+                  "azure-openai": "#/components/schemas/CreateAzureOpenAICredentialDTO",
+                  "azure": "#/components/schemas/CreateAzureCredentialDTO",
+                  "byo-sip-trunk": "#/components/schemas/CreateByoSipTrunkCredentialDTO",
+                  "cartesia": "#/components/schemas/CreateCartesiaCredentialDTO",
+                  "cerebras": "#/components/schemas/CreateCerebrasCredentialDTO",
+                  "cloudflare": "#/components/schemas/CreateCloudflareCredentialDTO",
+                  "custom-llm": "#/components/schemas/CreateCustomLLMCredentialDTO",
+                  "deepgram": "#/components/schemas/CreateDeepgramCredentialDTO",
+                  "deepinfra": "#/components/schemas/CreateDeepInfraCredentialDTO",
+                  "deep-seek": "#/components/schemas/CreateDeepSeekCredentialDTO",
+                  "gcp": "#/components/schemas/CreateGcpCredentialDTO",
+                  "gladia": "#/components/schemas/CreateGladiaCredentialDTO",
+                  "gohighlevel": "#/components/schemas/CreateGoHighLevelCredentialDTO",
+                  "google": "#/components/schemas/CreateGoogleCredentialDTO",
+                  "groq": "#/components/schemas/CreateGroqCredentialDTO",
+                  "inflection-ai": "#/components/schemas/CreateInflectionAICredentialDTO",
+                  "langfuse": "#/components/schemas/CreateLangfuseCredentialDTO",
+                  "lmnt": "#/components/schemas/CreateLmntCredentialDTO",
+                  "make": "#/components/schemas/CreateMakeCredentialDTO",
+                  "openai": "#/components/schemas/CreateOpenAICredentialDTO",
+                  "openrouter": "#/components/schemas/CreateOpenRouterCredentialDTO",
+                  "perplexity-ai": "#/components/schemas/CreatePerplexityAICredentialDTO",
+                  "playht": "#/components/schemas/CreatePlayHTCredentialDTO",
+                  "rime-ai": "#/components/schemas/CreateRimeAICredentialDTO",
+                  "runpod": "#/components/schemas/CreateRunpodCredentialDTO",
+                  "s3": "#/components/schemas/CreateS3CredentialDTO",
+                  "supabase": "#/components/schemas/CreateSupabaseCredentialDTO",
+                  "smallest-ai": "#/components/schemas/CreateSmallestAICredentialDTO",
+                  "tavus": "#/components/schemas/CreateTavusCredentialDTO",
+                  "together-ai": "#/components/schemas/CreateTogetherAICredentialDTO",
+                  "twilio": "#/components/schemas/CreateTwilioCredentialDTO",
+                  "vonage": "#/components/schemas/CreateVonageCredentialDTO",
+                  "webhook": "#/components/schemas/CreateWebhookCredentialDTO",
+                  "xai": "#/components/schemas/CreateXAiCredentialDTO",
+                  "neuphonic": "#/components/schemas/CreateNeuphonicCredentialDTO",
+                  "hume": "#/components/schemas/CreateHumeCredentialDTO",
+                  "mistral": "#/components/schemas/CreateMistralCredentialDTO",
+                  "speechmatics": "#/components/schemas/CreateSpeechmaticsCredentialDTO",
+                  "trieve": "#/components/schemas/CreateTrieveCredentialDTO",
+                  "google.calendar.oauth2-client": "#/components/schemas/CreateGoogleCalendarOAuth2ClientCredentialDTO",
+                  "google.calendar.oauth2-authorization": "#/components/schemas/CreateGoogleCalendarOAuth2AuthorizationCredentialDTO",
+                  "google.sheets.oauth2-authorization": "#/components/schemas/CreateGoogleSheetsOAuth2AuthorizationCredentialDTO",
+                  "slack.oauth2-authorization": "#/components/schemas/CreateSlackOAuth2AuthorizationCredentialDTO",
+                  "ghl.oauth2-authorization": "#/components/schemas/CreateGoHighLevelMCPCredentialDTO"
+                }
+              }
+            }
+          },
           "name": {
             "type": "string",
             "maxLength": 80
@@ -30922,6 +32651,69 @@
                 "$ref": "#/components/schemas/Server"
               }
             ]
+          },
+          "compliancePlan": {
+            "description": "This is the compliance plan for the workflow. It allows you to configure HIPAA and other compliance settings.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CompliancePlan"
+              }
+            ]
+          },
+          "analysisPlan": {
+            "description": "This is the plan for analysis of workflow's calls. Stored in `call.analysis`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisPlan"
+              }
+            ]
+          },
+          "artifactPlan": {
+            "description": "This is the plan for artifacts generated during workflow's calls. Stored in `call.artifact`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactPlan"
+              }
+            ]
+          },
+          "startSpeakingPlan": {
+            "description": "This is the plan for when the workflow nodes should start talking.\n\nYou should configure this if you're running into these issues:\n- The assistant is too slow to start talking after the customer is done speaking.\n- The assistant is too fast to start talking after the customer is done speaking.\n- The assistant is so fast that it's actually interrupting the customer.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StartSpeakingPlan"
+              }
+            ]
+          },
+          "stopSpeakingPlan": {
+            "description": "This is the plan for when workflow nodes should stop talking on customer interruption.\n\nYou should configure this if you're running into these issues:\n- The assistant is too slow to recognize customer's interruption.\n- The assistant is too fast to recognize customer's interruption.\n- The assistant is getting interrupted by phrases that are just acknowledgments.\n- The assistant is getting interrupted by background noises.\n- The assistant is not properly stopping -- it starts talking right after getting interrupted.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StopSpeakingPlan"
+              }
+            ]
+          },
+          "monitorPlan": {
+            "description": "This is the plan for real-time monitoring of the workflow's calls.\n\nUsage:\n- To enable live listening of the workflow's calls, set `monitorPlan.listenEnabled` to `true`.\n- To enable live control of the workflow's calls, set `monitorPlan.controlEnabled` to `true`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MonitorPlan"
+              }
+            ]
+          },
+          "backgroundSpeechDenoisingPlan": {
+            "description": "This enables filtering of noise and background speech while the user is talking.\n\nFeatures:\n- Smart denoising using Krisp\n- Fourier denoising\n\nBoth can be used together. Order of precedence:\n- Smart denoising\n- Fourier denoising",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackgroundSpeechDenoisingPlan"
+              }
+            ]
+          },
+          "credentialIds": {
+            "description": "These are the credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can provide a subset using this.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
