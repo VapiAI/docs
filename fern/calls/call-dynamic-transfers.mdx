@@ -1,115 +1,87 @@
 ---
-title: Dynamic Call Transfers
+title: Dynamic call transfers
+subtitle: Route calls to different destinations based on real-time conversation context and external data.
 slug: calls/call-dynamic-transfers
+description: Learn how Vapi's dynamic call transfers work and explore implementation patterns for intelligent call routing.
 ---
-
-## Before you start
-
-Prerequisites:
-- Access to a server or cloud function that can receive requests from Vapi
 
 ## Overview
 
-Dynamic call transfers let your assistant transfer calls to different destinations (phone numbers, SIP, or other assistants) based on real-time context. This guide shows you how to set up a custom transfer tool, connect it to your assistant, handle transfer requests with your server, and respond with the right destination or error.
+Dynamic call transfers enable intelligent routing by determining transfer destinations in real-time based on conversation context, customer data, or external system information. Unlike static transfers with predefined destinations, dynamic transfers make routing decisions on-the-fly during the call.
 
-<Steps>
-  <Step title="Create a custom transfer tool">
-    Create a transfer tool with an empty `destinations` array. This acts as a placeholder so you can define destinations dynamically at runtime.
+**Key capabilities:**
+* Real-time destination selection based on conversation analysis
+* Integration with CRM systems, databases, and external APIs
+* Conditional routing logic for departments, specialists, or geographic regions
+* Context-aware transfers with conversation summaries
+* Fallback handling for unavailable destinations
+
+## How It Works
+
+Dynamic transfers operate by leaving the destination unspecified initially, then using webhooks to determine the appropriate destination when needed.
+
+**Transfer flow:**
+1. **Trigger** - Voice agent determines a transfer is needed based on conversation
+2. **Webhook** - Vapi sends `transfer-destination-request` to your server with call context
+3. **Decision** - Your server analyzes context and external data to determine routing
+4. **Response** - Server returns destination details and transfer configuration
+5. **Transfer** - Vapi executes the transfer to the determined destination
+
+**Available context:** Your webhook receives conversation transcript, extracted variables, customer information, function parameters, and call metadata.
+
+## Implementation Approaches
+
+**Assistant-based implementation** uses transfer-type tools with conditions interpreted by the assistant through system prompts. The assistant determines when and where to route calls based on clearly defined tool purposes and routing logic in the prompt. Best for quick setup and simpler routing scenarios.
+
+**Workflow-based implementation** uses conditional logic based on outputs from any workflow node - tools, API requests, conversation variables, or other data sources. Conditions evaluate node outputs to determine routing paths within visual workflows. Best for complex business logic, structured decision trees, and team-friendly configuration.
+
+<CardGroup cols={2}>
+  <Card title="Customer Support Escalation" icon="headset" href="/assistants/examples/support-escalation">
+    <div className='absolute top-4 right-4'>
+      <Icon icon="arrow-up-right-from-square" />
+    </div>
+    **Assistant-based routing**
     
-    ```bash
-    curl -X POST https://api.vapi.ai/tool \
-         -H "Authorization: Bearer insert-private-key-here" \
-         -H "Content-Type: application/json" \
-         -d '{
-      "type": "transferCall",
-      "destinations": [],
-      "function": {
-        "name": "dynamicDestinationTransferCall"
-      }
-    }'
-    ```
-  </Step>
-
-  <Step title="Link the tool to your assistant">
-    After creating the tool, link it to your assistant. This enables the assistant to trigger the tool during calls.
-  </Step>
-
-  <Step title="Configure the server event">
-    In your assistant settings, select the `transfer-destination-request` server event. This event sends a webhook to your server whenever a transfer is requested, so you can dynamically determine the destination.
-  </Step>
-
-  <Step title="Set up your server to handle transfer requests">
-    Update your assistant's server URL to point to your server. Your server will receive a webhook with call details whenever a transfer is triggered, and should respond with the appropriate destination or an error.
-  </Step>
-
-  <Step title="Trigger the tool and process requests">
-    Use a prompt like this to trigger the transfer tool:
+    Route customers to appropriate support tiers based on conversation analysis and customer data
+  </Card>
+  <Card title="Property Management Routing" icon="building" href="/workflows/examples/property-management">
+    <div className='absolute top-4 right-4'>
+      <Icon icon="arrow-up-right-from-square" />
+    </div>
+    **Workflow-based routing**
     
-    ```
-    [TASK]
-    trigger the dynamicDestinationTransferCall tool
-    ```
-    
-    When triggered, the assistant sends a `transfer-destination-request` webhook to your server. The webhook includes call details, transcripts, and messages.
-    
-    **Sample request payload:**
-    ```json
-    {
-      "type": "transfer-destination-request",
-      "artifact": {
-        "messages": [...],
-        "transcript": "Hello, how can I help you?",
-        "messagesOpenAIFormatted": [...]
-      },
-      "assistant": { "id": "assistant123" },
-      "phoneNumber": "+14155552671",
-      "customer": { "id": "customer456" },
-      "call": { "id": "call789", "status": "ongoing" }
-    }
-    ```
-  </Step>
+    Direct tenant calls to the right department with automated verification
+  </Card>
+</CardGroup>
 
-  <Step title="Respond to transfer requests">
-    Your server should respond with either a valid `destination` or an `error`.
-    
-    #### Number destination example
-    ```json
-    {
-      "destination": {
-        "type": "number",
-        "message": "Connecting you to our support line.",
-        "number": "+14155552671",
-        "numberE164CheckEnabled": true,
-        "callerId": "+14155551234",
-        "extension": "101"
-      }
-    }
-    ```
-    
-    #### SIP destination example
-    ```json
-    {
-      "destination": {
-        "type": "sip",
-        "message": "Connecting your call via SIP.",
-        "sipUri": "sip:customer-support@domain.com",
-        "sipHeaders": {
-          "X-Custom-Header": "value"
-        }
-      }
-    }
-    ```
-    
-    #### Error response example
-    ```json
-    {
-      "error": "Invalid destination specified."
-    }
-    ```
-    Every response must include either a `destination` or an `error` to indicate the outcome of the transfer request.
-  </Step>
-</Steps>
+## Routing Patterns
 
-## Conclusion
+### Common Use Cases
 
-Dynamic call transfers empower your assistant to route calls efficiently based on real-time data. By implementing this flow, you can ensure seamless interactions and provide a better experience for your users.
+* **Customer support routing** - Route based on issue type, customer tier, agent availability, and interaction history. Enterprise customers and critical issues get priority routing to specialized teams.
+
+* **Geographic routing** - Direct calls to regional offices based on customer location and business hours. Automatically handle time zone differences and language preferences.
+
+* **Load balancing** - Distribute calls across available agents to optimize wait times and agent utilization. Route to the least busy qualified agent.
+
+* **Escalation management** - Implement intelligent escalation based on conversation tone, issue complexity, and customer history. Automatically route urgent issues to senior agents.
+
+### Transfer Configuration
+
+1. **Warm transfers** provide context to receiving agents with AI-generated conversation summaries, ensuring smooth handoffs with full context.
+
+2. **Cold transfers** route calls immediately with predefined context messages, useful for simple departmental routing.
+
+3. **Conditional transfers** apply different transfer modes based on routing decisions, such as priority handling for enterprise customers.
+
+4. **Destination types** include phone numbers for human agents, SIP endpoints for VoIP systems, and Vapi assistants for specialized AI agents.
+
+<Warning>
+**Security considerations:** Always verify webhook signatures to ensure requests come from Vapi. Never log sensitive customer data, implement proper access controls, and follow privacy regulations like GDPR and CCPA when handling customer information in routing decisions.
+</Warning>
+
+## Related Documentation
+
+* **[Call Forwarding](/call-forwarding)** - Static transfer options and transfer plans
+* **[Webhooks](/server-url)** - Webhook security and event handling patterns
+* **[Custom Tools](/tools/custom-tools)** - Build custom tools for advanced routing logic
