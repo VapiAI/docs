@@ -8,14 +8,14 @@ on:
         default: false
         type: boolean          
       version:
-        description: "The version of the C# SDK that you would like to release"
-        required: true
+        description: "The version of the Python SDK that you would like to release (optional - will auto-increment patch version if not provided)"
+        required: false
         type: string    
   workflow_dispatch:
     inputs:
       version:
-        description: "The version of the Python SDK that you would like to release"
-        required: true
+        description: "The version of the Python SDK that you would like to release (optional - will auto-increment patch version if not provided)"
+        required: false
         type: string
       makePR:
         description: Make Pull Request
@@ -24,7 +24,53 @@ on:
         type: boolean
 
 jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "Using provided version: ${{ inputs.version }}"
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "Fetching latest version from VapiAI/server-sdk-python..."
+            
+            # Fetch latest release version from the Python SDK repository
+            LATEST_VERSION=$(curl -s https://api.github.com/repos/VapiAI/server-sdk-python/releases/latest | jq -r .tag_name || echo "")
+            
+            # If no release found, check tags
+            if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
+              echo "No release found, checking tags..."
+              LATEST_VERSION=$(curl -s https://api.github.com/repos/VapiAI/server-sdk-python/tags | jq -r '.[0].name' || echo "")
+            fi
+            
+            # If still no version found, default to 0.0.0
+            if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
+              echo "No version found, defaulting to v0.0.0"
+              LATEST_VERSION="v0.0.0"
+            fi
+            
+            # Remove 'v' prefix if present
+            LATEST_VERSION=${LATEST_VERSION#v}
+            
+            echo "Latest version: $LATEST_VERSION"
+            
+            # Parse version components
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_VERSION"
+            
+            # Increment patch version
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+            
+            echo "New version: $NEW_VERSION"
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          fi
+
   release:
+    needs: determine-version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -42,7 +88,7 @@ jobs:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
           if [ "${{ github.event.inputs.makePR }}" = "true" ]; then
-            fern generate --api api --group python-sdk --version ${{ inputs.version }} --mode pull-request --log-level debug
+            fern generate --api api --group python-sdk --version ${{ needs.determine-version.outputs.version }} --mode pull-request --log-level debug
           else
-            fern generate --api api --group python-sdk --version ${{ inputs.version }} --log-level debug
+            fern generate --api api --group python-sdk --version ${{ needs.determine-version.outputs.version }} --log-level debug
           fi
