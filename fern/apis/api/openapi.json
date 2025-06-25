@@ -4004,6 +4004,53 @@
         ]
       }
     },
+    "/workflow/generate": {
+      "post": {
+        "operationId": "WorkflowController_generateFromTranscripts",
+        "summary": "Generate Workflow JSON from Transcript Files",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateWorkflowDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowUserEditable"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowUserEditable"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Workflow"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/squad": {
       "post": {
         "operationId": "SquadController_create",
@@ -10931,6 +10978,19 @@
           "type"
         ]
       },
+      "McpToolMetadata": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "sse",
+              "shttp"
+            ],
+            "description": "This is the protocol used for MCP communication. Defaults to Streamable HTTP."
+          }
+        }
+      },
       "CreateMcpToolDTO": {
         "type": "object",
         "properties": {
@@ -10972,6 +11032,9 @@
                 "$ref": "#/components/schemas/Server"
               }
             ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/McpToolMetadata"
           },
           "function": {
             "description": "This is the function definition of the tool.\n\nFor `endCall`, `transferCall`, and `dtmf` tools, this is auto-filled based on tool-specific fields like `tool.destinations`. But, even in those cases, you can provide a custom function definition for advanced use cases.\n\nAn example of an advanced use case is if you want to customize the message that's spoken for `endCall` tool. You can specify a function where it returns an argument \"reason\". Then, in `messages` array, you can have many \"request-complete\" messages. One of these messages will be triggered if the `messages[].conditions` matches the \"reason\" argument.",
@@ -13689,9 +13752,6 @@
               "o1-preview-2024-09-12",
               "o1-mini",
               "o1-mini-2024-09-12",
-              "gpt-4o-realtime-preview-2024-10-01",
-              "gpt-4o-realtime-preview-2024-12-17",
-              "gpt-4o-mini-realtime-preview-2024-12-17",
               "gpt-4o-mini-2024-07-18",
               "gpt-4o-mini",
               "gpt-4o",
@@ -13839,6 +13899,109 @@
         },
         "required": [
           "provider",
+          "model"
+        ]
+      },
+      "WorkflowGoogleModel": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "This is the provider of the model (`google`).",
+            "enum": [
+              "google"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "This is the name of the model. Ex. cognitivecomputations/dolphin-mixtral-8x7b",
+            "maxLength": 100,
+            "enum": [
+              "gemini-2.5-pro-preview-05-06",
+              "gemini-2.5-flash-preview-05-20",
+              "gemini-2.5-flash-preview-04-17",
+              "gemini-2.0-flash-thinking-exp",
+              "gemini-2.0-pro-exp-02-05",
+              "gemini-2.0-flash",
+              "gemini-2.0-flash-lite",
+              "gemini-2.0-flash-lite-preview-02-05",
+              "gemini-2.0-flash-exp",
+              "gemini-2.0-flash-realtime-exp",
+              "gemini-1.5-flash",
+              "gemini-1.5-flash-002",
+              "gemini-1.5-pro",
+              "gemini-1.5-pro-002",
+              "gemini-1.0-pro"
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "description": "This is the temperature of the model.",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "maxTokens": {
+            "type": "number",
+            "description": "This is the max tokens of the model.",
+            "minimum": 50,
+            "maximum": 10000
+          }
+        },
+        "required": [
+          "provider",
+          "model"
+        ]
+      },
+      "WorkflowCustomModel": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "This is the provider of the model (`custom-llm`).",
+            "enum": [
+              "custom-llm"
+            ]
+          },
+          "metadataSendMode": {
+            "type": "string",
+            "description": "This determines whether metadata is sent in requests to the custom provider.\n\n- `off` will not send any metadata. payload will look like `{ messages }`\n- `variable` will send `assistant.metadata` as a variable on the payload. payload will look like `{ messages, metadata }`\n- `destructured` will send `assistant.metadata` fields directly on the payload. payload will look like `{ messages, ...metadata }`\n\nFurther, `variable` and `destructured` will send `call`, `phoneNumber`, and `customer` objects in the payload.\n\nDefault is `variable`.",
+            "enum": [
+              "off",
+              "variable",
+              "destructured"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "These is the URL we'll use for the OpenAI client's `baseURL`. Ex. https://openrouter.ai/api/v1"
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This sets the timeout for the connection to the custom provider without needing to stream any tokens back. Default is 20 seconds.",
+            "minimum": 20,
+            "maximum": 600
+          },
+          "model": {
+            "type": "string",
+            "description": "This is the name of the model. Ex. cognitivecomputations/dolphin-mixtral-8x7b",
+            "maxLength": 100
+          },
+          "temperature": {
+            "type": "number",
+            "description": "This is the temperature of the model.",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "maxTokens": {
+            "type": "number",
+            "description": "This is the max tokens of the model.",
+            "minimum": 50,
+            "maximum": 10000
+          }
+        },
+        "required": [
+          "provider",
+          "url",
           "model"
         ]
       },
@@ -16549,8 +16712,48 @@
               {
                 "type": "string",
                 "enum": [
+                  "amy",
+                  "ansel",
+                  "autumn",
+                  "ava",
+                  "brandon",
+                  "caleb",
+                  "cassian",
+                  "chloe",
+                  "dalton",
+                  "daniel",
+                  "dustin",
+                  "elowen",
+                  "evander",
+                  "huxley",
+                  "james",
+                  "juniper",
+                  "kennedy",
+                  "lauren",
+                  "leah",
                   "lily",
-                  "daniel"
+                  "lucas",
+                  "magnus",
+                  "miles",
+                  "morgan",
+                  "natalie",
+                  "nathan",
+                  "noah",
+                  "nyssa",
+                  "oliver",
+                  "paige",
+                  "ryan",
+                  "sadie",
+                  "sophie",
+                  "stella",
+                  "terrence",
+                  "tyler",
+                  "vesper",
+                  "violet",
+                  "warrick",
+                  "zain",
+                  "zeke",
+                  "zoe"
                 ],
                 "title": "Preset Voice Options"
               },
@@ -16566,6 +16769,398 @@
             "minimum": 0.25,
             "maximum": 2,
             "example": null
+          },
+          "language": {
+            "description": "Two letter ISO 639-1 language code. Use \"auto\" for auto-detection.",
+            "enum": [
+              "aa",
+              "ab",
+              "ae",
+              "af",
+              "ak",
+              "am",
+              "an",
+              "ar",
+              "as",
+              "av",
+              "ay",
+              "az",
+              "ba",
+              "be",
+              "bg",
+              "bh",
+              "bi",
+              "bm",
+              "bn",
+              "bo",
+              "br",
+              "bs",
+              "ca",
+              "ce",
+              "ch",
+              "co",
+              "cr",
+              "cs",
+              "cu",
+              "cv",
+              "cy",
+              "da",
+              "de",
+              "dv",
+              "dz",
+              "ee",
+              "el",
+              "en",
+              "eo",
+              "es",
+              "et",
+              "eu",
+              "fa",
+              "ff",
+              "fi",
+              "fj",
+              "fo",
+              "fr",
+              "fy",
+              "ga",
+              "gd",
+              "gl",
+              "gn",
+              "gu",
+              "gv",
+              "ha",
+              "he",
+              "hi",
+              "ho",
+              "hr",
+              "ht",
+              "hu",
+              "hy",
+              "hz",
+              "ia",
+              "id",
+              "ie",
+              "ig",
+              "ii",
+              "ik",
+              "io",
+              "is",
+              "it",
+              "iu",
+              "ja",
+              "jv",
+              "ka",
+              "kg",
+              "ki",
+              "kj",
+              "kk",
+              "kl",
+              "km",
+              "kn",
+              "ko",
+              "kr",
+              "ks",
+              "ku",
+              "kv",
+              "kw",
+              "ky",
+              "la",
+              "lb",
+              "lg",
+              "li",
+              "ln",
+              "lo",
+              "lt",
+              "lu",
+              "lv",
+              "mg",
+              "mh",
+              "mi",
+              "mk",
+              "ml",
+              "mn",
+              "mr",
+              "ms",
+              "mt",
+              "my",
+              "na",
+              "nb",
+              "nd",
+              "ne",
+              "ng",
+              "nl",
+              "nn",
+              "no",
+              "nr",
+              "nv",
+              "ny",
+              "oc",
+              "oj",
+              "om",
+              "or",
+              "os",
+              "pa",
+              "pi",
+              "pl",
+              "ps",
+              "pt",
+              "qu",
+              "rm",
+              "rn",
+              "ro",
+              "ru",
+              "rw",
+              "sa",
+              "sc",
+              "sd",
+              "se",
+              "sg",
+              "si",
+              "sk",
+              "sl",
+              "sm",
+              "sn",
+              "so",
+              "sq",
+              "sr",
+              "ss",
+              "st",
+              "su",
+              "sv",
+              "sw",
+              "ta",
+              "te",
+              "tg",
+              "th",
+              "ti",
+              "tk",
+              "tl",
+              "tn",
+              "to",
+              "tr",
+              "ts",
+              "tt",
+              "tw",
+              "ty",
+              "ug",
+              "uk",
+              "ur",
+              "uz",
+              "ve",
+              "vi",
+              "vo",
+              "wa",
+              "wo",
+              "xh",
+              "yi",
+              "yue",
+              "yo",
+              "za",
+              "zh",
+              "zu",
+              "auto"
+            ],
+            "example": "en",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "aa",
+                  "ab",
+                  "ae",
+                  "af",
+                  "ak",
+                  "am",
+                  "an",
+                  "ar",
+                  "as",
+                  "av",
+                  "ay",
+                  "az",
+                  "ba",
+                  "be",
+                  "bg",
+                  "bh",
+                  "bi",
+                  "bm",
+                  "bn",
+                  "bo",
+                  "br",
+                  "bs",
+                  "ca",
+                  "ce",
+                  "ch",
+                  "co",
+                  "cr",
+                  "cs",
+                  "cu",
+                  "cv",
+                  "cy",
+                  "da",
+                  "de",
+                  "dv",
+                  "dz",
+                  "ee",
+                  "el",
+                  "en",
+                  "eo",
+                  "es",
+                  "et",
+                  "eu",
+                  "fa",
+                  "ff",
+                  "fi",
+                  "fj",
+                  "fo",
+                  "fr",
+                  "fy",
+                  "ga",
+                  "gd",
+                  "gl",
+                  "gn",
+                  "gu",
+                  "gv",
+                  "ha",
+                  "he",
+                  "hi",
+                  "ho",
+                  "hr",
+                  "ht",
+                  "hu",
+                  "hy",
+                  "hz",
+                  "ia",
+                  "id",
+                  "ie",
+                  "ig",
+                  "ii",
+                  "ik",
+                  "io",
+                  "is",
+                  "it",
+                  "iu",
+                  "ja",
+                  "jv",
+                  "ka",
+                  "kg",
+                  "ki",
+                  "kj",
+                  "kk",
+                  "kl",
+                  "km",
+                  "kn",
+                  "ko",
+                  "kr",
+                  "ks",
+                  "ku",
+                  "kv",
+                  "kw",
+                  "ky",
+                  "la",
+                  "lb",
+                  "lg",
+                  "li",
+                  "ln",
+                  "lo",
+                  "lt",
+                  "lu",
+                  "lv",
+                  "mg",
+                  "mh",
+                  "mi",
+                  "mk",
+                  "ml",
+                  "mn",
+                  "mr",
+                  "ms",
+                  "mt",
+                  "my",
+                  "na",
+                  "nb",
+                  "nd",
+                  "ne",
+                  "ng",
+                  "nl",
+                  "nn",
+                  "no",
+                  "nr",
+                  "nv",
+                  "ny",
+                  "oc",
+                  "oj",
+                  "om",
+                  "or",
+                  "os",
+                  "pa",
+                  "pi",
+                  "pl",
+                  "ps",
+                  "pt",
+                  "qu",
+                  "rm",
+                  "rn",
+                  "ro",
+                  "ru",
+                  "rw",
+                  "sa",
+                  "sc",
+                  "sd",
+                  "se",
+                  "sg",
+                  "si",
+                  "sk",
+                  "sl",
+                  "sm",
+                  "sn",
+                  "so",
+                  "sq",
+                  "sr",
+                  "ss",
+                  "st",
+                  "su",
+                  "sv",
+                  "sw",
+                  "ta",
+                  "te",
+                  "tg",
+                  "th",
+                  "ti",
+                  "tk",
+                  "tl",
+                  "tn",
+                  "to",
+                  "tr",
+                  "ts",
+                  "tt",
+                  "tw",
+                  "ty",
+                  "ug",
+                  "uk",
+                  "ur",
+                  "uz",
+                  "ve",
+                  "vi",
+                  "vo",
+                  "wa",
+                  "wo",
+                  "xh",
+                  "yi",
+                  "yue",
+                  "yo",
+                  "za",
+                  "zh",
+                  "zu"
+                ],
+                "title": "ISO 639-1 Language Code"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "auto"
+                ],
+                "title": "Auto-detect"
+              }
+            ]
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -17888,8 +18483,48 @@
               {
                 "type": "string",
                 "enum": [
+                  "amy",
+                  "ansel",
+                  "autumn",
+                  "ava",
+                  "brandon",
+                  "caleb",
+                  "cassian",
+                  "chloe",
+                  "dalton",
+                  "daniel",
+                  "dustin",
+                  "elowen",
+                  "evander",
+                  "huxley",
+                  "james",
+                  "juniper",
+                  "kennedy",
+                  "lauren",
+                  "leah",
                   "lily",
-                  "daniel"
+                  "lucas",
+                  "magnus",
+                  "miles",
+                  "morgan",
+                  "natalie",
+                  "nathan",
+                  "noah",
+                  "nyssa",
+                  "oliver",
+                  "paige",
+                  "ryan",
+                  "sadie",
+                  "sophie",
+                  "stella",
+                  "terrence",
+                  "tyler",
+                  "vesper",
+                  "violet",
+                  "warrick",
+                  "zain",
+                  "zeke",
+                  "zoe"
                 ],
                 "title": "Preset Voice Options"
               },
@@ -17905,6 +18540,398 @@
             "minimum": 0.25,
             "maximum": 2,
             "example": null
+          },
+          "language": {
+            "description": "Two letter ISO 639-1 language code. Use \"auto\" for auto-detection.",
+            "enum": [
+              "aa",
+              "ab",
+              "ae",
+              "af",
+              "ak",
+              "am",
+              "an",
+              "ar",
+              "as",
+              "av",
+              "ay",
+              "az",
+              "ba",
+              "be",
+              "bg",
+              "bh",
+              "bi",
+              "bm",
+              "bn",
+              "bo",
+              "br",
+              "bs",
+              "ca",
+              "ce",
+              "ch",
+              "co",
+              "cr",
+              "cs",
+              "cu",
+              "cv",
+              "cy",
+              "da",
+              "de",
+              "dv",
+              "dz",
+              "ee",
+              "el",
+              "en",
+              "eo",
+              "es",
+              "et",
+              "eu",
+              "fa",
+              "ff",
+              "fi",
+              "fj",
+              "fo",
+              "fr",
+              "fy",
+              "ga",
+              "gd",
+              "gl",
+              "gn",
+              "gu",
+              "gv",
+              "ha",
+              "he",
+              "hi",
+              "ho",
+              "hr",
+              "ht",
+              "hu",
+              "hy",
+              "hz",
+              "ia",
+              "id",
+              "ie",
+              "ig",
+              "ii",
+              "ik",
+              "io",
+              "is",
+              "it",
+              "iu",
+              "ja",
+              "jv",
+              "ka",
+              "kg",
+              "ki",
+              "kj",
+              "kk",
+              "kl",
+              "km",
+              "kn",
+              "ko",
+              "kr",
+              "ks",
+              "ku",
+              "kv",
+              "kw",
+              "ky",
+              "la",
+              "lb",
+              "lg",
+              "li",
+              "ln",
+              "lo",
+              "lt",
+              "lu",
+              "lv",
+              "mg",
+              "mh",
+              "mi",
+              "mk",
+              "ml",
+              "mn",
+              "mr",
+              "ms",
+              "mt",
+              "my",
+              "na",
+              "nb",
+              "nd",
+              "ne",
+              "ng",
+              "nl",
+              "nn",
+              "no",
+              "nr",
+              "nv",
+              "ny",
+              "oc",
+              "oj",
+              "om",
+              "or",
+              "os",
+              "pa",
+              "pi",
+              "pl",
+              "ps",
+              "pt",
+              "qu",
+              "rm",
+              "rn",
+              "ro",
+              "ru",
+              "rw",
+              "sa",
+              "sc",
+              "sd",
+              "se",
+              "sg",
+              "si",
+              "sk",
+              "sl",
+              "sm",
+              "sn",
+              "so",
+              "sq",
+              "sr",
+              "ss",
+              "st",
+              "su",
+              "sv",
+              "sw",
+              "ta",
+              "te",
+              "tg",
+              "th",
+              "ti",
+              "tk",
+              "tl",
+              "tn",
+              "to",
+              "tr",
+              "ts",
+              "tt",
+              "tw",
+              "ty",
+              "ug",
+              "uk",
+              "ur",
+              "uz",
+              "ve",
+              "vi",
+              "vo",
+              "wa",
+              "wo",
+              "xh",
+              "yi",
+              "yue",
+              "yo",
+              "za",
+              "zh",
+              "zu",
+              "auto"
+            ],
+            "example": "en",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "aa",
+                  "ab",
+                  "ae",
+                  "af",
+                  "ak",
+                  "am",
+                  "an",
+                  "ar",
+                  "as",
+                  "av",
+                  "ay",
+                  "az",
+                  "ba",
+                  "be",
+                  "bg",
+                  "bh",
+                  "bi",
+                  "bm",
+                  "bn",
+                  "bo",
+                  "br",
+                  "bs",
+                  "ca",
+                  "ce",
+                  "ch",
+                  "co",
+                  "cr",
+                  "cs",
+                  "cu",
+                  "cv",
+                  "cy",
+                  "da",
+                  "de",
+                  "dv",
+                  "dz",
+                  "ee",
+                  "el",
+                  "en",
+                  "eo",
+                  "es",
+                  "et",
+                  "eu",
+                  "fa",
+                  "ff",
+                  "fi",
+                  "fj",
+                  "fo",
+                  "fr",
+                  "fy",
+                  "ga",
+                  "gd",
+                  "gl",
+                  "gn",
+                  "gu",
+                  "gv",
+                  "ha",
+                  "he",
+                  "hi",
+                  "ho",
+                  "hr",
+                  "ht",
+                  "hu",
+                  "hy",
+                  "hz",
+                  "ia",
+                  "id",
+                  "ie",
+                  "ig",
+                  "ii",
+                  "ik",
+                  "io",
+                  "is",
+                  "it",
+                  "iu",
+                  "ja",
+                  "jv",
+                  "ka",
+                  "kg",
+                  "ki",
+                  "kj",
+                  "kk",
+                  "kl",
+                  "km",
+                  "kn",
+                  "ko",
+                  "kr",
+                  "ks",
+                  "ku",
+                  "kv",
+                  "kw",
+                  "ky",
+                  "la",
+                  "lb",
+                  "lg",
+                  "li",
+                  "ln",
+                  "lo",
+                  "lt",
+                  "lu",
+                  "lv",
+                  "mg",
+                  "mh",
+                  "mi",
+                  "mk",
+                  "ml",
+                  "mn",
+                  "mr",
+                  "ms",
+                  "mt",
+                  "my",
+                  "na",
+                  "nb",
+                  "nd",
+                  "ne",
+                  "ng",
+                  "nl",
+                  "nn",
+                  "no",
+                  "nr",
+                  "nv",
+                  "ny",
+                  "oc",
+                  "oj",
+                  "om",
+                  "or",
+                  "os",
+                  "pa",
+                  "pi",
+                  "pl",
+                  "ps",
+                  "pt",
+                  "qu",
+                  "rm",
+                  "rn",
+                  "ro",
+                  "ru",
+                  "rw",
+                  "sa",
+                  "sc",
+                  "sd",
+                  "se",
+                  "sg",
+                  "si",
+                  "sk",
+                  "sl",
+                  "sm",
+                  "sn",
+                  "so",
+                  "sq",
+                  "sr",
+                  "ss",
+                  "st",
+                  "su",
+                  "sv",
+                  "sw",
+                  "ta",
+                  "te",
+                  "tg",
+                  "th",
+                  "ti",
+                  "tk",
+                  "tl",
+                  "tn",
+                  "to",
+                  "tr",
+                  "ts",
+                  "tt",
+                  "tw",
+                  "ty",
+                  "ug",
+                  "uk",
+                  "ur",
+                  "uz",
+                  "ve",
+                  "vi",
+                  "vo",
+                  "wa",
+                  "wo",
+                  "xh",
+                  "yi",
+                  "yue",
+                  "yo",
+                  "za",
+                  "zh",
+                  "zu"
+                ],
+                "title": "ISO 639-1 Language Code"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "auto"
+                ],
+                "title": "Auto-detect"
+              }
+            ]
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -23668,6 +24695,7 @@
               "pipeline-error-deepgram-returning-500-invalid-json",
               "pipeline-error-deepgram-returning-502-network-error",
               "pipeline-error-deepgram-returning-502-bad-gateway-ehostunreach",
+              "pipeline-error-deepgram-returning-econnreset",
               "call.in-progress.error-vapifault-deepgram-returning-400-no-such-model-language-tier-combination",
               "call.in-progress.error-vapifault-deepgram-returning-401-invalid-credentials",
               "call.in-progress.error-vapifault-deepgram-returning-404-not-found",
@@ -24650,6 +25678,14 @@
               ]
             }
           },
+          "assistantOverrides": {
+            "description": "These are the overrides for the `assistant` or `assistantId`'s settings and template variables.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
+          },
           "cost": {
             "type": "number",
             "description": "This is the cost of the chat in USD."
@@ -24740,6 +25776,14 @@
           "previousChatId": {
             "type": "string",
             "description": "This is the ID of the chat that will be used as context for the new chat.\nThe messages from the previous chat will be used as context.\nMutually exclusive with sessionId."
+          },
+          "assistantOverrides": {
+            "description": "These are the overrides for the `assistant` or `assistantId`'s settings and template variables.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
           }
         },
         "required": [
@@ -24941,6 +25985,14 @@
           "previousChatId": {
             "type": "string",
             "description": "This is the ID of the chat that will be used as context for the new chat.\nThe messages from the previous chat will be used as context.\nMutually exclusive with sessionId."
+          },
+          "assistantOverrides": {
+            "description": "These are the overrides for the `assistant` or `assistantId`'s settings and template variables.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
           }
         },
         "required": [
@@ -25330,6 +26382,22 @@
             "type": "object",
             "description": "This is a map of call IDs to campaign call details."
           },
+          "callsCounterScheduled": {
+            "type": "number",
+            "description": "This is the number of calls that have been scheduled."
+          },
+          "callsCounterQueued": {
+            "type": "number",
+            "description": "This is the number of calls that have been queued."
+          },
+          "callsCounterInProgress": {
+            "type": "number",
+            "description": "This is the number of calls that have been in progress."
+          },
+          "callsCounterEndedVoicemail": {
+            "type": "number",
+            "description": "This is the number of calls whose ended reason is 'voicemail'."
+          },
           "callsCounterEnded": {
             "type": "number",
             "description": "This is the number of calls that have ended."
@@ -25346,6 +26414,10 @@
           "createdAt",
           "updatedAt",
           "calls",
+          "callsCounterScheduled",
+          "callsCounterQueued",
+          "callsCounterInProgress",
+          "callsCounterEndedVoicemail",
           "callsCounterEnded"
         ]
       },
@@ -30236,6 +31308,9 @@
                 "$ref": "#/components/schemas/OpenAIFunction"
               }
             ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/McpToolMetadata"
           }
         },
         "required": [
@@ -31815,6 +32890,9 @@
                 "$ref": "#/components/schemas/OpenAIFunction"
               }
             ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/McpToolMetadata"
           }
         }
       },
@@ -33328,6 +34406,17 @@
           }
         }
       },
+      "GenerateWorkflowDTO": {
+        "type": "object",
+        "properties": {
+          "toolIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "Squad": {
         "type": "object",
         "properties": {
@@ -34668,6 +35757,7 @@
           "concurrencyLimit": {
             "type": "number",
             "description": "This is the concurrency limit for the org. This is the maximum number of calls that can be active at any given time. To go beyond 10, please contact us at support@vapi.ai.",
+            "deprecated": true,
             "minimum": 1,
             "maximum": 10
           },
@@ -35032,6 +36122,7 @@
           "concurrencyLimit": {
             "type": "number",
             "description": "This is the concurrency limit for the org. This is the maximum number of calls that can be active at any given time. To go beyond 10, please contact us at support@vapi.ai.",
+            "deprecated": true,
             "minimum": 1,
             "maximum": 10
           },
@@ -35092,6 +36183,7 @@
           "concurrencyLimit": {
             "type": "number",
             "description": "This is the concurrency limit for the org. This is the maximum number of calls that can be active at any given time. To go beyond 10, please contact us at support@vapi.ai.",
+            "deprecated": true,
             "minimum": 1,
             "maximum": 10
           },
@@ -42188,6 +43280,7 @@
               "pipeline-error-deepgram-returning-500-invalid-json",
               "pipeline-error-deepgram-returning-502-network-error",
               "pipeline-error-deepgram-returning-502-bad-gateway-ehostunreach",
+              "pipeline-error-deepgram-returning-econnreset",
               "call.in-progress.error-vapifault-deepgram-returning-400-no-such-model-language-tier-combination",
               "call.in-progress.error-vapifault-deepgram-returning-401-invalid-credentials",
               "call.in-progress.error-vapifault-deepgram-returning-404-not-found",
@@ -43368,6 +44461,7 @@
               "pipeline-error-deepgram-returning-500-invalid-json",
               "pipeline-error-deepgram-returning-502-network-error",
               "pipeline-error-deepgram-returning-502-bad-gateway-ehostunreach",
+              "pipeline-error-deepgram-returning-econnreset",
               "call.in-progress.error-vapifault-deepgram-returning-400-no-such-model-language-tier-combination",
               "call.in-progress.error-vapifault-deepgram-returning-401-invalid-credentials",
               "call.in-progress.error-vapifault-deepgram-returning-404-not-found",
@@ -44594,6 +45688,27 @@
               {
                 "$ref": "#/components/schemas/TransferDestinationSip",
                 "title": "Sip"
+              }
+            ]
+          },
+          "message": {
+            "description": "This is the message that will be spoken to the user as the tool is running.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ToolMessageStart",
+                "title": "ToolMessageStart"
+              },
+              {
+                "$ref": "#/components/schemas/ToolMessageComplete",
+                "title": "ToolMessageComplete"
+              },
+              {
+                "$ref": "#/components/schemas/ToolMessageFailed",
+                "title": "ToolMessageFailed"
+              },
+              {
+                "$ref": "#/components/schemas/ToolMessageDelayed",
+                "title": "ToolMessageDelayed"
               }
             ]
           },
