@@ -1,0 +1,987 @@
+---
+title: Customer support escalation system
+subtitle: Build intelligent support routing using assistants that escalate calls based on customer tier, issue complexity, and agent expertise.
+slug: assistants/examples/support-escalation
+description: Build a voice AI customer support system with dynamic escalation that routes calls based on customer data, issue type, and real-time agent availability using transfer tools and webhooks.
+---
+
+## Overview
+
+Build an intelligent customer support escalation system that determines transfer destinations dynamically using customer tier analysis, issue complexity assessment, and real-time agent availability. This approach uses transfer tools with empty destinations and webhook servers for maximum escalation flexibility.
+
+**Agent Capabilities:**
+* Customer tier-based prioritization and routing
+* Issue complexity analysis for specialist routing  
+* Real-time agent availability and expertise matching
+* Intelligent escalation with context preservation
+
+**What You'll Build:**
+* Transfer tool with dynamic escalation logic
+* Assistant with intelligent support conversation flow
+* Webhook server for escalation destination logic
+* CRM integration for customer tier-based routing
+
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/)
+* Node.js or Python server environment
+* (Optional) CRM or customer database for tier lookup
+
+## Scenario
+
+We will build a customer support escalation system for TechCorp that intelligently routes support calls based on customer tier, issue complexity, and agent expertise in real-time.
+
+---
+
+## 1. Create a Dynamic Escalation Tool
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to Tools">
+        In your Vapi dashboard, click **Tools** in the left sidebar.
+      </Step>
+      <Step title="Create the escalation tool">
+        - Click **Create Tool**
+        - Select **Transfer Call** as the tool type
+        - Set tool name: `Smart Support Escalation`
+        - **Important**: Leave the destinations array empty - this creates a dynamic transfer tool
+        - Set function name: `escalateToSupport`
+        - Add description: `Escalate calls to appropriate support specialists based on customer tier and issue complexity`
+      </Step>
+      <Step title="Configure tool parameters">
+        Add these parameters to help the assistant provide context:
+        - `issue_category` (string): Category of customer issue (technical, billing, account, product)
+        - `complexity_level` (string): Issue complexity (basic, intermediate, advanced, critical)
+        - `customer_context` (string): Relevant customer information for routing
+        - `escalation_reason` (string): Why this needs escalation vs self-service
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    import { VapiClient } from "@vapi-ai/server-sdk";
+
+    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+    async function createSupportEscalationTool() {
+      try {
+        const tool = await vapi.tools.create({
+          type: "transferCall",
+          // Empty destinations array makes this a dynamic transfer tool
+          destinations: [],
+          function: {
+            name: "escalateToSupport",
+            description: "Escalate calls to appropriate support specialists based on customer tier and issue complexity",
+            parameters: {
+              type: "object",
+              properties: {
+                issue_category: {
+                  type: "string",
+                  description: "Category of customer issue",
+                  enum: ["technical", "billing", "account", "product"]
+                },
+                complexity_level: {
+                  type: "string", 
+                  description: "Issue complexity level",
+                  enum: ["basic", "intermediate", "advanced", "critical"]
+                },
+                customer_context: {
+                  type: "string",
+                  description: "Relevant customer information for routing"
+                },
+                escalation_reason: {
+                  type: "string",
+                  description: "Why this needs escalation vs self-service"
+                }
+              },
+              required: ["issue_category", "complexity_level"]
+            }
+          }
+        });
+
+        console.log(`Support escalation tool created: ${tool.id}`);
+        return tool;
+      } catch (error) {
+        console.error('Error creating support escalation tool:', error);
+        throw error;
+      }
+    }
+
+    // Create the support escalation tool
+    const escalationTool = await createSupportEscalationTool();
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    import os
+    import requests
+
+    def create_support_escalation_tool():
+        """Create a dynamic support escalation tool with empty destinations"""
+        url = "https://api.vapi.ai/tool"
+        headers = {
+            "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "type": "transferCall",
+            # Empty destinations array makes this a dynamic transfer tool
+            "destinations": [],
+            "function": {
+                "name": "escalateToSupport",
+                "description": "Escalate calls to appropriate support specialists based on customer tier and issue complexity",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "issue_category": {
+                            "type": "string",
+                            "description": "Category of customer issue",
+                            "enum": ["technical", "billing", "account", "product"]
+                        },
+                        "complexity_level": {
+                            "type": "string",
+                            "description": "Issue complexity level",
+                            "enum": ["basic", "intermediate", "advanced", "critical"]
+                        },
+                        "customer_context": {
+                            "type": "string",
+                            "description": "Relevant customer information for routing"
+                        },
+                        "escalation_reason": {
+                            "type": "string",
+                            "description": "Why this needs escalation vs self-service"
+                        }
+                    },
+                    "required": ["issue_category", "complexity_level"]
+                }
+            }
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            tool = response.json()
+            print(f"Support escalation tool created: {tool['id']}")
+            return tool
+        except requests.exceptions.RequestException as error:
+            print(f"Error creating support escalation tool: {error}")
+            raise
+
+    # Create the support escalation tool
+    escalation_tool = create_support_escalation_tool()
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "type": "transferCall",
+           "destinations": [],
+           "function": {
+             "name": "escalateToSupport",
+             "description": "Escalate calls to appropriate support specialists based on customer tier and issue complexity",
+             "parameters": {
+               "type": "object",
+               "properties": {
+                 "issue_category": {
+                   "type": "string",
+                   "description": "Category of customer issue",
+                   "enum": ["technical", "billing", "account", "product"]
+                 },
+                 "complexity_level": {
+                   "type": "string",
+                   "description": "Issue complexity level", 
+                   "enum": ["basic", "intermediate", "advanced", "critical"]
+                 },
+                 "customer_context": {
+                   "type": "string",
+                   "description": "Relevant customer information for routing"
+                 },
+                 "escalation_reason": {
+                   "type": "string",
+                   "description": "Why this needs escalation vs self-service"
+                 }
+               },
+               "required": ["issue_category", "complexity_level"]
+             }
+           }
+         }'
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## 2. Create an Assistant with Smart Escalation
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create assistant">
+        - Navigate to **Assistants** in your dashboard
+        - Click **Create Assistant**
+        - Name: `TechCorp Support Assistant`
+        - Add your dynamic escalation tool to the assistant's tools
+      </Step>
+      <Step title="Configure system prompt">
+        ```txt title="System Prompt" maxLines=15
+        You are TechCorp's intelligent customer support assistant. Your job is to:
+
+        1. Help customers resolve issues when possible
+        2. Assess issue complexity and customer needs
+        3. Escalate to human specialists when appropriate using the escalateToSupport function
+
+        Try to resolve simple issues first. For complex issues or when customers request human help, escalate intelligently based on:
+        - Issue category (technical, billing, account, product)
+        - Complexity level (basic, intermediate, advanced, critical)
+        - Customer context and history
+
+        Always be professional and efficient in your support.
+        ```
+      </Step>
+      <Step title="Enable server events">
+        In assistant settings, enable the **transfer-destination-request** server event. This sends webhooks to your server when escalations are triggered.
+      </Step>
+      <Step title="Set server URL">
+        Configure your server URL to handle escalation requests (e.g., `https://your-app.com/webhook/escalation`)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    import { VapiClient } from "@vapi-ai/server-sdk";
+
+    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+    async function createSupportAssistant(escalationToolId: string) {
+      try {
+        const assistant = await vapi.assistants.create({
+          name: "TechCorp Support Assistant",
+          firstMessage: "Hello! I'm here to help with your TechCorp support needs. I can assist with account questions, technical issues, billing inquiries, and more. What can I help you with today?",
+          model: {
+            provider: "openai",
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: `You are TechCorp's intelligent customer support assistant. Your job is to:
+
+1. Help customers resolve issues when possible
+2. Assess issue complexity and customer needs
+3. Escalate to human specialists when appropriate using the escalateToSupport function
+
+Try to resolve simple issues first. For complex issues or when customers request human help, escalate intelligently based on:
+- Issue category (technical, billing, account, product)
+- Complexity level (basic, intermediate, advanced, critical)
+- Customer context and history
+
+Always be professional and efficient in your support.`
+              }
+            ],
+            toolIds: [escalationToolId]
+          },
+          voice: {
+            provider: "11labs",
+            voiceId: "burt"
+          },
+          serverUrl: "https://your-app.com/webhook/escalation",
+          serverUrlSecret: process.env.WEBHOOK_SECRET
+        });
+
+        console.log(`Support assistant created: ${assistant.id}`);
+        return assistant;
+      } catch (error) {
+        console.error('Error creating support assistant:', error);
+        throw error;
+      }
+    }
+
+    // Create assistant with escalation capabilities
+    const supportAssistant = await createSupportAssistant("YOUR_ESCALATION_TOOL_ID");
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    import os
+    import requests
+
+    def create_support_assistant(escalation_tool_id):
+        """Create assistant with dynamic escalation capabilities"""
+        url = "https://api.vapi.ai/assistant"
+        headers = {
+            "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "name": "TechCorp Support Assistant",
+            "firstMessage": "Hello! I'\''m here to help with your TechCorp support needs. I can assist with account questions, technical issues, billing inquiries, and more. What can I help you with today?",
+            "model": {
+                "provider": "openai",
+                "model": "gpt-4o",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": """You are TechCorp's intelligent customer support assistant. Your job is to:
+
+1. Help customers resolve issues when possible
+2. Assess issue complexity and customer needs
+3. Escalate to human specialists when appropriate using the escalateToSupport function
+
+Try to resolve simple issues first. For complex issues or when customers request human help, escalate intelligently based on:
+- Issue category (technical, billing, account, product)
+- Complexity level (basic, intermediate, advanced, critical)
+- Customer context and history
+
+Always be professional and efficient in your support."""
+                    }
+                ],
+                "toolIds": [escalation_tool_id]
+            },
+            "voice": {
+                "provider": "11labs",
+                "voiceId": "burt"
+            },
+            "serverUrl": "https://your-app.com/webhook/escalation",
+            "serverUrlSecret": os.getenv("WEBHOOK_SECRET")
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            assistant = response.json()
+            print(f"Support assistant created: {assistant['id']}")
+            return assistant
+        except requests.exceptions.RequestException as error:
+            print(f"Error creating support assistant: {error}")
+            raise
+
+    # Create assistant with escalation capabilities
+    support_assistant = create_support_assistant("YOUR_ESCALATION_TOOL_ID")
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X POST https://api.vapi.ai/assistant \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "TechCorp Support Assistant",
+           "firstMessage": "Hello! I'\''m here to help with your TechCorp support needs. I can assist with account questions, technical issues, billing inquiries, and more. What can I help you with today?",
+           "model": {
+             "provider": "openai",
+             "model": "gpt-4o",
+             "messages": [
+               {
+                 "role": "system",
+                 "content": "You are TechCorp'\''s intelligent customer support assistant. Your job is to:\n\n1. Help customers resolve issues when possible\n2. Assess issue complexity and customer needs\n3. Escalate to human specialists when appropriate using the escalateToSupport function\n\nTry to resolve simple issues first. For complex issues or when customers request human help, escalate intelligently based on:\n- Issue category (technical, billing, account, product)\n- Complexity level (basic, intermediate, advanced, critical)\n- Customer context and history\n\nAlways be professional and efficient in your support."
+               }
+             ],
+             "toolIds": ["YOUR_ESCALATION_TOOL_ID"]
+           },
+           "voice": {
+             "provider": "11labs",
+             "voiceId": "burt"
+           },
+           "serverUrl": "https://your-app.com/webhook/escalation",
+           "serverUrlSecret": "your-webhook-secret"
+         }'
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## 3. Build Escalation Logic Server
+
+<Tabs>
+  <Tab title="Node.js (Express)">
+    ```typescript
+    import express from 'express';
+    import crypto from 'crypto';
+
+    const app = express();
+    app.use(express.json());
+
+    // Webhook secret verification
+    function verifyWebhookSignature(payload: string, signature: string) {
+      const expectedSignature = crypto
+        .createHmac('sha256', process.env.WEBHOOK_SECRET!)
+        .update(payload)
+        .digest('hex');
+      return crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expectedSignature)
+      );
+    }
+
+    // Support escalation logic
+    function determineSupportDestination(request: any) {
+      const { functionCall, call, customer } = request;
+      const { issue_category, complexity_level, customer_context, escalation_reason } = functionCall.parameters;
+
+      // Simulate customer tier lookup
+      const customerData = lookupCustomerTier(customer.number);
+      
+      // Enterprise customer escalation
+      if (customerData?.tier === 'enterprise' || complexity_level === 'critical') {
+        return {
+          type: "number",
+          number: "+1-555-ENTERPRISE-SUPPORT",
+          message: "Connecting you to our enterprise support specialist.",
+          transferPlan: {
+            mode: "warm-transfer-say-summary",
+            summaryPlan: {
+              enabled: true,
+              messages: [
+                {
+                  role: "system",
+                  content: "Provide a summary for the enterprise support specialist."
+                },
+                {
+                  role: "user", 
+                  content: `Enterprise customer with ${issue_category} issue. Complexity: ${complexity_level}. Reason: ${escalation_reason}. Context: ${customer_context}`
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      // Advanced technical issues
+      if (issue_category === 'technical' && (complexity_level === 'advanced' || complexity_level === 'intermediate')) {
+        return {
+          type: "number",
+          number: "+1-555-TECH-SPECIALISTS",
+          message: "Transferring you to our technical support specialists.",
+          transferPlan: {
+            mode: "warm-transfer-say-message",
+            message: `Technical ${complexity_level} issue. Customer context: ${customer_context}. Escalation reason: ${escalation_reason}`
+          }
+        };
+      }
+
+      // Billing and account specialists
+      if (issue_category === 'billing' || issue_category === 'account') {
+        return {
+          type: "number",
+          number: "+1-555-BILLING-TEAM",
+          message: "Connecting you with our billing and account specialists.",
+          transferPlan: {
+            mode: "warm-transfer-say-message",
+            message: `${issue_category} issue, complexity ${complexity_level}. Context: ${customer_context}`
+          }
+        };
+      }
+
+      // Product and feature questions
+      if (issue_category === 'product') {
+        return {
+          type: "number",
+          number: "+1-555-PRODUCT-SUPPORT",
+          message: "Transferring you to our product specialists.",
+          transferPlan: {
+            mode: "warm-transfer-say-message",
+            message: `Product ${complexity_level} inquiry. Context: ${customer_context}`
+          }
+        };
+      }
+
+      // Default to general support
+      return {
+        type: "number",
+        number: "+1-555-GENERAL-SUPPORT",
+        message: "Connecting you with our support team.",
+        transferPlan: {
+          mode: "warm-transfer-say-message",
+          message: `General ${issue_category} support needed. Level: ${complexity_level}`
+        }
+      };
+    }
+
+    // Simulate customer tier lookup
+    function lookupCustomerTier(phoneNumber: string) {
+      // In production, integrate with your actual CRM
+      const mockCustomerData = {
+        "+1234567890": { tier: "enterprise", account: "TechCorp Enterprise" },
+        "+0987654321": { tier: "standard", account: "Basic Plan" },
+        "+1111111111": { tier: "premium", account: "Premium Support" }
+      };
+      return mockCustomerData[phoneNumber];
+    }
+
+    // Support escalation webhook
+    app.post('/webhook/escalation', (req, res) => {
+      try {
+        const signature = req.headers['x-vapi-signature'] as string;
+        const payload = JSON.stringify(req.body);
+
+        // Verify webhook signature
+        if (!verifyWebhookSignature(payload, signature)) {
+          return res.status(401).json({ error: 'Invalid signature' });
+        }
+
+        const request = req.body;
+
+        // Only handle transfer destination requests
+        if (request.type !== 'transfer-destination-request') {
+          return res.status(200).json({ received: true });
+        }
+
+        // Determine destination based on escalation context
+        const destination = determineSupportDestination(request);
+
+        res.json({ destination });
+      } catch (error) {
+        console.error('Escalation webhook error:', error);
+        res.status(500).json({ 
+          error: 'Unable to determine escalation destination. Please try again.' 
+        });
+      }
+    });
+
+    app.listen(3000, () => {
+      console.log('Support escalation server running on port 3000');
+    });
+    ```
+  </Tab>
+  <Tab title="Python (FastAPI)">
+    ```python
+    import os
+    import hmac
+    import hashlib
+    from fastapi import FastAPI, HTTPException, Request
+    from pydantic import BaseModel
+    from typing import Optional, Dict, Any
+
+    app = FastAPI()
+
+    def verify_webhook_signature(payload: bytes, signature: str) -> bool:
+        """Verify webhook signature"""
+        webhook_secret = os.getenv('WEBHOOK_SECRET', '').encode()
+        expected_signature = hmac.new(
+            webhook_secret,
+            payload,
+            hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(signature, expected_signature)
+
+    def lookup_customer_tier(phone_number: str) -> Optional[Dict[str, Any]]:
+        """Simulate customer tier lookup"""
+        mock_customer_data = {
+            "+1234567890": {"tier": "enterprise", "account": "TechCorp Enterprise"},
+            "+0987654321": {"tier": "standard", "account": "Basic Plan"},
+            "+1111111111": {"tier": "premium", "account": "Premium Support"}
+        }
+        return mock_customer_data.get(phone_number)
+
+    def determine_support_destination(request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Determine support escalation destination based on request context"""
+        function_call = request_data.get('functionCall', {})
+        parameters = function_call.get('parameters', {})
+        customer = request_data.get('customer', {})
+        
+        issue_category = parameters.get('issue_category', 'general')
+        complexity_level = parameters.get('complexity_level', 'basic')
+        customer_context = parameters.get('customer_context', '')
+        escalation_reason = parameters.get('escalation_reason', '')
+        
+        # Simulate customer tier lookup
+        customer_data = lookup_customer_tier(customer.get('number', ''))
+        
+        # Enterprise customer escalation
+        if (customer_data and customer_data.get('tier') == 'enterprise') or complexity_level == 'critical':
+            return {
+                "type": "number",
+                "number": "+1-555-ENTERPRISE-SUPPORT",
+                "message": "Connecting you to our enterprise support specialist.",
+                "transferPlan": {
+                    "mode": "warm-transfer-say-summary",
+                    "summaryPlan": {
+                        "enabled": True,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "Provide a summary for the enterprise support specialist."
+                            },
+                            {
+                                "role": "user",
+                                "content": f"Enterprise customer with {issue_category} issue. Complexity: {complexity_level}. Reason: {escalation_reason}. Context: {customer_context}"
+                            }
+                        ]
+                    }
+                }
+            }
+        
+        # Advanced technical issues
+        if issue_category == 'technical' and complexity_level in ['advanced', 'intermediate']:
+            return {
+                "type": "number",
+                "number": "+1-555-TECH-SPECIALISTS",
+                "message": "Transferring you to our technical support specialists.",
+                "transferPlan": {
+                    "mode": "warm-transfer-say-message",
+                    "message": f"Technical {complexity_level} issue. Customer context: {customer_context}. Escalation reason: {escalation_reason}"
+                }
+            }
+        
+        # Billing and account specialists
+        if issue_category in ['billing', 'account']:
+            return {
+                "type": "number",
+                "number": "+1-555-BILLING-TEAM",
+                "message": "Connecting you with our billing and account specialists.",
+                "transferPlan": {
+                    "mode": "warm-transfer-say-message",
+                    "message": f"{issue_category} issue, complexity {complexity_level}. Context: {customer_context}"
+                }
+            }
+        
+        # Product and feature questions
+        if issue_category == 'product':
+            return {
+                "type": "number",
+                "number": "+1-555-PRODUCT-SUPPORT",
+                "message": "Transferring you to our product specialists.",
+                "transferPlan": {
+                    "mode": "warm-transfer-say-message",
+                    "message": f"Product {complexity_level} inquiry. Context: {customer_context}"
+                }
+            }
+        
+        # Default to general support
+        return {
+            "type": "number",
+            "number": "+1-555-GENERAL-SUPPORT",
+            "message": "Connecting you with our support team.",
+            "transferPlan": {
+                "mode": "warm-transfer-say-message",
+                "message": f"General {issue_category} support needed. Level: {complexity_level}"
+            }
+        }
+
+    @app.post("/webhook/escalation")
+    async def handle_escalation_webhook(request: Request):
+        try:
+            # Get raw body for signature verification
+            body = await request.body()
+            signature = request.headers.get('x-vapi-signature', '')
+            
+            # Verify webhook signature
+            if not verify_webhook_signature(body, signature):
+                raise HTTPException(status_code=401, detail="Invalid signature")
+            
+            # Parse request body
+            request_data = await request.json()
+            
+            # Only handle transfer destination requests
+            if request_data.get('type') != 'transfer-destination-request':
+                return {"received": True}
+            
+            # Determine destination based on escalation context
+            destination = determine_support_destination(request_data)
+            
+            return {"destination": destination}
+            
+        except Exception as error:
+            print(f"Escalation webhook error: {error}")
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to determine escalation destination. Please try again."
+            )
+
+    if __name__ == "__main__":
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=3000)
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## 4. Test Your Support Escalation System
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create a phone number">
+        - Navigate to **Phone Numbers** in your dashboard
+        - Click **Create Phone Number**
+        - Assign your support assistant to the number
+        - Configure any additional settings
+      </Step>
+      <Step title="Test different escalation scenarios">
+        Call your number and test various scenarios:
+        - Basic technical questions (should try to resolve first)
+        - Complex billing issues from enterprise customers
+        - Advanced technical problems requiring specialists
+        - Critical issues requiring immediate escalation
+      </Step>
+      <Step title="Monitor escalation patterns">
+        Check your server logs to see:
+        - Escalation requests received
+        - Customer tier classifications
+        - Destination routing decisions
+        - Any errors or routing issues
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="TypeScript (Testing)">
+    ```typescript
+    import { VapiClient } from "@vapi-ai/server-sdk";
+
+    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+    async function testSupportEscalation(assistantId: string) {
+      try {
+        // Test enterprise customer with complex issue
+        const enterpriseCall = await vapi.calls.create({
+          assistantId: assistantId,
+          customer: {
+            number: "+1234567890", // Enterprise customer in your lookup
+            name: "Enterprise Customer - Technical Issue"
+          }
+        });
+
+        console.log(`Enterprise test call created: ${enterpriseCall.id}`);
+
+        // Test standard customer with billing question
+        const standardCall = await vapi.calls.create({
+          assistantId: assistantId,
+          customer: {
+            number: "+0987654321", // Standard customer in your lookup
+            name: "Standard Customer - Billing Question"
+          }
+        });
+
+        console.log(`Standard test call created: ${standardCall.id}`);
+
+        return { enterpriseCall, standardCall };
+      } catch (error) {
+        console.error('Error creating test calls:', error);
+        throw error;
+      }
+    }
+
+    // Test the support escalation system
+    const testCalls = await testSupportEscalation('YOUR_ASSISTANT_ID');
+    ```
+  </Tab>
+  <Tab title="Python (Testing)">
+    ```python
+    import requests
+    import os
+
+    def test_support_escalation(assistant_id):
+        """Test support escalation with different customer scenarios"""
+        url = "https://api.vapi.ai/call"
+        headers = {
+            "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+        
+        test_scenarios = [
+            {
+                "name": "Enterprise Technical Issue",
+                "customer": {
+                    "number": "+1234567890",  # Enterprise customer
+                    "name": "Enterprise Customer - Technical Issue"
+                }
+            },
+            {
+                "name": "Standard Billing Question", 
+                "customer": {
+                    "number": "+0987654321",  # Standard customer
+                    "name": "Standard Customer - Billing Question"
+                }
+            }
+        ]
+        
+        results = []
+        for scenario in test_scenarios:
+            try:
+                data = {
+                    "assistantId": assistant_id,
+                    **scenario
+                }
+                
+                response = requests.post(url, headers=headers, json=data)
+                response.raise_for_status()
+                call = response.json()
+                
+                print(f"{scenario['name']} call created: {call['id']}")
+                results.append(call)
+                
+            except requests.exceptions.RequestException as error:
+                print(f"Error creating {scenario['name']}: {error}")
+        
+        return results
+
+    # Test the support escalation system
+    test_calls = test_support_escalation('YOUR_ASSISTANT_ID')
+    ```
+  </Tab>
+</Tabs>
+
+## Advanced Integration Examples
+
+### CRM Integration (Salesforce)
+
+```typescript
+// Example: Salesforce CRM integration for customer tier lookup
+async function lookupCustomerInSalesforce(phoneNumber: string) {
+  const salesforce = new SalesforceAPI({
+    clientId: process.env.SALESFORCE_CLIENT_ID,
+    clientSecret: process.env.SALESFORCE_CLIENT_SECRET,
+    redirectUri: process.env.SALESFORCE_REDIRECT_URI
+  });
+
+  try {
+    const customer = await salesforce.query(`
+      SELECT Id, Account.Type, Support_Tier__c, Case_Count__c, Contract_Level__c
+      FROM Contact 
+      WHERE Phone = '${phoneNumber}'
+    `);
+
+    return customer.records[0];
+  } catch (error) {
+    console.error('Salesforce lookup failed:', error);
+    return null;
+  }
+}
+```
+
+### Issue Complexity Assessment
+
+```typescript
+function assessIssueComplexity(issueDescription: string, customerHistory: any) {
+  const complexKeywords = ['api', 'integration', 'custom', 'enterprise', 'migration'];
+  const criticalKeywords = ['down', 'outage', 'critical', 'urgent', 'emergency'];
+  
+  const hasComplexKeywords = complexKeywords.some(keyword => 
+    issueDescription.toLowerCase().includes(keyword)
+  );
+  
+  const hasCriticalKeywords = criticalKeywords.some(keyword =>
+    issueDescription.toLowerCase().includes(keyword)
+  );
+
+  if (hasCriticalKeywords || customerHistory.previousEscalations > 2) {
+    return 'critical';
+  }
+  
+  if (hasComplexKeywords || customerHistory.tier === 'enterprise') {
+    return 'advanced';
+  }
+  
+  return 'basic';
+}
+```
+
+### Agent Availability Checking
+
+```typescript
+function getAvailableSpecialist(category: string, complexity: string) {
+  const specialists = getSpecialistsByCategory(category);
+  const qualifiedAgents = specialists.filter(agent => 
+    agent.complexityLevel >= complexity && agent.isAvailable
+  );
+  
+  if (qualifiedAgents.length === 0) {
+    return {
+      type: "number",
+      number: "+1-555-QUEUE-CALLBACK",
+      message: "All specialists are busy. You'll be added to our priority queue.",
+      transferPlan: {
+        mode: "warm-transfer-say-message",
+        message: `${category} ${complexity} issue - customer needs callback when specialist available`
+      }
+    };
+  }
+  
+  // Return least busy qualified agent
+  const bestAgent = qualifiedAgents.sort(
+    (a, b) => a.activeCallCount - b.activeCallCount
+  )[0];
+  
+  return {
+    type: "number",
+    number: bestAgent.phoneNumber,
+    message: `Connecting you to ${bestAgent.name}, our ${category} specialist.`,
+    transferPlan: {
+      mode: "warm-transfer-say-summary",
+      summaryPlan: {
+        enabled: true,
+        messages: [
+          {
+            role: "system",
+            content: `Provide a summary for ${bestAgent.name}`
+          }
+        ]
+      }
+    }
+  };
+}
+```
+
+## Error Handling Best Practices
+
+### Comprehensive Error Handling
+
+```typescript
+function handleEscalationError(error: any, context: any) {
+  console.error('Support escalation error:', error);
+  
+  // Log escalation details for debugging
+  console.error('Escalation context:', {
+    phoneNumber: context.customer?.number,
+    issueCategory: context.functionCall?.parameters?.issue_category,
+    complexityLevel: context.functionCall?.parameters?.complexity_level,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Return fallback destination
+  return {
+    type: "number",
+    number: process.env.FALLBACK_SUPPORT_NUMBER,
+    message: "I'll connect you with our general support team who can help you.",
+    transferPlan: {
+      mode: "warm-transfer-say-message",
+      message: "Escalation routing error - connecting to general support team"
+    }
+  };
+}
+```
+
+### Queue Management
+
+```typescript
+async function getEscalationWithQueueManagement(context: any) {
+  try {
+    const queueStatus = await checkSupportQueueStatus();
+    const destination = await determineEscalationDestination(context);
+    
+    // Add queue time estimate if available
+    if (queueStatus.estimatedWaitTime > 5) {
+      destination.message += ` Current wait time is approximately ${queueStatus.estimatedWaitTime} minutes.`;
+    }
+    
+    return destination;
+  } catch (error) {
+    return handleEscalationError(error, context);
+  }
+}
+```
+
+## Next Steps
+
+You've built a sophisticated customer support escalation system using assistants! Consider these enhancements:
+
+* **[Property management call routing](/workflows/examples/property-management)** - Explore the visual workflow approach
+* **[Call Analysis](/assistants/call-analysis)** - Analyze escalation patterns and optimize routing
+* **[Custom Tools](/tools/custom-tools)** - Build additional tools for advanced support logic
+* **[Webhooks](/server-url)** - Learn more about webhook security and advanced event handling 
