@@ -1,0 +1,733 @@
+---
+title: Multilingual customer support agent
+subtitle: Build a global support agent with automatic language detection
+slug: assistants/examples/multilingual-agent
+description: Complete implementation of a multilingual voice agent that handles English, Spanish, and French with automatic language switching
+---
+
+## Overview
+
+Build a customer support agent that handles inquiries in English, Spanish, and French with automatic language detection, seamless language switching, and culturally appropriate responses.
+
+**Agent Capabilities:**
+* Automatic language detection from 99+ supported languages
+* Seamless mid-conversation language switching
+* Native voice quality for each language
+* Cultural context awareness
+
+**What You'll Build:**
+* Multilingual transcriber with automatic detection
+* Language-adaptive voice selection
+* Cultural context-aware system prompts
+* Comprehensive testing and monitoring setup
+
+## Prerequisites
+
+- [Vapi account](https://dashboard.vapi.ai/) with API access
+- Basic understanding of assistant configuration
+
+---
+
+<Steps>
+  <Step title="Configure the multilingual transcriber">
+    Set up automatic language detection for speech-to-text processing.
+
+    <Tabs>
+      <Tab title="Dashboard">
+        1. Navigate to **Assistants** in your [Vapi Dashboard](https://dashboard.vapi.ai/)
+        2. Click **Create Assistant** or edit an existing one
+        3. In the **Transcriber** section:
+           - **Provider**: Select `Deepgram`
+           - **Model**: Choose `nova-2-multilingual`
+           - **Language Detection**: Set to `Automatic multiple languages`
+        4. **Optional**: Configure language hints if you know the expected languages
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        import { VapiClient } from "@vapi-ai/server-sdk";
+
+        const vapi = new VapiClient({ token: "YOUR_VAPI_API_KEY" });
+
+        const transcriber = {
+          provider: "deepgram",
+          model: "nova-2-multilingual",
+          languageBehaviour: "automatic multiple languages",
+          // Optional: Provide language hints for better accuracy
+          languages: ["en", "es", "fr"]
+        };
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        from vapi import Vapi
+
+        client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+        transcriber = {
+            "provider": "deepgram",
+            "model": "nova-2-multilingual", 
+            "languageBehaviour": "automatic multiple languages",
+            # Optional: Provide language hints for better accuracy
+            "languages": ["en", "es", "fr"]
+        }
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST "https://api.vapi.ai/assistant" \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "transcriber": {
+                 "provider": "deepgram",
+                 "model": "nova-2-multilingual",
+                 "languageBehaviour": "automatic multiple languages",
+                 "languages": ["en", "es", "fr"]
+               }
+             }'
+        ```
+      </Tab>
+    </Tabs>
+
+    <Tip>
+    **Language hints** improve accuracy when you know the expected languages. Without hints, the model detects from all 99+ supported languages.
+    </Tip>
+  </Step>
+
+  <Step title="Set up multilingual voices">
+    Configure native voices for each target language.
+
+    <Tabs>
+      <Tab title="Dashboard">
+        1. In the **Voice** section of your assistant:
+           - **Provider**: Select `Azure` (best multilingual support)
+           - **Voice**: Choose `multilingual-auto` or configure specific voices:
+             - **English**: `en-US-AriaNeural`
+             - **Spanish**: `es-ES-ElviraNeural`
+             - **French**: `fr-FR-DeniseNeural`
+        2. **Optional**: Set up voice fallback plans for reliability
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        // Option 1: Automatic voice selection based on detected language
+        const voice = {
+          provider: "azure",
+          voiceId: "multilingual-auto" // Automatically selects appropriate voice
+        };
+
+        // Option 2: Specific voice configuration with fallbacks
+        const voiceWithFallbacks = {
+          provider: "azure",
+          voiceId: "en-US-AriaNeural", // Primary voice
+          fallbackPlan: {
+            voices: [
+              {
+                provider: "azure",
+                voiceId: "es-ES-ElviraNeural"
+              },
+              {
+                provider: "azure", 
+                voiceId: "fr-FR-DeniseNeural"
+              }
+            ]
+          }
+        };
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        # Option 1: Automatic voice selection based on detected language
+        voice = {
+            "provider": "azure",
+            "voiceId": "multilingual-auto"  # Automatically selects appropriate voice
+        }
+
+        # Option 2: Specific voice configuration with fallbacks
+        voice_with_fallbacks = {
+            "provider": "azure",
+            "voiceId": "en-US-AriaNeural",  # Primary voice
+            "fallbackPlan": {
+                "voices": [
+                    {
+                        "provider": "azure",
+                        "voiceId": "es-ES-ElviraNeural"
+                    },
+                    {
+                        "provider": "azure",
+                        "voiceId": "fr-FR-DeniseNeural" 
+                    }
+                ]
+            }
+        }
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        # Add voice configuration to your assistant
+        curl -X PATCH "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID" \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "voice": {
+                 "provider": "azure",
+                 "voiceId": "multilingual-auto"
+               }
+             }'
+        ```
+      </Tab>
+    </Tabs>
+
+    <Note>
+    **Azure** offers the best multilingual voice support with 400+ voices across 140+ languages. **ElevenLabs** provides excellent quality for major languages but with fewer options.
+    </Note>
+  </Step>
+
+  <Step title="Configure language-aware system prompt">
+    Create a system prompt that handles multiple languages gracefully.
+
+    <Tabs>
+      <Tab title="Dashboard">
+        1. In the **Model** section, add this system prompt:
+        ```
+        You are a helpful customer support representative for GlobalTech Inc. 
+
+        Language Instructions:
+        - Automatically detect and respond in the user's language (English, Spanish, or French)
+        - If the user switches languages, switch with them seamlessly
+        - Always maintain a professional, friendly tone
+        - For complex technical terms, provide brief explanations in the user's language
+
+        Capabilities:
+        - Answer questions about our products and services
+        - Help with account issues and billing inquiries
+        - Provide technical support guidance
+        - Escalate to human agents when needed
+
+        If you're unsure about the language, default to English and ask the user to confirm their preferred language.
+        ```
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        const systemPrompt = `You are a helpful customer support representative for GlobalTech Inc.
+
+Language Instructions:
+- Automatically detect and respond in the user's language (English, Spanish, or French)
+- If the user switches languages, switch with them seamlessly  
+- Always maintain a professional, friendly tone
+- For complex technical terms, provide brief explanations in the user's language
+
+Capabilities:
+- Answer questions about our products and services
+- Help with account issues and billing inquiries
+- Provide technical support guidance
+- Escalate to human agents when needed
+
+If you're unsure about the language, default to English and ask the user to confirm their preferred language.`;
+
+        const model = {
+          provider: "openai",
+          model: "gpt-4",
+          maxTokens: 500,
+          messages: [
+            {
+              role: "system",
+              content: systemPrompt
+            }
+          ]
+        };
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        system_prompt = """You are a helpful customer support representative for GlobalTech Inc.
+
+Language Instructions:
+- Automatically detect and respond in the user's language (English, Spanish, or French)
+- If the user switches languages, switch with them seamlessly
+- Always maintain a professional, friendly tone
+- For complex technical terms, provide brief explanations in the user's language
+
+Capabilities:
+- Answer questions about our products and services
+- Help with account issues and billing inquiries
+- Provide technical support guidance
+- Escalate to human agents when needed
+
+If you're unsure about the language, default to English and ask the user to confirm their preferred language."""
+
+        model = {
+            "provider": "openai",
+            "model": "gpt-4",
+            "maxTokens": 500,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                }
+            ]
+        }
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        curl -X PATCH "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID" \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "model": {
+                 "provider": "openai",
+                 "model": "gpt-4",
+                 "maxTokens": 500,
+                 "messages": [
+                   {
+                     "role": "system",
+                     "content": "You are a helpful customer support representative for GlobalTech Inc..."
+                   }
+                 ]
+               }
+             }'
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Add multilingual greeting messages">
+    Configure greeting messages that work across languages.
+
+    <Tabs>
+      <Tab title="Dashboard">
+        1. In the **First Message** field, use this multilingual approach:
+        ```
+        Hello! I'm here to help you with any questions about GlobalTech. I can assist you in English, Spanish, or French. How can I help you today?
+        ```
+        2. **Optional**: Set up language-specific greetings using the `contents` array for more personalized experiences
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        // Option 1: Universal greeting that works in all languages
+        const firstMessage = "Hello! I'm here to help you with any questions about GlobalTech. I can assist you in English, Spanish, or French. How can I help you today?";
+
+        // Option 2: Language-specific greetings using contents array
+        const multilingualGreeting = {
+          contents: [
+            {
+              type: "text",
+              text: "Hello! How can I assist you today?",
+              language: "en"
+            },
+            {
+              type: "text", 
+              text: "¡Hola! ¿Cómo puedo ayudarte hoy?",
+              language: "es"
+            },
+            {
+              type: "text",
+              text: "Bonjour! Comment puis-je vous aider aujourd'hui?",
+              language: "fr"
+            }
+          ]
+        };
+
+        const assistant = await vapi.assistants.create({
+          name: "Multilingual Support Agent",
+          firstMessage: firstMessage,
+          // ... other configuration
+        });
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        # Option 1: Universal greeting that works in all languages
+        first_message = "Hello! I'm here to help you with any questions about GlobalTech. I can assist you in English, Spanish, or French. How can I help you today?"
+
+        # Option 2: Language-specific greetings using contents array
+        multilingual_greeting = {
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "Hello! How can I assist you today?",
+                    "language": "en"
+                },
+                {
+                    "type": "text",
+                    "text": "¡Hola! ¿Cómo puedo ayudarte hoy?", 
+                    "language": "es"
+                },
+                {
+                    "type": "text",
+                    "text": "Bonjour! Comment puis-je vous aider aujourd'hui?",
+                    "language": "fr"
+                }
+            ]
+        }
+
+        assistant = client.assistants.create(
+            name="Multilingual Support Agent",
+            first_message=first_message,
+            # ... other configuration
+        )
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST "https://api.vapi.ai/assistant" \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "name": "Multilingual Support Agent",
+               "firstMessage": "Hello! I'\''m here to help you with any questions about GlobalTech. I can assist you in English, Spanish, or French. How can I help you today?"
+             }'
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Create the complete multilingual assistant">
+    Combine all components into a production-ready multilingual assistant.
+
+    <Tabs>
+      <Tab title="Dashboard">
+        1. **Complete the assistant configuration** with all previous settings
+        2. **Test the assistant** using the built-in testing tools
+        3. **Deploy** by copying the assistant ID for integration
+        4. **Monitor** language detection accuracy in the analytics dashboard
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        import { VapiClient } from "@vapi-ai/server-sdk";
+
+        const vapi = new VapiClient({ token: "YOUR_VAPI_API_KEY" });
+
+        const multilingualAssistant = await vapi.assistants.create({
+          name: "GlobalTech Multilingual Support",
+          
+          // Multilingual transcription
+          transcriber: {
+            provider: "deepgram",
+            model: "nova-2-multilingual",
+            languageBehaviour: "automatic multiple languages",
+            languages: ["en", "es", "fr"]
+          },
+          
+          // Adaptive voice selection
+          voice: {
+            provider: "azure",
+            voiceId: "multilingual-auto"
+          },
+          
+          // Language-aware AI model
+          model: {
+            provider: "openai",
+            model: "gpt-4",
+            maxTokens: 500,
+            messages: [
+              {
+                role: "system",
+                content: `You are a helpful customer support representative for GlobalTech Inc.
+
+                Language Instructions:
+                - Automatically detect and respond in the user's language (English, Spanish, or French)
+                - If the user switches languages, switch with them seamlessly
+                - Always maintain a professional, friendly tone
+                - For complex technical terms, provide brief explanations in the user's language
+
+                Capabilities:
+                - Answer questions about our products and services
+                - Help with account issues and billing inquiries
+                - Provide technical support guidance
+                - Escalate to human agents when needed
+
+                If you're unsure about the language, default to English and ask the user to confirm their preferred language.`
+              }
+            ]
+          },
+          
+          // Multilingual greeting
+          firstMessage: "Hello! I'm here to help you with any questions about GlobalTech. I can assist you in English, Spanish, or French. How can I help you today?",
+          
+          // Analytics for language tracking
+          analysisPlan: {
+            summaryPlan: {
+              enabled: true,
+              prompt: "Summarize this multilingual support call, noting which languages were used and how effectively the language switching was handled."
+            },
+            successEvaluationPlan: {
+              enabled: true,
+              prompt: "Evaluate the success of this multilingual support interaction. Consider language detection accuracy, response appropriateness, and overall user satisfaction.",
+              rubric: "NumericScale"
+            }
+          }
+        });
+
+        console.log(`Multilingual assistant created with ID: ${multilingualAssistant.id}`);
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        from vapi import Vapi
+        import os
+
+        client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+        multilingual_assistant = client.assistants.create(
+            name="GlobalTech Multilingual Support",
+            
+            # Multilingual transcription
+            transcriber={
+                "provider": "deepgram",
+                "model": "nova-2-multilingual",
+                "languageBehaviour": "automatic multiple languages",
+                "languages": ["en", "es", "fr"]
+            },
+            
+            # Adaptive voice selection
+            voice={
+                "provider": "azure",
+                "voiceId": "multilingual-auto"
+            },
+            
+            # Language-aware AI model
+            model={
+                "provider": "openai",
+                "model": "gpt-4",
+                "maxTokens": 500,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": """You are a helpful customer support representative for GlobalTech Inc.
+
+                        Language Instructions:
+                        - Automatically detect and respond in the user's language (English, Spanish, or French)
+                        - If the user switches languages, switch with them seamlessly
+                        - Always maintain a professional, friendly tone
+                        - For complex technical terms, provide brief explanations in the user's language
+
+                        Capabilities:
+                        - Answer questions about our products and services
+                        - Help with account issues and billing inquiries
+                        - Provide technical support guidance
+                        - Escalate to human agents when needed
+
+                        If you're unsure about the language, default to English and ask the user to confirm their preferred language."""
+                    }
+                ]
+            },
+            
+            # Multilingual greeting
+            first_message="Hello! I'm here to help you with any questions about GlobalTech. I can assist you in English, Spanish, or French. How can I help you today?",
+            
+            # Analytics for language tracking
+            analysis_plan={
+                "summaryPlan": {
+                    "enabled": True,
+                    "prompt": "Summarize this multilingual support call, noting which languages were used and how effectively the language switching was handled."
+                },
+                "successEvaluationPlan": {
+                    "enabled": True,
+                    "prompt": "Evaluate the success of this multilingual support interaction. Consider language detection accuracy, response appropriateness, and overall user satisfaction.",
+                    "rubric": "NumericScale"
+                }
+            }
+        )
+
+        print(f"Multilingual assistant created with ID: {multilingual_assistant.id}")
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST "https://api.vapi.ai/assistant" \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "name": "GlobalTech Multilingual Support",
+               "transcriber": {
+                 "provider": "deepgram",
+                 "model": "nova-2-multilingual",
+                 "languageBehaviour": "automatic multiple languages",
+                 "languages": ["en", "es", "fr"]
+               },
+               "voice": {
+                 "provider": "azure",
+                 "voiceId": "multilingual-auto"
+               },
+               "model": {
+                 "provider": "openai",
+                 "model": "gpt-4",
+                 "maxTokens": 500,
+                 "messages": [
+                   {
+                     "role": "system",
+                     "content": "You are a helpful customer support representative for GlobalTech Inc..."
+                   }
+                 ]
+               },
+               "firstMessage": "Hello! I'\''m here to help you with any questions about GlobalTech...",
+               "analysisPlan": {
+                 "summaryPlan": {
+                   "enabled": true,
+                   "prompt": "Summarize this multilingual support call..."
+                 }
+               }
+             }'
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Test language switching scenarios">
+    Validate your multilingual assistant with comprehensive test scenarios.
+
+    **Test Scenarios:**
+    1. **Language Detection**: Start calls in different languages
+    2. **Mid-conversation Switching**: Switch languages during the call
+    3. **Mixed Language Input**: Use multiple languages in a single sentence
+    4. **Technical Terms**: Test complex vocabulary handling
+    5. **Cultural Context**: Verify appropriate cultural responses
+
+    **Sample Test Script:**
+    ```javascript
+    // Test language detection and switching
+    const testCases = [
+      {
+        scenario: "English to Spanish switch",
+        input: "Hello, I need help... Necesito ayuda con mi cuenta"
+      },
+      {
+        scenario: "French start",
+        input: "Bonjour, j'ai un problème avec ma commande"
+      },
+      {
+        scenario: "Mixed language technical",
+        input: "My password reset no funciona, ¿puedes ayudarme?"
+      }
+    ];
+    ```
+
+    Monitor the call analytics to track:
+    - Language detection accuracy
+    - Response appropriateness 
+    - Voice quality per language
+    - User satisfaction scores
+  </Step>
+</Steps>
+
+## Advanced multilingual features
+
+### Language-specific tool messages
+
+Configure different tool messages for each language:
+
+```typescript
+const toolMessages = {
+  requestStart: {
+    contents: [
+      {
+        type: "text",
+        text: "Let me look that up for you...",
+        language: "en"
+      },
+      {
+        type: "text", 
+        text: "Déjame revisar eso para ti...",
+        language: "es"
+      },
+      {
+        type: "text",
+        text: "Laissez-moi vérifier cela pour vous...",
+        language: "fr"
+      }
+    ]
+  }
+};
+```
+
+### Cultural context awareness
+
+Add cultural context to your system prompt:
+
+```
+Cultural Guidelines:
+- English: Direct, friendly, professional tone
+- Spanish: Warm, respectful, use formal "usted" initially
+- French: Polite, formal, use proper greeting conventions
+- Adapt response style to match cultural expectations
+```
+
+### Regional voice variations
+
+Configure region-specific voices for better localization:
+
+```typescript
+const regionalVoices = {
+  "en-US": "en-US-AriaNeural",
+  "en-GB": "en-GB-SoniaNeural", 
+  "es-ES": "es-ES-ElviraNeural",
+  "es-MX": "es-MX-DaliaNeural",
+  "fr-FR": "fr-FR-DeniseNeural",
+  "fr-CA": "fr-CA-SylvieNeural"
+};
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Language detection is inaccurate">
+    **Common causes:**
+    - Background noise affecting audio quality
+    - Mixed languages confusing the model
+    - Regional accents not recognized
+
+    **Solutions:**
+    - Use noise reduction preprocessing
+    - Provide language hints in your configuration
+    - Test with native speakers of target languages
+    - Consider manual language specification for known users
+  </Accordion>
+
+  <Accordion title="Voice quality varies between languages">
+    **Common causes:**
+    - Different voice providers have varying quality per language
+    - Some languages have fewer high-quality voice options
+
+    **Solutions:**
+    - Test different voice providers for each language
+    - Use Azure for maximum language coverage
+    - Configure fallback voices as backup options
+    - Consider ElevenLabs for premium languages
+  </Accordion>
+
+  <Accordion title="Assistant switches languages unexpectedly">
+    **Common causes:**
+    - Transcription errors triggering language switches
+    - Ambiguous input being misclassified
+    - System prompt not handling edge cases
+
+    **Solutions:**
+    - Add language persistence instructions to your prompt
+    - Use confidence thresholds for language switching
+    - Implement confirmation for language changes
+    - Monitor transcription accuracy in analytics
+  </Accordion>
+
+  <Accordion title="Cultural context feels off">
+    **Common causes:**
+    - Generic responses not adapted to cultural norms
+    - Missing cultural context in training data
+    - Inappropriate formality levels
+
+    **Solutions:**
+    - Add cultural guidelines to your system prompt
+    - Test with native speakers from target cultures
+    - Include cultural context in your training examples
+    - Adjust response style per language/region
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+Now that you have a multilingual customer support agent:
+
+- **[Multilingual feature overview](../../../customization/multilingual):** Learn about all multilingual capabilities
+- **[Phone Integration](../../../phone-calling):** Connect your multilingual agent to phone systems
+- **[Analytics & Monitoring](../../../call-analysis):** Track language usage and performance metrics
+- **[Advanced Workflows](../../../workflows/overview):** Build complex multilingual business processes
