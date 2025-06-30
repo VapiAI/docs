@@ -1413,43 +1413,6 @@
         ]
       }
     },
-    "/support/ticket": {
-      "post": {
-        "operationId": "SupportController_createTicket",
-        "summary": "Create Support Ticket",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSupportTicketDTO"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SupportTicketResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Support"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
     "/assistant": {
       "post": {
         "operationId": "AssistantController_create",
@@ -4041,53 +4004,6 @@
         ]
       }
     },
-    "/workflow/generate": {
-      "post": {
-        "operationId": "WorkflowController_generateFromTranscripts",
-        "summary": "Generate Workflow JSON from Transcript Files",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenerateWorkflowDTO"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowUserEditable"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowUserEditable"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Workflow"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
     "/squad": {
       "post": {
         "operationId": "SquadController_create",
@@ -6030,20 +5946,41 @@
       "NodeArtifact": {
         "type": "object",
         "properties": {
-          "nodeName": {
-            "type": "string",
-            "description": "This is the node id."
-          },
           "messages": {
-            "description": "This is the messages that were spoken during the node.",
             "type": "array",
+            "description": "These are the messages that were spoken during the node.",
             "items": {
-              "type": "object"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/UserMessage",
+                  "title": "UserMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/SystemMessage",
+                  "title": "SystemMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/BotMessage",
+                  "title": "BotMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolCallMessage",
+                  "title": "ToolCallMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolCallResultMessage",
+                  "title": "ToolCallResultMessage"
+                }
+              ]
             }
           },
-          "variables": {
+          "nodeName": {
+            "type": "string",
+            "description": "This is the node name."
+          },
+          "variableValues": {
             "type": "object",
-            "description": "This is the object containing the variables extracted from the node."
+            "description": "These are the variable values that were extracted from the node."
           }
         }
       },
@@ -6128,9 +6065,9 @@
               "$ref": "#/components/schemas/NodeArtifact"
             }
           },
-          "variables": {
+          "variableValues": {
             "type": "object",
-            "description": "This is the state of variables at the end of the workflow execution."
+            "description": "These are the variable values at the end of the workflow execution."
           }
         }
       },
@@ -9897,6 +9834,25 @@
             "type": "string",
             "description": "This is the description to help the model understand what it needs to output."
           },
+          "pattern": {
+            "type": "string",
+            "description": "This is the pattern of the string. This is a regex that will be used to validate the data in question. To use a common format, use the `format` property instead.\n\nOpenAI documentation: https://platform.openai.com/docs/guides/structured-outputs#supported-properties"
+          },
+          "format": {
+            "type": "string",
+            "description": "This is the format of the string. To pass a regex, use the `pattern` property instead.\n\nOpenAI documentation: https://platform.openai.com/docs/guides/structured-outputs?api-mode=chat&type-restrictions=string-restrictions",
+            "enum": [
+              "date-time",
+              "time",
+              "date",
+              "duration",
+              "email",
+              "hostname",
+              "ipv4",
+              "ipv6",
+              "uuid"
+            ]
+          },
           "required": {
             "description": "This is a list of properties that are required.\n\nThis only makes sense if the type is \"object\".",
             "type": "array",
@@ -9904,20 +9860,16 @@
               "type": "string"
             }
           },
-          "value": {
-            "type": "string",
-            "description": "This the value that will be used in filling the property."
-          },
-          "target": {
-            "type": "string",
-            "description": "This the target variable that will be filled with the value of this property."
-          },
           "enum": {
             "description": "This array specifies the allowed values that can be used to restrict the output of the model.",
             "type": "array",
             "items": {
               "type": "string"
             }
+          },
+          "title": {
+            "type": "string",
+            "description": "This is the title of the schema."
           }
         },
         "required": [
@@ -14063,16 +14015,44 @@
           }
         }
       },
+      "VariableExtractionAlias": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "This is the key of the variable.\n\nThis variable will be accessible during the call as `{{key}}` and stored in `call.artifact.variableValues` after the call.\n\nRules:\n- Must start with a letter (a-z, A-Z).\n- Subsequent characters can be letters, numbers, or underscores.\n- Minimum length of 1 and maximum length of 40.",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "/^[a-zA-Z][a-zA-Z0-9_]*$/"
+          },
+          "value": {
+            "type": "string",
+            "description": "This is the value of the variable.\n\nThis can reference existing variables, use filters, and perform transformations.\n\nExamples: \"{{name}}\", \"{{customer.email}}\", \"Hello {{name | upcase}}\"",
+            "maxLength": 10000
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ]
+      },
       "VariableExtractionPlan": {
         "type": "object",
         "properties": {
           "schema": {
-            "description": "This is the schema of parameters we want to extract from the response",
+            "description": "This is the schema to extract.\n\nExamples:\n1. To extract object properties, you can use the following schema:\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"string\"\n    },\n    \"age\": {\n      \"type\": \"number\"\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}` and `{{ age }}` respectively. To emphasize, object properties are extracted as direct global variables.\n\n2. To extract nested properties, you can use the following schema:\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"first\": {\n          \"type\": \"string\"\n        },\n        \"last\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}`. And, `{{ name.first }}` and `{{ name.last }}` will be accessible.\n\n3. To extract array items, you can use the following schema:\n```json\n{\n  \"type\": \"array\",\n  \"title\": \"zipCodes\",\n  \"items\": {\n    \"type\": \"string\"\n  }\n}\n```\n\nThis will be extracted as `{{ zipCodes }}`. To access the array items, you can use `{{ zipCodes[0] }}` and `{{ zipCodes[1] }}`.\n\n4. To extract array of objects, you can use the following schema:\n\n```json\n{\n  \"type\": \"array\",\n  \"name\": \"people\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"string\"\n      },\n      \"age\": {\n        \"type\": \"number\"\n      },\n      \"zipCodes\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ people }}`. To access the array items, you can use `{{ people[n].name }}`, `{{ people[n].age }}`, `{{ people[n].zipCodes }}`, `{{ people[n].zipCodes[0] }}` and `{{ people[n].zipCodes[1] }}`.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/JsonSchema"
               }
             ]
+          },
+          "aliases": {
+            "description": "These are additional variables to create.\n\nThese will be accessible during the call as `{{key}}` and stored in `call.artifact.variableValues` after the call.\n\nExample:\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{name}}\"\n    },\n    {\n      \"key\": \"fullName\",\n      \"value\": \"{{firstName}} {{lastName}}\"\n    },\n    {\n      \"key\": \"greeting\",\n      \"value\": \"Hello {{name}}, welcome to {{company}}!\"\n    },\n    {\n      \"key\": \"customerEmail\",\n      \"value\": \"{{addresses[0].city}}\"\n    },\n    {\n      \"key\": \"something\",\n      \"value\": \"{{any liquid}}\"\n    }\n  ]\n}\n```\n\nThis will create variables `customerName`, `fullName`, `customerEmail`, `greeting`, and `something`. To access these variables, you can reference them as `{{customerName}}`, `{{fullName}}`, `{{customerEmail}}`, `{{greeting}}`, and `{{something}}`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariableExtractionAlias"
+            }
           }
         }
       },
@@ -14238,7 +14218,7 @@
             ]
           },
           "variableExtractionPlan": {
-            "description": "This is the plan that controls the variable extraction from the user's response.",
+            "description": "This is the plan that controls the variable extraction from the user's responses.\n\nUsage:\nUse `schema` to specify what you want to extract from the user's responses.\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"user\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": {\n            \"type\": \"string\"\n          },\n          \"age\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ user.name }}` and `{{ user.age }}` respectively.\n\n(Optional) Use `aliases` to create new variables.\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"userAge\",\n      \"value\": \"{{user.age}}\"\n    },\n    {\n      \"key\": \"userName\",\n      \"value\": \"{{user.name}}\"\n    }\n  ]\n}\n```\n\nThis will be extracted as `{{ userAge }}` and `{{ userName }}` respectively.\n\nNote: The `schema` field is required for Conversation nodes if you want to extract variables from the user's responses. `aliases` is just a convenience.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/VariableExtractionPlan"
@@ -26244,6 +26224,10 @@
             "type": "string",
             "description": "This is the unique identifier for the streaming response."
           },
+          "sessionId": {
+            "type": "string",
+            "description": "This is the ID of the session that will be used for the chat.\nHelps track conversation context across multiple messages."
+          },
           "path": {
             "type": "string",
             "description": "This is the path to the content being updated.\nFormat: `chat.output[{contentIndex}].content` where contentIndex identifies the specific content item.",
@@ -27422,73 +27406,6 @@
         "required": [
           "results",
           "metadata"
-        ]
-      },
-      "CreateSupportTicketDTO": {
-        "type": "object",
-        "properties": {
-          "category": {
-            "type": "string",
-            "description": "The category of the support request",
-            "enum": [
-              "bug-report",
-              "feature-request",
-              "doc-update",
-              "pricing",
-              "sales",
-              "others"
-            ]
-          },
-          "bugSubcategory": {
-            "type": "string",
-            "description": "The subcategory for bug reports",
-            "enum": [
-              "call-forwarding",
-              "tools-calling",
-              "prompting",
-              "workflows",
-              "assistant",
-              "latency",
-              "assistant-speaks-slow",
-              "assistant-doesnt-respond",
-              "endpointing",
-              "others"
-            ]
-          },
-          "subject": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "The subject/title of the support request"
-          },
-          "message": {
-            "type": "string",
-            "minLength": 10,
-            "maxLength": 5000,
-            "description": "Detailed description of the issue or request"
-          },
-          "callDetails": {
-            "type": "string",
-            "maxLength": 1000,
-            "description": "Call IDs and recording URLs if applicable"
-          }
-        },
-        "required": [
-          "category",
-          "subject",
-          "message"
-        ]
-      },
-      "SupportTicketResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "The unique identifier for the support ticket"
-          }
-        },
-        "required": [
-          "id"
         ]
       },
       "Assistant": {
@@ -30694,7 +30611,7 @@
             ]
           },
           "variableExtractionPlan": {
-            "description": "This is the plan that controls the variable extraction from the tool's response.",
+            "description": "This is the plan to extract variables from the tool's response. These will be accessible during the call and stored in `call.artifact.variableValues` after the call.\n\nUsage:\n1. Use `aliases` to extract variables from the tool's response body. (Most common case)\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{customer.name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{customer.age}}\"\n    }\n  ]\n}\n```\n\nThe tool response body is made available to the liquid template.\n\n2. Use `aliases` to extract variables from the tool's response body if the response is an array.\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{$[0].name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{$[0].age}}\"\n    }\n  ]\n}\n```\n\n`$` is a shorthand for the tool's response body. `$[0]` is the first item in the array. `$[n]` is the nth item in the array. Note, `$` is available regardless of the response body type (both object and array).\n\n3. Use `aliases` to extract variables from the tool's response headers.\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{tool.response.headers.customer-name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{tool.response.headers.customer-age}}\"\n    }\n  ]\n}\n```\n\n`tool.response` is made available to the liquid template. Particularly, both `tool.response.headers` and `tool.response.body` are available. Note, `tool.response` is available regardless of the response body type (both object and array).\n\n4. Use `schema` to extract a large portion of the tool's response body.\n\n4.1. If you hit example.com and it returns `{\"name\": \"John\", \"age\": 30}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"string\"\n      },\n      \"age\": {\n        \"type\": \"number\"\n      }\n    }\n  }\n}\n```\n\n4.2. If you hit example.com and it returns `{\"name\": {\"first\": \"John\", \"last\": \"Doe\"}}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"first\": {\n            \"type\": \"string\"\n          },\n          \"last\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}` and `{{ age }}` respectively. To emphasize, object properties are extracted as direct global variables.\n\n4.3. If you hit example.com and it returns `{\"name\": {\"first\": \"John\", \"last\": \"Doe\"}}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"first\": {\n            \"type\": \"string\"\n          },\n          \"last\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}`. And, `{{ name.first }}` and `{{ name.last }}` will be accessible.\n\n4.4. If you hit example.com and it returns `[\"94123\", \"94124\"]`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"array\",\n    \"title\": \"zipCodes\",\n    \"items\": {\n      \"type\": \"string\"\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ zipCodes }}`. To access the array items, you can use `{{ zipCodes[0] }}` and `{{ zipCodes[1] }}`.\n\n4.5. If you hit example.com and it returns `[{\"name\": \"John\", \"age\": 30, \"zipCodes\": [\"94123\", \"94124\"]}, {\"name\": \"Jane\", \"age\": 25, \"zipCodes\": [\"94125\", \"94126\"]}]`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"array\",\n    \"title\": \"people\",\n    \"items\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"age\": {\n          \"type\": \"number\"\n        },\n        \"zipCodes\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ people }}`. To access the array items, you can use `{{ people[n].name }}`, `{{ people[n].age }}`, `{{ people[n].zipCodes }}`, `{{ people[n].zipCodes[0] }}` and `{{ people[n].zipCodes[1] }}`.\n\nNote: Both `aliases` and `schema` can be used together.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/VariableExtractionPlan"
@@ -32396,7 +32313,7 @@
             ]
           },
           "variableExtractionPlan": {
-            "description": "This is the plan that controls the variable extraction from the tool's response.",
+            "description": "This is the plan to extract variables from the tool's response. These will be accessible during the call and stored in `call.artifact.variableValues` after the call.\n\nUsage:\n1. Use `aliases` to extract variables from the tool's response body. (Most common case)\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{customer.name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{customer.age}}\"\n    }\n  ]\n}\n```\n\nThe tool response body is made available to the liquid template.\n\n2. Use `aliases` to extract variables from the tool's response body if the response is an array.\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{$[0].name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{$[0].age}}\"\n    }\n  ]\n}\n```\n\n`$` is a shorthand for the tool's response body. `$[0]` is the first item in the array. `$[n]` is the nth item in the array. Note, `$` is available regardless of the response body type (both object and array).\n\n3. Use `aliases` to extract variables from the tool's response headers.\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{tool.response.headers.customer-name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{tool.response.headers.customer-age}}\"\n    }\n  ]\n}\n```\n\n`tool.response` is made available to the liquid template. Particularly, both `tool.response.headers` and `tool.response.body` are available. Note, `tool.response` is available regardless of the response body type (both object and array).\n\n4. Use `schema` to extract a large portion of the tool's response body.\n\n4.1. If you hit example.com and it returns `{\"name\": \"John\", \"age\": 30}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"string\"\n      },\n      \"age\": {\n        \"type\": \"number\"\n      }\n    }\n  }\n}\n```\n\n4.2. If you hit example.com and it returns `{\"name\": {\"first\": \"John\", \"last\": \"Doe\"}}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"first\": {\n            \"type\": \"string\"\n          },\n          \"last\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}` and `{{ age }}` respectively. To emphasize, object properties are extracted as direct global variables.\n\n4.3. If you hit example.com and it returns `{\"name\": {\"first\": \"John\", \"last\": \"Doe\"}}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"first\": {\n            \"type\": \"string\"\n          },\n          \"last\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}`. And, `{{ name.first }}` and `{{ name.last }}` will be accessible.\n\n4.4. If you hit example.com and it returns `[\"94123\", \"94124\"]`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"array\",\n    \"title\": \"zipCodes\",\n    \"items\": {\n      \"type\": \"string\"\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ zipCodes }}`. To access the array items, you can use `{{ zipCodes[0] }}` and `{{ zipCodes[1] }}`.\n\n4.5. If you hit example.com and it returns `[{\"name\": \"John\", \"age\": 30, \"zipCodes\": [\"94123\", \"94124\"]}, {\"name\": \"Jane\", \"age\": 25, \"zipCodes\": [\"94125\", \"94126\"]}]`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"array\",\n    \"title\": \"people\",\n    \"items\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"age\": {\n          \"type\": \"number\"\n        },\n        \"zipCodes\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ people }}`. To access the array items, you can use `{{ people[n].name }}`, `{{ people[n].age }}`, `{{ people[n].zipCodes }}`, `{{ people[n].zipCodes[0] }}` and `{{ people[n].zipCodes[1] }}`.\n\nNote: Both `aliases` and `schema` can be used together.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/VariableExtractionPlan"
@@ -32831,7 +32748,7 @@
             ]
           },
           "variableExtractionPlan": {
-            "description": "This is the plan that controls the variable extraction from the tool's response.",
+            "description": "This is the plan to extract variables from the tool's response. These will be accessible during the call and stored in `call.artifact.variableValues` after the call.\n\nUsage:\n1. Use `aliases` to extract variables from the tool's response body. (Most common case)\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{customer.name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{customer.age}}\"\n    }\n  ]\n}\n```\n\nThe tool response body is made available to the liquid template.\n\n2. Use `aliases` to extract variables from the tool's response body if the response is an array.\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{$[0].name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{$[0].age}}\"\n    }\n  ]\n}\n```\n\n`$` is a shorthand for the tool's response body. `$[0]` is the first item in the array. `$[n]` is the nth item in the array. Note, `$` is available regardless of the response body type (both object and array).\n\n3. Use `aliases` to extract variables from the tool's response headers.\n\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{tool.response.headers.customer-name}}\"\n    },\n    {\n      \"key\": \"customerAge\",\n      \"value\": \"{{tool.response.headers.customer-age}}\"\n    }\n  ]\n}\n```\n\n`tool.response` is made available to the liquid template. Particularly, both `tool.response.headers` and `tool.response.body` are available. Note, `tool.response` is available regardless of the response body type (both object and array).\n\n4. Use `schema` to extract a large portion of the tool's response body.\n\n4.1. If you hit example.com and it returns `{\"name\": \"John\", \"age\": 30}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"string\"\n      },\n      \"age\": {\n        \"type\": \"number\"\n      }\n    }\n  }\n}\n```\n\n4.2. If you hit example.com and it returns `{\"name\": {\"first\": \"John\", \"last\": \"Doe\"}}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"first\": {\n            \"type\": \"string\"\n          },\n          \"last\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}` and `{{ age }}` respectively. To emphasize, object properties are extracted as direct global variables.\n\n4.3. If you hit example.com and it returns `{\"name\": {\"first\": \"John\", \"last\": \"Doe\"}}`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"first\": {\n            \"type\": \"string\"\n          },\n          \"last\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}`. And, `{{ name.first }}` and `{{ name.last }}` will be accessible.\n\n4.4. If you hit example.com and it returns `[\"94123\", \"94124\"]`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"array\",\n    \"title\": \"zipCodes\",\n    \"items\": {\n      \"type\": \"string\"\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ zipCodes }}`. To access the array items, you can use `{{ zipCodes[0] }}` and `{{ zipCodes[1] }}`.\n\n4.5. If you hit example.com and it returns `[{\"name\": \"John\", \"age\": 30, \"zipCodes\": [\"94123\", \"94124\"]}, {\"name\": \"Jane\", \"age\": 25, \"zipCodes\": [\"94125\", \"94126\"]}]`, then you can specify the schema as:\n\n```json\n{\n  \"schema\": {\n    \"type\": \"array\",\n    \"title\": \"people\",\n    \"items\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"age\": {\n          \"type\": \"number\"\n        },\n        \"zipCodes\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ people }}`. To access the array items, you can use `{{ people[n].name }}`, `{{ people[n].age }}`, `{{ people[n].zipCodes }}`, `{{ people[n].zipCodes[0] }}` and `{{ people[n].zipCodes[1] }}`.\n\nNote: Both `aliases` and `schema` can be used together.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/VariableExtractionPlan"
@@ -35128,17 +35045,6 @@
           },
           "credentialIds": {
             "description": "These are the credentials that will be used for the workflow calls. By default, all the credentials are available for use in the call but you can provide a subset using this.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "GenerateWorkflowDTO": {
-        "type": "object",
-        "properties": {
-          "toolIds": {
             "type": "array",
             "items": {
               "type": "string"
