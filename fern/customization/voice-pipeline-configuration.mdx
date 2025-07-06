@@ -1,0 +1,491 @@
+---
+title: Voice pipeline configuration
+subtitle: Configure start and stop speaking plans for natural conversation flow
+slug: customization/voice-pipeline-configuration
+description: Complete guide to configuring VAPI's voice pipeline for optimal conversation timing and interruption handling
+---
+
+## Overview
+
+Configure VAPI's voice pipeline to create natural conversation experiences through precise timing control. This guide covers how voice data moves through processing stages and how to optimize endpointing and interruption detection.
+
+**Voice pipeline configuration enables you to:**
+
+- Fine-tune conversation timing for specific use cases
+- Control when and how your assistant begins responding
+- Configure interruption detection and recovery behavior
+- Optimize response timing for different languages and contexts
+
+For implementation examples, see **[Configuration examples](#configuration-examples)**.
+
+## Quick start
+
+### English conversations (recommended)
+
+```json
+{
+  "startSpeakingPlan": {
+    "smartEndpointingPlan": {
+      "provider": "livekit",
+      "waitFunction": "2000 / (1 + exp(-10 * (x - 0.5)))"
+    },
+    "waitSeconds": 0.4
+  },
+  "stopSpeakingPlan": {
+    "numWords": 0,
+    "voiceSeconds": 0.2,
+    "backoffSeconds": 1.0
+  }
+}
+```
+
+**What this provides:**
+
+- Smart endpointing detects when users finish speaking (English only)
+- Fast interruption using voice detection (50-100ms response)
+- Natural timing with balanced wait periods
+
+### Non-English languages
+
+```json
+{
+  "startSpeakingPlan": {
+    "transcriptionEndpointingPlan": {
+      "onPunctuationSeconds": 0.1,
+      "onNoPunctuationSeconds": 1.5,
+      "onNumberSeconds": 0.5
+    },
+    "waitSeconds": 0.4
+  },
+  "stopSpeakingPlan": {
+    "numWords": 0,
+    "voiceSeconds": 0.2,
+    "backoffSeconds": 1.0
+  }
+}
+```
+
+**What this provides:**
+
+- Text-based endpointing works with any language
+- Punctuation detection for natural conversation flow
+- Same fast interruption and timing as English setup
+
+## Voice pipeline flow
+
+### Complete processing pipeline
+
+```
+User Audio → VAD → Transcription → Start Speaking Decision → LLM → TTS → waitSeconds → Assistant Audio
+```
+
+### Start speaking process
+
+<Steps>
+  <Step title="User stops speaking">
+    Voice Activity Detection (VAD) detects utterance-stop
+  </Step>
+  <Step title="Endpointing decision">
+    System evaluates completion using: - Custom Rules (highest priority) - Smart
+    Endpointing Plan (LiveKit for English) - Transcription Endpointing Plan
+    (fallback)
+  </Step>
+  <Step title="Response generation">
+    LLM request sent immediately → TTS processes → waitSeconds applied →
+    Assistant speaks
+  </Step>
+</Steps>
+
+### Stop speaking process
+
+<Steps>
+  <Step title="User starts speaking">
+    VAD detects utterance-start during assistant speech
+  </Step>
+  <Step title="Interruption evaluation">
+    System checks for: - `interruptionPhrases` → Instant pipeline clear -
+    `acknowledgementPhrases` → Ignore interruption - Threshold evaluation based
+    on `numWords` setting
+  </Step>
+  <Step title="Pipeline management">
+    If threshold met → Clear pipeline → Apply `backoffSeconds` → Ready for next
+    input
+  </Step>
+</Steps>
+
+## Start speaking plan
+
+The start speaking plan determines when your assistant begins responding after a user stops talking.
+
+### Transcription endpointing
+
+Analyzes transcription text to determine user completion based on patterns like punctuation and numbers.
+
+<Tabs>
+  <Tab title="Configuration">
+    ```json
+    {
+      "startSpeakingPlan": {
+        "transcriptionEndpointingPlan": {
+          "onPunctuationSeconds": 0.1,
+          "onNoPunctuationSeconds": 1.5,
+          "onNumberSeconds": 0.5
+        },
+        "waitSeconds": 0.4
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Properties">
+    **onPunctuationSeconds** (Default: 0.1)  
+    Wait time after punctuation marks are detected
+
+    **onNoPunctuationSeconds** (Default: 1.5)
+    Wait time when no punctuation is detected
+
+    **onNumberSeconds** (Default: 0.5)
+    Wait time after numbers are detected
+
+  </Tab>
+</Tabs>
+
+**When to use:**
+
+- Non-English languages (LiveKit not supported)
+- Fallback when smart endpointing unavailable
+- Predictable, rule-based endpointing behavior
+
+### Smart endpointing
+
+Uses AI models to analyze speech patterns, context, and audio cues to predict when users have finished speaking. Only available for English conversations.
+
+<Tabs>
+  <Tab title="Configuration">
+    ```json
+    {
+      "startSpeakingPlan": {
+        "smartEndpointingPlan": {
+          "provider": "livekit",
+          "waitFunction": "2000 / (1 + exp(-10 * (x - 0.5)))"
+        },
+        "waitSeconds": 0.4
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Providers">
+    **livekit**  
+    Advanced model trained on conversation data (recommended for English)
+
+    **vapi**
+    Alternative VAPI-trained model
+
+  </Tab>
+</Tabs>
+
+**When to use:**
+
+- English conversations
+- Natural conversation flow requirements
+- Reduced false endpointing triggers
+
+### Wait function
+
+Mathematical expression that determines wait time based on speech completion probability. The function takes a confidence value (0-1) and returns a wait time in milliseconds.
+
+**Aggressive (Fast Response):**
+
+```json
+"waitFunction": "2000 / (1 + exp(-10 * (x - 0.5)))"
+```
+
+- **Behavior:** Responds quickly when confident user is done speaking
+- **Use case:** Customer service, gaming, real-time interactions
+- **Timing:** ~200ms wait at 50% confidence, ~50ms at 90% confidence
+
+**Normal (Balanced):**
+
+```json
+"waitFunction": "(20 + 500 * sqrt(x) + 2500 * x^3 + 700 + 4000 * max(0, x-0.5)) / 2"
+```
+
+- **Behavior:** Waits for natural pauses in conversation
+- **Use case:** Most conversations, general purpose
+- **Timing:** ~800ms wait at 50% confidence, ~300ms at 90% confidence
+
+**Conservative (Careful Response):**
+
+```json
+"waitFunction": "700 + 4000 * max(0, x-0.5)"
+```
+
+- **Behavior:** Very patient, rarely interrupts users
+- **Use case:** Healthcare, formal settings, sensitive conversations
+- **Timing:** ~2700ms wait at 50% confidence, ~700ms at 90% confidence
+
+### Wait seconds
+
+Final audio delay applied after all processing completes, before the assistant speaks.
+
+**Range:** 0-5 seconds (Default: 0.4)
+
+**Recommended settings:**
+
+- **0.0-0.2:** Gaming, real-time interactions
+- **0.3-0.5:** Standard conversations, customer service
+- **0.6-0.8:** Healthcare, formal settings
+
+#### Pipeline timing relationship
+
+`waitSeconds` is applied at the END of the voice pipeline processing:
+
+```
+Endpointing Triggers → LLM Processes → TTS Generates → waitSeconds Delay → Assistant Speaks
+```
+
+**Relationship with other timing components:**
+
+- **Endpointing timing:** Varies by method (smart vs transcription)
+- **LLM processing:** ~800ms average for standard responses
+- **TTS generation:** ~500ms average for short responses
+- **waitSeconds:** Applied as final delay before audio output
+
+#### Complete pipeline timeline
+
+Understanding exact timing helps optimize your voice pipeline configuration. This timeline shows what happens at every moment during the conversation flow.
+
+```
+0.0s: User stops speaking
+0.1s: Smart endpointing evaluation begins
+0.6s: Smart endpointing triggers (varies by waitFunction)
+0.6s: LLM request sent immediately
+1.4s: LLM response received (0.8s processing)
+1.9s: TTS audio generated (0.5s processing)
+1.9s: waitSeconds (0.4s) starts
+2.3s: Assistant begins speaking
+```
+
+**Total Response Time:** Smart Endpointing (0.6s) + LLM (0.8s) + TTS (0.5s) + waitSeconds (0.4s) = **2.3s**
+
+**Key optimization insights:**
+
+- The 0.6s endpointing time varies based on your waitFunction choice
+- Aggressive functions reduce endpointing to ~0.2s
+- Conservative functions increase endpointing to ~2.7s
+- Total response time ranges from 1.9s (aggressive) to 4.7s (conservative)
+
+### Custom endpointing rules
+
+Highest priority rules that override all other endpointing decisions when patterns match.
+
+```json
+{
+  "customEndpointingRules": [
+    {
+      "type": "assistant",
+      "regex": "(phone|email|address)",
+      "timeoutSeconds": 3.0
+    },
+    {
+      "type": "user",
+      "regex": "\\d{3}-\\d{3}-\\d{4}",
+      "timeoutSeconds": 2.0
+    }
+  ]
+}
+```
+
+**Use cases:**
+
+- **Data collection:** Extended wait times for phone numbers, addresses
+- **Spelling:** Extra time for letter-by-letter input
+- **Complex responses:** Additional processing time for detailed information
+
+## Stop speaking plan
+
+The stop speaking plan controls how interruptions are detected and handled when users speak while the assistant is talking.
+
+### Number of words
+
+Sets the interruption detection method and threshold.
+
+**VAD-based (numWords = 0):**
+
+```json
+{
+  "stopSpeakingPlan": {
+    "numWords": 0,
+    "voiceSeconds": 0.2
+  }
+}
+```
+
+- **How it works:** Uses Voice Activity Detection for faster interruption (50-100ms)
+- **Benefits:** Language independent, very responsive
+- **Considerations:** More sensitive to background noise
+
+**Transcription-based (numWords > 0):**
+
+```json
+{
+  "stopSpeakingPlan": {
+    "numWords": 2
+  }
+}
+```
+
+- **How it works:** Waits for specified number of transcribed words
+- **Benefits:** More accurate, reduces false positives
+- **Considerations:** Slower response (200-500ms delay)
+
+**Range:** 0-10 words (Default: 0)
+
+### Voice seconds
+
+VAD duration threshold when `numWords = 0`. Determines how long voice activity must be detected before triggering an interruption.
+
+**Range:** 0-0.5 seconds (Default: 0.2)
+
+**Recommended settings:**
+
+- **0.1:** Very sensitive (risk of background noise triggering)
+- **0.2:** Balanced sensitivity (recommended)
+- **0.4:** Conservative (reduces false positives)
+
+#### The numWords=0 and voiceSeconds relationship
+
+When `numWords = 0`, the voice pipeline uses **Voice Activity Detection (VAD)** instead of waiting for transcription:
+
+```
+User Starts Speaking → VAD Detects Voice → Continuous for voiceSeconds Duration → Interrupt Assistant
+```
+
+**Why this matters:**
+
+- **Faster:** VAD detection ~50-100ms vs transcription 200-500ms
+- **More sensitive:** Detects "um", "uh", throat clearing, background noise
+- **Language independent:** Works with any language
+
+### Backoff seconds
+
+Duration that blocks all assistant audio output after user interruption, creating a recovery period.
+
+**Range:** 0-10 seconds (Default: 1.0)
+
+**Recommended settings:**
+
+- **0.5:** Quick recovery for fast-paced interactions
+- **1.0:** Natural pause for most conversations
+- **2.0:** Deliberate pause for formal settings
+
+#### Pipeline timing relationship
+
+```
+User Interrupts → Assistant Audio Stopped → backoffSeconds Blocks All Output → Ready for New Input
+```
+
+**Relationship with waitSeconds:**
+
+- `backoffSeconds`: Applied during interruption (blocks output)
+- `waitSeconds`: Applied to normal responses (delays output)
+- **Sequential, not cumulative:** `backoffSeconds` completes first, then normal flow resumes with `waitSeconds`
+
+#### Complete interruption timeline
+
+**How to read this timeline:** This shows the complete flow from interruption to recovery. Notice how backoffSeconds creates a "quiet period" before normal processing resumes.
+
+```
+0.0s: Assistant speaking: "I can help you book..."
+1.2s: User interrupts: "Actually, wait"
+1.2s: backoffSeconds (1.0s) starts → All audio blocked
+2.2s: backoffSeconds completes → Ready for new input
+2.5s: User says: "What about tomorrow?"
+3.0s: Endpointing triggers → LLM processes
+3.8s: TTS completes → waitSeconds (0.4s) starts
+4.2s: Assistant responds: "For tomorrow..."
+```
+
+**Total Recovery Time:** backoffSeconds (1.0s) + normal processing (1.8s) + waitSeconds (0.4s) = **3.2s**
+
+**Key insight:** Adjust backoffSeconds based on how quickly you want the assistant to recover from interruptions. Healthcare might use 2.0s for deliberate pauses, while gaming might use 0.5s for quick recovery.
+
+## Configuration examples
+
+### E-commerce customer support
+
+```json
+{
+  "startSpeakingPlan": {
+    "waitSeconds": 0.4,
+    "smartEndpointingPlan": {
+      "provider": "livekit",
+      "waitFunction": "2000 / (1 + exp(-10 * (x - 0.5)))"
+    }
+  },
+  "stopSpeakingPlan": {
+    "numWords": 0,
+    "voiceSeconds": 0.15,
+    "backoffSeconds": 0.8
+  }
+}
+```
+
+**Optimized for:** Fast response to quick customer queries, efficient order status and product questions.
+
+### Non-English languages (Spanish example)
+
+```json
+{
+  "transcriber": { "language": "es" },
+  "startSpeakingPlan": {
+    "waitSeconds": 0.4,
+    "transcriptionEndpointingPlan": {
+      "onPunctuationSeconds": 0.1,
+      "onNoPunctuationSeconds": 2.0
+    }
+  },
+  "stopSpeakingPlan": {
+    "numWords": 0,
+    "voiceSeconds": 0.3,
+    "backoffSeconds": 1.2
+  }
+}
+```
+
+**Optimized for:** Text-based endpointing with longer timeouts for different speech patterns and international support.
+
+### Education and training
+
+```json
+{
+  "startSpeakingPlan": {
+    "waitSeconds": 0.7,
+    "smartEndpointingPlan": {
+      "provider": "livekit",
+      "waitFunction": "(20 + 500 * sqrt(x) + 2500 * x^3 + 700 + 4000 * max(0, x-0.5)) / 2"
+    },
+    "customEndpointingRules": [
+      {
+        "type": "assistant",
+        "regex": "(spell|define|explain|example)",
+        "timeoutSeconds": 4.0
+      }
+    ]
+  },
+  "stopSpeakingPlan": {
+    "numWords": 1,
+    "backoffSeconds": 1.5
+  }
+}
+```
+
+**Optimized for:** Learning pace with extra time for complex questions and explanations.
+
+## Next steps
+
+Now that you understand voice pipeline configuration:
+
+- **[Speech configuration](speech-configuration):** Learn about provider-specific voice settings
+- **[Custom transcriber](custom-transcriber):** Configure transcription providers for your language
+- **[Voice fallback plan](../voice-fallback-plan):** Set up backup voice options
+- **[Debugging voice agents](../debugging):** Troubleshoot voice pipeline issues

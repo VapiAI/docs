@@ -1,0 +1,548 @@
+---
+title: Custom TTS integration
+subtitle: Learn to integrate your own text-to-speech system with VAPI
+slug: customization/custom-voices/custom-tts
+---
+
+## Overview
+
+Integrate your own Text-to-Speech (TTS) system with VAPI Assistant for complete control over voice synthesis. Whether you need brand-specific voices, advanced audio quality, or cost optimization, custom TTS gives you the flexibility to use any TTS provider while maintaining real-time performance.
+
+**In this guide, you'll learn to:**
+
+- Set up webhook authentication between VAPI and your TTS endpoint
+- Build a TTS server that handles VAPI's audio requirements
+- Process text requests and return properly formatted audio
+- Handle edge cases and troubleshoot common issues
+
+<Tip>
+  Custom TTS maintains VAPI's real-time performance while giving you complete
+  flexibility over voice synthesis, language support, and audio quality.
+</Tip>
+
+## How custom TTS works
+
+VAPI's custom TTS system operates through a webhook pattern:
+
+<Steps>
+  <Step title="Text conversion trigger">
+    During a conversation, VAPI needs to convert text to speech
+  </Step>
+  <Step title="Request to your endpoint">
+    VAPI sends a POST request to your TTS endpoint with text and audio
+    specifications
+  </Step>
+  <Step title="Audio generation">
+    Your system generates audio and returns it as raw PCM data
+  </Step>
+  <Step title="Real-time playback">
+    VAPI streams the audio to the caller in real-time
+  </Step>
+</Steps>
+
+### What you'll need
+
+- **Web server** that can receive POST requests and return audio data
+- **TTS system** (cloud API, local model, or custom solution)
+- **VAPI account** with access to custom voice configuration
+
+<Warning>
+  Your TTS system must generate audio in specific PCM format requirements to
+  ensure proper playback quality.
+</Warning>
+
+## Authentication setup
+
+VAPI needs secure communication with your TTS endpoint. Choose from these authentication options:
+
+### Secret header authentication
+
+The most common approach uses a secret token in the `X-VAPI-SECRET` header:
+
+<CodeBlocks>
+```json title="Assistant Configuration"
+{
+  "voice": {
+    "provider": "custom-voice",
+    "server": {
+      "url": "https://your-tts-api.com/synthesize",
+      "secret": "your-secret-token-here",
+      "timeoutSeconds": 30
+    }
+  }
+}
+```
+</CodeBlocks>
+
+### Enhanced authentication with custom headers
+
+Add extra headers for API versioning or enhanced security:
+
+<CodeBlocks>
+```json title="Assistant Configuration with Custom Headers"
+{
+  "voice": {
+    "provider": "custom-voice",
+    "server": {
+      "url": "https://your-tts-api.com/synthesize",
+      "secret": "your-secret-token",
+      "headers": {
+        "X-API-Version": "v1",
+        "X-Client-ID": "vapi-integration"
+      }
+    }
+  }
+}
+```
+</CodeBlocks>
+
+<Note>
+  Enterprise customers can use OAuth2 authentication through webhook credentials
+  for larger deployments.
+</Note>
+
+## Building your TTS integration
+
+### Configure your VAPI assistant
+
+Set up your assistant to use your custom TTS endpoint with fallback options:
+
+<CodeBlocks>
+```json title="Complete Assistant Configuration"
+{
+  "name": "Custom Voice Assistant",
+  "voice": {
+    "provider": "custom-voice",
+    "server": {
+      "url": "https://your-tts-endpoint.com/api/synthesize",
+      "secret": "your-webhook-secret",
+      "timeoutSeconds": 45,
+      "headers": {
+        "Content-Type": "application/json",
+        "X-API-Version": "v1"
+      }
+    },
+    "fallbackPlan": {
+      "voices": [
+        {
+          "provider": "eleven-labs",
+          "voiceId": "21m00Tcm4TlvDq8ikWAM"
+        }
+      ]
+    }
+  }
+}
+```
+</CodeBlocks>
+
+### Build your TTS server
+
+Here's a complete Node.js implementation that handles all requirements:
+
+<CodeBlocks>
+```javascript title="tts-server.js"
+const express = require('express');
+const crypto = require('crypto');
+
+const app = express();
+app.use(express.json({ limit: '50mb' }));
+
+// Main TTS endpoint
+app.post('/api/synthesize', async (req, res) => {
+const requestId = crypto.randomUUID();
+const startTime = Date.now();
+
+// Set up timeout protection
+const timeout = setTimeout(() => {
+if (!res.headersSent) {
+res.status(408).json({ error: 'Request timeout' });
+}
+}, 30000);
+
+try {
+console.log(`TTS request started: ${requestId}`);
+
+    // Extract and validate the request
+    const { message } = req.body;
+    if (!message) {
+      clearTimeout(timeout);
+      return res.status(400).json({ error: 'Missing message object' });
+    }
+
+    const { type, text, sampleRate } = message;
+
+    // Validate message type
+    if (type !== 'voice-request') {
+      clearTimeout(timeout);
+      return res.status(400).json({ error: 'Invalid message type' });
+    }
+
+    // Validate text content
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      clearTimeout(timeout);
+      return res.status(400).json({ error: 'Invalid or missing text' });
+    }
+
+    // Validate sample rate
+    const validSampleRates = [8000, 16000, 22050, 24000, 44100];
+    if (!validSampleRates.includes(sampleRate)) {
+      clearTimeout(timeout);
+      return res.status(400).json({
+        error: 'Unsupported sample rate',
+        supportedRates: validSampleRates,
+      });
+    }
+
+    console.log(
+      `Synthesizing: ${requestId}, length=${text.length}, rate=${sampleRate}Hz`
+    );
+
+    // Generate the audio (replace with your TTS implementation)
+    const audioBuffer = await synthesizeAudio(text, sampleRate);
+
+    if (!audioBuffer || audioBuffer.length === 0) {
+      throw new Error('TTS synthesis produced no audio');
+    }
+
+    clearTimeout(timeout);
+
+    // Return raw PCM audio to VAPI
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', audioBuffer.length);
+    res.write(audioBuffer);
+    res.end();
+
+    const duration = Date.now() - startTime;
+    console.log(
+      `TTS completed: ${requestId}, ${duration}ms, ${audioBuffer.length} bytes`
+    );
+
+} catch (error) {
+clearTimeout(timeout);
+const duration = Date.now() - startTime;
+console.error(`TTS failed: ${requestId}, ${duration}ms, ${error.message}`);
+
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'TTS synthesis failed', requestId });
+    }
+
+}
+});
+
+// Replace with your actual TTS implementation
+async function synthesizeAudio(text, sampleRate) {
+// Example: Call your TTS API here
+// const audioBuffer = await yourTTSProvider.synthesize(text, sampleRate);
+
+// Demo implementation (replace with real TTS)
+await new Promise(resolve => setTimeout(resolve, 100));
+
+const duration = Math.min(text.length _ 0.1, 10); // Max 10 seconds
+const samples = Math.floor(duration _ sampleRate);
+const buffer = Buffer.alloc(samples \* 2); // 16-bit = 2 bytes per sample
+
+for (let i = 0; i < samples; i++) {
+const value = Math.sin((2 _ Math.PI _ 440 _ i) / sampleRate) _ 16000;
+buffer.writeInt16LE(Math.round(value), i \* 2);
+}
+
+return buffer;
+}
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+console.error('Unhandled error:', error.message);
+res.status(500).json({ error: 'Internal server error' });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+console.log(`TTS server listening on port ${PORT}`);
+});
+
+module.exports = app;
+
+````
+</CodeBlocks>
+
+### Handle text processing
+
+Implement proper text validation and preprocessing:
+
+<CodeBlocks>
+```javascript title="Text Processing Functions"
+function preprocessText(text) {
+  // Handle SSML tags if your TTS supports them
+  if (text.includes('<speak>')) {
+    return parseSSML(text);
+  }
+
+  // Clean up problematic characters
+  return text
+    .replace(/[^\w\s\.,!?-]/g, '') // Remove special characters
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+}
+
+function validateText(text) {
+  if (!text || text.trim().length === 0) {
+    throw new Error('Empty text provided');
+  }
+
+  if (!/[a-zA-Z]/.test(text)) {
+    throw new Error('No readable text found');
+  }
+
+  return text.trim();
+}
+````
+
+</CodeBlocks>
+
+## Request and response formats
+
+### VAPI request structure
+
+Every TTS request from VAPI follows this format:
+
+<CodeBlocks>
+```json title="VAPI TTS Request"
+{
+  "message": {
+    "type": "voice-request",
+    "text": "Hello, world! How can I help you today?",
+    "sampleRate": 24000,
+    "timestamp": 1677123456789,
+    "call": {
+      "id": "call-123",
+      "orgId": "org-456"
+    },
+    "assistant": {
+      "id": "assistant-789",
+      "name": "Customer Service Bot"
+    },
+    "customer": {
+      "number": "+1234567890"
+    }
+  }
+}
+```
+</CodeBlocks>
+
+### Required fields
+
+| Field        | Type   | Description                                                |
+| ------------ | ------ | ---------------------------------------------------------- |
+| `type`       | string | Always "voice-request"                                     |
+| `text`       | string | Text to synthesize                                         |
+| `sampleRate` | number | Target audio sample rate (8000, 16000, 22050, or 24000 Hz) |
+| `timestamp`  | number | Unix timestamp in milliseconds                             |
+
+### Your response requirements
+
+Your endpoint must respond with:
+
+- **HTTP 200 status**
+- **Content-Type: application/octet-stream**
+- **Raw PCM audio data** in the response body
+
+<CodeBlocks>
+```http title="Correct Response Headers"
+HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+Transfer-Encoding: chunked
+
+[Raw PCM audio bytes]
+
+````
+</CodeBlocks>
+
+## Audio format requirements
+
+### PCM specifications
+
+Your TTS system must generate audio with these exact specifications:
+
+- **Format:** Raw PCM (no headers or containers)
+- **Channels:** 1 (mono only)
+- **Bit Depth:** 16-bit signed integer
+- **Byte Order:** Little-endian
+- **Sample Rate:** Must exactly match the `sampleRate` in the request
+
+<Warning>
+Any deviation from these specifications will cause audio distortion, playback failures, or call quality issues. VAPI streams audio in real-time during phone calls.
+</Warning>
+
+## Testing your integration
+
+### Create a test call
+
+Use VAPI's API to create a test call that exercises your TTS system:
+
+<CodeBlocks>
+```javascript title="Test Call Creation"
+async function testTTSWithVAPICall() {
+  const vapiApiKey = 'your-vapi-api-key';
+  const assistantId = 'your-assistant-id'; // Assistant with custom TTS
+
+  const callData = {
+    assistant: { id: assistantId },
+    phoneNumberId: 'your-phone-number-id',
+    customer: { number: '+1234567890' }, // Your test number
+  };
+
+  try {
+    const response = await fetch('https://api.vapi.ai/call', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${vapiApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(callData),
+    });
+
+    const call = await response.json();
+    console.log('Test call created:', call.id);
+    return call;
+  } catch (error) {
+    console.error('Failed to create test call:', error);
+  }
+}
+````
+
+</CodeBlocks>
+
+### Monitor TTS requests
+
+Set up logging to see exactly what VAPI sends to your endpoint:
+
+<CodeBlocks>
+```javascript title="Request Monitoring Middleware"
+app.use('/api/synthesize', (req, res, next) => {
+  console.log('=== Incoming TTS Request ===');
+  console.log('Headers:', req.headers);
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  console.log('==============================');
+  next();
+});
+```
+</CodeBlocks>
+
+### Quick endpoint test
+
+Test your endpoint directly before full integration:
+
+<CodeBlocks>
+```javascript title="Direct Endpoint Test"
+async function quickEndpointTest() {
+  const testPayload = {
+    message: {
+      type: 'voice-request',
+      text: 'Hello, this is a test of the custom TTS system.',
+      sampleRate: 24000,
+      timestamp: Date.now(),
+    },
+  };
+
+try {
+const response = await fetch('http://localhost:3000/api/synthesize', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+'X-VAPI-SECRET': 'your-test-secret',
+},
+body: JSON.stringify(testPayload),
+});
+
+    if (response.ok) {
+      const audioBuffer = await response.buffer();
+      console.log(`Audio generated: ${audioBuffer.length} bytes`);
+      require('fs').writeFileSync('test-output.pcm', audioBuffer);
+    } else {
+      console.error('Test failed:', await response.text());
+    }
+
+} catch (error) {
+console.error('Test error:', error);
+}
+}
+
+```
+</CodeBlocks>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Request timeouts">
+    **Symptoms:** VAPI doesn't receive your audio response, calls may drop
+
+    **Common causes:**
+    - TTS processing takes longer than configured timeout
+    - Network connectivity issues between VAPI and your server
+    - Server overload or unresponsiveness
+
+    **Solutions:**
+    - Increase `timeoutSeconds` in your assistant configuration
+    - Optimize your TTS processing speed
+    - Implement proper error handling and timeout protection
+  </Accordion>
+
+  <Accordion title="Audio playback problems">
+    **Symptoms:** No audio during calls, or distorted/garbled sound
+
+    **Common causes:**
+    - Wrong audio format (not raw PCM)
+    - Incorrect sample rate
+    - Sending stereo audio instead of mono
+    - Including audio file headers in response
+
+    **Solutions:**
+    - Ensure raw PCM format with no headers
+    - Match the exact sample rate from the request
+    - Generate mono audio only
+    - Verify 16-bit little-endian format
+  </Accordion>
+
+  <Accordion title="Authentication failures">
+    **Symptoms:** 401 Unauthorized responses in your server logs
+
+    **Common causes:**
+    - Secret token mismatch between VAPI config and server
+    - Missing X-VAPI-SECRET header validation
+    - Case sensitivity issues with header names
+
+    **Solutions:**
+    - Verify secret token matches exactly
+    - Implement proper header validation
+    - Check for case-sensitive header handling
+  </Accordion>
+
+  <Accordion title="High latency">
+    **Symptoms:** Noticeable delays during conversations
+
+    **Common causes:**
+    - TTS model loading time on first request
+    - Complex text processing before synthesis
+    - Network latency between services
+
+    **Solutions:**
+    - Pre-load TTS models at startup
+    - Optimize text preprocessing
+    - Use faster TTS models for real-time performance
+    - Consider geographic proximity of services
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+Now that you have custom TTS integration working:
+
+- **Advanced features:** Explore SSML support for enhanced voice control
+- **Performance optimization:** Implement caching and model warming strategies
+- **Voice cloning:** Integrate voice cloning APIs for personalized experiences
+- **Multi-language support:** Add language detection and voice switching
+
+<Tip>
+Consider implementing a fallback voice provider in your assistant configuration to ensure call continuity if your custom TTS endpoint experiences issues.
+</Tip>
+```
