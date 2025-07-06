@@ -1,0 +1,485 @@
+---
+title: "Transient vs permanent configurations"
+subtitle: "Learn to choose between inline and stored assistant configurations"
+slug: assistants/concepts/transient-vs-permanent-configurations
+---
+
+## Overview
+
+Choose between **transient** (inline) and **permanent** (stored) configurations to optimize your Vapi implementation for flexibility, reusability, and management needs.
+
+**In this guide, you'll learn to:**
+
+- Understand when to use transient vs permanent configurations
+- Implement both approaches with practical examples
+- Apply best practices for each configuration type
+
+## Key differences
+
+| Aspect               | Transient                       | Permanent                            |
+| -------------------- | ------------------------------- | ------------------------------------ |
+| **Definition**       | Complete JSON in API request    | ID reference to stored configuration |
+| **Storage**          | Exists only during API call     | Stored on Vapi servers               |
+| **Reusability**      | Defined per request             | Reusable across multiple calls       |
+| **Dashboard access** | Not visible                     | Visible and manageable               |
+| **Best for**         | Dynamic, personalized scenarios | Shared, reusable setups              |
+
+## Transient configurations
+
+Use **transient configurations** when you need dynamic, call-specific behavior without pre-creating stored configurations.
+
+### When to use transient
+
+<CardGroup cols={2}>
+  <Card title="Dynamic personalization" icon="user">
+    **Best for:** Customer-specific data Embed user information directly in
+    system messages
+  </Card>
+  <Card title="A/B testing" icon="flask">
+    **Best for:** Configuration experiments Test different setups without
+    permanent storage
+  </Card>
+  <Card title="Temporary campaigns" icon="calendar">
+    **Best for:** Short-term promotions Event-specific assistants that don't
+    need persistence
+  </Card>
+  <Card title="Development testing" icon="code">
+    **Best for:** Rapid prototyping Iterate quickly without managing stored
+    configs
+  </Card>
+</CardGroup>
+
+### Customer service with pre-filled data
+
+<CodeBlocks>
+```json title="Transient assistant"
+{
+  "assistant": {
+    "name": "Customer Service Agent",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a customer service representative for Acme Corp. The customer's name is John Smith and their account status is premium. Provide personalized assistance based on their business account history."
+        }
+      ],
+      "temperature": 0.7
+    },
+    "voice": {
+      "provider": "11labs",
+      "voiceId": "N2lVS1w4EtoT3dr4eOWO"
+    },
+    "firstMessage": "Hello John, I see you're calling about your business account. How can I help you today?"
+  }
+}
+```
+```bash title="Create call with transient assistant"
+curl -X POST "https://api.vapi.ai/call" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phoneNumberId": "your-phone-number-id",
+    "customer": {
+      "number": "+1234567890"
+    },
+    "assistant": {
+      "name": "Personalized Sales Agent",
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are calling John about their interest in Enterprise Solution. Their budget is $5000."
+          }
+        ]
+      },
+      "voice": {
+        "provider": "11labs",
+        "voiceId": "N2lVS1w4EtoT3dr4eOWO"
+      },
+      "firstMessage": "Hi John, this is Sarah from Acme Corp calling about Enterprise Solution. Do you have a moment to chat?"
+    }
+  }'
+```
+</CodeBlocks>
+
+### A/B testing scenario
+
+<CodeBlocks>
+```json title="Variant A - Enthusiastic approach"
+{
+  "assistant": {
+    "name": "A/B Test Assistant - Variant A",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are an enthusiastic sales representative. Use upbeat language and emphasize benefits."
+        }
+      ],
+      "temperature": 0.9
+    },
+    "voice": {
+      "provider": "11labs",
+      "voiceId": "energetic-voice-id"
+    },
+    "firstMessage": "Hey there! Exciting news - I'd love to tell you about our amazing new features!",
+    "analysisPlan": {
+      "summaryPrompt": "Rate the customer's engagement level and interest in the product on a scale of 1-10.",
+      "structuredDataPlan": {
+        "enabled": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "engagement_score": { "type": "number" },
+            "interest_level": {
+              "type": "string",
+              "enum": ["high", "medium", "low"]
+            },
+            "conversion_likelihood": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}
+```
+```json title="Variant B - Professional approach"
+{
+  "assistant": {
+    "name": "A/B Test Assistant - Variant B",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a professional sales consultant. Use formal language and focus on business value."
+        }
+      ],
+      "temperature": 0.3
+    },
+    "voice": {
+      "provider": "11labs",
+      "voiceId": "professional-voice-id"
+    },
+    "firstMessage": "Good afternoon. I'm calling to discuss how our enterprise solutions can benefit your organization.",
+    "analysisPlan": {
+      "summaryPrompt": "Rate the customer's engagement level and interest in the product on a scale of 1-10.",
+      "structuredDataPlan": {
+        "enabled": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "engagement_score": { "type": "number" },
+            "interest_level": {
+              "type": "string",
+              "enum": ["high", "medium", "low"]
+            },
+            "conversion_likelihood": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}
+```
+</CodeBlocks>
+
+### Transient tools
+
+Create custom tools for specific integrations or workflows:
+
+<CodeBlocks>
+```json title="Customer-specific function tool"
+{
+  "tools": [
+    {
+      "type": "function",
+      "name": "check_inventory",
+      "description": "Check product inventory for the customer's specific region",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "description": "The product ID to check"
+          },
+          "region": {
+            "type": "string",
+            "description": "Customer's region code"
+          }
+        },
+        "required": ["productId", "region"]
+      },
+      "server": {
+        "url": "https://api.customer-integration.com/inventory",
+        "secret": "customer-webhook-secret",
+        "timeoutSeconds": 30
+      }
+    }
+  ]
+}
+```
+```json title="Context-specific transfer tool"
+{
+  "tools": [
+    {
+      "type": "transferCall",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantName": "technical-support",
+          "description": "Transfer to technical support specialist",
+          "message": "Let me connect you with our technical team who can better assist with your technical question."
+        },
+        {
+          "type": "number",
+          "number": "+1234567890",
+          "description": "Emergency escalation line",
+          "message": "Transferring you to our priority support team."
+        }
+      ]
+    }
+  ]
+}
+```
+</CodeBlocks>
+
+<Warning>
+  **Transient limitations:** Configurations exist only during the API call and
+  cannot be managed through the dashboard or reused across calls.
+</Warning>
+
+## Permanent configurations
+
+Use **permanent configurations** for reusable setups that multiple teams can access and manage through the dashboard.
+
+### When to use permanent
+
+<CardGroup cols={2}>
+  <Card title="Shared resources" icon="users">
+    **Best for:** Team collaboration Assistants used across multiple departments
+  </Card>
+  <Card title="Dashboard management" icon="cog">
+    **Best for:** Non-technical users Visual configuration management
+  </Card>
+  <Card title="Reusable setups" icon="refresh">
+    **Best for:** Standard workflows Consistent configurations across calls
+  </Card>
+  <Card title="Version control" icon="git-branch">
+    **Best for:** Change tracking Maintain configuration history
+  </Card>
+</CardGroup>
+
+### Creating permanent configurations
+
+<Steps>
+  <Step title="Create the assistant">
+    Store your assistant configuration on Vapi servers
+  </Step>
+  <Step title="Get the assistant ID">
+    Use the returned UUID to reference the assistant
+  </Step>
+  <Step title="Reference in API calls">
+    Use the ID instead of inline configuration
+  </Step>
+</Steps>
+
+<CodeBlocks>
+```bash title="Create permanent assistant"
+curl -X POST "https://api.vapi.ai/assistant" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "General Support Assistant",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a helpful customer service representative for Acme Corp. Provide accurate information about our products and services."
+        }
+      ]
+    },
+    "voice": {
+      "provider": "11labs",
+      "voiceId": "N2lVS1w4EtoT3dr4eOWO"
+    },
+    "firstMessage": "Hello! Thank you for calling Acme Corp. How can I assist you today?"
+  }'
+```
+```bash title="Create permanent tool"
+curl -X POST "https://api.vapi.ai/tool" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "function",
+    "name": "update_crm_contact",
+    "description": "Update contact information in the CRM system",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "contactId": {
+          "type": "string",
+          "description": "CRM contact ID"
+        },
+        "updates": {
+          "type": "object",
+          "description": "Fields to update"
+        }
+      },
+      "required": ["contactId", "updates"]
+    },
+    "server": {
+      "url": "https://api.yourcrm.com/contacts/update",
+      "secret": "your-webhook-secret"
+    }
+  }'
+```
+```bash title="Use permanent configurations"
+curl -X POST "https://api.vapi.ai/call" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phoneNumberId": "your-phone-number-id",
+    "customer": {
+      "number": "+1234567890"
+    },
+    "assistantId": "your-assistant-id",
+    "assistantOverrides": {
+      "toolIds": ["tool-id-1", "tool-id-2"],
+      "variableValues": {
+        "customerName": "John Smith",
+        "accountId": "ACC123456"
+      }
+    }
+  }'
+```
+</CodeBlocks>
+
+## Mixed configurations
+
+Combine transient and permanent configurations for maximum flexibility:
+
+<CodeBlocks>
+```json title="Squad with mixed configurations"
+{
+  "squad": [
+    {
+      "assistantId": "permanent-receptionist-assistant-id",
+      "assistantDestinations": [
+        {
+          "type": "assistant",
+          "assistantName": "technical-support"
+        }
+      ]
+    },
+    {
+      "assistant": {
+        "name": "technical-support",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a technical support specialist for Enterprise Software. The customer has high priority issue."
+            }
+          ]
+        },
+        "voice": {
+          "provider": "11labs",
+          "voiceId": "technical-voice-id"
+        }
+      },
+      "assistantDestinations": []
+    }
+  ]
+}
+```
+```json title="Server message with transient assistant"
+{
+  "assistant": {
+    "name": "Dynamic Inbound Handler",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4",
+      "messages": [
+        {
+          "role": "system",
+          "content": "The caller is from West Coast calling during business hours. Adjust your approach accordingly."
+        }
+      ]
+    },
+    "voice": {
+      "provider": "11labs",
+      "voiceId": "appropriate-voice-for-region"
+    },
+    "firstMessage": "Hello! I see you're calling from West Coast. How can I help you today?"
+  }
+}
+```
+</CodeBlocks>
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Choosing the right approach">
+    **Use transient when:**
+    - Customer data needs to be embedded in system messages
+    - Testing different configurations temporarily
+    - Creating user-specific personalizations
+    - Rapid prototyping and development
+
+    **Use permanent when:**
+    - Multiple teams need access to the same configuration
+    - Non-technical users manage configurations via dashboard
+    - Consistency across multiple API calls is required
+    - Version control and change tracking are important
+
+  </Accordion>
+  
+  <Accordion title="Performance considerations">
+    - **Transient:** Slightly larger request payloads but no additional API calls
+    - **Permanent:** Smaller request payloads but requires initial creation calls
+    - **Mixed:** Optimize by using permanent for stable configs, transient for dynamic parts
+  </Accordion>
+  
+  <Accordion title="Security and access control">
+    - **Transient:** Full configuration visible in API requests - avoid sensitive data
+    - **Permanent:** Stored securely on Vapi servers with proper access controls
+    - **Recommendation:** Use permanent configurations for sensitive integrations
+  </Accordion>
+</AccordionGroup>
+
+## Limitations
+
+<Tabs>
+  <Tab title="Transient limitations">
+    - **No persistence:** Cannot retrieve or reuse after API call - **No
+    dashboard access:** Not visible in Vapi dashboard - **No version control:**
+    Cannot track configuration changes - **Request size:** Larger payloads may
+    impact performance
+  </Tab>
+  <Tab title="Permanent limitations">
+    - **Setup overhead:** Requires separate creation API calls - **ID
+    management:** Need to track and manage configuration UUIDs - **Update
+    complexity:** Changes require additional API calls
+  </Tab>
+</Tabs>
+
+## Next steps
+
+Now that you understand transient vs permanent configurations:
+
+- **[Assistant creation guide](/docs/assistants):** Learn to build and customize assistants
+- **[Tool integration](/docs/tools):** Connect external services and functions
+- **[Squad configuration](/docs/squads):** Set up multi-assistant workflows
+- **[API reference](/fern/api-reference):** Explore all configuration options

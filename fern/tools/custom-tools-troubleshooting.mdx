@@ -1,0 +1,393 @@
+---
+title: "Custom tools troubleshooting"
+description: "Resolve common issues with custom tool integrations"
+---
+
+## Overview
+
+Troubleshoot and fix common issues with custom tool integrations in your Vapi assistants.
+
+**In this guide, you'll learn to:**
+
+- Diagnose why tools aren't triggering
+- Fix response format errors
+- Resolve parameter and token issues
+- Handle multiple tool scenarios
+
+## Quick diagnosis
+
+Start with the most common issue for your symptoms:
+
+<CardGroup cols={2}>
+  <Card title="Tool won't trigger" href="#tool-wont-trigger">
+    **Symptoms:** Assistant doesn't call your tool Check prompting and schema
+    setup
+  </Card>
+  <Card title="No result returned" href="#no-result-returned-error">
+    **Symptoms:** Logs show "no result returned" Fix response format issues
+  </Card>
+  <Card title="Response ignored" href="#response-ignored">
+    **Symptoms:** Tool returns data but assistant ignores it Resolve parsing and
+    format problems
+  </Card>
+  <Card title="Parameters cut off" href="#token-truncation">
+    **Symptoms:** Tool parameters or responses truncated Increase token limits
+  </Card>
+</CardGroup>
+
+## Tool won't trigger
+
+Your assistant doesn't call the tool even when it should.
+
+### Check your assistant prompting
+
+<CodeBlocks>
+  ```txt title="❌ Too vague" Handle weather requests ``` ```txt title="✅
+  Specific and clear" When user asks for weather, use weather_tool with city
+  parameter ```
+</CodeBlocks>
+
+<Warning>
+  Use the exact tool name in your assistant instructions. If your tool is named
+  `get_weather`, reference `get_weather` in prompts, not `weather_tool`.
+</Warning>
+
+### Verify required parameters
+
+Check that your tool schema includes all required parameters:
+
+```json title="Tool schema"
+{
+  "name": "get_weather",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string",
+        "description": "City name for weather lookup"
+      }
+    },
+    "required": ["city"] // Must be array of required parameter names
+  }
+}
+```
+
+### Enable schema validation
+
+Add `strict: true` to catch validation errors early:
+
+```json title="Tool configuration" {7}
+{
+  "name": "get_weather",
+  "description": "Get current weather for a city",
+  "parameters": {
+    // ... your parameters
+  },
+  "strict": true,
+  "maxTokens": 500
+}
+```
+
+<Tip>
+  Check your call logs for "Schema validation errors" to identify parameter
+  issues.
+</Tip>
+
+## No result returned error
+
+Logs show "ok, no result returned" or similar messages.
+
+### Use the correct response format
+
+Your webhook **must** return this exact JSON structure:
+
+<CodeBlocks>
+```json title="✅ Success response"
+{
+  "results": [
+    {
+      "toolCallId": "call_123",
+      "result": "Your response as single-line string"
+    }
+  ]
+}
+```
+```json title="✅ Error response"
+{
+  "results": [
+    {
+      "toolCallId": "call_123", 
+      "error": "Error message as single-line string"
+    }
+  ]
+}
+```
+</CodeBlocks>
+
+### Common format mistakes
+
+<AccordionGroup>
+  <Accordion title="Wrong HTTP status code">
+    **Always return HTTP 200**, even for errors. Any other status code is ignored completely.
+    
+    ```json
+    // Return this with HTTP 200
+    {
+      "results": [
+        {
+          "toolCallId": "call_123",
+          "error": "Something went wrong"
+        }
+      ]
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Line breaks in response">
+    Use single-line strings only. Line breaks cause parsing errors.
+    
+    ```json title="❌ Has line breaks"
+    {
+      "result": "Line 1\nLine 2\nLine 3"
+    }
+    ```
+    
+    ```json title="✅ Single line"
+    {
+      "result": "Line 1, Line 2, Line 3"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Missing results array">
+    The response must have the `results` array structure. Individual result objects won't work.
+  </Accordion>
+  
+  <Accordion title="Tool call ID mismatch">
+    The `toolCallId` in your response must exactly match the ID from the request.
+  </Accordion>
+  
+  <Accordion title="Wrong result data type">
+    Both `result` and `error` fields must be strings, not objects or arrays.
+  </Accordion>
+</AccordionGroup>
+
+## Response ignored
+
+Tool returns data but the assistant doesn't use it in conversation.
+
+### Fix line breaks and formatting
+
+<CodeBlocks>
+```json title="❌ Line breaks cause parsing errors"
+{
+  "results": [
+    {
+      "toolCallId": "call_123",
+      "result": "Temperature: 72°F\nCondition: Sunny\nHumidity: 45%"
+    }
+  ]
+}
+```
+```json title="✅ Single-line string works"
+{
+  "results": [
+    {
+      "toolCallId": "call_123", 
+      "result": "Temperature: 72°F, Condition: Sunny, Humidity: 45%"
+    }
+  ]
+}
+```
+</CodeBlocks>
+
+### Verify HTTP status and JSON structure
+
+<Steps>
+  <Step title="Check HTTP status">
+    Ensure your webhook returns HTTP 200. Any other status code causes the
+    response to be ignored.
+  </Step>
+
+{" "}
+
+<Step title="Validate JSON format">
+  Use a JSON validator to ensure your response structure is valid.
+</Step>
+
+  <Step title="Match tool call IDs">
+    For multiple tools, return results in the same order as calls were
+    triggered, with matching `toolCallId` values.
+  </Step>
+</Steps>
+
+## Token truncation
+
+Tool parameters or responses are getting cut off.
+
+### Increase token limits
+
+The default token limit is only 100. Increase it for complex tools:
+
+```json title="Tool configuration" {7}
+{
+  "name": "complex_tool",
+  "description": "Tool that needs more tokens",
+  "parameters": {
+    // ... your parameters
+  },
+  "maxTokens": 500 // Increase from default 100
+}
+```
+
+<Note>
+  Look for "Token truncation warnings" in your call logs to identify when this
+  occurs.
+</Note>
+
+## Multiple tools scenarios
+
+Some tools in parallel calls fail or return wrong results.
+
+### Handle multiple tool responses
+
+Return all results in the same order as the calls were triggered:
+
+```json title="Multiple tool response"
+{
+  "results": [
+    {
+      "toolCallId": "call_1",
+      "result": "First tool success"
+    },
+    {
+      "toolCallId": "call_2",
+      "error": "Second tool failed"
+    },
+    {
+      "toolCallId": "call_3",
+      "result": "Third tool success"
+    }
+  ]
+}
+```
+
+<Warning>
+  Use HTTP 200 for the entire response, even if some individual tools error.
+  Handle errors within the `results` array using the `error` field.
+</Warning>
+
+## Async vs sync behavior
+
+Tool behavior doesn't match your expectations.
+
+<Tabs>
+  <Tab title="Sync tools (recommended)">
+    **Configuration:** `"async": false` (default)
+    
+    **Behavior:**
+    - Wait for webhook response before resolving
+    - Tool call resolution depends on your response
+    - Use for immediate operations
+    
+    ```json
+    {
+      "name": "sync_tool",
+      "async": false,  // or omit (default)
+      // ... other config
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Async tools">
+    **Configuration:** `"async": true`
+    
+    **Behavior:**
+    - Tool call marked as resolved immediately
+    - Don't wait for actual processing
+    - Use for long-running operations
+    
+    ```json
+    {
+      "name": "async_tool", 
+      "async": true,
+      // ... other config
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Most tools should use sync behavior unless you specifically need async
+  processing for long-running operations.
+</Tip>
+
+## Reference: Required formats
+
+### Response format template
+
+<CodeBlocks>
+```json title="Success response"
+{
+  "results": [
+    {
+      "toolCallId": "call_123",
+      "result": "Single-line string response"
+    }
+  ]
+}
+```
+```json title="Error response"
+{
+  "results": [
+    {
+      "toolCallId": "call_123",
+      "error": "Single-line error message"  
+    }
+  ]
+}
+```
+</CodeBlocks>
+
+### Tool schema template
+
+```json title="Complete tool configuration"
+{
+  "name": "tool_name",
+  "description": "Clear description of what the tool does",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "param1": {
+        "type": "string",
+        "description": "Parameter description"
+      }
+    },
+    "required": ["param1"]
+  },
+  "strict": true,
+  "maxTokens": 500,
+  "async": false
+}
+```
+
+### Critical response rules
+
+<Check>**Always return HTTP 200** - Even for errors</Check>
+<Check>**Use single-line strings** - No `\n` line breaks</Check>
+<Check>**Match tool call IDs exactly** - From request to response</Check>
+<Check>**Include results array** - Required structure</Check>
+<Check>**String types only** - For result/error values</Check>
+
+## Debugging with call logs
+
+Look for these key error messages in your call logs:
+
+| Error Message               | What It Means               | How to Fix                 |
+| --------------------------- | --------------------------- | -------------------------- |
+| "ok, no result returned"    | Wrong response format       | Use correct JSON structure |
+| "Tool call ID mismatches"   | toolCallId doesn't match    | Ensure exact ID match      |
+| "HTTP errors"               | Webhook not returning 200   | Return HTTP 200 always     |
+| "Schema validation errors"  | Missing required parameters | Check required array       |
+| "Token truncation warnings" | Need more tokens            | Increase maxTokens         |
+| "Response parsing errors"   | Malformed JSON/line breaks  | Fix JSON format            |

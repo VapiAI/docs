@@ -34,7 +34,7 @@ First, you need to obtain an MCP server URL from your chosen provider:
 3. Generate or copy your MCP server URL
 
 <Note>
-  For Zapier MCP, visit https://actions.zapier.com/settings/mcp/ to generate your MCP server URL. This URL should be treated as a credential and kept secure.
+  For Zapier MCP, visit https://mcp.zapier.com/mcp/?client=vapi? to generate your MCP server URL. This URL should be treated as a credential and kept secure.
 </Note>
 
 ### 2. Create and Configure MCP Tool
@@ -66,7 +66,7 @@ Now, add the MCP tool to your assistant:
 
 The MCP integration follows these steps during a call:
 
-1. When a call starts, Vapi connects to your configured MCP server
+1. When a call starts, Vapi connects to your configured MCP server using **Streamable HTTP** protocol by default
 2. The MCP server returns a list of available tools and their capabilities
 3. These tools are dynamically added to your assistant's available tools
 4. The assistant can then use these tools during the call
@@ -81,13 +81,29 @@ The MCP integration follows these steps during a call:
   The tools available through MCP are determined by your MCP server provider. Different providers may offer different sets of tools.
 </Note>
 
+### Request Headers
+
+MCP requests from Vapi include identifying headers to help with context and debugging:
+
+- **`X-Call-Id`**: Included in requests during voice calls to identify the specific call
+- **`X-Chat-Id`**: Included in requests during chat interactions to identify the specific chat
+- **`X-Session-Id`**: Included in requests during chat interaction if the chat is part of a session
+
 ## Tool Configuration
 
 ### MCP Tool
 
-This tool uses the following field to connect to your MCP server:
+This tool uses the following configuration options:
 
-- `serverUrl`: The URL of your MCP server (e.g., https://actions.zapier.com/mcp/actions/)
+**Required:**
+- `server.url`: The URL of your MCP server (e.g., https://mcp.zapier.com/api/mcp/s/********/mcp)
+
+**Optional:**
+- `server.headers`: Custom headers to include in requests to the MCP server
+- `metadata`: Additional configuration options for the MCP connection
+  - `protocol`: Communication protocol to use. Options are:
+    - `"shttp"` (default): Uses Streamable HTTP protocol
+    - `"sse"`: (deprecated) Uses Server-Sent Events protocol
 
 <Note>
   The server URL should be treated as a credential and kept secure. It will be used to authenticate requests to the MCP server.
@@ -96,6 +112,8 @@ This tool uses the following field to connect to your MCP server:
 ## Example Usage
 
 Here's how the MCP tool can be used in your assistant's configuration:
+
+### Default Configuration (Streamable HTTP)
 
 ```json
 {
@@ -111,9 +129,48 @@ Here's how the MCP tool can be used in your assistant's configuration:
     "tools": [
       {
         "type": "mcp",
-        "name": "mcpTools",
+        "function": {
+          "name": "mcpTools"
+        },
         "server": {
-            "url": "https://actions.zapier.com/mcp/actions/"
+            "url": "https://mcp.zapier.com/api/mcp/s/********/mcp"
+        }
+      }
+    ]
+  }
+}
+```
+
+### Custom Configuration (SSE Protocol)
+
+If you need to use Server-Sent Events protocol instead:
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a helpful personal assistant named Alex..."
+      }
+    ],
+    "tools": [
+      {
+        "type": "mcp",
+        "function": {
+          "name": "mcpTools"
+        },
+        "server": {
+            "url": "https://mcp.zapier.com/api/mcp/s/********/mcp",
+            "headers": {
+              "Authorization": "Bearer your-token",
+              "X-Custom-Header": "your-value"
+            }
+        },
+        "metadata": {
+          "protocol": "sse"
         }
       }
     ]
@@ -123,11 +180,12 @@ Here's how the MCP tool can be used in your assistant's configuration:
 
 ## Best Practices
 
-1. **Dynamic Tool Awareness**: Be aware that the available tools may change between calls
-2. **Clear Instructions**: Provide clear instructions in your assistant's system message about how to handle dynamic tools
-3. **Error Handling**: Include fallback responses for cases where tools fail or are unavailable
-4. **User Communication**: Explain to users what tools you're using and what actions you're taking
-5. **Security**: Treat the MCP server URL as a credential and keep it secure
+1. **Protocol Selection**: Use the default Streamable HTTP protocol for better performance unless you specifically need SSE
+2. **Dynamic Tool Awareness**: Be aware that the available tools may change between calls
+3. **Clear Instructions**: Provide clear instructions in your assistant's system message about how to handle dynamic tools
+4. **Error Handling**: Include fallback responses for cases where tools fail or are unavailable
+5. **User Communication**: Explain to users what tools you're using and what actions you're taking
+6. **Security**: Treat the MCP server URL as a credential and keep it secure
 
 ## Example MCP Providers
 
@@ -135,7 +193,7 @@ Here's how the MCP tool can be used in your assistant's configuration:
 
 Zapier offers an MCP server that provides access to thousands of app integrations:
 
-1. Go to https://actions.zapier.com/settings/mcp/
+1. Go to https://mcp.zapier.com/mcp/?client=vapi?
 2. Generate your MCP server URL
 3. Add the URL to your MCP tool configuration
 4. Your assistant will now have access to Zapier's extensive integration network

@@ -1,50 +1,200 @@
 ---
 title: Call recording
-subtitle: Record and store calls in Vapi or your own storage
-slug: call-recording
+subtitle: Record and store calls for analysis and training
+slug: assistants/call-recording
+description: Learn how to record calls and store them for quality assurance and analysis
 ---
 
-The Call Recording feature allows you to capture and store full recordings of phone calls for analysis. By default, Vapi stores a complete recording of every call, providing both mono and stereo audio. The stereo option separates human and assistant audio into two distinct channels, offering a clearer analysis of the conversation.
+## Overview
 
-You can customize this behavior in the assistant's [`assistant.artifactPlan`](/api-reference/assistants/create#request.body.artifactPlan).
+Vapi provides comprehensive call recording capabilities that allow you to capture, store, and analyze voice conversations for quality assurance, training, and compliance purposes.
 
-## Recording Formats
+**Call recording enables you to:**
+- Monitor conversation quality and assistant performance
+- Train and improve your voice AI models
+- Ensure compliance with regulatory requirements
+- Analyze customer interactions for insights
 
-Vapi supports multiple recording formats to fit your storage and playback needs.
+## Recording Configuration
 
-You can specify your preferred format using the [`assistant.artifactPlan.recordingFormat`](/api-reference/assistants/create#request.body.artifactPlan.recordingFormat) property. If not specified, recordings will default to `wav;l16`.
+### Enable Recording
 
-**Supported formats:**
-- `wav;l16` (default) - High quality linear PCM
-- `mp3` - Compressed format for smaller file sizes  
-- `flac` - Lossless compression for archival
+You can enable call recording at the assistant level or per individual call:
+
+<CodeBlocks>
+```json title="Assistant Configuration"
+{
+  "name": "Customer Support Assistant",
+  "recordingEnabled": true,
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4"
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "harry"
+  }
+}
+```
+
+```json title="Per-Call Configuration"
+{
+  "assistant": {
+    "name": "Support Agent"
+  },
+  "recordingEnabled": true,
+  "phoneNumberId": "your-phone-number-id"
+}
+```
+</CodeBlocks>
+
+### Recording Options
+
+Configure recording behavior with these options:
+
+- **`recordingEnabled`**: Enable or disable recording for this assistant/call
+- **`recordingChannelCount`**: Number of audio channels to record (1 for mono, 2 for stereo)
+- **`recordingFormat`**: Audio format for recordings (mp3, wav, etc.)
 
 ## Storage Options
 
-Vapi supports uploading recordings to your own storage buckets. See [Integrations -> Cloud](/providers/cloud/s3) for more information on available storage options.
+### Default Storage
 
-**Supported cloud storage providers:**
-- AWS S3
-- Google Cloud Storage  
-- Cloudflare R2
-- Supabase
+By default, Vapi stores recordings securely in the cloud:
 
-## Configuration Options
+- Recordings are encrypted at rest and in transit
+- Access is controlled through your API credentials
+- Recordings are automatically cleaned up based on your retention policy
 
-### Enable/Disable Recording
+### Custom Storage
 
-You can turn on/off call recording by setting the [`assistant.artifactPlan.recordingEnabled`](/api-reference/assistants/create#request.body.artifactPlan.recordingEnabled) property to `true` or `false`. If not specified, recordings will default to `true`.
+For advanced use cases, you can configure custom storage:
 
-**HIPAA Compliance:** If [HIPAA](/security-and-privacy/hipaa) mode is enabled, Vapi will only store recordings if you have defined a custom storage bucket. Make sure to set credentials in the Provider Credentials section of your dashboard.
+<CodeBlocks>
+```json title="S3 Storage Configuration"
+{
+  "recordingEnabled": true,
+  "recordingPath": "https://your-bucket.s3.amazonaws.com/recordings/",
+  "recordingCredentials": {
+    "provider": "aws",
+    "region": "us-east-1",
+    "accessKeyId": "your-access-key",
+    "secretAccessKey": "your-secret-key"
+  }
+}
+```
 
-### Video Recording
+```json title="Google Cloud Storage"
+{
+  "recordingEnabled": true,
+  "recordingPath": "gs://your-bucket/recordings/",
+  "recordingCredentials": {
+    "provider": "gcp",
+    "serviceAccountKey": "your-service-account-json"
+  }
+}
+```
+</CodeBlocks>
 
-You can turn on/off video recording by setting the [`assistant.artifactPlan.videoRecordingEnabled`](/api-reference/assistants/create#request.body.artifactPlan.videoRecordingEnabled) property to `true` or `false`. If not specified, video recording will default to `false`.
+## Accessing Recordings
 
-## Upload Path
+### Via Dashboard
 
-When uploading recordings to your custom storage bucket, you can specify the upload path using the `assistant.artifactPlan.recordingPath` property. If not specified, recordings will default to the root of the bucket.
+1. Navigate to **Calls** in your Vapi dashboard
+2. Select a specific call from the list
+3. Click on the **Recording** tab to play or download the audio
 
-Usage:
-- If you want to upload the recording to a specific path, set this to the path. Example: `/my-assistant-recordings`.
-- If you want to upload the recording to the root of the bucket, set this to `/`.
+### Via API
+
+Retrieve recording URLs programmatically:
+
+```typescript
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const client = new VapiClient({ token: "your-api-key" });
+
+// Get call details including recording URL
+const call = await client.calls.get("call-id");
+console.log("Recording URL:", call.recordingUrl);
+```
+
+## Privacy and Compliance
+
+### Legal Considerations
+
+**Important**: Call recording laws vary by jurisdiction. Ensure compliance with:
+
+- **Consent requirements** - Inform participants about recording
+- **Data protection** regulations (GDPR, CCPA, etc.)
+- **Industry standards** (PCI DSS, HIPAA, etc.)
+
+### Best Practices
+
+- **Inform callers** about recording at the start of conversations
+- **Secure storage** with encryption and access controls
+- **Retention policies** to automatically delete old recordings
+- **Access logs** to track who accesses recordings
+
+<Warning>
+  Always comply with local laws regarding call recording. Some jurisdictions require explicit consent from all parties before recording.
+</Warning>
+
+## Recording Analysis
+
+### Transcription
+
+Recorded calls are automatically transcribed for analysis:
+
+```json
+{
+  "callId": "call-123",
+  "transcript": [
+    {
+      "role": "assistant",
+      "message": "Hello! How can I help you today?",
+      "time": 0.5
+    },
+    {
+      "role": "user", 
+      "message": "I need help with my account",
+      "time": 3.2
+    }
+  ],
+  "recordingUrl": "https://api.vapi.ai/recordings/call-123.mp3"
+}
+```
+
+### Call Analysis
+
+Use recorded data for insights:
+
+- **Conversation flow** analysis
+- **Response quality** evaluation  
+- **Customer satisfaction** metrics
+- **Assistant performance** tracking
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Are recordings automatically transcribed?">
+    Yes, all recordings are automatically transcribed and available through the API and dashboard.
+  </Accordion>
+  
+  <Accordion title="How long are recordings stored?">
+    Default retention is 30 days. You can configure custom retention policies for your account.
+  </Accordion>
+  
+  <Accordion title="Can I disable recording for specific calls?">
+    Yes, you can enable/disable recording at both the assistant level and per individual call.
+  </Accordion>
+  
+  <Accordion title="Is recording available in all regions?">
+    Call recording is available in all supported Vapi regions with local data residency options.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- **[Call Analysis](/assistants/call-analysis)** - Analyze recorded conversations for insights
+- **[Privacy Compliance](/security-and-privacy/GDPR)** - Ensure GDPR and privacy compliance
+- **[API Reference](/api-reference/calls/create)** - Explore recording configuration options

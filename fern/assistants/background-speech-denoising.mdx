@@ -1,0 +1,417 @@
+---
+title: Background speech denoising
+description: Filter out noise and background speech while users are talking
+---
+
+## Overview
+
+Background speech denoising helps create clearer conversations by filtering out unwanted sounds while users speak. Vapi offers two complementary denoising technologies that can be used independently or together for optimal results.
+
+**In this guide, you'll learn to:**
+- Enable Smart Denoising using Krisp technology (recommended for most users)
+- Configure experimental Fourier denoising with customizable parameters
+- Combine both methods for enhanced noise reduction
+- Fine-tune settings for different environments
+
+<Note>
+**For most use cases, Smart Denoising alone provides excellent results.** Fourier denoising is a highly experimental feature that requires significant tuning and may not work well in all environments.
+</Note>
+
+## Denoising methods
+
+### Smart Denoising (Krisp)
+
+Smart Denoising uses Krisp's AI-powered technology to remove background noise in real-time. This method is highly effective for common noise sources like:
+- Keyboard typing
+- Background conversations
+- Traffic and street noise
+- Air conditioning and fans
+- Pet sounds
+
+### Fourier Denoising (Experimental)
+
+Fourier denoising uses frequency-domain filtering to remove consistent background noise. This experimental method offers fine-grained control through multiple parameters and includes automatic media detection for TV/music/radio backgrounds.
+
+<Warning>
+Fourier denoising is highly experimental and comes with significant limitations:
+- Requires extensive tweaking to work properly
+- May not work well in all audio environments (e.g., when headphones are used)
+- Can introduce audio artifacts or distortions
+- Should only be used when Smart Denoising alone is insufficient
+
+**For most users, Smart Denoising should be sufficient.** Only proceed with Fourier denoising if you have specific requirements and are prepared to test extensively.
+</Warning>
+
+## Configuration
+
+Background speech denoising is configured through the `backgroundSpeechDenoisingPlan` property on your assistant:
+
+<CodeBlocks>
+```typescript title="TypeScript SDK"
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const vapi = new VapiClient({ 
+  token: process.env.VAPI_API_KEY 
+});
+
+const assistant = await vapi.assistants.create({
+  name: "Customer Support",
+  backgroundSpeechDenoisingPlan: {
+    // Enable Smart Denoising
+    smartDenoisingPlan: {
+      enabled: true
+    },
+    // Enable Fourier Denoising (optional)
+    fourierDenoisingPlan: {
+      enabled: true,
+      mediaDetectionEnabled: true,
+      staticThreshold: -35,
+      baselineOffsetDb: -15,
+      windowSizeMs: 3000,
+      baselinePercentile: 85
+    }
+  }
+});
+```
+```python title="Python SDK"
+from vapi import Vapi
+import os
+
+client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+assistant = client.assistants.create(
+    name="Customer Support",
+    backgroundSpeechDenoisingPlan={
+        # Enable Smart Denoising
+        "smartDenoisingPlan": {
+            "enabled": True
+        },
+        # Enable Fourier Denoising (optional)
+        "fourierDenoisingPlan": {
+            "enabled": True,
+            "mediaDetectionEnabled": True,
+            "staticThreshold": -35,
+            "baselineOffsetDb": -15,
+            "windowSizeMs": 3000,
+            "baselinePercentile": 85
+        }
+    }
+)
+```
+```bash title="cURL"
+curl -X POST "https://api.vapi.ai/assistant" \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "Customer Support",
+       "backgroundSpeechDenoisingPlan": {
+         "smartDenoisingPlan": {
+           "enabled": true
+         },
+         "fourierDenoisingPlan": {
+           "enabled": true,
+           "mediaDetectionEnabled": true,
+           "staticThreshold": -35,
+           "baselineOffsetDb": -15,
+           "windowSizeMs": 3000,
+           "baselinePercentile": 85
+         }
+       }
+     }'
+```
+</CodeBlocks>
+
+## Smart Denoising configuration
+
+Smart Denoising has a simple on/off configuration:
+
+<ParamField path="smartDenoisingPlan.enabled" type="boolean" default="false">
+  Enable or disable Krisp-powered smart denoising
+</ParamField>
+
+### Example: Smart Denoising only
+
+<CodeBlocks>
+```typescript title="TypeScript SDK"
+const assistant = await vapi.assistants.create({
+  name: "Support Agent",
+  backgroundSpeechDenoisingPlan: {
+    smartDenoisingPlan: {
+      enabled: true
+    }
+  }
+});
+```
+```python title="Python SDK"
+assistant = client.assistants.create(
+    name="Support Agent",
+    backgroundSpeechDenoisingPlan={
+        "smartDenoisingPlan": {
+            "enabled": True
+        }
+    }
+)
+```
+</CodeBlocks>
+
+## Fourier Denoising configuration
+
+Fourier denoising offers multiple parameters for fine-tuning:
+
+<ParamField path="fourierDenoisingPlan.enabled" type="boolean" default="false">
+  Enable or disable experimental Fourier denoising
+</ParamField>
+
+<ParamField path="fourierDenoisingPlan.mediaDetectionEnabled" type="boolean" default="true">
+  Automatically detect and filter consistent background media (TV/music/radio)
+</ParamField>
+
+<ParamField path="fourierDenoisingPlan.staticThreshold" type="number" default="-35">
+  Fallback threshold in dB when no baseline is established (-80 to 0)
+</ParamField>
+
+<ParamField path="fourierDenoisingPlan.baselineOffsetDb" type="number" default="-15">
+  How far below the rolling baseline to filter audio, in dB (-30 to -5)
+  - Lower values (e.g., -10) = more aggressive filtering
+  - Higher values (e.g., -20) = more conservative filtering
+</ParamField>
+
+<ParamField path="fourierDenoisingPlan.windowSizeMs" type="number" default="3000">
+  Rolling window size in milliseconds for baseline calculation (1000 to 30000)
+  - Larger windows = slower adaptation, more stability
+  - Smaller windows = faster adaptation, less stability
+</ParamField>
+
+<ParamField path="fourierDenoisingPlan.baselinePercentile" type="number" default="85">
+  Percentile for baseline calculation (1 to 99)
+  - Higher percentiles (e.g., 85) = focus on louder speech
+  - Lower percentiles (e.g., 50) = include quieter speech
+</ParamField>
+
+### Example: Adding Fourier Denoising to Smart Denoising
+
+<CodeBlocks>
+```typescript title="TypeScript SDK"
+const assistant = await vapi.assistants.create({
+  name: "Call Center Agent",
+  backgroundSpeechDenoisingPlan: {
+    // Always enable Smart Denoising first
+    smartDenoisingPlan: {
+      enabled: true
+    },
+    // Add Fourier Denoising for additional filtering
+    fourierDenoisingPlan: {
+      enabled: true,
+      mediaDetectionEnabled: true,
+      // More aggressive filtering for noisy environments
+      baselineOffsetDb: -10,
+      // Faster adaptation for dynamic environments
+      windowSizeMs: 2000,
+      // Focus on louder, clearer speech
+      baselinePercentile: 90
+    }
+  }
+});
+```
+```python title="Python SDK"
+assistant = client.assistants.create(
+    name="Call Center Agent",
+    backgroundSpeechDenoisingPlan={
+        # Always enable Smart Denoising first
+        "smartDenoisingPlan": {
+            "enabled": True
+        },
+        # Add Fourier Denoising for additional filtering
+        "fourierDenoisingPlan": {
+            "enabled": True,
+            "mediaDetectionEnabled": True,
+            # More aggressive filtering for noisy environments
+            "baselineOffsetDb": -10,
+            # Faster adaptation for dynamic environments
+            "windowSizeMs": 2000,
+            # Focus on louder, clearer speech
+            "baselinePercentile": 90
+        }
+    }
+)
+```
+</CodeBlocks>
+
+## Combined denoising
+
+For maximum noise reduction, combine both methods. Processing order:
+1. Smart Denoising (Krisp) processes first
+2. Fourier Denoising processes the Krisp output
+
+## Environment-specific configurations
+
+### Quiet office environment
+
+Minimal speech denoising for clear environments:
+
+<CodeBlocks>
+```typescript title="TypeScript SDK"
+const assistant = await vapi.assistants.create({
+  name: "Office Assistant",
+  backgroundSpeechDenoisingPlan: {
+    smartDenoisingPlan: {
+      enabled: true
+    }
+    // No Fourier denoising needed
+  }
+});
+```
+```python title="Python SDK"
+assistant = client.assistants.create(
+    name="Office Assistant",
+    backgroundSpeechDenoisingPlan={
+        "smartDenoisingPlan": {
+            "enabled": True
+        }
+        # No Fourier denoising needed
+    }
+)
+```
+</CodeBlocks>
+
+### Noisy call center
+
+Aggressive filtering for high-noise environments:
+
+<CodeBlocks>
+```typescript title="TypeScript SDK"
+const assistant = await vapi.assistants.create({
+  name: "Call Center Agent",
+  backgroundSpeechDenoisingPlan: {
+    smartDenoisingPlan: {
+      enabled: true
+    },
+    fourierDenoisingPlan: {
+      enabled: true,
+      mediaDetectionEnabled: true,
+      baselineOffsetDb: -10, // Aggressive filtering
+      windowSizeMs: 2000,    // Fast adaptation
+      baselinePercentile: 90 // Focus on clear speech
+    }
+  }
+});
+```
+```python title="Python SDK"
+assistant = client.assistants.create(
+    name="Call Center Agent",
+    backgroundSpeechDenoisingPlan={
+        "smartDenoisingPlan": {
+            "enabled": True
+        },
+        "fourierDenoisingPlan": {
+            "enabled": True,
+            "mediaDetectionEnabled": True,
+            "baselineOffsetDb": -10,  # Aggressive filtering
+            "windowSizeMs": 2000,      # Fast adaptation
+            "baselinePercentile": 90   # Focus on clear speech
+        }
+    }
+)
+```
+</CodeBlocks>
+
+### Home environment with TV/music
+
+Optimized for media background noise:
+
+<CodeBlocks>
+```typescript title="TypeScript SDK"
+const assistant = await vapi.assistants.create({
+  name: "Home Assistant",
+  backgroundSpeechDenoisingPlan: {
+    smartDenoisingPlan: {
+      enabled: true
+    },
+    fourierDenoisingPlan: {
+      enabled: true,
+      mediaDetectionEnabled: true, // Essential for TV/music
+      baselineOffsetDb: -15,
+      windowSizeMs: 4000,
+      baselinePercentile: 80
+    }
+  }
+});
+```
+```python title="Python SDK"
+assistant = client.assistants.create(
+    name="Home Assistant",
+    backgroundSpeechDenoisingPlan={
+        "smartDenoisingPlan": {
+            "enabled": True
+        },
+        "fourierDenoisingPlan": {
+            "enabled": True,
+            "mediaDetectionEnabled": True,  # Essential for TV/music
+            "baselineOffsetDb": -15,
+            "windowSizeMs": 4000,
+            "baselinePercentile": 80
+        }
+    }
+)
+```
+</CodeBlocks>
+
+## Best practices
+
+<Tip>
+**For most users, Smart Denoising alone is the recommended solution.** It handles the vast majority of common noise scenarios effectively without configuration complexity. Only consider adding Fourier denoising if you have specific requirements that Smart Denoising cannot address.
+</Tip>
+
+### When to use each method
+
+**Smart Denoising only:**
+- General-purpose noise reduction
+- Unpredictable noise patterns
+- When simplicity is preferred
+
+**Smart Denoising + Fourier Denoising:**
+- Maximum noise reduction required
+- Consistent background noise that Smart Denoising alone cannot fully handle
+- Complex acoustic environments with media (TV/music/radio)
+- Premium user experiences requiring fine-tuned control
+- Willing to invest time in testing and tuning
+- Not using headphones (Fourier may cause issues with headphone audio)
+
+<Note>
+Fourier Denoising should never be used alone. It's designed to complement Smart Denoising by providing additional filtering after Krisp has done the initial noise reduction.
+</Note>
+
+### Performance considerations
+
+**Audio quality**: Aggressive filtering may affect voice quality. Test different settings to find the right balance between noise reduction and natural speech preservation.
+
+### Testing recommendations
+
+1. Test in your target environment
+2. Start with default settings
+3. Adjust parameters incrementally
+4. Monitor user feedback
+5. A/B test different configurations
+
+## Troubleshooting fourier denoising
+
+<AccordionGroup>
+  <Accordion title="Voice sounds robotic or distorted">
+    Reduce filtering aggressiveness:
+    - Increase `baselineOffsetDb` (e.g., -20 instead of -15)
+    - Decrease `baselinePercentile` (e.g., 75 instead of 85)
+    - Try Smart Denoising only
+  </Accordion>
+  <Accordion title="Background noise still audible">
+    Increase filtering:
+    - Enable both denoising methods
+    - Decrease `baselineOffsetDb` (e.g., -12 instead of -15)
+    - Ensure `mediaDetectionEnabled` is true for TV/music
+  </Accordion>
+  <Accordion title="Speech cutting out intermittently">
+    Adjust detection sensitivity:
+    - Increase `windowSizeMs` for more stability
+    - Adjust `staticThreshold` if baseline isn't establishing
+    - Check if user's voice level is consistent
+  </Accordion>
+</AccordionGroup>

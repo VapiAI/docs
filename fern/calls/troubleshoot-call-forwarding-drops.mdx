@@ -1,0 +1,302 @@
+---
+title: "Debug call forwarding drops"
+subtitle: "Learn to troubleshoot calls that drop immediately after initiating transfer"
+---
+
+## Overview
+
+When you initiate call forwarding, you expect the call to transfer to the destination. Instead, the call drops immediately after initiating the transfer, leaving both parties disconnected.
+
+**In this guide, you'll learn to:**
+
+- Identify why calls drop during forwarding
+- Check call logs and API responses systematically
+- Analyze telephony provider logs for transfer failures
+- Resolve configuration issues preventing successful transfers
+
+<Note>
+  This guide focuses on the specific scenario where calls drop immediately after
+  transfer initiation, not general call quality issues.
+</Note>
+
+## Prerequisites
+
+Before you start debugging, ensure you have:
+
+- **Call ID** from the dropped call
+- **API access** to make GET requests to Vapi
+- **Admin access** to your telephony provider dashboard (Twilio, Vonage, Telnyx)
+- **Wireshark** installed (for SIP-based calls only)
+
+## Troubleshooting workflow
+
+<Steps>
+<Step title="Check call ended reason">
+
+First, verify whether Vapi successfully initiated the forwarding.
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X GET "https://api.vapi.ai/call/{call_id}" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"
+```
+
+```typescript title="TypeScript SDK"
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const client = new VapiClient({ token: process.env.VAPI_API_KEY });
+const call = await client.calls.get("ca123456xxxxx");
+console.log("End reason:", call.endedReason);
+```
+
+```python title="Python SDK"
+from vapi import Vapi
+
+client = Vapi(token=os.getenv("VAPI_API_KEY"))
+call = client.calls.get("ca123456xxxxx")
+print(f"End reason: {call.ended_reason}")
+```
+
+</CodeBlocks>
+
+**Check the response:**
+
+```json title="Expected response"
+{
+  "id": "ca123456xxxxx",
+  "endedReason": "assistant-forwarded-call",
+  "status": "ended",
+  "destination": {
+    "type": "number",
+    "number": "+1234567890"
+  },
+  "phoneCallProviderId": "twilio_call_abc123"
+}
+```
+
+**What the `endedReason` tells you:**
+
+- `"assistant-forwarded-call"` → Vapi forwarded successfully, continue to Step 2
+- Any other value → Forwarding wasn't initiated, check your assistant configuration
+
+</Step>
+
+<Step title="Verify server message configuration">
+
+If you're handling call control through server messages, this can prevent Vapi from managing transfers.
+
+Check your assistant's `serverMessages` configuration:
+
+<CodeBlocks>
+```json title="Problematic configuration"
+{
+  "assistant": {
+    "serverMessages": ["phone-call-control", "status-update"]
+  }
+}
+```
+
+```json title="Correct configuration"
+{
+  "assistant": {
+    "serverMessages": ["status-update"]
+  }
+}
+```
+
+</CodeBlocks>
+
+<Warning>
+  If `"phone-call-control"` is present, your server is overriding Vapi's call
+  control. Remove it unless you're implementing custom transfer logic.
+</Warning>
+
+</Step>
+
+<Step title="Check phone call provider bypass">
+
+The `phoneCallProviderBypassEnabled` flag determines whether Vapi handles call control directly.
+
+**Recommended configuration:**
+
+```json title="Standard Vapi forwarding"
+{
+  "phoneCallProviderBypassEnabled": false
+}
+```
+
+<Tip>
+  Only set this to `true` if you're implementing custom call control through
+  your telephony provider.
+</Tip>
+
+</Step>
+
+<Step title="Validate transfer scenario compatibility">
+
+Not all transfer scenarios are supported. Verify your use case:
+
+| From       | To           | Supported           |
+| ---------- | ------------ | ------------------- |
+| Phone call | Phone number | ✅ Yes              |
+| Web call   | Phone number | ❌ No               |
+| Phone call | SIP number   | ❌ No (PSTN to SIP) |
+| SIP call   | SIP number   | ✅ Yes              |
+| SIP call   | Phone number | ✅ Yes              |
+
+<Error>
+  Web-to-phone transfers are not supported. The call will always drop in this
+  scenario.
+</Error>
+
+</Step>
+
+<Step title="Analyze telephony provider logs">
+
+If the call shows `"assistant-forwarded-call"` but still drops, the issue is likely with your telephony provider.
+
+**Get your telephony call ID** from the Vapi call object:
+
+```json title="Extract telephony call ID"
+{
+  "id": "ca123456xxxxx",
+  "endedReason": "assistant-forwarded-call",
+  "phoneCallProviderId": "CAabc123"
+}
+```
+
+**Check your provider's dashboard:**
+
+<Tabs>
+<Tab title="Twilio">
+1. Go to [Twilio Console > Call Logs](https://console.twilio.com/us1/monitor/logs/calls)
+2. Search using `phoneCallProviderId` (e.g., `CAabc123`)
+3. Look for transfer-related errors in the call timeline
+4. Check TwiML execution logs for failed transfers
+</Tab>
+
+<Tab title="Vonage">
+  1. Access [Vonage API Dashboard](https://dashboard.nexmo.com/) 2. Navigate to
+  Call Logs 3. Search using the telephony call ID and timestamp 4. Review call
+  flow details for transfer failures
+</Tab>
+
+<Tab title="Telnyx">  
+1. Open [Telnyx Mission Control Portal](https://portal.telnyx.com/)
+2. Go to Call Detail Records
+3. Search using the telephony call ID
+4. Examine call records for forwarding errors
+</Tab>
+</Tabs>
+
+</Step>
+
+<Step title="Analyze SIP packets (SIP calls only)">
+
+For SIP trunking or bring-your-own-number setups, analyze the SIP signaling.
+
+**Download the packet capture:**
+
+```bash title="Get PCAP file"
+curl -X GET "https://api.vapi.ai/call/{call_id}" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+The response includes a `pcapUrl` field. Download this file and open it in Wireshark.
+
+**Filter for transfer packets:**
+
+```text title="Wireshark filter"
+sip.Method == "REFER"
+```
+
+**What to look for:**
+
+- **REFER packet present** → Vapi sent the transfer request to your SIP provider
+- **REFER packet missing** → Transfer wasn't initiated by Vapi
+- **202 Accepted response** → SIP provider accepted the transfer
+- **Error responses (4xx, 5xx)** → SIP provider rejected the transfer
+
+<Info>
+  **Important:** SIP transfers are handled by your telephony provider, not Vapi.
+  Once Vapi sends the REFER packet, your SIP provider manages the actual
+  transfer process.
+</Info>
+
+For more details on SIP configuration, see our [SIP trunk documentation](https://docs.vapi.ai/advanced/sip/sip-trunk#inbound-call-test).
+
+</Step>
+</Steps>
+
+## Common solutions
+
+Based on your findings, here are the most frequent fixes:
+
+### Call shows successful forwarding but still drops
+
+**Root cause:** Telephony provider couldn't complete the transfer
+
+**Solution:** Check destination number format and availability
+
+- Verify the destination number includes country code
+- Test calling the destination directly outside of Vapi
+- Check if destination has call blocking enabled
+
+### endedReason is not 'assistant-forwarded-call'
+
+**Root cause:** Transfer wasn't initiated due to configuration
+
+**Solution:** Review assistant settings
+
+- Remove `"phone-call-control"` from `serverMessages`
+- Set `phoneCallProviderBypassEnabled` to `false`
+- Verify your transfer function is properly configured
+
+### SIP REFER packets missing in PCAP
+
+**Root cause:** Vapi didn't send transfer request to SIP provider
+
+**Solution:** Check Vapi configuration
+
+- Verify SIP endpoint configuration
+- Ensure destination format matches SIP addressing
+- Check for conflicting call control settings
+
+## Limitations
+
+### Transfer scenario limitations
+
+- **Web calls** cannot be transferred to phone numbers
+- **PSTN-to-SIP** transfers are not supported
+- Cross-provider transfers may have compatibility issues
+
+### Configuration dependencies
+
+- `phoneCallProviderBypassEnabled` must be `false` for Vapi-managed transfers
+- `serverMessages` with `"phone-call-control"` overrides default behavior
+- SIP configuration requires proper endpoint setup
+
+## When to contact support
+
+Escalate to support when you've completed all troubleshooting steps and:
+
+- Provider logs show successful transfers but calls consistently fail
+- SIP packet analysis indicates Vapi-side transfer issues
+- Multiple destinations fail with the same configuration
+- Configuration changes don't resolve recurring failures
+
+**Include in your support request:**
+
+- Call ID and timestamp
+- Complete troubleshooting results from this guide
+- Telephony provider error codes and logs
+- Screenshots of configuration settings
+
+## Next steps
+
+Now that you can debug call forwarding drops:
+
+- **Monitor call patterns:** Set up alerts for calls with unexpected `endedReason` values
+- **Test systematically:** Verify transfers work across different destination types before production
+- **Review SIP setup:** Ensure your SIP configuration follows our [advanced SIP guide](https://docs.vapi.ai/advanced/sip/sip-trunk)
