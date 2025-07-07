@@ -16,6 +16,12 @@ Dynamic call transfers enable intelligent routing by determining transfer destin
 * Context-aware transfers with conversation summaries
 * Fallback handling for unavailable destinations
 
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/)
+* A server or cloud function that can receive webhooks from Vapi
+* (Optional) CRM system or customer database for enhanced routing logic
+
 ## How It Works
 
 Dynamic transfers operate by leaving the destination unspecified initially, then using webhooks to determine the appropriate destination when needed.
@@ -28,6 +34,385 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
 5. **Transfer** - Vapi executes the transfer to the determined destination
 
 **Available context:** Your webhook receives conversation transcript, extracted variables, customer information, function parameters, and call metadata.
+
+---
+
+## Quick Implementation Guide
+
+<Steps>
+  <Step title="Create a dynamic transfer tool">
+    <Tabs>
+      <Tab title="Dashboard">
+        - Navigate to **Tools** in your dashboard
+        - Click **Create Tool** 
+        - Select **Transfer Call** as the tool type
+        - **Important**: Leave the destinations array empty - this creates a dynamic transfer tool
+        - Set function name: `dynamicTransfer`
+        - Add description explaining when this tool should be used
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        import { VapiClient } from "@vapi-ai/server-sdk";
+
+        const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+        const dynamicTool = await vapi.tools.create({
+          type: "transferCall",
+          // Empty destinations array makes this dynamic
+          destinations: [],
+          function: {
+            name: "dynamicTransfer",
+            description: "Transfer call to appropriate destination based on customer needs",
+            parameters: {
+              type: "object",
+              properties: {
+                reason: {
+                  type: "string",
+                  description: "Reason for transfer"
+                },
+                urgency: {
+                  type: "string",
+                  enum: ["low", "medium", "high", "critical"]
+                }
+              }
+            }
+          }
+        });
+
+        console.log(`Dynamic transfer tool created: ${dynamicTool.id}`);
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        import requests
+        import os
+
+        def create_dynamic_transfer_tool():
+            url = "https://api.vapi.ai/tool"
+            headers = {
+                "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "type": "transferCall",
+                "destinations": [],  # Empty for dynamic routing
+                "function": {
+                    "name": "dynamicTransfer",
+                    "description": "Transfer call to appropriate destination based on customer needs",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "reason": {
+                                "type": "string",
+                                "description": "Reason for transfer"
+                            },
+                            "urgency": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "critical"]
+                            }
+                        }
+                    }
+                }
+            }
+            
+            response = requests.post(url, headers=headers, json=data)
+            return response.json()
+
+        tool = create_dynamic_transfer_tool()
+        print(f"Dynamic transfer tool created: {tool['id']}")
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST https://api.vapi.ai/tool \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "type": "transferCall",
+               "destinations": [],
+               "function": {
+                 "name": "dynamicTransfer",
+                 "description": "Transfer call to appropriate destination based on customer needs",
+                 "parameters": {
+                   "type": "object",
+                   "properties": {
+                     "reason": {"type": "string", "description": "Reason for transfer"},
+                     "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]}
+                   }
+                 }
+               }
+             }'
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Create an assistant with the transfer tool">
+    <Tabs>
+      <Tab title="Dashboard">
+        - Navigate to **Assistants** 
+        - Create a new assistant or edit an existing one
+        - Add your dynamic transfer tool to the assistant
+        - Enable the **transfer-destination-request** server event
+        - Set your server URL to handle the webhook
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        const assistant = await vapi.assistants.create({
+          name: "Dynamic Transfer Assistant", 
+          firstMessage: "Hello! How can I help you today?",
+          model: {
+            provider: "openai",
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: "You help customers and transfer them when needed using the dynamicTransfer tool. Assess the customer's needs and transfer to the appropriate department."
+              }
+            ],
+            toolIds: ["YOUR_DYNAMIC_TOOL_ID"]
+          },
+          voice: {
+            provider: "11labs", 
+            voiceId: "burt"
+          },
+          serverUrl: "https://your-server.com/webhook",
+          serverUrlSecret: process.env.WEBHOOK_SECRET
+        });
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        def create_assistant_with_dynamic_transfer(tool_id):
+            url = "https://api.vapi.ai/assistant"
+            headers = {
+                "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "name": "Dynamic Transfer Assistant",
+                "firstMessage": "Hello! How can I help you today?",
+                "model": {
+                    "provider": "openai",
+                    "model": "gpt-4o", 
+                    "messages": [{
+                        "role": "system",
+                        "content": "You help customers and transfer them when needed using the dynamicTransfer tool. Assess the customer's needs and transfer to the appropriate department."
+                    }],
+                    "toolIds": [tool_id]
+                },
+                "voice": {"provider": "11labs", "voiceId": "burt"},
+                "serverUrl": "https://your-server.com/webhook",
+                "serverUrlSecret": os.getenv("WEBHOOK_SECRET")
+            }
+            
+            response = requests.post(url, headers=headers, json=data)
+            return response.json()
+        ```
+      </Tab>
+      <Tab title="cURL">
+        ```bash
+        curl -X POST https://api.vapi.ai/assistant \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "name": "Dynamic Transfer Assistant",
+               "firstMessage": "Hello! How can I help you today?",
+               "model": {
+                 "provider": "openai",
+                 "model": "gpt-4o",
+                 "messages": [{
+                   "role": "system", 
+                   "content": "You help customers and transfer them when needed using the dynamicTransfer tool."
+                 }],
+                 "toolIds": ["YOUR_DYNAMIC_TOOL_ID"]
+               },
+               "serverUrl": "https://your-server.com/webhook"
+             }'
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Build your webhook server">
+    <Tabs>
+      <Tab title="Node.js (Express)">
+        ```typescript
+        import express from 'express';
+        import crypto from 'crypto';
+
+        const app = express();
+        app.use(express.json());
+
+        function verifyWebhookSignature(payload: string, signature: string) {
+          const expectedSignature = crypto
+            .createHmac('sha256', process.env.WEBHOOK_SECRET!)
+            .update(payload)
+            .digest('hex');
+          return crypto.timingSafeEqual(
+            Buffer.from(signature), 
+            Buffer.from(expectedSignature)
+          );
+        }
+
+        app.post('/webhook', (req, res) => {
+          try {
+            const signature = req.headers['x-vapi-signature'] as string;
+            const payload = JSON.stringify(req.body);
+
+            if (!verifyWebhookSignature(payload, signature)) {
+              return res.status(401).json({ error: 'Invalid signature' });
+            }
+
+            const request = req.body;
+
+            if (request.type !== 'transfer-destination-request') {
+              return res.status(200).json({ received: true });
+            }
+
+            // Simple routing logic - customize for your needs
+            const { functionCall, customer } = request;
+            const urgency = functionCall.parameters?.urgency || 'medium';
+
+            let destination;
+            if (urgency === 'critical') {
+              destination = {
+                type: "number",
+                number: "+1-555-EMERGENCY",
+                message: "Connecting you to our emergency team."
+              };
+            } else {
+              destination = {
+                type: "number", 
+                number: "+1-555-SUPPORT",
+                message: "Transferring you to our support team."
+              };
+            }
+
+            res.json({ destination });
+          } catch (error) {
+            console.error('Webhook error:', error);
+            res.status(500).json({ 
+              error: 'Transfer routing failed. Please try again.' 
+            });
+          }
+        });
+
+        app.listen(3000, () => {
+          console.log('Webhook server running on port 3000');
+        });
+        ```
+      </Tab>
+      <Tab title="Python (FastAPI)">
+        ```python
+        import os
+        import hmac
+        import hashlib
+        from fastapi import FastAPI, HTTPException, Request
+
+        app = FastAPI()
+
+        def verify_webhook_signature(payload: bytes, signature: str) -> bool:
+            webhook_secret = os.getenv('WEBHOOK_SECRET', '').encode()
+            expected_signature = hmac.new(
+                webhook_secret, payload, hashlib.sha256
+            ).hexdigest()
+            return hmac.compare_digest(signature, expected_signature)
+
+        @app.post("/webhook")
+        async def handle_webhook(request: Request):
+            try:
+                body = await request.body()
+                signature = request.headers.get('x-vapi-signature', '')
+                
+                if not verify_webhook_signature(body, signature):
+                    raise HTTPException(status_code=401, detail="Invalid signature")
+                
+                request_data = await request.json()
+                
+                if request_data.get('type') != 'transfer-destination-request':
+                    return {"received": True}
+                
+                # Simple routing logic - customize for your needs
+                function_call = request_data.get('functionCall', {})
+                urgency = function_call.get('parameters', {}).get('urgency', 'medium')
+                
+                if urgency == 'critical':
+                    destination = {
+                        "type": "number",
+                        "number": "+1-555-EMERGENCY", 
+                        "message": "Connecting you to our emergency team."
+                    }
+                else:
+                    destination = {
+                        "type": "number",
+                        "number": "+1-555-SUPPORT",
+                        "message": "Transferring you to our support team."
+                    }
+                
+                return {"destination": destination}
+                
+            except Exception as error:
+                print(f"Webhook error: {error}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Transfer routing failed. Please try again."
+                )
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Test your dynamic transfer system">
+    <Tabs>
+      <Tab title="Dashboard">
+        - Create a phone number and assign your assistant
+        - Call the number and test different transfer scenarios
+        - Monitor your webhook server logs to see the routing decisions
+        - Verify transfers are working to the correct destinations
+      </Tab>
+      <Tab title="TypeScript (Testing)">
+        ```typescript
+        // Test with an outbound call
+        const testCall = await vapi.calls.create({
+          assistantId: "YOUR_ASSISTANT_ID",
+          customer: {
+            number: "+1234567890" // Your test number
+          }
+        });
+
+        console.log(`Test call created: ${testCall.id}`);
+        
+        // Monitor webhook server logs to see transfer requests
+        ```
+      </Tab>
+      <Tab title="Python (Testing)">
+        ```python
+        def test_dynamic_transfers(assistant_id):
+            url = "https://api.vapi.ai/call"
+            headers = {
+                "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "assistantId": assistant_id,
+                "customer": {"number": "+1234567890"}
+            }
+            
+            response = requests.post(url, headers=headers, json=data)
+            call = response.json()
+            print(f"Test call created: {call['id']}")
+            return call
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+---
 
 ## Implementation Approaches
 

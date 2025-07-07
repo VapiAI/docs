@@ -5,6 +5,10 @@ slug: workflows/examples/property-management
 description: Build a voice AI property management system with dynamic call routing that determines destinations based on tenant verification, inquiry type analysis, and real-time agent availability using workflow API requests.
 ---
 
+<Frame>
+  <img src="/static/images/workflows/examples/property-management.png" alt="Property Management Workflow" />
+</Frame>
+
 ## Overview
 
 Build a property management call routing workflow that determines transfer destinations dynamically using tenant verification, inquiry type analysis, and real-time agent availability. This approach uses visual workflow nodes with API Request nodes for maximum routing flexibility.
@@ -20,6 +24,204 @@ Build a property management call routing workflow that determines transfer desti
 * API Request nodes for dynamic destination logic
 * Tenant verification with CRM integration
 * Emergency escalation with priority queuing
+
+## Quick Start: Create the Complete Workflow
+
+Use this cURL command to create the entire property management workflow in one shot:
+
+<CodeBlocks>
+```bash title="Complete Workflow Creation"
+curl -X POST https://api.vapi.ai/workflow \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "Property Management Call Router",
+       "nodes": [
+         {
+           "type": "conversation",
+           "name": "Initial Greeting",
+           "isStart": true,
+           "prompt": "You are a helpful property management assistant for Riverside Property Management. Start by greeting the caller and asking how you can help them today. Listen to determine: Is this an emergency/urgent maintenance issue? What type of inquiry is this (maintenance, lease, rent, general)? Keep responses under 25 words and be professional.",
+           "model": {
+             "provider": "openai",
+             "model": "gpt-4"
+           },
+           "variableExtractionPlan": {
+             "schema": {
+               "type": "object",
+               "properties": {
+                 "inquiry_type": {
+                   "type": "string",
+                   "description": "Type of inquiry",
+                   "enum": ["emergency", "maintenance", "lease", "rent", "general"]
+                 },
+                 "caller_phone": {
+                   "type": "string",
+                   "description": "Caller phone number for tenant lookup"
+                 }
+               }
+             }
+           }
+         },
+         {
+           "type": "conversation",
+           "name": "Emergency Handling",
+           "prompt": "This is an emergency maintenance situation. Tell the caller you understand this is an emergency and that you are immediately connecting them with emergency maintenance. Keep the interaction brief and gather only essential details about the emergency.",
+           "model": {
+             "provider": "openai",
+             "model": "gpt-4"
+           },
+           "variableExtractionPlan": {
+             "schema": {
+               "type": "object",
+               "properties": {
+                 "emergency_details": {
+                   "type": "string",
+                   "description": "Brief description of emergency"
+                 }
+               }
+             }
+           }
+         },
+         {
+           "type": "tool",
+           "name": "Transfer to General Office",
+           "tool": {
+             "type": "transferCall",
+             "destinations": [
+               {
+                 "type": "number",
+                 "number": "+12025551234",
+                 "message": "Connecting you to our office team who will assist you with your inquiry."
+               }
+             ]
+           }
+         }
+       ],
+       "edges": [
+         {
+           "from": "Initial Greeting",
+           "to": "Emergency Handling",
+           "condition": {
+             "type": "ai",
+             "prompt": "Route to emergency handling if the caller has an emergency or urgent maintenance issue"
+           }
+         },
+         {
+           "from": "Initial Greeting",
+           "to": "Transfer to General Office",
+           "condition": {
+             "type": "ai",
+             "prompt": "Route to transfer for all non-emergency inquiries (maintenance, lease, rent, general)"
+           }
+         },
+         {
+           "from": "Emergency Handling",
+           "to": "Transfer to General Office",
+           "condition": {
+             "type": "ai",
+             "prompt": "After gathering emergency details, transfer to office"
+           }
+         }
+       ]
+     }'
+```
+</CodeBlocks>
+
+<Note>
+Replace `$VAPI_API_KEY` with your actual API key from the [Vapi Dashboard](https://dashboard.vapi.ai/). Update the phone number in the `transferCall` destination to your actual office number.
+</Note>
+
+Once created, you can retrieve the workflow ID and attach it to a phone number for testing.
+
+## Test Workflow Creation
+
+After creating the workflow, you can test it and get the workflow ID:
+
+<CodeBlocks>
+```bash title="Get Your Workflow ID"
+# First, create the workflow using the command above, then:
+curl -X GET https://api.vapi.ai/workflow \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     | jq '.[] | select(.name == "Property Management Call Router") | {id: .id, name: .name, nodes: (.nodes | length), edges: (.edges | length)}'
+```
+
+```bash title="Get Specific Workflow Details"
+# Replace WORKFLOW_ID with the actual ID from the previous command
+curl -X GET https://api.vapi.ai/workflow/WORKFLOW_ID \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     | jq '{id: .id, name: .name, nodes: [.nodes[].name], edges: [.edges[].condition]}'
+```
+
+```bash title="Attach Workflow to Phone Number"
+# Replace PHONE_NUMBER_ID with your actual phone number ID
+curl -X PATCH https://api.vapi.ai/phone-number/PHONE_NUMBER_ID \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "workflowId": "WORKFLOW_ID"
+     }'
+```
+</CodeBlocks>
+
+<Note>
+You'll need `jq` installed for JSON parsing. On macOS: `brew install jq`, on Ubuntu: `sudo apt-get install jq`
+</Note>
+
+## API Response Structure
+
+When you create the workflow, you'll receive a response like this:
+
+```json
+{
+  "id": "wf_1234567890abcdef",
+  "name": "Property Management Call Router",
+  "orgId": "org_1234567890abcdef",
+  "createdAt": "2024-01-15T10:30:00.000Z",
+  "updatedAt": "2024-01-15T10:30:00.000Z",
+  "nodes": [
+    {
+      "id": "greeting",
+      "type": "conversation",
+      "name": "Initial Greeting",
+      "isStart": true,
+      "firstMessage": "Hello! You've reached Riverside Property Management...",
+      "systemPrompt": "You are a helpful property management assistant...",
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4"
+      },
+      "extractVariables": [...]
+    },
+    // ... more nodes
+  ],
+  "edges": [
+    {
+      "id": "greeting_to_lookup",
+      "source": "greeting",
+      "target": "tenant_lookup",
+      "condition": "Always route to tenant lookup after greeting"
+    },
+    // ... more edges
+  ]
+}
+```
+
+### Key Fields for Integration
+
+| Field | Description | Usage |
+|-------|-------------|-------|
+| `id` | Workflow ID | Use this to attach workflow to phone numbers |
+| `name` | Workflow name | For identification in dashboard |
+| `nodes` | Array of workflow nodes | Conversation and tool nodes |
+| `edges` | Array of connections | Define the flow between nodes |
+| `createdAt` | Creation timestamp | For tracking and reference |
+
+### Node Types in This Workflow
+
+- **Conversation Nodes**: Handle AI conversations with tenants
+- **Tool Nodes**: Execute API calls for tenant lookup and routing
+- **Transfer Nodes**: Route calls to appropriate agents
 
 ## Prerequisites
 
@@ -50,153 +252,33 @@ We will build a call routing workflow for Riverside Property Management that int
       <Step title="Configure the initial greeting">
         Click on the conversation node and configure:
         
-        **First Message**:
+        **Prompt**:
         ```txt
-        Hello! You've reached Riverside Property Management. I can help you with maintenance requests, lease questions, rent payments, and general inquiries. How may I assist you today?
+        You are a helpful property management assistant for Riverside Property Management. Start by greeting the caller and asking how you can help them today. Listen to determine: Is this an emergency/urgent maintenance issue? What type of inquiry is this (maintenance, lease, rent, general)? Keep responses under 25 words and be professional.
         ```
         
-        **System Prompt**:
-        ```txt
-        You are a helpful property management assistant. Listen to determine:
-        - Is this an emergency/urgent maintenance issue?
-        - What type of inquiry is this (maintenance, lease, rent, general)?
-        - Do they want to speak to a specific person or department?
-        
-        Keep responses under 25 words and be professional.
+        **Variable Extraction Schema**:
+        ```json
+        {
+          "type": "object",
+          "properties": {
+            "inquiry_type": {
+              "type": "string",
+              "description": "Type of inquiry",
+              "enum": ["emergency", "maintenance", "lease", "rent", "general"]
+            },
+            "caller_phone": {
+              "type": "string",
+              "description": "Caller phone number for tenant lookup"
+            }
+          }
+        }
         ```
       </Step>
     </Steps>
   </Tab>
-  <Tab title="TypeScript (Server SDK)">
-    ```typescript
-    import { VapiClient } from "@vapi-ai/server-sdk";
-
-    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
-
-    async function createPropertyManagementWorkflow() {
-      try {
-        const workflow = await vapi.workflows.create({
-          name: "Property Management Call Router",
-          nodes: [
-            {
-              id: "greeting",
-              type: "conversation",
-              firstMessage: "Hello! You've reached Riverside Property Management. I can help you with maintenance requests, lease questions, rent payments, and general inquiries. How may I assist you today?",
-              systemPrompt: "You are a helpful property management assistant. Listen to determine: Is this an emergency/urgent maintenance issue? What type of inquiry is this (maintenance, lease, rent, general)? Do they want to speak to a specific person or department? Keep responses under 25 words and be professional.",
-              extractVariables: [
-                {
-                  name: "inquiry_type",
-                  type: "string",
-                  description: "Type of inquiry",
-                  enum: ["emergency", "maintenance", "lease", "rent", "general"]
-                },
-                {
-                  name: "caller_phone",
-                  type: "string", 
-                  description: "Caller's phone number for tenant lookup"
-                }
-              ]
-            }
-          ],
-          edges: []
-        });
-
-        console.log(`Property management workflow created: ${workflow.id}`);
-        return workflow;
-      } catch (error) {
-        console.error('Error creating workflow:', error);
-        throw error;
-      }
-    }
-
-    // Create the workflow
-    const workflow = await createPropertyManagementWorkflow();
-    ```
-  </Tab>
-  <Tab title="Python (Server SDK)">
-    ```python
-    import os
-    import requests
-
-    def create_property_management_workflow():
-        """Create property management call routing workflow"""
-        url = "https://api.vapi.ai/workflow"
-        headers = {
-            "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "name": "Property Management Call Router",
-            "nodes": [
-                {
-                    "id": "greeting",
-                    "type": "conversation",
-                    "firstMessage": "Hello! You've reached Riverside Property Management. I can help you with maintenance requests, lease questions, rent payments, and general inquiries. How may I assist you today?",
-                    "systemPrompt": "You are a helpful property management assistant. Listen to determine: Is this an emergency/urgent maintenance issue? What type of inquiry is this (maintenance, lease, rent, general)? Do they want to speak to a specific person or department? Keep responses under 25 words and be professional.",
-                    "extractVariables": [
-                        {
-                            "name": "inquiry_type",
-                            "type": "string",
-                            "description": "Type of inquiry",
-                            "enum": ["emergency", "maintenance", "lease", "rent", "general"]
-                        },
-                        {
-                            "name": "caller_phone",
-                            "type": "string",
-                            "description": "Caller's phone number for tenant lookup"
-                        }
-                    ]
-                }
-            ],
-            "edges": []
-        }
-        
-        try:
-            response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()
-            workflow = response.json()
-            print(f"Property management workflow created: {workflow['id']}")
-            return workflow
-        except requests.exceptions.RequestException as error:
-            print(f"Error creating workflow: {error}")
-            raise
-
-    # Create the workflow
-    workflow = create_property_management_workflow()
-    ```
-  </Tab>
-  <Tab title="cURL">
-    ```bash
-    curl -X POST https://api.vapi.ai/workflow \
-         -H "Authorization: Bearer $VAPI_API_KEY" \
-         -H "Content-Type: application/json" \
-         -d '{
-           "name": "Property Management Call Router",
-           "nodes": [
-             {
-               "id": "greeting", 
-               "type": "conversation",
-               "firstMessage": "Hello! You'\''ve reached Riverside Property Management. I can help you with maintenance requests, lease questions, rent payments, and general inquiries. How may I assist you today?",
-               "systemPrompt": "You are a helpful property management assistant. Listen to determine: Is this an emergency/urgent maintenance issue? What type of inquiry is this (maintenance, lease, rent, general)? Do they want to speak to a specific person or department? Keep responses under 25 words and be professional.",
-               "extractVariables": [
-                 {
-                   "name": "inquiry_type",
-                   "type": "string", 
-                   "description": "Type of inquiry",
-                   "enum": ["emergency", "maintenance", "lease", "rent", "general"]
-                 },
-                 {
-                   "name": "caller_phone",
-                   "type": "string",
-                   "description": "Caller'\''s phone number for tenant lookup"
-                 }
-               ]
-             }
-           ],
-           "edges": []
-         }'
-    ```
+  <Tab title="API (cURL)">
+    Use the working cURL command from the Quick Start section above to create the entire workflow programmatically.
   </Tab>
 </Tabs>
 
@@ -471,315 +553,147 @@ We will build a call routing workflow for Riverside Property Management that int
         - Billing questions from current tenants
         - Calls from unrecognized phone numbers
       </Step>
-      <Step title="Monitor API integration">
-        Check your API logs to verify:
-        - Tenant lookup requests and responses
-        - Agent availability checks
-        - Routing decision API calls
-        - Callback scheduling if needed
+      <Step title="Monitor workflow performance">
+        Check your workflow analytics to verify:
+        - Call routing patterns
+        - Emergency response times
+        - Variable extraction accuracy
+        - Transfer success rates
       </Step>
     </Steps>
   </Tab>
-  <Tab title="TypeScript (Testing)">
-    ```typescript
-    import { VapiClient } from "@vapi-ai/server-sdk";
-
-    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
-
-    async function testPropertyRouting(workflowId: string) {
-      try {
-        // Test emergency maintenance call
-        const emergencyCall = await vapi.calls.create({
-          workflowId: workflowId,
-          customer: {
-            number: "+1234567890", // Known tenant number
-            name: "Emergency Maintenance Test"
-          }
-        });
-
-        console.log(`Emergency test call created: ${emergencyCall.id}`);
-
-        // Test general leasing inquiry
-        const leasingCall = await vapi.calls.create({
-          workflowId: workflowId,
-          customer: {
-            number: "+0987654321", // Unknown number
-            name: "Leasing Inquiry Test"
-          }
-        });
-
-        console.log(`Leasing test call created: ${leasingCall.id}`);
-
-        return { emergencyCall, leasingCall };
-      } catch (error) {
-        console.error('Error creating test calls:', error);
-        throw error;
-      }
-    }
-
-    // Test the property routing workflow
-    const testCalls = await testPropertyRouting('YOUR_WORKFLOW_ID');
-    ```
-  </Tab>
-  <Tab title="Python (Testing)">
-    ```python
-    import requests
-    import os
-
-    def test_property_routing(workflow_id):
-        """Test property management routing with different scenarios"""
-        url = "https://api.vapi.ai/call"
-        headers = {
-            "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
-            "Content-Type": "application/json"
-        }
-        
-        test_scenarios = [
-            {
-                "name": "Emergency Maintenance",
-                "customer": {
-                    "number": "+1234567890",  # Known tenant
-                    "name": "Emergency Maintenance Test"
-                }
-            },
-            {
-                "name": "General Leasing Inquiry",
-                "customer": {
-                    "number": "+0987654321",  # Unknown number
-                    "name": "Leasing Inquiry Test"
-                }
-            },
-            {
-                "name": "Billing Question",
-                "customer": {
-                    "number": "+1111111111",  # Known tenant
-                    "name": "Billing Question Test"
-                }
-            }
-        ]
-        
-        results = []
-        for scenario in test_scenarios:
-            try:
-                data = {
-                    "workflowId": workflow_id,
-                    **scenario
-                }
-                
-                response = requests.post(url, headers=headers, json=data)
-                response.raise_for_status()
-                call = response.json()
-                
-                print(f"{scenario['name']} call created: {call['id']}")
-                results.append(call)
-                
-            except requests.exceptions.RequestException as error:
-                print(f"Error creating {scenario['name']}: {error}")
-        
-        return results
-
-    # Test the property routing workflow
-    test_calls = test_property_routing('YOUR_WORKFLOW_ID')
+  <Tab title="API Testing">
+    Test your workflow using the API:
+    
+    ```bash
+    # Create a test call
+    curl -X POST https://api.vapi.ai/call \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "workflowId": "YOUR_WORKFLOW_ID",
+           "customer": {
+             "number": "+1234567890",
+             "name": "Test Caller"
+           }
+         }'
     ```
   </Tab>
 </Tabs>
 
 ## API Integration Examples
 
-### Tenant Lookup API
+Your property management system can integrate with the workflow using these API endpoints:
 
-```typescript
-// Example tenant lookup API for property management
-app.post('/api/tenants/lookup', async (req, res) => {
-  try {
-    const { phone, inquiry_type } = req.body;
-    
-    // Look up tenant by phone number
-    const tenant = await propertyDB.query(`
-      SELECT t.id, t.name, t.status, p.address, a.standing, a.balance
-      FROM tenants t
-      JOIN properties p ON t.property_id = p.id
-      JOIN accounts a ON t.account_id = a.id
-      WHERE t.phone = ?
-    `, [phone]);
+### Tenant Lookup Endpoint
 
-    if (!tenant.length) {
-      return res.json({
-        tenant: null,
-        routing_suggestion: "general_queue"
-      });
-    }
+```http
+POST /api/tenants/lookup
+Content-Type: application/json
 
-    const tenantData = tenant[0];
-    
-    res.json({
-      tenant: {
-        id: tenantData.id,
-        name: tenantData.name,
-        status: tenantData.status,
-        property: tenantData.address,
-        account_standing: tenantData.standing,
-        balance: tenantData.balance
-      },
-      routing_suggestion: determineRoutingSuggestion(tenantData, inquiry_type)
-    });
-  } catch (error) {
-    console.error('Tenant lookup error:', error);
-    res.status(500).json({ error: 'Lookup failed' });
-  }
-});
+{
+  "phone": "+1234567890",
+  "inquiry_type": "maintenance"
+}
+```
+
+**Response:**
+```json
+{
+  "tenant": {
+    "id": "tenant_123",
+    "name": "John Smith",
+    "status": "active",
+    "property": "123 Main St, Apt 4B",
+    "account_standing": "good"
+  },
+  "routing_suggestion": "maintenance_team"
+}
 ```
 
 ### Agent Availability Check
 
-```typescript
-// Example agent availability API
-app.get('/api/agents/availability', async (req, res) => {
-  try {
-    const { department, priority } = req.query;
-    
-    const availableAgents = await agentDB.query(`
-      SELECT a.id, a.name, a.phone, a.current_calls, a.department
-      FROM agents a
-      WHERE a.department = ? 
-        AND a.status = 'available'
-        AND a.current_calls < a.max_calls
-      ORDER BY a.current_calls ASC, a.priority_level DESC
-    `, [department]);
-
-    const queueLength = await getQueueLength(department);
-    const estimatedWait = calculateEstimatedWait(queueLength, availableAgents.length);
-
-    res.json({
-      available_agents: availableAgents,
-      queue_length: queueLength,
-      estimated_wait_minutes: estimatedWait,
-      department_status: availableAgents.length > 0 ? 'available' : 'busy'
-    });
-  } catch (error) {
-    console.error('Availability check error:', error);
-    res.status(500).json({ error: 'Availability check failed' });
-  }
-});
+```http
+GET /api/agents/availability?department=maintenance&priority=normal
 ```
 
-### Emergency Routing Logic
-
-```typescript
-// Example emergency routing API
-app.post('/api/routing/emergency', async (req, res) => {
-  try {
-    const { tenant_id, property, inquiry_type } = req.body;
-    
-    // Get emergency contact based on property location
-    const emergencyTeam = await getEmergencyTeam(property);
-    
-    // Create emergency ticket
-    const ticket = await createEmergencyTicket({
-      tenant_id,
-      property,
-      priority: 'critical',
-      source: 'phone'
-    });
-
-    // Get first available emergency agent
-    const agent = emergencyTeam.find(agent => agent.available) || emergencyTeam[0];
-
-    res.json({
-      destination: agent.phone,
-      agent_name: agent.name,
-      ticket_id: ticket.id,
-      priority: 'critical',
-      transfer_message: `Emergency maintenance call for ${property}. Ticket #${ticket.id} created.`
-    });
-  } catch (error) {
-    console.error('Emergency routing error:', error);
-    res.status(500).json({ error: 'Emergency routing failed' });
-  }
-});
+**Response:**
+```json
+{
+  "available_agents": [
+    {
+      "id": "agent_456",
+      "name": "Mike Johnson", 
+      "phone": "+15551234567",
+      "department": "maintenance"
+    }
+  ],
+  "queue_length": 2,
+  "estimated_wait_minutes": 5,
+  "department_status": "available"
+}
 ```
 
-### Callback Scheduling
+### Emergency Routing
 
-```typescript
-// Example callback scheduling API
-app.post('/api/callbacks/schedule', async (req, res) => {
-  try {
-    const { tenant_id, phone, inquiry_type, priority, requested_time } = req.body;
-    
-    // Schedule callback in system
-    const callback = await callbackDB.create({
-      tenant_id,
-      phone,
-      inquiry_type,
-      priority,
-      requested_time: requested_time || getNextAvailableSlot(),
-      status: 'scheduled',
-      created_at: new Date()
-    });
+```http
+POST /api/routing/emergency
+Content-Type: application/json
 
-    // Send confirmation SMS/email
-    await sendCallbackConfirmation(phone, callback.scheduled_time);
+{
+  "tenant_id": "tenant_123",
+  "property": "123 Main St, Apt 4B",
+  "inquiry_type": "emergency"
+}
+```
 
-    res.json({
-      callback_id: callback.id,
-      scheduled_time: callback.scheduled_time,
-      confirmation_sent: true,
-      message: `Callback scheduled for ${formatTime(callback.scheduled_time)}`
-    });
-  } catch (error) {
-    console.error('Callback scheduling error:', error);
-    res.status(500).json({ error: 'Callback scheduling failed' });
-  }
-});
+**Response:**
+```json
+{
+  "destination": "+15559876543",
+  "agent_name": "Emergency Maintenance",
+  "ticket_id": "EM_789",
+  "priority": "critical"
+}
 ```
 
 ## Advanced Workflow Features
 
 ### Queue Management with Priorities
 
-```typescript
-function determineRoutingPriority(tenant: any, inquiryType: string) {
-  // Enterprise/commercial tenants get priority
-  if (tenant.tier === 'commercial') return 'high';
-  
-  // Emergency situations
-  if (inquiryType === 'emergency') return 'critical';
-  
-  // Account issues for good standing tenants
-  if (inquiryType === 'rent' && tenant.account_standing === 'good') return 'normal';
-  
-  // Delinquent accounts get lower priority for non-urgent matters
-  if (tenant.account_standing === 'delinquent' && inquiryType !== 'emergency') return 'low';
-  
-  return 'normal';
+Configure priority-based routing in your tenant lookup API:
+
+```json
+{
+  "tenant": {
+    "tier": "commercial",
+    "account_standing": "good",
+    "inquiry_type": "emergency"
+  },
+  "routing_priority": "critical"
 }
 ```
 
+Priority levels:
+- **Critical**: Emergency situations, commercial tenants
+- **High**: Good standing tenants with urgent issues  
+- **Normal**: Standard maintenance and lease inquiries
+- **Low**: Delinquent accounts with non-urgent matters
+
 ### Business Hours Routing
 
-```typescript
-function getRoutingDestination(inquiry: any, currentTime: Date) {
-  const businessHours = isBusinessHours(currentTime);
-  
-  if (!businessHours) {
-    // After hours emergency routing
-    if (inquiry.type === 'emergency') {
-      return {
-        destination: process.env.EMERGENCY_LINE,
-        message: "Connecting you to our emergency maintenance line."
-      };
-    }
-    
-    // After hours general routing
-    return {
-      destination: process.env.VOICEMAIL_LINE,
-      message: "Our office is currently closed. Please leave a detailed message."
-    };
+Configure time-based routing logic:
+
+```json
+{
+  "business_hours": {
+    "weekdays": "9:00-17:00",
+    "weekends": "10:00-15:00"
+  },
+  "after_hours_routing": {
+    "emergency": "+15559876543",
+    "general": "voicemail"
   }
-  
-  // Business hours routing logic
-  return getBusinessHoursDestination(inquiry);
 }
 ```
 
