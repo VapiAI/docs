@@ -1,32 +1,522 @@
 ---
-title: Multilingual
-subtitle: Set up multilingual support for your assistant
+title: Multilingual support
+subtitle: Enable voice assistants to speak multiple languages fluently
 slug: customization/multilingual
+description: Configure multilingual voice AI agents with automatic language detection, cross-language conversation, and localized voices
 ---
 
 ## Overview
 
-We support dozens of providers, giving you access to their available models for multilingual support.
+Configure your voice assistant to communicate in multiple languages with automatic language detection, native voice quality, and cultural context awareness.
 
-Certain providers, like google and deepgram, have multilingual transcriber models that can transcribe audio in any language.
+**In this guide, you'll learn to:**
+- Set up automatic language detection for speech recognition
+- Configure multilingual voice synthesis
+- Design language-aware system prompts
+- Test and optimize multilingual performance
 
-## Transcribers (Speech-to-Text)
+<Note>
+**Multilingual Support:** Multiple providers support automatic language detection. **Deepgram** (Nova 2, Nova 3 with "Multi" setting) and **Google STT** (with "Multilingual" setting) both offer automatic language detection for seamless multilingual conversations.
+</Note>
 
-In the dashboard's assistant tab, click on "transcriber" to view all of the available providers, languages and models for each. Each model offers different language options. 
+## Configure automatic language detection
 
-## Voice (Text-to-Speech)
+Set up your transcriber to automatically detect and process multiple languages.
 
-Each provider includes a voice tag in the name of their voice. For example, Azure offers the `es-ES-ElviraNeural` voice for Spanish. Go to voice tab in the assistants page to see all of the available models. 
+<Tabs>
+  <Tab title="Dashboard">
+    1. Navigate to **Assistants** in your [Vapi Dashboard](https://dashboard.vapi.ai/)
+    2. Create a new assistant or edit an existing one
+    3. In the **Transcriber** section:
+       - **Provider**: Select `Deepgram` (recommended) or `Google`
+       - **Model**: For Deepgram, choose `Nova 2` or `Nova 3`; for Google, choose `Latest`
+       - **Language**: Set to `Multi` (Deepgram) or `Multilingual` (Google)
+    4. **Other providers**: Single language only, no automatic detection
+    5. Click **Save** to apply the configuration
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    import { VapiClient } from "@vapi-ai/server-sdk";
 
-### Example: Setting Up a Spanish Voice Assistant
+    const vapi = new VapiClient({ token: "YOUR_VAPI_API_KEY" });
 
-```json
-{
-  "voice": {
-    "provider": "azure",
-    "voiceId": "es-ES-ElviraNeural"
-  }
-}
-```
+    // Recommended: Deepgram for multilingual support
+    const assistant = await vapi.assistants.create({
+      name: "Multilingual Assistant",
+      transcriber: {
+        provider: "deepgram",
+        model: "nova-2", // or "nova-3"
+        language: "multi"
+      }
+    });
 
-In this example, the voice `es-ES-ElviraNeural` from Azure supports Spanish. Replace `es-ES-ElviraNeural` with any other voice ID that supports your desired language.
+    // Alternative: Google for multilingual support
+    const googleMultilingual = {
+      provider: "google",
+      model: "latest",
+      language: "multilingual"
+    };
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    from vapi import Vapi
+    import os
+
+    client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+    # Recommended: Deepgram for multilingual support
+    assistant = client.assistants.create(
+        name="Multilingual Assistant",
+        transcriber={
+            "provider": "deepgram",
+            "model": "nova-2",  # or "nova-3"
+            "language": "multi"
+        }
+    )
+
+    # Alternative: Google for multilingual support
+    google_multilingual = {
+        "provider": "google",
+        "model": "latest",
+        "language": "multilingual"
+    }
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Recommended: Deepgram for multilingual support
+    curl -X POST "https://api.vapi.ai/assistant" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "Multilingual Assistant",
+           "transcriber": {
+             "provider": "deepgram",
+             "model": "nova-2",
+             "language": "multi"
+           }
+         }'
+
+    # Alternative: Google for multilingual support
+    curl -X POST "https://api.vapi.ai/assistant" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "transcriber": {
+             "provider": "google",
+             "model": "latest",
+             "language": "multilingual"
+           }
+         }'
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+**Provider Performance:** **Deepgram** offers the best balance of speed and multilingual accuracy. **Google** provides broader language support but may be slower. Both providers support automatic language detection within conversations.
+</Note>
+
+## Set up multilingual voices
+
+Configure your assistant to use appropriate voices for each detected language.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. In the **Voice** section of your assistant:
+       - **Provider**: Select `Azure` (best multilingual coverage)
+       - **Voice**: Choose `multilingual-auto` for automatic voice selection
+    2. **Alternative**: Configure specific voices for each language:
+       - Select a primary voice (e.g., `en-US-AriaNeural`)
+       - Click **Add Fallback Voices**
+       - Add voices for other languages:
+         - Spanish: `es-ES-ElviraNeural`
+         - French: `fr-FR-DeniseNeural`
+         - German: `de-DE-KatjaNeural`
+    3. Click **Save** to apply the voice configuration
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    // Option 1: Automatic voice selection (recommended)
+    const voice = {
+      provider: "azure",
+      voiceId: "multilingual-auto"
+    };
+
+    // Option 2: Specific voices with fallbacks
+    const voiceWithFallbacks = {
+      provider: "azure",
+      voiceId: "en-US-AriaNeural", // Primary voice
+      fallbackPlan: {
+        voices: [
+          { provider: "azure", voiceId: "es-ES-ElviraNeural" },
+          { provider: "azure", voiceId: "fr-FR-DeniseNeural" },
+          { provider: "azure", voiceId: "de-DE-KatjaNeural" }
+        ]
+      }
+    };
+
+    await vapi.assistants.update(assistantId, { voice });
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    # Option 1: Automatic voice selection (recommended)
+    voice = {
+        "provider": "azure",
+        "voiceId": "multilingual-auto"
+    }
+
+    # Option 2: Specific voices with fallbacks
+    voice_with_fallbacks = {
+        "provider": "azure",
+        "voiceId": "en-US-AriaNeural",  # Primary voice
+        "fallbackPlan": {
+            "voices": [
+                {"provider": "azure", "voiceId": "es-ES-ElviraNeural"},
+                {"provider": "azure", "voiceId": "fr-FR-DeniseNeural"},
+                {"provider": "azure", "voiceId": "de-DE-KatjaNeural"}
+            ]
+        }
+    }
+
+    client.assistants.update(assistant_id, voice=voice)
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X PATCH "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "voice": {
+             "provider": "azure",
+             "voiceId": "multilingual-auto"
+           }
+         }'
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+**Voice Provider Support:** Unlike transcription, all major voice providers (Azure, ElevenLabs, OpenAI, etc.) support multiple languages. Azure offers the most comprehensive coverage with 400+ voices across 140+ languages.
+</Note>
+
+## Configure language-aware prompts
+
+Create system prompts that explicitly list supported languages and handle multiple languages gracefully.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. In the **Model** section, update your system prompt to explicitly list supported languages:
+    ```
+    You are a helpful assistant that can communicate in English, Spanish, and French.
+
+    Language Instructions:
+    - You can speak and understand: English, Spanish, and French
+    - Automatically detect and respond in the user's language
+    - Switch languages seamlessly when the user changes languages
+    - Maintain consistent personality across all languages
+    - Use culturally appropriate greetings and formality levels
+
+    If a user speaks a language other than English, Spanish, or French, politely explain that you only support these three languages and ask them to continue in one of them.
+    ```
+    2. Click **Save** to apply the prompt changes
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    const systemPrompt = `You are a helpful assistant that can communicate in English, Spanish, and French.
+
+Language Instructions:
+- You can speak and understand: English, Spanish, and French
+- Automatically detect and respond in the user's language
+- Switch languages seamlessly when the user changes languages
+- Maintain consistent personality across all languages
+- Use culturally appropriate greetings and formality levels
+
+If a user speaks a language other than English, Spanish, or French, politely explain that you only support these three languages and ask them to continue in one of them.`;
+
+    const model = {
+      provider: "openai",
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt
+        }
+      ]
+    };
+
+    await vapi.assistants.update(assistantId, { model });
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    system_prompt = """You are a helpful assistant that can communicate in English, Spanish, and French.
+
+Language Instructions:
+- You can speak and understand: English, Spanish, and French
+- Automatically detect and respond in the user's language
+- Switch languages seamlessly when the user changes languages
+- Maintain consistent personality across all languages
+- Use culturally appropriate greetings and formality levels
+
+If a user speaks a language other than English, Spanish, or French, politely explain that you only support these three languages and ask them to continue in one of them."""
+
+    model = {
+        "provider": "openai",
+        "model": "gpt-4",
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            }
+        ]
+    }
+
+    client.assistants.update(assistant_id, model=model)
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X PATCH "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "model": {
+             "provider": "openai",
+             "model": "gpt-4",
+             "messages": [
+               {
+                 "role": "system",
+                 "content": "You are a helpful assistant that can communicate in English, Spanish, and French..."
+               }
+             ]
+           }
+         }'
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+**Critical for Multilingual Success:** You must explicitly list the supported languages in your system prompt. Assistants struggle to understand they can speak multiple languages without this explicit instruction.
+</Warning>
+
+## Add multilingual greetings
+
+Configure greeting messages that work across multiple languages.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. In the **First Message** field, enter a multilingual greeting:
+    ```
+    Hello! I can assist you in English, Spanish, or French. How can I help you today?
+    ```
+    2. **Optional**: For more personalized greetings, use the **Advanced Message Configuration**:
+       - Enable **Language-Specific Messages**
+       - Add greetings for each target language
+    3. Click **Save** to apply the greeting
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    // Simple multilingual greeting
+    const firstMessage = "Hello! I can assist you in English, Spanish, or French. How can I help you today?";
+
+    // Language-specific greetings (advanced)
+    const multilingualGreeting = {
+      contents: [
+        {
+          type: "text",
+          text: "Hello! How can I help you today?",
+          language: "en"
+        },
+        {
+          type: "text",
+          text: "¡Hola! ¿Cómo puedo ayudarte hoy?",
+          language: "es"
+        },
+        {
+          type: "text",
+          text: "Bonjour! Comment puis-je vous aider?",
+          language: "fr"
+        }
+      ]
+    };
+
+    await vapi.assistants.update(assistantId, { firstMessage });
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    # Simple multilingual greeting
+    first_message = "Hello! I can assist you in English, Spanish, or French. How can I help you today?"
+
+    # Language-specific greetings (advanced)
+    multilingual_greeting = {
+        "contents": [
+            {
+                "type": "text",
+                "text": "Hello! How can I help you today?",
+                "language": "en"
+            },
+            {
+                "type": "text",
+                "text": "¡Hola! ¿Cómo puedo ayudarte hoy?",
+                "language": "es"
+            },
+            {
+                "type": "text",
+                "text": "Bonjour! Comment puis-je vous aider?",
+                "language": "fr"
+            }
+        ]
+    }
+
+    client.assistants.update(assistant_id, first_message=first_message)
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X PATCH "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "firstMessage": "Hello! I can assist you in English, Spanish, or French. How can I help you today?"
+         }'
+    ```
+  </Tab>
+</Tabs>
+
+## Test your multilingual assistant
+
+Validate your configuration with different languages and scenarios.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Use the **Test Assistant** feature in your dashboard
+    2. Test these scenarios:
+       - Start conversations in different languages
+       - Switch languages mid-conversation
+       - Use mixed-language input
+    3. Monitor the **Call Analytics** for:
+       - Language detection accuracy
+       - Voice quality consistency
+       - Response appropriateness
+    4. Adjust configuration based on test results
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    // Create test call
+    const testCall = await vapi.calls.create({
+      assistantId: "your-multilingual-assistant-id",
+      customer: {
+        number: "+1234567890"
+      }
+    });
+
+    // Monitor call events
+    vapi.on('call-end', (event) => {
+      console.log('Language detection results:', event.transcript);
+      console.log('Call summary:', event.summary);
+    });
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    # Create test call
+    test_call = client.calls.create(
+        assistant_id="your-multilingual-assistant-id",
+        customer={
+            "number": "+1234567890"
+        }
+    )
+
+    # Retrieve call details for analysis
+    call_details = client.calls.get(test_call.id)
+    print(f"Language detection: {call_details.transcript}")
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    # Create test call
+    curl -X POST "https://api.vapi.ai/call" \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "assistantId": "your-multilingual-assistant-id",
+           "customer": {
+             "number": "+1234567890"
+           }
+         }'
+    ```
+  </Tab>
+</Tabs>
+
+## Provider capabilities (Accurate as of testing)
+
+### Speech Recognition (Transcription)
+
+| Provider | Multilingual Support | Languages | Notes |
+|----------|---------------------|-----------|-------|
+| **Deepgram** | ✅ Full auto-detection | 100+ | **Recommended**: Nova 2/Nova 3 with "Multi" language setting |
+| **Google STT** | ✅ Full auto-detection | 125+ | Latest models with "Multilingual" language setting |
+| **Assembly AI** | ❌ English only | English | No multilingual support |
+| **Azure STT** | ❌ Single language | 100+ | Many languages, but no auto-detection |
+| **OpenAI Whisper** | ❌ Single language | 90+ | Many languages, but no auto-detection |
+| **Gladia** | ❌ Single language | 80+ | Many languages, but no auto-detection |
+| **Speechmatics** | ❌ Single language | 50+ | Many languages, but no auto-detection |
+| **Talkscriber** | ❌ Single language | 40+ | Many languages, but no auto-detection |
+
+### Voice Synthesis (Text-to-Speech)
+
+| Provider | Languages | Multilingual Voice Selection | Best For |
+|----------|-----------|------------------------------|----------|
+| **Azure** | 140+ | ✅ Automatic | Maximum language coverage |
+| **ElevenLabs** | 30+ | ✅ Automatic | Premium voice quality |
+| **OpenAI TTS** | 50+ | ✅ Automatic | Consistent quality across languages |
+| **PlayHT** | 80+ | ✅ Automatic | Cost-effective scaling |
+
+## Common challenges and solutions
+
+<AccordionGroup>
+  <Accordion title="Language detection is inaccurate">
+    **Solutions:**
+    - Use Deepgram (Nova 2/Nova 3 with "Multi") or Google STT (with "Multilingual")
+    - Ensure high-quality audio input for better detection accuracy
+    - Test with native speakers of target languages
+    - Consider provider-specific language combinations for optimal results
+  </Accordion>
+
+  <Accordion title="Assistant doesn't realize it can speak multiple languages">
+    **Solutions:**
+    - **Explicitly list all supported languages** in your system prompt
+    - Include language capabilities in the assistant's instructions
+    - Test the prompt with multilingual conversations
+    - Avoid generic "multilingual" statements without specifics
+  </Accordion>
+
+  <Accordion title="Transcription is too slow">
+    **Solutions:**
+    - Use Deepgram Nova 2/Nova 3 for optimal speed and multilingual support
+    - For Google STT, use latest models for better performance
+    - Consider the speed vs accuracy tradeoff for your use case
+    - Optimize audio quality and format to improve processing speed
+  </Accordion>
+
+  <Accordion title="Voice quality varies between languages">
+    **Solutions:**
+    - Test different voice providers for each language
+    - Use Azure for maximum language coverage
+    - Configure fallback voices as backup options
+    - Consider premium providers for key languages
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+Now that you have multilingual support configured:
+
+- **[Build a complete multilingual agent](../assistants/examples/multilingual-agent):** Follow our step-by-step implementation guide
+- **[Custom voices](custom-voices/custom-voice):** Set up region-specific custom voices
+- **[System prompting](../prompting-guide):** Design effective multilingual prompts
+- **[Call analysis](../call-analysis):** Monitor language performance and usage
