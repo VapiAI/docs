@@ -1,0 +1,707 @@
+---
+title: Property management call routing
+subtitle: Build a call routing workflow for property management that dynamically routes calls based on tenant status, inquiry type, and agent availability.
+slug: workflows/examples/property-management
+description: Build a voice AI property management system with dynamic call routing that determines destinations based on tenant verification, inquiry type analysis, and real-time agent availability using workflow API requests.
+---
+
+<Frame>
+  <img src="/static/images/workflows/examples/property-management.png" alt="Property Management Workflow" />
+</Frame>
+
+## Overview
+
+Build a property management call routing workflow that determines transfer destinations dynamically using tenant verification, inquiry type analysis, and real-time agent availability. This approach uses visual workflow nodes with API Request nodes for maximum routing flexibility.
+
+**Workflow Capabilities:**
+* Tenant status verification and prioritization
+* Inquiry type classification for specialist routing
+* Real-time agent availability and queue management
+* Emergency routing for urgent maintenance issues
+
+**What You'll Build:**
+* Visual workflow with conditional routing logic
+* API Request nodes for dynamic destination logic
+* Tenant verification with CRM integration
+* Emergency escalation with priority queuing
+
+## Quick Start: Create the Complete Workflow
+
+Use this cURL command to create the entire property management workflow in one shot:
+
+<CodeBlocks>
+```bash title="Complete Workflow Creation"
+curl -X POST https://api.vapi.ai/workflow \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "Property Management Call Router",
+       "nodes": [
+         {
+           "type": "conversation",
+           "name": "Initial Greeting",
+           "isStart": true,
+           "prompt": "You are a helpful property management assistant for Riverside Property Management. Start by greeting the caller and asking how you can help them today. Listen to determine: Is this an emergency/urgent maintenance issue? What type of inquiry is this (maintenance, lease, rent, general)? Keep responses under 25 words and be professional.",
+           "model": {
+             "provider": "openai",
+             "model": "gpt-4"
+           },
+           "variableExtractionPlan": {
+             "schema": {
+               "type": "object",
+               "properties": {
+                 "inquiry_type": {
+                   "type": "string",
+                   "description": "Type of inquiry",
+                   "enum": ["emergency", "maintenance", "lease", "rent", "general"]
+                 },
+                 "caller_phone": {
+                   "type": "string",
+                   "description": "Caller phone number for tenant lookup"
+                 }
+               }
+             }
+           }
+         },
+         {
+           "type": "conversation",
+           "name": "Emergency Handling",
+           "prompt": "This is an emergency maintenance situation. Tell the caller you understand this is an emergency and that you are immediately connecting them with emergency maintenance. Keep the interaction brief and gather only essential details about the emergency.",
+           "model": {
+             "provider": "openai",
+             "model": "gpt-4"
+           },
+           "variableExtractionPlan": {
+             "schema": {
+               "type": "object",
+               "properties": {
+                 "emergency_details": {
+                   "type": "string",
+                   "description": "Brief description of emergency"
+                 }
+               }
+             }
+           }
+         },
+         {
+           "type": "tool",
+           "name": "Transfer to General Office",
+           "tool": {
+             "type": "transferCall",
+             "destinations": [
+               {
+                 "type": "number",
+                 "number": "+12025551234",
+                 "message": "Connecting you to our office team who will assist you with your inquiry."
+               }
+             ]
+           }
+         }
+       ],
+       "edges": [
+         {
+           "from": "Initial Greeting",
+           "to": "Emergency Handling",
+           "condition": {
+             "type": "ai",
+             "prompt": "Route to emergency handling if the caller has an emergency or urgent maintenance issue"
+           }
+         },
+         {
+           "from": "Initial Greeting",
+           "to": "Transfer to General Office",
+           "condition": {
+             "type": "ai",
+             "prompt": "Route to transfer for all non-emergency inquiries (maintenance, lease, rent, general)"
+           }
+         },
+         {
+           "from": "Emergency Handling",
+           "to": "Transfer to General Office",
+           "condition": {
+             "type": "ai",
+             "prompt": "After gathering emergency details, transfer to office"
+           }
+         }
+       ]
+     }'
+```
+</CodeBlocks>
+
+<Note>
+Replace `$VAPI_API_KEY` with your actual API key from the [Vapi Dashboard](https://dashboard.vapi.ai/). Update the phone number in the `transferCall` destination to your actual office number.
+</Note>
+
+Once created, you can retrieve the workflow ID and attach it to a phone number for testing.
+
+## Test Workflow Creation
+
+After creating the workflow, you can test it and get the workflow ID:
+
+<CodeBlocks>
+```bash title="Get Your Workflow ID"
+# First, create the workflow using the command above, then:
+curl -X GET https://api.vapi.ai/workflow \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     | jq '.[] | select(.name == "Property Management Call Router") | {id: .id, name: .name, nodes: (.nodes | length), edges: (.edges | length)}'
+```
+
+```bash title="Get Specific Workflow Details"
+# Replace WORKFLOW_ID with the actual ID from the previous command
+curl -X GET https://api.vapi.ai/workflow/WORKFLOW_ID \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     | jq '{id: .id, name: .name, nodes: [.nodes[].name], edges: [.edges[].condition]}'
+```
+
+```bash title="Attach Workflow to Phone Number"
+# Replace PHONE_NUMBER_ID with your actual phone number ID
+curl -X PATCH https://api.vapi.ai/phone-number/PHONE_NUMBER_ID \
+     -H "Authorization: Bearer $VAPI_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "workflowId": "WORKFLOW_ID"
+     }'
+```
+</CodeBlocks>
+
+<Note>
+You'll need `jq` installed for JSON parsing. On macOS: `brew install jq`, on Ubuntu: `sudo apt-get install jq`
+</Note>
+
+## API Response Structure
+
+When you create the workflow, you'll receive a response like this:
+
+```json
+{
+  "id": "wf_1234567890abcdef",
+  "name": "Property Management Call Router",
+  "orgId": "org_1234567890abcdef",
+  "createdAt": "2024-01-15T10:30:00.000Z",
+  "updatedAt": "2024-01-15T10:30:00.000Z",
+  "nodes": [
+    {
+      "id": "greeting",
+      "type": "conversation",
+      "name": "Initial Greeting",
+      "isStart": true,
+      "firstMessage": "Hello! You've reached Riverside Property Management...",
+      "systemPrompt": "You are a helpful property management assistant...",
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4"
+      },
+      "extractVariables": [...]
+    },
+    // ... more nodes
+  ],
+  "edges": [
+    {
+      "id": "greeting_to_lookup",
+      "source": "greeting",
+      "target": "tenant_lookup",
+      "condition": "Always route to tenant lookup after greeting"
+    },
+    // ... more edges
+  ]
+}
+```
+
+### Key Fields for Integration
+
+| Field | Description | Usage |
+|-------|-------------|-------|
+| `id` | Workflow ID | Use this to attach workflow to phone numbers |
+| `name` | Workflow name | For identification in dashboard |
+| `nodes` | Array of workflow nodes | Conversation and tool nodes |
+| `edges` | Array of connections | Define the flow between nodes |
+| `createdAt` | Creation timestamp | For tracking and reference |
+
+### Node Types in This Workflow
+
+- **Conversation Nodes**: Handle AI conversations with tenants
+- **Tool Nodes**: Execute API calls for tenant lookup and routing
+- **Transfer Nodes**: Route calls to appropriate agents
+
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/)
+* Property management system API or tenant database
+* (Optional) Agent availability tracking system
+
+## Scenario
+
+We will build a call routing workflow for Riverside Property Management that intelligently routes tenant calls based on their status, inquiry type, and agent availability.
+
+---
+
+## 1. Create a Workflow
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to Workflows">
+        In your Vapi dashboard, click **Workflows** in the left sidebar.
+      </Step>
+      <Step title="Create new workflow">
+        - Click **Create Workflow**
+        - Name: `Property Management Call Router`
+        - Select blank template to start with basic call start node
+        - Click **Create Workflow**
+      </Step>
+      <Step title="Configure the initial greeting">
+        Click on the conversation node and configure:
+        
+        **Prompt**:
+        ```txt
+        You are a helpful property management assistant for Riverside Property Management. Start by greeting the caller and asking how you can help them today. Listen to determine: Is this an emergency/urgent maintenance issue? What type of inquiry is this (maintenance, lease, rent, general)? Keep responses under 25 words and be professional.
+        ```
+        
+        **Variable Extraction Schema**:
+        ```json
+        {
+          "type": "object",
+          "properties": {
+            "inquiry_type": {
+              "type": "string",
+              "description": "Type of inquiry",
+              "enum": ["emergency", "maintenance", "lease", "rent", "general"]
+            },
+            "caller_phone": {
+              "type": "string",
+              "description": "Caller phone number for tenant lookup"
+            }
+          }
+        }
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="API (cURL)">
+    Use the working cURL command from the Quick Start section above to create the entire workflow programmatically.
+  </Tab>
+</Tabs>
+
+---
+
+## 2. Add Tenant Verification Node
+
+<Steps>
+  <Step title="Add API Request node for tenant lookup">
+    Add an **API Request** node after the greeting:
+    
+    **Node Configuration**:
+    - Node ID: `tenant_lookup`
+    - HTTP Method: `POST`
+    - URL: `https://your-property-system.com/api/tenants/lookup`
+    - Headers: `Authorization: Bearer YOUR_API_KEY`
+    - Body:
+    ```json
+    {
+      "phone": "{{caller_phone}}",
+      "inquiry_type": "{{inquiry_type}}"
+    }
+    ```
+  </Step>
+  <Step title="Configure response mapping">
+    Map the API response to workflow variables:
+    - `tenant_status` → Extract from `response.tenant.status`
+    - `property_address` → Extract from `response.tenant.property`
+    - `account_standing` → Extract from `response.tenant.account_standing`
+    - `emergency_contact` → Extract from `response.tenant.emergency_contact`
+  </Step>
+  <Step title="Add error handling">
+    Configure what happens if the API call fails:
+    - **On Error**: Route to general agent queue
+    - **Error Message**: "I'll connect you with our general team who can help."
+  </Step>
+</Steps>
+
+---
+
+## 3. Build Emergency Routing Logic
+
+<Steps>
+  <Step title="Add emergency detection node">
+    Add a **Conversation** node for emergency handling:
+    
+    **Condition**: `inquiry_type == "emergency"`
+    
+    **First Message**:
+    ```txt
+    I understand this is an emergency. Let me immediately connect you with our emergency maintenance team. Please stay on the line.
+    ```
+    
+    **System Prompt**:
+    ```txt
+    This is an emergency maintenance situation. Confirm the emergency details quickly and route to emergency maintenance immediately. Keep interaction brief.
+    ```
+  </Step>
+  <Step title="Add emergency API routing">
+    Add an **API Request** node to get emergency destination:
+    
+    **URL**: `https://your-system.com/api/routing/emergency`
+    **Method**: `POST`
+    **Body**:
+    ```json
+    {
+      "tenant_id": "{{tenant_id}}",
+      "property": "{{property_address}}",
+      "inquiry_type": "emergency",
+      "priority": "high"
+    }
+    ```
+  </Step>
+  <Step title="Add emergency transfer node">
+    Add a **Transfer Call** node:
+    - **Destination**: Use the phone number from the API response
+    - **Transfer Plan**: Include emergency context and tenant information
+    - **Priority**: Set to highest priority for immediate routing
+  </Step>
+</Steps>
+
+---
+
+## 4. Create Inquiry-Based Routing
+
+<Steps>
+  <Step title="Add maintenance routing branch">
+    Add **API Request** node for maintenance team routing:
+    
+    **Condition**: `inquiry_type == "maintenance"`
+    **URL**: `https://your-system.com/api/routing/maintenance`
+    **Body**:
+    ```json
+    {
+      "tenant_id": "{{tenant_id}}",
+      "property": "{{property_address}}",
+      "inquiry_type": "maintenance",
+      "tenant_status": "{{tenant_status}}"
+    }
+    ```
+    
+    Response should include:
+    - Available maintenance coordinator phone
+    - Estimated wait time
+    - Work order creation capability
+  </Step>
+  <Step title="Add leasing office routing">
+    Add **API Request** node for leasing inquiries:
+    
+    **Condition**: `inquiry_type == "lease"`
+    **URL**: `https://your-system.com/api/routing/leasing`
+    **Body**:
+    ```json
+    {
+      "tenant_id": "{{tenant_id}}",
+      "property": "{{property_address}}",
+      "inquiry_type": "lease",
+      "account_standing": "{{account_standing}}"
+    }
+    ```
+  </Step>
+  <Step title="Add rent/billing routing">
+    Add **API Request** node for billing department:
+    
+    **Condition**: `inquiry_type == "rent"`
+    **URL**: `https://your-system.com/api/routing/billing`
+    **Body**:
+    ```json
+    {
+      "tenant_id": "{{tenant_id}}",
+      "account_standing": "{{account_standing}}",
+      "inquiry_type": "rent"
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 5. Add Agent Availability Logic
+
+<Steps>
+  <Step title="Create availability checking flow">
+    Before each transfer, add an **API Request** to check agent availability:
+    
+    **URL**: `https://your-system.com/api/agents/availability`
+    **Method**: `GET`
+    **Query Parameters**: `department={{department}}&priority={{priority}}`
+    
+    Response includes:
+    - Available agents with phone numbers
+    - Current queue length
+    - Estimated wait times
+  </Step>
+  <Step title="Add queue management logic">
+    Add conditional routing based on availability:
+    
+    **If agents available**: Direct transfer to agent
+    **If queue exists**: Inform caller of wait time and offer callback
+    **If all busy**: Route to voicemail or priority callback system
+  </Step>
+  <Step title="Configure callback handling">
+    Add **API Request** node for callback scheduling:
+    
+    **URL**: `https://your-system.com/api/callbacks/schedule`
+    **Body**:
+    ```json
+    {
+      "tenant_id": "{{tenant_id}}",
+      "phone": "{{caller_phone}}",
+      "inquiry_type": "{{inquiry_type}}",
+      "priority": "{{priority}}",
+      "requested_time": "{{preferred_callback_time}}"
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 6. Build Transfer Nodes with Context
+
+<Steps>
+  <Step title="Create dynamic transfer destinations">
+    Use the API response data to populate transfer nodes:
+    
+    **Maintenance Transfer**:
+    - **Destination**: `{{maintenance_agent_phone}}`
+    - **Message**: "Connecting you to {{agent_name}} from our maintenance team."
+    - **Transfer Plan**: Include tenant property address and issue details
+    
+    **Leasing Transfer**:
+    - **Destination**: `{{leasing_agent_phone}}`
+    - **Message**: "Transferring you to our leasing office."
+    - **Transfer Plan**: Include tenant status and lease information
+    
+    **Billing Transfer**:
+    - **Destination**: `{{billing_agent_phone}}`
+    - **Message**: "Connecting you with our billing department."
+    - **Transfer Plan**: Include account standing and payment history
+  </Step>
+  <Step title="Configure transfer context">
+    Each transfer node should include rich context:
+    
+    ```txt title="Transfer Plan Summary"
+    Tenant: {{tenant_name}} at {{property_address}}
+    Account Status: {{account_standing}}
+    Inquiry Type: {{inquiry_type}}
+    Previous Context: {{conversation_summary}}
+    Priority: {{priority_level}}
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 7. Add Error Handling and Fallbacks
+
+<Steps>
+  <Step title="Create fallback routing">
+    Add **API Request** node for fallback scenarios:
+    
+    **Triggers**:
+    - API lookup failures
+    - No available agents
+    - Unknown inquiry types
+    - System errors
+    
+    **URL**: `https://your-system.com/api/routing/fallback`
+    **Body**:
+    ```json
+    {
+      "phone": "{{caller_phone}}",
+      "error_type": "{{error_reason}}",
+      "original_inquiry": "{{inquiry_type}}"
+    }
+    ```
+  </Step>
+  <Step title="Add general queue routing">
+    Create **Transfer Call** node for general queue:
+    
+    **Destination**: Main office line
+    **Message**: "Let me connect you with our general team who can assist you."
+    **Transfer Plan**: "Call requires general assistance - routing details unavailable"
+  </Step>
+  <Step title="Configure voicemail option">
+    Add **End Call** node with voicemail message:
+    
+    **Condition**: All agents busy and caller declines callback
+    **Message**: "Please leave a detailed voicemail including your name, property address, and the nature of your request. We'll call you back within 4 hours."
+  </Step>
+</Steps>
+
+---
+
+## 8. Test Your Property Routing Workflow
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create a phone number">
+        - Navigate to **Phone Numbers** in your dashboard
+        - Click **Create Phone Number**
+        - Assign your property management workflow
+        - Configure any additional settings
+      </Step>
+      <Step title="Test different routing scenarios">
+        Call your number and test various scenarios:
+        - Emergency maintenance calls
+        - Regular maintenance requests from verified tenants
+        - Leasing inquiries from prospective tenants
+        - Billing questions from current tenants
+        - Calls from unrecognized phone numbers
+      </Step>
+      <Step title="Monitor workflow performance">
+        Check your workflow analytics to verify:
+        - Call routing patterns
+        - Emergency response times
+        - Variable extraction accuracy
+        - Transfer success rates
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="API Testing">
+    Test your workflow using the API:
+    
+    ```bash
+    # Create a test call
+    curl -X POST https://api.vapi.ai/call \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "workflowId": "YOUR_WORKFLOW_ID",
+           "customer": {
+             "number": "+1234567890",
+             "name": "Test Caller"
+           }
+         }'
+    ```
+  </Tab>
+</Tabs>
+
+## API Integration Examples
+
+Your property management system can integrate with the workflow using these API endpoints:
+
+### Tenant Lookup Endpoint
+
+```http
+POST /api/tenants/lookup
+Content-Type: application/json
+
+{
+  "phone": "+1234567890",
+  "inquiry_type": "maintenance"
+}
+```
+
+**Response:**
+```json
+{
+  "tenant": {
+    "id": "tenant_123",
+    "name": "John Smith",
+    "status": "active",
+    "property": "123 Main St, Apt 4B",
+    "account_standing": "good"
+  },
+  "routing_suggestion": "maintenance_team"
+}
+```
+
+### Agent Availability Check
+
+```http
+GET /api/agents/availability?department=maintenance&priority=normal
+```
+
+**Response:**
+```json
+{
+  "available_agents": [
+    {
+      "id": "agent_456",
+      "name": "Mike Johnson", 
+      "phone": "+15551234567",
+      "department": "maintenance"
+    }
+  ],
+  "queue_length": 2,
+  "estimated_wait_minutes": 5,
+  "department_status": "available"
+}
+```
+
+### Emergency Routing
+
+```http
+POST /api/routing/emergency
+Content-Type: application/json
+
+{
+  "tenant_id": "tenant_123",
+  "property": "123 Main St, Apt 4B",
+  "inquiry_type": "emergency"
+}
+```
+
+**Response:**
+```json
+{
+  "destination": "+15559876543",
+  "agent_name": "Emergency Maintenance",
+  "ticket_id": "EM_789",
+  "priority": "critical"
+}
+```
+
+## Advanced Workflow Features
+
+### Queue Management with Priorities
+
+Configure priority-based routing in your tenant lookup API:
+
+```json
+{
+  "tenant": {
+    "tier": "commercial",
+    "account_standing": "good",
+    "inquiry_type": "emergency"
+  },
+  "routing_priority": "critical"
+}
+```
+
+Priority levels:
+- **Critical**: Emergency situations, commercial tenants
+- **High**: Good standing tenants with urgent issues  
+- **Normal**: Standard maintenance and lease inquiries
+- **Low**: Delinquent accounts with non-urgent matters
+
+### Business Hours Routing
+
+Configure time-based routing logic:
+
+```json
+{
+  "business_hours": {
+    "weekdays": "9:00-17:00",
+    "weekends": "10:00-15:00"
+  },
+  "after_hours_routing": {
+    "emergency": "+15559876543",
+    "general": "voicemail"
+  }
+}
+```
+
+## Next Steps
+
+You've built a sophisticated property management call routing workflow! Consider these enhancements:
+
+* **[Customer support escalation system](/assistants/examples/support-escalation)** - Explore the assistant-based approach
+* **[Workflow Analytics](/workflows/analytics)** - Track routing patterns and optimize decision trees
+* **[Integration Templates](/workflows/integrations)** - Connect with popular property management systems
+* **[Advanced Routing](/workflows/advanced-routing)** - Implement complex routing logic with multiple conditions 
