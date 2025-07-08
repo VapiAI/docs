@@ -6,60 +6,78 @@ slug: cli/webhook
 
 ## Overview
 
-The `vapi listen` command provides a webhook forwarding service that receives events from Vapi and forwards them to your local development server. This helps you debug webhook integrations without deploying your code.
+The `vapi listen` command provides a local webhook forwarding service that receives events and forwards them to your local development server. This helps you debug webhook integrations during development.
+
+**Important:** `vapi listen` does NOT provide a public URL or tunnel. You'll need to use a separate tunneling solution like ngrok to expose your local server to the internet.
 
 **In this guide, you'll learn to:**
-- Set up local webhook forwarding
+- Set up local webhook forwarding with a tunneling service
 - Debug webhook events in real-time
 - Configure advanced forwarding options
 - Handle different webhook types
 
-<Info>
-**Note on tunneling:** Currently, `vapi listen` requires you to manually update your webhook URLs in Vapi. Automatic tunnel creation (like Stripe CLI) is coming in a future update.
-</Info>
+<Warning>
+**No automatic tunneling:** The `vapi listen` command is a local forwarder only. It does not create a public URL or tunnel to the internet. You must use a separate tunneling service (like ngrok) and configure your Vapi webhook URLs manually.
+</Warning>
 
 ## Quick start
 
 <Steps>
+  <Step title="Set up a tunnel to your local machine">
+    Use a tunneling service like ngrok to create a public URL:
+    ```bash
+    # Example with ngrok
+    ngrok http 4242  # 4242 is the default port for vapi listen
+    ```
+    
+    Note the public URL provided by your tunneling service (e.g., `https://abc123.ngrok.io`)
+  </Step>
+  
   <Step title="Start the webhook listener">
     ```bash
     vapi listen --forward-to localhost:3000/webhook
     ```
     
-    Note the public URL provided in the output (e.g., `https://webhook-proxy.vapi.ai/wh_abc123def456`)
+    This starts a local server on port 4242 that forwards to your application
   </Step>
   
   <Step title="Update your webhook URLs">
-    Go to your Vapi Dashboard and update your webhook URLs to point to the URL from step 1:
-    - Assistant webhook URL
-    - Phone number webhook URL  
+    Go to your Vapi Dashboard and update your webhook URLs to point to your tunnel URL:
+    - Assistant webhook URL: `https://abc123.ngrok.io`
+    - Phone number webhook URL: `https://abc123.ngrok.io`
     - Or any other webhook configuration
   </Step>
   
   <Step title="Test your webhooks">
-    Trigger webhook events (make calls, etc.) and see them forwarded to your local server in real-time
+    Trigger webhook events (make calls, etc.) and see them forwarded through the tunnel to your local server
   </Step>
 </Steps>
 
 ## How it works
 
 <Note>
-**Current implementation:** The `vapi listen` command currently acts as a local webhook forwarder. Unlike tools like Stripe CLI, it doesn't yet create an automatic tunnel to update your Vapi webhook URLs. You'll need to manually configure your webhook URL in Vapi to point to the CLI's endpoint.
+**Current implementation:** The `vapi listen` command acts as a local webhook forwarder only. It receives webhook events on a local port (default 4242) and forwards them to your specified endpoint. To receive events from Vapi, you must:
 
-**Coming soon:** Automatic tunneling that updates your Vapi webhook configuration is planned for a future release.
+1. Use a tunneling service (ngrok, localtunnel, etc.) to expose port 4242 to the internet
+2. Configure your Vapi webhook URLs to point to the tunnel URL
+3. The flow is: Vapi → Your tunnel URL → vapi listen (port 4242) → Your local server
 </Note>
 
 <Steps>
-  <Step title="Local server starts">
-    The CLI starts a webhook server on port 4242 (configurable)
+  <Step title="Local forwarder starts">
+    The CLI starts a webhook forwarder on port 4242 (configurable)
+  </Step>
+  
+  <Step title="Tunnel exposes the forwarder">
+    Your tunneling service creates a public URL that routes to port 4242
   </Step>
   
   <Step title="Configure webhook URL">
-    Update your Vapi webhook URL to point to the CLI's public endpoint (provided when you start the listener)
+    Update your Vapi webhook URL to point to the tunnel's public URL
   </Step>
   
   <Step title="Events forwarded">
-    All webhook events are forwarded to your specified local endpoint
+    Webhook events flow: Vapi → Tunnel → CLI forwarder → Your local endpoint
   </Step>
   
   <Step title="Real-time logging">
@@ -88,6 +106,9 @@ Use a different port for the webhook listener:
 ```bash
 # Listen on port 8080 instead of default 4242
 vapi listen --forward-to localhost:3000/webhook --port 8080
+
+# Remember to update your tunnel to use port 8080
+ngrok http 8080
 ```
 
 ### Skip TLS verification
@@ -110,20 +131,21 @@ When you run `vapi listen`, you'll see:
 $ vapi listen --forward-to localhost:3000/webhook
 
 🎧 Vapi Webhook Listener
-📡 Listening on: https://webhook-proxy.vapi.ai/wh_abc123def456
+📡 Listening on: http://localhost:4242
 📍 Forwarding to: http://localhost:3000/webhook
 
-⚠️  Please update your webhook URL in Vapi to:
-   https://webhook-proxy.vapi.ai/wh_abc123def456
+⚠️  To receive Vapi webhooks:
+   1. Use a tunneling service (e.g., ngrok http 4242)
+   2. Update your Vapi webhook URLs to the tunnel URL
 
 Waiting for webhook events...
 
-[2024-01-15 10:30:45] POST /webhook
+[2024-01-15 10:30:45] POST /
 Event: call-started
 Call ID: call_abc123def456
 Status: 200 OK (45ms)
 
-[2024-01-15 10:30:52] POST /webhook
+[2024-01-15 10:30:52] POST /
 Event: speech-update
 Transcript: "Hello, how can I help you?"
 Status: 200 OK (12ms)
@@ -167,23 +189,56 @@ The listener adds helpful headers to forwarded requests:
 
 ```http
 X-Forwarded-For: vapi-webhook-listener
-X-Original-Host: vapi-webhooks.ngrok.io
+X-Original-Host: <your-tunnel-domain>
 X-Webhook-Event: call-started
 X-Webhook-Timestamp: 1705331445
 ```
 
 Your server receives the exact webhook payload from Vapi with these additional headers for debugging.
 
-### Manual webhook configuration
+### Setting up with different tunneling services
 
-Since automatic tunneling isn't available yet, you'll need to:
-
-1. Start the webhook listener and note the public URL
-2. Go to your Vapi Dashboard or use the API to update webhook URLs
-3. Set the webhook URL to the one provided by `vapi listen`
+<AccordionGroup>
+  <Accordion title="Using ngrok">
+    ```bash
+    # Terminal 1: Start ngrok tunnel
+    ngrok http 4242
+    
+    # Terminal 2: Start vapi listener
+    vapi listen --forward-to localhost:3000/webhook
+    
+    # Use the ngrok URL in Vapi Dashboard
+    ```
+  </Accordion>
+  
+  <Accordion title="Using localtunnel">
+    ```bash
+    # Terminal 1: Install and start localtunnel
+    npm install -g localtunnel
+    lt --port 4242
+    
+    # Terminal 2: Start vapi listener
+    vapi listen --forward-to localhost:3000/webhook
+    
+    # Use the localtunnel URL in Vapi Dashboard
+    ```
+  </Accordion>
+  
+  <Accordion title="Using cloudflared">
+    ```bash
+    # Terminal 1: Start cloudflare tunnel
+    cloudflared tunnel --url http://localhost:4242
+    
+    # Terminal 2: Start vapi listener
+    vapi listen --forward-to localhost:3000/webhook
+    
+    # Use the cloudflare URL in Vapi Dashboard
+    ```
+  </Accordion>
+</AccordionGroup>
 
 <Tip>
-**Future enhancement:** We're working on automatic webhook URL updates, similar to how Stripe CLI works. This will eliminate the manual configuration step.
+**Pro tip:** Some tunneling services offer static URLs (like ngrok with a paid plan), which means you won't need to update your Vapi webhook configuration every time you restart development.
 </Tip>
 
 ### Filtering events
@@ -218,11 +273,23 @@ The listener expects standard HTTP responses:
     ```
   </Step>
   
-  <Step title="Start webhook listener">
+  <Step title="Start tunnel to expose port 4242">
     ```bash
     # In terminal 2
+    ngrok http 4242  # Creates public URL for the CLI listener
+    # Note the public URL (e.g., https://abc123.ngrok.io)
+    ```
+  </Step>
+  
+  <Step title="Start webhook listener">
+    ```bash
+    # In terminal 3
     vapi listen --forward-to localhost:3000/api/vapi/webhook
     ```
+  </Step>
+  
+  <Step title="Configure Vapi webhooks">
+    Update your Vapi webhook URLs to point to the ngrok URL from step 2
   </Step>
   
   <Step title="Make test calls">
@@ -230,9 +297,13 @@ The listener expects standard HTTP responses:
   </Step>
   
   <Step title="Debug in real-time">
-    See events in both terminals and debug your handler
+    See events in the CLI terminal and debug your handler
   </Step>
 </Steps>
+
+<Note>
+**Data flow:** Vapi sends webhooks → Ngrok tunnel (public URL) → vapi listen (port 4242) → Your local server (port 3000)
+</Note>
 
 ### Example webhook handler
 
