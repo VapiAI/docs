@@ -1,0 +1,463 @@
+---
+title: Authentication management
+description: Manage multiple Vapi accounts and environments with the CLI
+slug: cli/auth
+---
+
+## Overview
+
+The Vapi CLI supports sophisticated authentication management, allowing you to work with multiple accounts, organizations, and environments seamlessly. This is perfect for developers who work across different teams, manage client accounts, or need to switch between production and staging environments.
+
+**In this guide, you'll learn to:**
+- Authenticate with your Vapi account
+- Manage multiple accounts simultaneously
+- Switch between organizations and environments
+- Configure API keys and tokens
+
+## Quick start
+
+<Steps>
+  <Step title="Initial login">
+    Authenticate with your primary account:
+    ```bash
+    vapi login
+    ```
+    This opens your browser for secure OAuth authentication.
+  </Step>
+  
+  <Step title="Check status">
+    View your authentication status:
+    ```bash
+    vapi auth status
+    ```
+  </Step>
+  
+  <Step title="Add another account">
+    Add additional accounts without logging out:
+    ```bash
+    vapi auth login
+    ```
+  </Step>
+  
+  <Step title="Switch accounts">
+    Switch between authenticated accounts:
+    ```bash
+    vapi auth switch production
+    ```
+  </Step>
+</Steps>
+
+## Authentication methods
+
+### OAuth login (recommended)
+
+The default authentication method uses OAuth for maximum security:
+
+```bash
+vapi login
+# Opens browser for authentication
+# Securely stores tokens locally
+```
+
+Benefits:
+- No manual API key handling
+- Automatic token refresh
+- Secure credential storage
+- Organization access management
+
+### API key authentication
+
+For CI/CD or scripting, use API keys:
+
+```bash
+# Via environment variable
+export VAPI_API_KEY=your-api-key
+vapi assistant list
+
+# Via command flag
+vapi assistant list --api-key your-api-key
+```
+
+### Configuration file
+
+Store API keys in configuration:
+
+```yaml
+# ~/.vapi-cli.yaml
+api_key: your-api-key
+base_url: https://api.vapi.ai  # Optional custom endpoint
+```
+
+## Multi-account management
+
+### Understanding accounts
+
+Each authenticated account includes:
+- **User identity** - Your email and user ID
+- **Organization** - The Vapi organization you belong to
+- **API access** - Permissions and API keys
+- **Environment** - Production, staging, or custom
+
+### Viewing accounts
+
+List all authenticated accounts:
+
+```bash
+vapi auth status
+```
+
+Output:
+```
+🔐 Vapi Authentication Status
+
+Active Account:
+  ✓ Email: john@company.com
+  ✓ Organization: Acme Corp (org_abc123)
+  ✓ Environment: Production
+  ✓ API Key: sk-prod_****efgh
+
+Other Accounts:
+  • jane@agency.com - ClientCo (org_xyz789) [staging]
+  • john@personal.com - Personal (org_def456) [production]
+
+Total accounts: 3
+```
+
+### Adding accounts
+
+Add accounts without affecting existing ones:
+
+```bash
+# Add another account
+vapi auth login
+
+# You'll be prompted to:
+# 1. Open browser for authentication
+# 2. Choose an account alias (e.g., "staging", "client-a")
+# 3. Confirm organization access
+```
+
+### Switching accounts
+
+Switch between accounts instantly:
+
+```bash
+# Switch by alias
+vapi auth switch staging
+
+# Switch by email
+vapi auth switch jane@agency.com
+
+# Interactive selection
+vapi auth switch
+# Shows menu of available accounts
+```
+
+### Account aliases
+
+Assign meaningful aliases to accounts:
+
+```bash
+# During login
+vapi auth login --alias production
+
+# Update existing
+vapi auth alias john@company.com production
+
+# Use aliases
+vapi auth switch production
+```
+
+## Common workflows
+
+### Development vs production
+
+<Tabs>
+  <Tab title="Separate environments">
+    ```bash
+    # Development work
+    vapi auth switch dev
+    vapi assistant create --name "Test Assistant"
+    
+    # Production deployment
+    vapi auth switch prod
+    vapi assistant create --name "Customer Support"
+    ```
+  </Tab>
+  
+  <Tab title="Agency workflow">
+    ```bash
+    # Client A work
+    vapi auth switch client-a
+    vapi phone list
+    
+    # Client B work
+    vapi auth switch client-b
+    vapi workflow list
+    ```
+  </Tab>
+  
+  <Tab title="Team collaboration">
+    ```bash
+    # Personal development
+    vapi auth switch personal
+    vapi init
+    
+    # Team project
+    vapi auth switch team
+    vapi assistant list
+    ```
+  </Tab>
+</Tabs>
+
+### Account information
+
+Get detailed information about current account:
+
+```bash
+vapi auth whoami
+```
+
+Output:
+```json
+{
+  "user": {
+    "id": "user_abc123",
+    "email": "john@company.com",
+    "name": "John Doe"
+  },
+  "organization": {
+    "id": "org_abc123",
+    "name": "Acme Corp",
+    "plan": "enterprise"
+  },
+  "permissions": [
+    "assistants:read",
+    "assistants:write",
+    "calls:create",
+    "billing:view"
+  ]
+}
+```
+
+### Token management
+
+View and manage API tokens:
+
+```bash
+# View current token (masked)
+vapi auth token
+
+# Show full token (careful!)
+vapi auth token --show
+
+# Refresh token
+vapi auth refresh
+```
+
+## Security best practices
+
+### Credential storage
+
+The CLI stores credentials securely:
+
+- **macOS**: Keychain
+- **Linux**: Secret Service API / keyring
+- **Windows**: Credential Manager
+
+### Environment isolation
+
+Keep environments separate:
+
+```bash
+# Never mix environments
+vapi auth switch prod
+vapi assistant list  # Production assistants
+
+vapi auth switch dev
+vapi assistant list  # Development assistants
+```
+
+### CI/CD integration
+
+For automated workflows:
+
+```yaml
+# GitHub Actions example
+env:
+  VAPI_API_KEY: ${{ secrets.VAPI_PROD_KEY }}
+
+steps:
+  - name: Deploy Assistant
+    run: |
+      vapi assistant create --file assistant.json
+```
+
+### Revoking access
+
+Remove accounts when no longer needed:
+
+```bash
+# Logout from current account
+vapi auth logout
+
+# Logout from specific account
+vapi auth logout jane@agency.com
+
+# Logout from all accounts
+vapi auth logout --all
+```
+
+## Advanced features
+
+### Custom API endpoints
+
+For on-premise or custom deployments:
+
+```bash
+# Login to custom endpoint
+vapi login --base-url https://vapi.company.internal
+
+# Or configure in file
+echo "base_url: https://vapi.company.internal" >> ~/.vapi-cli.yaml
+```
+
+### Service accounts
+
+For server applications:
+
+```bash
+# Create service account in dashboard
+# Then configure:
+export VAPI_API_KEY=service_account_key
+export VAPI_ORG_ID=org_abc123
+```
+
+### Proxy configuration
+
+For corporate environments:
+
+```bash
+# HTTP proxy
+export HTTP_PROXY=http://proxy.company.com:8080
+export HTTPS_PROXY=http://proxy.company.com:8080
+
+# SOCKS proxy
+export ALL_PROXY=socks5://proxy.company.com:1080
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Login opens wrong browser">
+    Configure default browser:
+    
+    ```bash
+    # macOS
+    export BROWSER="Google Chrome"
+    
+    # Linux
+    export BROWSER=firefox
+    
+    # Windows
+    set BROWSER=chrome
+    ```
+  </Accordion>
+  
+  <Accordion title="Token expired">
+    If you see authentication errors:
+    
+    ```bash
+    # Refresh current token
+    vapi auth refresh
+    
+    # Or re-login
+    vapi login
+    ```
+  </Accordion>
+  
+  <Accordion title="Keychain access issues">
+    For credential storage problems:
+    
+    ```bash
+    # macOS: Reset keychain access
+    security unlock-keychain
+    
+    # Linux: Install keyring
+    sudo apt-get install gnome-keyring
+    
+    # Use file storage instead
+    vapi config set storage file
+    ```
+  </Accordion>
+  
+  <Accordion title="Organization access">
+    If you can't access organization resources:
+    
+    1. Verify organization membership in dashboard
+    2. Check account permissions
+    3. Re-authenticate:
+    ```bash
+    vapi auth logout
+    vapi login
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best practices
+
+### Account naming
+
+Use clear, consistent aliases:
+
+```bash
+# Good aliases
+vapi auth login --alias prod-acme
+vapi auth login --alias dev-personal
+vapi auth login --alias staging-client
+
+# Avoid unclear aliases
+vapi auth login --alias test1
+vapi auth login --alias new
+```
+
+### Regular maintenance
+
+Keep your authentication clean:
+
+```bash
+# Monthly review
+vapi auth status
+
+# Remove unused accounts
+vapi auth logout old-client@example.com
+
+# Update tokens
+vapi auth refresh --all
+```
+
+### Team documentation
+
+Document account structure for your team:
+
+```markdown
+## Vapi Accounts
+
+- `prod`: Production (org_abc123)
+- `staging`: Staging environment (org_abc124)
+- `dev`: Shared development (org_abc125)
+
+To switch: `vapi auth switch <alias>`
+```
+
+## Next steps
+
+With authentication configured:
+
+- **[Create assistants](/quickstart/phone):** Build voice assistants
+- **[Initialize projects](/cli/init):** Add Vapi to your codebase
+- **[Test webhooks](/cli/webhook):** Debug locally with any account
+
+---
+
+**Security tip:** Always use OAuth login for interactive use and API keys only for automation. Never commit API keys to version control! 

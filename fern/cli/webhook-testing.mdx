@@ -1,0 +1,441 @@
+---
+title: Local webhook testing
+description: Test webhooks locally without ngrok using vapi listen
+slug: cli/webhook
+---
+
+## Overview
+
+The `vapi listen` command enables real-time webhook testing on your local development server without external tunneling services like ngrok. This dramatically speeds up development by letting you test webhook integrations instantly.
+
+**In this guide, you'll learn to:**
+- Set up local webhook forwarding
+- Debug webhook events in real-time
+- Configure advanced forwarding options
+- Handle different webhook types
+
+## Quick start
+
+Forward Vapi webhooks to your local server:
+
+```bash
+vapi listen --forward-to localhost:3000/webhook
+```
+
+That's it! All webhook events from Vapi will be forwarded to your local endpoint in real-time.
+
+## How it works
+
+<Steps>
+  <Step title="Local server starts">
+    The CLI starts a webhook server on port 4242 (configurable)
+  </Step>
+  
+  <Step title="Secure tunnel created">
+    A secure tunnel is established between Vapi and your local server
+  </Step>
+  
+  <Step title="Events forwarded">
+    All webhook events are forwarded to your specified endpoint
+  </Step>
+  
+  <Step title="Real-time logging">
+    Events are displayed in your terminal for debugging
+  </Step>
+</Steps>
+
+## Basic usage
+
+### Standard forwarding
+
+Forward to your local development server:
+
+```bash
+# Forward to localhost:3000/webhook
+vapi listen --forward-to localhost:3000/webhook
+
+# Short form
+vapi listen -f localhost:3000/webhook
+```
+
+### Custom port
+
+Use a different port for the webhook listener:
+
+```bash
+# Listen on port 8080 instead of default 4242
+vapi listen --forward-to localhost:3000/webhook --port 8080
+```
+
+### Skip TLS verification
+
+For development with self-signed certificates:
+
+```bash
+vapi listen --forward-to https://localhost:3000/webhook --skip-verify
+```
+
+<Warning>
+Only use `--skip-verify` in development. Never in production.
+</Warning>
+
+## Understanding the output
+
+When you run `vapi listen`, you'll see:
+
+```bash
+$ vapi listen --forward-to localhost:3000/webhook
+
+🎧 Vapi Webhook Listener
+📡 Listening on: https://vapi-webhooks.ngrok.io/abc123
+📍 Forwarding to: http://localhost:3000/webhook
+
+✓ Webhook URL configured in your Vapi account
+
+Waiting for webhook events...
+
+[2024-01-15 10:30:45] POST /webhook
+Event: call-started
+Call ID: call_abc123def456
+Status: 200 OK (45ms)
+
+[2024-01-15 10:30:52] POST /webhook
+Event: speech-update
+Transcript: "Hello, how can I help you?"
+Status: 200 OK (12ms)
+```
+
+## Webhook event types
+
+The listener forwards all Vapi webhook events:
+
+<AccordionGroup>
+  <Accordion title="Call lifecycle events">
+    - `call-started` - Call initiated
+    - `call-ended` - Call completed
+    - `call-failed` - Call encountered an error
+  </Accordion>
+  
+  <Accordion title="Speech events">
+    - `speech-update` - Real-time transcription
+    - `transcript` - Final transcription
+    - `voice-input` - User speaking detected
+  </Accordion>
+  
+  <Accordion title="Assistant events">
+    - `function-call` - Tool/function invoked
+    - `assistant-message` - Assistant response
+    - `conversation-update` - Conversation state change
+  </Accordion>
+  
+  <Accordion title="System events">
+    - `error` - Error occurred
+    - `recording-ready` - Call recording available
+    - `analysis-ready` - Call analysis complete
+  </Accordion>
+</AccordionGroup>
+
+## Advanced configuration
+
+### Headers and authentication
+
+The listener adds helpful headers to forwarded requests:
+
+```http
+X-Forwarded-For: vapi-webhook-listener
+X-Original-Host: vapi-webhooks.ngrok.io
+X-Webhook-Event: call-started
+X-Webhook-Timestamp: 1705331445
+```
+
+Your server receives the exact webhook payload from Vapi with these additional headers for debugging.
+
+### Filtering events
+
+Filter specific event types (coming soon):
+
+```bash
+# Only forward call events
+vapi listen --forward-to localhost:3000 --filter "call-*"
+
+# Multiple filters
+vapi listen --forward-to localhost:3000 --filter "call-started,call-ended"
+```
+
+### Response handling
+
+The listener expects standard HTTP responses:
+
+- **200-299**: Success, event processed
+- **400-499**: Client error, event rejected
+- **500-599**: Server error, will retry
+
+## Development workflow
+
+### Typical setup
+
+<Steps>
+  <Step title="Start your local server">
+    ```bash
+    # In terminal 1
+    npm run dev  # Your app on localhost:3000
+    ```
+  </Step>
+  
+  <Step title="Start webhook listener">
+    ```bash
+    # In terminal 2
+    vapi listen --forward-to localhost:3000/api/vapi/webhook
+    ```
+  </Step>
+  
+  <Step title="Make test calls">
+    Use the Vapi dashboard or API to trigger webhooks
+  </Step>
+  
+  <Step title="Debug in real-time">
+    See events in both terminals and debug your handler
+  </Step>
+</Steps>
+
+### Example webhook handler
+
+<CodeBlocks>
+```typescript title="Node.js/Express"
+app.post('/api/vapi/webhook', async (req, res) => {
+  const { type, call, timestamp } = req.body;
+  
+  console.log(`Webhook received: ${type} at ${timestamp}`);
+  
+  switch (type) {
+    case 'call-started':
+      console.log(`Call ${call.id} started with ${call.customer.number}`);
+      break;
+      
+    case 'speech-update':
+      console.log(`User said: ${req.body.transcript}`);
+      break;
+      
+    case 'function-call':
+      const { functionName, parameters } = req.body.functionCall;
+      console.log(`Function called: ${functionName}`, parameters);
+      
+      // Return function result
+      const result = await processFunction(functionName, parameters);
+      return res.json({ result });
+      
+    case 'call-ended':
+      console.log(`Call ended. Duration: ${call.duration}s`);
+      break;
+  }
+  
+  res.status(200).send();
+});
+```
+
+```python title="Python/FastAPI"
+from fastapi import FastAPI, Request
+from datetime import datetime
+
+app = FastAPI()
+
+@app.post("/api/vapi/webhook")
+async def handle_webhook(request: Request):
+    data = await request.json()
+    event_type = data.get("type")
+    call = data.get("call", {})
+    timestamp = data.get("timestamp")
+    
+    print(f"Webhook received: {event_type} at {timestamp}")
+    
+    if event_type == "call-started":
+        print(f"Call {call.get('id')} started")
+        
+    elif event_type == "speech-update":
+        print(f"User said: {data.get('transcript')}")
+        
+    elif event_type == "function-call":
+        function_call = data.get("functionCall", {})
+        function_name = function_call.get("functionName")
+        parameters = function_call.get("parameters")
+        
+        # Process function and return result
+        result = await process_function(function_name, parameters)
+        return {"result": result}
+        
+    elif event_type == "call-ended":
+        print(f"Call ended. Duration: {call.get('duration')}s")
+    
+    return {"status": "ok"}
+```
+
+```go title="Go/Gin"
+func handleWebhook(c *gin.Context) {
+    var data map[string]interface{}
+    if err := c.ShouldBindJSON(&data); err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+    
+    eventType := data["type"].(string)
+    fmt.Printf("Webhook received: %s\n", eventType)
+    
+    switch eventType {
+    case "call-started":
+        call := data["call"].(map[string]interface{})
+        fmt.Printf("Call %s started\n", call["id"])
+        
+    case "speech-update":
+        fmt.Printf("User said: %s\n", data["transcript"])
+        
+    case "function-call":
+        functionCall := data["functionCall"].(map[string]interface{})
+        result := processFunction(
+            functionCall["functionName"].(string),
+            functionCall["parameters"],
+        )
+        c.JSON(200, gin.H{"result": result})
+        return
+        
+    case "call-ended":
+        fmt.Println("Call ended")
+    }
+    
+    c.JSON(200, gin.H{"status": "ok"})
+}
+```
+</CodeBlocks>
+
+## Testing scenarios
+
+### Simulating errors
+
+Test error handling in your webhook:
+
+```bash
+# Your handler returns 500
+vapi listen --forward-to localhost:3000/webhook-error
+
+# Output shows:
+# Status: 500 Internal Server Error (23ms)
+# Response: {"error": "Database connection failed"}
+```
+
+### Load testing
+
+Test with multiple concurrent calls:
+
+```bash
+# Terminal 1: Start listener
+vapi listen --forward-to localhost:3000/webhook
+
+# Terminal 2: Trigger multiple calls via API
+for i in {1..10}; do
+  vapi call create --to "+1234567890" &
+done
+```
+
+### Debugging specific calls
+
+Filter logs by call ID:
+
+```bash
+# Coming soon
+vapi listen --forward-to localhost:3000 --call-id call_abc123
+```
+
+## Security considerations
+
+<Warning>
+The `vapi listen` command is designed for development only. In production, use proper webhook endpoints with authentication.
+</Warning>
+
+### Best practices
+
+1. **Never expose sensitive data** in console logs
+2. **Validate webhook signatures** in production
+3. **Use HTTPS** for production endpoints
+4. **Implement proper error handling**
+5. **Set up monitoring** for production webhooks
+
+### Production webhook setup
+
+For production, configure webhooks in the Vapi dashboard:
+
+```typescript
+// Production webhook with signature verification
+app.post('/webhook', verifyVapiSignature, async (req, res) => {
+  // Your production handler
+});
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection refused">
+    If you see "connection refused":
+    
+    1. **Verify your server is running** on the specified port
+    2. **Check the endpoint path** matches your route
+    3. **Ensure no firewall** is blocking local connections
+    
+    ```bash
+    # Test your endpoint directly
+    curl -X POST http://localhost:3000/webhook -d '{}'
+    ```
+  </Accordion>
+  
+  <Accordion title="Timeout errors">
+    For timeout issues:
+    
+    1. **Check response time** - Vapi expects < 10s response
+    2. **Avoid blocking operations** in webhook handlers
+    3. **Use async processing** for heavy operations
+    
+    ```typescript
+    // Good: Quick response
+    app.post('/webhook', async (req, res) => {
+      // Queue for processing
+      await queue.add('process-webhook', req.body);
+      res.status(200).send();
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Missing events">
+    If events aren't appearing:
+    
+    1. **Check CLI authentication** - `vapi auth whoami`
+    2. **Verify account access** to the resources
+    3. **Ensure events are enabled** in assistant config
+    
+    ```bash
+    # Re-authenticate if needed
+    vapi login
+    ```
+  </Accordion>
+  
+  <Accordion title="SSL/TLS errors">
+    For HTTPS endpoints:
+    
+    ```bash
+    # Development only - skip certificate verification
+    vapi listen --forward-to https://localhost:3000 --skip-verify
+    
+    # Or use HTTP for local development
+    vapi listen --forward-to http://localhost:3000
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+Now that you can test webhooks locally:
+
+- **[Build webhook handlers](/server-url/events):** Learn about all webhook events
+- **[Implement tools](/tools/custom-tools):** Add custom functionality
+- **[Set up production webhooks](/server-url):** Deploy to production
+
+---
+
+**Pro tip:** Keep `vapi listen` running while developing - you'll see all events in real-time and can iterate quickly on your webhook handlers without deployment delays! 
