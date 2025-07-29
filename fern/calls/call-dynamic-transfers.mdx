@@ -33,7 +33,11 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
 4. **Response** - Server returns destination details and transfer configuration
 5. **Transfer** - Vapi executes the transfer to the determined destination
 
-**Available context:** Your webhook receives conversation transcript, extracted variables, customer information, function parameters, and call metadata.
+**Available context:** Your webhook receives conversation transcript, extracted variables, customer information, and call metadata.
+
+<Warning>
+**Important limitation:** Dynamic transfer tools do not support function parameters. When creating a transfer tool with an empty destinations array (for dynamic routing), you cannot define or use parameters. Your webhook must determine routing logic by analyzing the conversation transcript and other context provided in the webhook request.
+</Warning>
 
 ---
 
@@ -62,20 +66,7 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
           destinations: [],
           function: {
             name: "dynamicTransfer",
-            description: "Transfer call to appropriate destination based on customer needs",
-            parameters: {
-              type: "object",
-              properties: {
-                reason: {
-                  type: "string",
-                  description: "Reason for transfer"
-                },
-                urgency: {
-                  type: "string",
-                  enum: ["low", "medium", "high", "critical"]
-                }
-              }
-            }
+            description: "Transfer call to appropriate destination based on customer needs"
           }
         });
 
@@ -99,20 +90,7 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
                 "destinations": [],  # Empty for dynamic routing
                 "function": {
                     "name": "dynamicTransfer",
-                    "description": "Transfer call to appropriate destination based on customer needs",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "reason": {
-                                "type": "string",
-                                "description": "Reason for transfer"
-                            },
-                            "urgency": {
-                                "type": "string",
-                                "enum": ["low", "medium", "high", "critical"]
-                            }
-                        }
-                    }
+                    "description": "Transfer call to appropriate destination based on customer needs"
                 }
             }
             
@@ -133,14 +111,7 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
                "destinations": [],
                "function": {
                  "name": "dynamicTransfer",
-                 "description": "Transfer call to appropriate destination based on customer needs",
-                 "parameters": {
-                   "type": "object",
-                   "properties": {
-                     "reason": {"type": "string", "description": "Reason for transfer"},
-                     "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]}
-                   }
-                 }
+                 "description": "Transfer call to appropriate destination based on customer needs"
                }
              }'
         ```
@@ -168,14 +139,14 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
             messages: [
               {
                 role: "system",
-                content: "You help customers and transfer them when needed using the dynamicTransfer tool. Assess the customer's needs and transfer to the appropriate department."
+                content: "You help customers and transfer them when needed using the dynamicTransfer tool. When transferring, clearly state the reason and urgency in the conversation before calling the tool (e.g., 'This seems urgent, let me transfer you to emergency support'). The system will analyze the conversation to route appropriately."
               }
             ],
             toolIds: ["YOUR_DYNAMIC_TOOL_ID"]
           },
           voice: {
             provider: "11labs", 
-            voiceId: "burt"
+            voiceId: "rachel"
           },
           serverUrl: "https://your-server.com/webhook",
           serverUrlSecret: process.env.WEBHOOK_SECRET
@@ -199,11 +170,11 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
                     "model": "gpt-4o", 
                     "messages": [{
                         "role": "system",
-                        "content": "You help customers and transfer them when needed using the dynamicTransfer tool. Assess the customer's needs and transfer to the appropriate department."
+                        "content": "You help customers and transfer them when needed using the dynamicTransfer tool. When transferring, clearly state the reason and urgency in the conversation before calling the tool (e.g., 'This seems urgent, let me transfer you to emergency support'). The system will analyze the conversation to route appropriately."
                     }],
                     "toolIds": [tool_id]
                 },
-                "voice": {"provider": "11labs", "voiceId": "burt"},
+                "voice": {"provider": "11labs", "voiceId": "rachel"},
                 "serverUrl": "https://your-server.com/webhook",
                 "serverUrlSecret": os.getenv("WEBHOOK_SECRET")
             }
@@ -225,7 +196,7 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
                  "model": "gpt-4o",
                  "messages": [{
                    "role": "system", 
-                   "content": "You help customers and transfer them when needed using the dynamicTransfer tool."
+                   "content": "You help customers and transfer them when needed using the dynamicTransfer tool. When transferring, clearly state the reason and urgency in the conversation before calling the tool."
                  }],
                  "toolIds": ["YOUR_DYNAMIC_TOOL_ID"]
                },
@@ -273,11 +244,16 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
             }
 
             // Simple routing logic - customize for your needs
-            const { functionCall, customer } = request;
-            const urgency = functionCall.parameters?.urgency || 'medium';
+            const { call, customer } = request;
+            
+            // Analyze transcript to determine urgency since parameters are not supported
+            const transcript = call.transcript || '';
+            const isUrgent = transcript.toLowerCase().includes('urgent') || 
+                           transcript.toLowerCase().includes('emergency') ||
+                           transcript.toLowerCase().includes('critical');
 
             let destination;
-            if (urgency === 'critical') {
+            if (isUrgent) {
               destination = {
                 type: "number",
                 number: "+1-555-EMERGENCY",
@@ -336,10 +312,13 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
                     return {"received": True}
                 
                 # Simple routing logic - customize for your needs
-                function_call = request_data.get('functionCall', {})
-                urgency = function_call.get('parameters', {}).get('urgency', 'medium')
+                call = request_data.get('call', {})
                 
-                if urgency == 'critical':
+                # Analyze transcript to determine urgency since parameters are not supported
+                transcript = call.get('transcript', '').lower()
+                is_urgent = 'urgent' in transcript or 'emergency' in transcript or 'critical' in transcript
+                
+                if is_urgent:
                     destination = {
                         "type": "number",
                         "number": "+1-555-EMERGENCY", 
