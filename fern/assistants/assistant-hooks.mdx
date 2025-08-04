@@ -13,6 +13,7 @@ Supported events include:
 - `call.ending`: When a call is ending
 - `assistant.speech.interrupted`: When the assistant's speech is interrupted
 - `customer.speech.interrupted`: When the customer's speech is interrupted
+- `customer.speech.timeout`: When the customer doesn't speak within a specified time
 
 You can combine actions and add filters to control when hooks trigger.
 
@@ -21,8 +22,14 @@ You can combine actions and add filters to control when hooks trigger.
 Hooks are defined in the `hooks` array of your assistant configuration. Each hook includes:
 
 - `on`: The event that triggers the hook
-- `do`: The actions to perform (supports `transfer`, `function`, and `say`)
+- `do`: The actions to perform (supports `tool` and `say`)
 - `filters`: (Optional) Conditions that must be met for the hook to trigger
+- `options`: (Optional) Configuration options for certain hook types like `customer.speech.timeout`
+- `name`: (Optional) Custom name to identify the hook
+
+**Action Types:**
+- `say`: Speak a message. Use `exact` for predetermined text or `prompt` for AI-generated responses
+- `tool`: Execute a tool like `transferCall`, `function`, `endCall`, etc.
 
 <Note>
 The `call.endedReason` filter can be set to any of the [call ended reasons](/api-reference/calls/get#response.body.endedReason).  
@@ -43,11 +50,14 @@ Transfer a call to a fallback number if a pipeline error occurs:
       "oneOf": ["pipeline-error"]
     }],
     "do": [{
-      "type": "transfer",
-      "destination": {
-        "type": "number",
-        "number": "+1234567890",
-        "callerId": "+1987654321"
+      "type": "tool",
+      "tool": {
+        "type": "transferCall",
+        "destinations": [{
+          "type": "number",
+          "number": "+1234567890",
+          "callerId": "+1987654321"
+        }]
       }
     }]
   }]
@@ -66,10 +76,13 @@ You can also transfer to a SIP destination:
       "oneOf": ["pipeline-error"]
     }],
     "do": [{
-      "type": "transfer",
-      "destination": {
-        "type": "sip",
-        "sipUri": "sip:user@domain.com"
+      "type": "tool",
+      "tool": {
+        "type": "transferCall",
+        "destinations": [{
+          "type": "sip",
+          "sipUri": "sip:user@domain.com"
+        }]
       }
     }]
   }]
@@ -95,31 +108,37 @@ Perform multiple actions—say a message, call a function, and transfer the call
         "exact": "I apologize for the technical difficulty. Let me transfer you to our support team."
       },
       {
-        "type": "function",
-        "function": {
-          "name": "log_error",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "error_type": {
-                "type": "string",
-                "value": "pipeline_error"
+        "type": "tool",
+        "tool": {
+          "type": "function",
+          "function": {
+            "name": "log_error",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "error_type": {
+                  "type": "string",
+                  "value": "pipeline_error"
+                }
               }
-            }
+            },
+            "description": "Logs the error details for monitoring"
           },
-          "description": "Logs the error details for monitoring"
-        },
-        "async": true,
-        "server": {
-          "url": "https://your-server.com/api"
+          "async": true,
+          "server": {
+            "url": "https://your-server.com/api"
+          }
         }
       },
       {
-        "type": "transfer",
-        "destination": {
-          "type": "number",
-          "number": "+1234567890",
-          "callerId": "+1987654321"
+        "type": "tool",
+        "tool": {
+          "type": "transferCall",
+          "destinations": [{
+            "type": "number",
+            "number": "+1234567890",
+            "callerId": "+1987654321"
+          }]
         }
       }
     ]
@@ -157,6 +176,35 @@ Handle customer speech interruptions in a similar way:
 }
 ```
 
+## Example: Handle customer speech timeout
+
+Respond when the customer doesn't speak within a specified time:
+
+```json
+{
+  "hooks": [{
+    "on": "customer.speech.timeout",
+    "options": {
+      "timeoutSeconds": 10,
+      "triggerMaxCount": 2,
+      "triggerResetMode": "onUserSpeech"
+    },
+    "do": [{
+      "type": "say",
+      "prompt": "Are you still there? Please let me know how I can help you."
+    }],
+    "name": "customer_timeout_check"
+  }]
+}
+```
+
+<Note>
+The `customer.speech.timeout` hook supports special options:
+- `timeoutSeconds`: How long to wait for customer speech (1-1000 seconds, default: 7.5)
+- `triggerMaxCount`: Maximum times the hook triggers per call (1-10, default: 3)
+- `triggerResetMode`: Whether to reset the trigger count when user speaks (default: "never")
+</Note>
+
 <Note>
 Use `"oneOf": ["pipeline-error"]` as a catch-all filter for any pipeline-related error reason.
 </Note>
@@ -166,6 +214,7 @@ Use `"oneOf": ["pipeline-error"]` as a catch-all filter for any pipeline-related
 - Transfer to a human agent on errors
 - Route to a fallback system if the assistant fails
 - Handle customer or assistant interruptions gracefully
+- Prompt customers who become unresponsive during a call
 - Log errors or events for monitoring
 
 ## Slack Webhook on Call Failure 
@@ -231,23 +280,26 @@ Add this hook configuration to your assistant to trigger Slack notifications on 
       "oneOf": ["pipeline-error"]
     }],
     "do": [{
-      "type": "function",
-      "function": {
-        "name": "report_error",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "text": {
-              "type": "string",
-              "value": "A call error occurred."
+      "type": "tool",
+      "tool": {
+        "type": "function",
+        "function": {
+          "name": "report_error",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "value": "A call error occurred."
+              }
             }
-          }
+          },
+          "description": "Reports a call error to Slack."
         },
-        "description": "Reports a call error to Slack."
-      },
-      "async": false,
-      "server": {
-        "url": "<your-serverless-function-url>"
+        "async": false,
+        "server": {
+          "url": "<your-serverless-function-url>"
+        }
       }
     }]
   }]
