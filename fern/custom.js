@@ -35,8 +35,6 @@ function injectVapiWidget() {
 }
 
 function initializeHockeyStack() {
-  console.log('[custom.js] initializeHockeyStack called');
-  
   if (isLocalhost) {
     console.log('[custom.js] Skipping HockeyStack on localhost');
     return;
@@ -59,7 +57,6 @@ function initializeAll() {
 }
 
 if (document.readyState === 'loading') {
-  console.log('[custom.js] Waiting for DOMContentLoaded');
   document.addEventListener('DOMContentLoaded', initializeAll);
 } else {
   initializeAll();
