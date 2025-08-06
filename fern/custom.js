@@ -4,6 +4,9 @@ const WIDGET_SCRIPT_URL = isLocalhost
   ? 'http://localhost:9001/widget.js'
   : 'https://docs-widget.vercel.app/widget.js';
 
+// HockeyStack configuration
+const HOCKEYSTACK_API_KEY = '96e358f635f3f5ea7fda26023b10da';
+
 function injectVapiWidget() {
   console.log('[custom.js] injectVapiWidget called');
   if (document.querySelector(WIDGET_TAG)) {
@@ -31,9 +34,33 @@ function injectVapiWidget() {
   console.log('[custom.js] Widget script appended to DOM');
 }
 
+function initializeHockeyStack() {
+  console.log('[custom.js] initializeHockeyStack called');
+  
+  if (isLocalhost) {
+    console.log('[custom.js] Skipping HockeyStack on localhost');
+    return;
+  }
+
+  var hsscript = document.createElement("script");
+  hsscript.id = "wphs";
+  hsscript.src = "https://cdn.jsdelivr.net/npm/hockeystack@latest/hockeystack.min.js";
+  hsscript.async = 1;
+  hsscript.dataset.apikey = HOCKEYSTACK_API_KEY;
+  hsscript.dataset.cookieless = 1;
+  hsscript.dataset.autoIdentify = 1;
+  
+  document.getElementsByTagName('head')[0].append(hsscript);
+}
+
+function initializeAll() {
+  initializeHockeyStack();
+  injectVapiWidget();
+}
+
 if (document.readyState === 'loading') {
   console.log('[custom.js] Waiting for DOMContentLoaded');
-  document.addEventListener('DOMContentLoaded', injectVapiWidget);
+  document.addEventListener('DOMContentLoaded', initializeAll);
 } else {
-  injectVapiWidget();
+  initializeAll();
 } 
