@@ -4,7 +4,6 @@ const WIDGET_SCRIPT_URL = isLocalhost
   ? 'http://localhost:9001/widget.js'
   : 'https://docs-widget.vercel.app/widget.js';
 
-// HockeyStack configuration
 const HOCKEYSTACK_API_KEY = '96e358f635f3f5ea7fda26023b10da';
 
 function injectVapiWidget() {
