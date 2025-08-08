@@ -1,0 +1,267 @@
+---
+title: Assistant-based warm transfer
+subtitle: Use AI assistants to facilitate call transfers
+slug: calls/assistant-based-warm-transfer
+---
+
+## Overview
+
+Assistant-based warm transfer uses a dedicated AI assistant to handle the transfer process. You control how this assistant behaves through prompts and configuration. The assistant has access to the previous customer conversation and follows your instructions to decide whether to complete or cancel the transfer.
+
+**In this guide, you'll learn to:**
+- Configure transfer assistants with custom prompts
+- Control how the assistant interacts with operators
+- Handle failed transfer scenarios
+
+## How it works
+
+When using assistant-based warm transfer:
+
+1. **Customer requests transfer** - The original assistant initiates the transfer
+2. **Customer placed on hold** - Customer hears hold music while transfer is attempted
+3. **Transfer assistant calls operator** - A dedicated assistant is placed on the call to the destination
+4. **Assistant follows your prompts** - The transfer assistant has access to the previous conversation context and follows your configured behavior
+5. **Transfer decision** - Based on the interaction, the assistant either:
+   - **Completes transfer** (`transferSuccessful`) - Merges the calls and exits
+   - **Cancels transfer** (`transferCancel`) - Returns the customer to the original assistant
+
+**Transfer cancellation occurs when:**
+- `maxDurationSeconds` is reached
+- Operator doesn't answer
+- Voicemail is detected (based on your prompt configuration)
+- Any condition you define in your prompts
+
+## Configuration
+
+<Note>
+The `function.name` property identifies your transfer tool. Use this name when instructing your assistant to perform transfers in system prompts.
+</Note>
+
+<CodeBlocks>
+```json title="Basic Configuration"
+{
+  "type": "transferCall",
+  "function": {
+    "name": "warmTransferAssistant"
+  },
+  "destinations": [
+    {
+      "type": "number",
+      "number": "+16509606568",
+      "message": "I am forwarding your call to customer support. Please stay on the line.",
+      "transferPlan": {
+        "mode": "warm-transfer-experimental",
+        "transferAssistant": {
+          "firstMessage": "Hi, I have a customer waiting. Are you available to take this call?",
+          "maxDurationSeconds": 120,
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are handling a warm transfer. Check if the operator is available. If yes, call transferSuccessful. If no answer or voicemail detected, call transferCancel."
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
+```
+</CodeBlocks>
+
+### Transfer assistant properties
+
+<ParamField path="transferAssistant.firstMessage" type="string">
+  The initial message spoken by the transfer assistant when the operator answers
+</ParamField>
+
+<ParamField path="transferAssistant.maxDurationSeconds" type="number">
+  Maximum duration in seconds for the operator call. The transfer is automatically cancelled if this limit is reached.
+</ParamField>
+
+<ParamField path="transferAssistant.model" type="object" required>
+  Assistant configuration including provider, model, and system messages that control the transfer assistant's behavior
+</ParamField>
+
+## Built-in tools
+
+The transfer assistant has access to two built-in tools:
+
+<Note>
+You can configure the transfer assistant to perform various tasks before making a decision, such as:
+- Informing the operator about the customer's needs
+- Asking the operator specific questions
+- Following custom business logic you define in the prompts
+</Note>
+
+### transferSuccessful
+
+Completes the transfer by:
+- Merging the customer and operator calls
+- Removing the transfer assistant from the call
+- Connecting the parties directly
+
+### transferCancel
+
+Cancels the transfer by:
+- Disconnecting from the operator
+- Returning the customer to the original assistant
+- Optionally playing a fallback message
+
+## Additional examples
+
+### Handling operator interactions
+
+The transfer assistant can be configured to handle various operator responses:
+
+<CodeBlocks>
+```json title="Detailed Transfer Configuration"
+{
+  "type": "transferCall",
+  "function": {
+    "name": "warmTransferWithContext"
+  },
+  "destinations": [
+    {
+      "type": "number",
+      "number": "+14155551234",
+      "message": "Transferring you to our specialist. Please hold.",
+      "transferPlan": {
+        "mode": "warm-transfer-experimental",
+        "transferAssistant": {
+          "firstMessage": "Hi, I have a customer on the line who needs help with their recent order. Are you available?",
+          "maxDurationSeconds": 90,
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a transfer assistant. Your tasks:\n1. Confirm the operator is human and available\n2. Provide brief context about the customer's needs\n3. If they accept, call transferSuccessful\n4. If they decline or you detect voicemail, call transferCancel\n5. Keep the conversation under 30 seconds"
+              }
+            ]
+          }
+        },
+        "fallbackPlan": {
+          "message": "I couldn't reach our specialist. Let me help you directly instead.",
+          "endCallEnabled": false
+        }
+      }
+    }
+  ]
+}
+```
+</CodeBlocks>
+
+### Multiple departments
+
+Configure different transfer assistants for different departments:
+
+<CodeBlocks>
+```json title="Department-specific Transfers"
+{
+  "type": "transferCall",
+  "function": {
+    "name": "warmTransferAssistant"
+  },
+  "destinations": [
+    {
+      "type": "number",
+      "number": "+1234567890",
+      "description": "Sales Department",
+      "transferPlan": {
+        "mode": "warm-transfer-experimental",
+        "fallbackPlan": {
+          "message": "Sorry, none of our account executives are available right now. Our team get back to you later"
+        },
+        "transferAssistant": {
+          "firstMessage": "Hey there, I have a potential customer interested in our enterprise plans. Are you available to pick up the call?",
+          "maxDurationSeconds": 60,
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a transfer assistant designed to facilitate call transfers between a customer and an operator. Your core responsibility is to talk to the operator and manage the transfer process efficiently. \n\n## Core Responsibility \n - Facilitate the transfer process by using transferSuccessful or transferCancel tools. Engage briefly with the operator as needed and then facilitate the transfer by calling the corresponding transfer tool. \n ## When to Respond\n- Answer questions about the transfer process or provide summaries when specifically asked by the operator\n- Respond to direct questions about the current transfer situation\n\\n ## Transfer Tools\n- Use transferSuccessful when the operator agrees to accept the call\n- Use transferCancel when the transfer cannot be completed\n\n Rule: Only call the tool when you addressed all the operators questions"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "number",
+      "number": "+0987654321",
+      "description": "Technical Support",
+      "transferPlan": {
+        "mode": "warm-transfer-experimental",
+        "transferAssistant": {
+          "firstMessage": "Hey there, I have a customer experiencing issues with API integration. Can you help?",
+          "maxDurationSeconds": 90,
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [
+              {
+                "role": "system",
+                "content": "Transfer to tech support. Explain the technical issue the customer is experiencing."
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "type": "request-start",
+      "content": "I am forwarding your call to enterprise team. Please stay on the line."
+    }
+  ]
+}
+```
+</CodeBlocks>
+
+## Best practices
+
+<Tip>
+**First message**: Keep it brief and state the purpose clearly.
+</Tip>
+
+<Note>
+**Timeout duration**: Set `maxDurationSeconds` between 60-120 seconds. This limits how long the operator call can last before automatic cancellation.
+</Note>
+
+<Warning>
+**System prompts**: Configure your prompts to handle voicemail detection, busy signals, and operator unavailability.
+</Warning>
+
+### System prompt configuration
+
+Configure your transfer assistant to:
+- **Detect voicemail** - Recognize automated messages and call `transferCancel`
+- **Verify human presence** - Confirm a person answered before proceeding
+- **Provide context** - Explain the customer's situation based on your knowledge
+- **Handle rejections** - Define behavior when operators decline
+- **Manage timing** - Complete interactions before `maxDurationSeconds`
+
+## Limitations
+
+<Info>
+- Requires `warm-transfer-experimental` mode
+- Only works with Twilio phone numbers
+- Calls are limited by `maxDurationSeconds` to prevent indefinite duration
+- Built-in tools (`transferSuccessful`, `transferCancel`) are predefined and cannot be modified
+- The transfer assistant has access to the previous conversation context
+</Info>
+
+## Next steps
+
+Now that you've configured assistant-based warm transfers:
+- **[Call forwarding](mdc:docs/call-forwarding):** Learn about other transfer modes and options
+- **[Assistant configuration](mdc:docs/assistants):** Configure assistant models and prompts
+- **[Custom tools](mdc:docs/tools/custom-tools):** Add custom tools to your assistants
