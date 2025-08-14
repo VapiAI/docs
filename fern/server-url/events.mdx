@@ -4,34 +4,36 @@ subtitle: Learn about different events that can be sent to a Server URL.
 slug: server-url/events
 ---
 
-
-All messages sent to your Server URL will be `POST` requests with the following body:
+All messages sent to your Server URL are `POST` requests with this body shape:
 
 ```json
 {
   "message": {
-    "type": "function-call",
-    "call": { Call Object },
-    ...other message properties
+    "type": "<server-message-type>",
+    "call": { /* Call Object */ },
+    /* other fields depending on type */
   }
 }
 ```
 
-They include the type of message, the call object, and any other properties that are relevant to the message type. Below are the different types of messages that can be sent to your Server URL.
+Most events are informational and do not require a response. Responses are only expected for these types sent to your Server URL:
+- "assistant-request"
+- "tool-calls"
+- "transfer-destination-request"
+- "knowledge-base-request"
 
-### Function Calling
+Note: Some specialized messages like "voice-request" and "call.endpointing.request" are sent to their dedicated servers if configured (e.g. `assistant.voice.server.url`, `assistant.startSpeakingPlan.smartEndpointingPlan.server.url`).
+
+### Function Calling (Tools)
 
 <Info>
-  Vapi fully supports [OpenAI's function calling
-  API](https://platform.openai.com/docs/guides/gpt/function-calling), so you can have assistants
-  ping your server to perform actions like sending emails, retrieve information, and more.
+  Vapi supports OpenAI-style tool/function calling. Assistants can ping your server to perform actions.
 </Info>
 
-With each response, the assistant will automatically determine what functions to call based on the directions provided in the system message in `messages`. Here's an example of what the assistant might look like:
+Example assistant configuration (excerpt):
 
 ```json
 {
-  "name": "Ryan's Assistant",
   "model": {
     "provider": "openai",
     "model": "gpt-4o",
@@ -42,8 +44,10 @@ With each response, the assistant will automatically determine what functions to
         "parameters": {
           "type": "object",
           "properties": {
-            "color": { "type": "string" }
-          }
+            "emailAddress": { "type": "string" },
+            "message": { "type": "string" }
+          },
+          "required": ["emailAddress", "message"]
         }
       }
     ]
@@ -51,65 +55,64 @@ With each response, the assistant will automatically determine what functions to
 }
 ```
 
-Once a function is triggered, the assistant will send a message to your Server URL with the following body:
+When tools are triggered, your Server URL receives a `tool-calls` message:
 
 ```json
 {
   "message": {
-    "type": "function-call",
-    "call": { Call Object },
-    "functionCall": {
-      "name": "sendEmail",
-      "parameters": "{ \"emailAddress\": \"john@example.com\"}"
-    }
+    "type": "tool-calls",
+    "call": { /* Call Object */ },
+    "toolWithToolCallList": [
+      {
+        "name": "sendEmail",
+        "toolCall": { "id": "abc123", "parameters": { "emailAddress": "john@example.com", "message": "Hi!" } }
+      }
+    ],
+    "toolCallList": [
+      { "id": "abc123", "name": "sendEmail", "parameters": { "emailAddress": "john@example.com", "message": "Hi!" } }
+    ]
   }
 }
 ```
 
-Your server should respond with a JSON object containing the function's response, like so:
-
-```json
-{ "result": "Your email has been sent." }
-```
-
-Or if it's an object:
+Respond with results for each tool call:
 
 ```json
 {
-  "result": "{ \"message\": \"Your email has been sent.\", \"email\": \"test@email.com\" }"
+  "results": [
+    {
+      "name": "sendEmail",
+      "toolCallId": "abc123",
+      "result": "{ \"status\": \"sent\" }"
+    }
+  ]
 }
 ```
 
-The result will be appended to the conversation, and the assistant will decide what to do with the response based on its system prompt.
+Optionally include a message to speak to the user while or after running the tool.
 
 <Note>
-  If you don't need to return a response, you can use the `async: true` parameter in your assitant's
-  function configuration. This will prevent the assistant from waiting for a response from your
-  server.
+  If a tool does not need a response immediately, you can design it to be asynchronous.
 </Note>
 
 ### Retrieving Assistants
 
-For inbound phone calls, you may want to specify the assistant based on the caller's phone number. If a PhoneNumber doesn't have an `assistantId`, Vapi will attempt to retrieve the assistant from your server.
+For inbound phone calls, you can specify the assistant dynamically. If a PhoneNumber doesn't have an `assistantId`, Vapi may request one from your server:
 
 ```json
 {
   "message": {
     "type": "assistant-request",
-    "call": { Call Object },
+    "call": { /* Call Object */ }
   }
 }
 ```
 
-If you want to use an existing saved assistant instead of creating a transient assistant for each request, you can respond with the assistant's ID:
+Respond with either an existing assistant ID, a transient assistant, or transfer destination:
 
 ```json
-{
-  "assistantId": "your-saved-assistant-id"
-}
+{ "assistantId": "your-saved-assistant-id" }
 ```
-
-Alternatively, if you prefer to define a transient assistant dynamically, your server should respond with the [assistant](/api-reference/webhooks/server-message#response.body.messageResponse.Server%20Message%20Response%20Assistant%20Request.assistant) object directly:
 
 ```json
 {
@@ -119,84 +122,286 @@ Alternatively, if you prefer to define a transient assistant dynamically, your s
       "provider": "openai",
       "model": "gpt-4o",
       "messages": [
-        {
-          "role": "system",
-          "content": "You're Ryan's assistant..."
-        }
+        { "role": "system", "content": "You're Ryan's assistant..." }
       ]
     }
   }
 }
 ```
 
+```json
+{ "destination": { "type": "number", "phoneNumber": "+11234567890" } }
+```
 
-
-If you'd like to play an error message instead, you can respond with:
+Or return an error message to be spoken to the caller:
 
 ```json
 { "error": "Sorry, not enough credits on your account, please refill." }
 ```
 
-### Call Status Updates
-
-During the call, the assistant will make multiple `POST` requests to the Server URL with the following body:
+### Status Updates
 
 ```json
 {
   "message": {
     "type": "status-update",
-    "call": { Call Object },
-    "status": "ended",
+    "call": { /* Call Object */ },
+    "status": "ended"
   }
 }
 ```
 
 <Card title="Status Events">
-  - `in-progress`: The call has started. - `forwarding`: The call is about to be forwarded to
-  `forwardingPhoneNumber`. - `ended`: The call has ended.
+  - `scheduled`: Call scheduled.
+  - `queued`: Call queued.
+  - `ringing`: The call is ringing.
+  - `in-progress`: The call has started.
+  - `forwarding`: The call is about to be forwarded.
+  - `ended`: The call has ended.
 </Card>
 
 ### End of Call Report
-
-When a call ends, the assistant will make a `POST` request to the Server URL with the following body:
 
 ```json
 {
   "message": {
     "type": "end-of-call-report",
     "endedReason": "hangup",
-    "call": { Call Object },
-    "recordingUrl": "https://vapi-public.s3.amazonaws.com/recordings/1234.wav",
-    "summary": "The user picked up the phone then asked about the weather...",
+    "call": { /* Call Object */ },
+    "recordingUrl": "https://.../recordings/1234.wav",
+    "summary": "The user asked about the weather...",
     "transcript": "AI: How can I help? User: What's the weather? ...",
-    "messages":[
-      {
-        "role": "assistant",
-        "message": "How can I help?",
-      },
-      {
-        "role": "user",
-        "message": "What's the weather?"
-      },
-      ...
+    "messages": [
+      { "role": "assistant", "message": "How can I help?" },
+      { "role": "user", "message": "What's the weather?" }
     ]
   }
 }
 ```
 
-`endedReason` can be any of the options defined on the [Call Object](/api-reference/calls/get-call).
-
 ### Hang Notifications
-
-Whenever the assistant fails to respond for 5+ seconds, the assistant will make a `POST` requests to the Server URL with the following body:
 
 ```json
 {
   "message": {
     "type": "hang",
-    "call": { Call Object },
+    "call": { /* Call Object */ }
   }
 }
 ```
 
-You can use this to display an error message to the user, or to send a notification to your team.
+Use this to surface delays or notify your team.
+
+### Conversation Updates
+
+Sent when an update is committed to the conversation history.
+
+```json
+{
+  "message": {
+    "type": "conversation-update",
+    "messages": [ /* current conversation messages */ ]
+  }
+}
+```
+
+### Transcript
+
+Partial and final transcripts from the transcriber.
+
+```json
+{
+  "message": {
+    "type": "transcript",
+    "role": "user",
+    "transcriptType": "partial",
+    "transcript": "I'd like to book...",
+    "isFiltered": false
+  }
+}
+```
+
+For final-only events, you may receive `type: "transcript[transcriptType=\"final\"]"`.
+
+### Speech Update
+
+```json
+{
+  "message": {
+    "type": "speech-update",
+    "status": "started",
+    "role": "assistant",
+    "turn": 2
+  }
+}
+```
+
+### Model Output
+
+Tokens or tool-call outputs as the model generates.
+
+```json
+{
+  "message": {
+    "type": "model-output",
+    "output": { /* token or tool call */ }
+  }
+}
+```
+
+### Transfer Destination Request
+
+Requested when the model wants to transfer but the destination is not yet known.
+
+```json
+{
+  "message": {
+    "type": "transfer-destination-request",
+    "call": { /* Call Object */ }
+  }
+}
+```
+
+Respond with a destination and optionally a message:
+
+```json
+{
+  "destination": { "type": "number", "phoneNumber": "+11234567890" },
+  "message": { "type": "request-start", "message": "Transferring you now" }
+}
+```
+
+### Transfer Update
+
+Fires whenever a transfer occurs.
+
+```json
+{
+  "message": {
+    "type": "transfer-update",
+    "destination": { /* assistant | number | sip */ }
+  }
+}
+```
+
+### User Interrupted
+
+```json
+{
+  "message": {
+    "type": "user-interrupted"
+  }
+}
+```
+
+### Language Change Detected
+
+Sent when the transcriber switches based on detected language.
+
+```json
+{
+  "message": {
+    "type": "language-change-detected"
+  }
+}
+```
+
+### Phone Call Control (Advanced)
+
+When requested in `assistant.serverMessages`, hangup and forwarding are delegated to your server.
+
+```json
+{
+  "message": {
+    "type": "phone-call-control",
+    "request": "forward",
+    "destination": { "type": "sip", "sipUri": "sip:agent@example.com" }
+  }
+}
+```
+
+### Knowledge Base Request (Custom)
+
+If using `assistant.knowledgeBase.provider = "custom-knowledge-base"`.
+
+```json
+{
+  "message": {
+    "type": "knowledge-base-request",
+    "messages": [ /* conversation so far */ ]
+  }
+}
+```
+
+Respond with documents (and optionally a custom message to speak):
+
+```json
+{
+  "documents": [
+    { "content": "Return policy is 30 days...", "similarity": 0.92, "uuid": "doc-1" }
+  ]
+}
+```
+
+### Voice Input (Custom Voice Providers)
+
+```json
+{
+  "message": {
+    "type": "voice-input",
+    "input": "Hello, world!"
+  }
+}
+```
+
+### Voice Request (Custom Voice Server)
+
+Sent to `assistant.voice.server.url`. Respond with raw 1-channel 16-bit PCM audio at the requested sample rate (not JSON).
+
+```json
+{
+  "message": {
+    "type": "voice-request",
+    "text": "Hello, world!",
+    "sampleRate": 24000
+  }
+}
+```
+
+### Call Endpointing Request (Custom Endpointing Server)
+
+Sent to `assistant.startSpeakingPlan.smartEndpointingPlan.server.url`.
+
+```json
+{
+  "message": {
+    "type": "call.endpointing.request",
+    "messagesOpenAIFormatted": [ /* openai-formatted messages */ ]
+  }
+}
+```
+
+Respond with the timeout before considering the user's speech finished:
+
+```json
+{ "timeoutSeconds": 0.5 }
+```
+
+### Chat Events
+
+- `chat.created`: Sent when a new chat is created.
+- `chat.deleted`: Sent when a chat is deleted.
+
+```json
+{ "message": { "type": "chat.created", "chat": { /* Chat */ } } }
+```
+
+### Session Events
+
+- `session.created`: Sent when a session is created.
+- `session.updated`: Sent when a session is updated.
+- `session.deleted`: Sent when a session is deleted.
+
+```json
+{ "message": { "type": "session.created", "session": { /* Session */ } } }
+```
