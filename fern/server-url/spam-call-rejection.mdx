@@ -1,0 +1,110 @@
+---
+title: Spam call rejection
+subtitle: Screen inbound calls and reject known spam using your Server URL
+slug: server-url/spam-call-rejection
+---
+
+Use your Server URL to filter inbound calls before they reach your assistant. When an inbound call arrives, Vapi can ask your server which assistant to use via an `assistant-request`. In that moment, you can check the caller's phone number against your spam list:
+
+- If the number is flagged as spam: return an error message to be spoken to the caller and end the call.
+- If the number is allowed: return a transient assistant configuration to proceed with the conversation.
+
+<Info>
+Learn more about the request/response shapes on the <a href="/server-url/events">Server events</a> page.
+</Info>
+
+## How it works
+
+1. Configure a Server URL on the phone number, assistant, or organization.
+2. On inbound calls without a fixed `assistantId` (or if you prefer to decide dynamically), Vapi sends your server an `assistant-request` webhook.
+3. Your server validates the calling number and responds with either an `error` or an `assistant` object.
+
+<Note>
+Your server must respond within ~7.5 seconds or the call may fail.
+</Note>
+
+## Example implementation
+
+Below is a simple example using Node.js/Express. It checks the inbound caller (E.164) against a local spam list, then either rejects with an `error` or returns a transient assistant:
+
+```javascript
+import express from "express";
+
+const app = express();
+app.use(express.json());
+
+// Replace with your own data store or third‑party spam reputation API
+const spamNumbers = new Set(["+11234567890", "+15558675309"]);
+
+app.post("/webhooks/vapi", async (req, res) => {
+  const messageType = req.body?.message?.type;
+  if (messageType !== "assistant-request") {
+    return res.sendStatus(204);
+  }
+
+  const incomingNumber = req.body?.call?.from?.phoneNumber;
+
+  if (incomingNumber && spamNumbers.has(incomingNumber)) {
+    // Reject spam callers with a spoken error message
+    return res.json({
+      error: "Sorry, your number is blocked due to spam reports. If this is a mistake, please contact support."
+    });
+  }
+
+  // Allow the call: return a transient assistant configuration
+  return res.json({
+    assistant: {
+      name: "Inbound Receptionist",
+      firstMessage: "Hi there! How can I help you today?",
+      model: {
+        provider: "openai",
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful receptionist. Answer succinctly and route the caller if needed."
+          }
+        ]
+      },
+      voice: {
+        provider: "11labs",
+        voiceId: "shimmer"
+      }
+    }
+  });
+});
+
+app.listen(3000, () => console.log("Server listening on port 3000"));
+```
+
+## Response examples
+
+- Reject with a spoken error message:
+
+```json
+{ "error": "Sorry, your number is blocked due to spam reports." }
+```
+
+- Proceed with a transient assistant configuration:
+
+```json
+{
+  "assistant": {
+    "firstMessage": "Hey there! How can I help you today?",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "messages": [
+        { "role": "system", "content": "You are a friendly inbound assistant." }
+      ]
+    },
+    "voice": { "provider": "11labs", "voiceId": "shimmer" }
+  }
+}
+```
+
+## Tips
+
+- Keep your spam list in a database or use a reputation API for accuracy.
+- If you prefer to use a saved assistant, return `{ "assistantId": "asst_..." }` instead of an inline `assistant`.
+- For local testing, see <a href="/server-url/developing-locally">Developing locally</a>.
