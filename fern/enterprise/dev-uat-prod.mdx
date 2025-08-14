@@ -1,0 +1,275 @@
+---
+title: Enterprise environments (DEV/UAT/PROD)
+subtitle: Promotion and configuration management for assistants and squads
+---
+
+## Purpose
+
+Provide enterprise teams a repeatable, auditable way to build, test, and promote assistant and squad configurations across environments.
+
+## Audience
+
+- **Platform admins**: environment boundaries, access control, and compliance
+- **DevOps/Eng**: CI/CD and automation
+- **Forward-deployed engineers**: day-to-day configuration and migrations
+
+## Principles
+
+- **Isolation**: Separate organizations per environment: `dev`, `uat` (or `staging`), `prod`.
+- **Config as Code**: Store assistant/squad/tool/knowledge-base configs as JSON/YAML in Git.
+- **Immutability + Promotion**: Create in `dev`, validate in `uat`, promote to `prod` via automation.
+- **Least privilege**: RBAC, secrets isolation, and data boundaries per environment.
+- **Reproducibility**: Idempotent apply, drift detection, and rollbacks from Git history.
+
+## Environment topology
+
+- **Organizations**: One org per environment, e.g., `acme-dev`, `acme-uat`, `acme-prod`.
+- **Networking & data**:
+  - `dev`: synthetic or scrubbed data
+  - `uat`: production-like data, avoid real PII when possible
+  - `prod`: real data with strict logging/audit
+- **Access**:
+  - `dev`: engineers only
+  - `uat`: QA, SMEs
+  - `prod`: restricted operators; changes via CI/CD only
+
+## Resources under management
+
+Treat these as declarative resources:
+- **Assistants**: system prompt, tools, routing, grounding, safety settings
+- **Squads/Teams**: membership and permissions
+- **Tools/Integrations**: function schemas, external service configs
+- **Knowledge Bases**: document sources, embedding settings
+- **Runtimes/Policies**: rate limits, safety policies, fallback models
+
+Reference resources by stable logical names (slugs) in config; resolve to IDs at apply time.
+
+## Repository structure (example)
+
+```text
+/platform
+  /assistants
+    order-agent.yaml
+    support-agent.yaml
+  /squads
+    support-level1.yaml
+  /tools
+    jira.yaml
+    zendesk.yaml
+  /knowledge
+    product-faqs.yaml
+  /policies
+    safety.yaml
+  environments.yaml       # maps env → org IDs, model defaults, endpoints
+  schemas/                # JSONSchema for validation
+```
+
+Do not commit secrets. Store them in your secret manager (e.g., Vault, AWS Secrets Manager, GCP Secret Manager) and reference via placeholders.
+
+## Config format (YAML examples)
+
+```yaml
+kind: Assistant
+apiVersion: v1
+metadata:
+  name: order-agent
+  description: Handles order inquiries
+spec:
+  systemPromptRef: prompts/order-agent.md
+  model: gpt-4.1
+  tools:
+    - ref: jira
+    - ref: zendesk
+  knowledge:
+    - ref: product-faqs
+  safetyPolicyRef: policies/safety.yaml
+```
+
+```yaml
+kind: Tool
+apiVersion: v1
+metadata:
+  name: jira
+spec:
+  type: http
+  authRef: secrets/jira-token        # resolved from secret manager
+  endpoint: https://jira.example.com
+  operations:
+    - name: createIssue
+      method: POST
+      path: /rest/api/3/issue
+      schemaRef: schemas/jira-create-issue.json
+```
+
+## Promotion workflow
+
+1. **Develop in DEV**
+   - Create/modify configs in Git.
+   - Run local validation (schema/lint) and a plan/diff against `dev`.
+   - Apply to `dev`; run unit/integration tests and data access checks.
+2. **Promote to UAT**
+   - Open a PR; CI runs `plan` against `uat` and posts a diff.
+   - On approval, CI applies to `uat` using a service principal for the `uat` org.
+3. **Promote to PROD**
+   - Change window + ticket if required.
+   - CI runs `plan` against `prod`, requires approvals from owners.
+   - CI applies to `prod`; record the change set and artifacts.
+4. **Rollback**
+   - Revert Git commit → CI reapplies previous config (idempotent).
+   - Keep backup exports from each apply job for audit.
+
+## Applying configs via API
+
+Use a small deployer that:
+- Reads YAML/JSON
+- Resolves references and secrets for the target environment
+- Translates to API payloads
+- Uses idempotency keys and labels to detect drift
+
+Example pseudo-commands:
+
+```bash
+# Export (backup)
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  GET `https://api.vendor.com/v1/assistants?label=order-agent` > backups/order-agent-dev.json
+
+# Apply (create or update)
+curl -sS -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -X PUT `https://api.vendor.com/v1/assistants/order-agent` \
+  --data-binary @rendered/order-agent.dev.json
+```
+
+Recommendations:
+- **Idempotency**: One key per resource per pipeline run
+- **Labeling**: Tag resources with `env`, `app`, `owner`, `sha` for traceability
+- **Drift**: Fetch current → compute diff → fail pipeline on unmanaged drift
+
+## CI/CD example (GitHub Actions)
+
+```yaml
+name: Platform Deploy
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - name: Validate
+        run: npm run validate:all
+      - name: Plan UAT
+        env:
+          ORG_ID: ${{ secrets.UAT_ORG_ID }}
+          API_TOKEN: ${{ secrets.UAT_TOKEN }}
+        run: npm run plan -- --env uat --out plan-uat.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: plan-uat, path: plan-uat.txt }
+
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    needs: [ plan ]
+    permissions: { contents: read }
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      url: https://console.vendor.com/orgs/${{ secrets.PROD_ORG_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - name: Apply PROD
+        env:
+          ORG_ID: ${{ secrets.PROD_ORG_ID }}
+          API_TOKEN: ${{ secrets.PROD_TOKEN }}
+        run: npm run apply -- --env prod --approve
+```
+
+## Naming and referencing
+
+- Use unique slugs (e.g., `order-agent`) per environment
+- Prefer logical refs in specs; map to environment-specific IDs at render/apply time
+- Save Git commit SHA as a label on each resource for traceability
+
+## Security and compliance
+
+- **RBAC**: Developers write to `dev`, read `uat`, no direct `prod` writes; CI principals per org
+- **Secrets**: Keep out of Git. Resolve via `secrets://path` at apply time; rotate per policy
+- **Audit**: Keep apply logs, request/response checksums, and exported snapshots per run; enable API audit logs in each org
+
+## Testing and validation
+
+- **Static**: JSONSchema validation; lint refs and schema compatibility
+- **Dynamic**: Dry-run/plan renders and diffs
+- **Behavioral**: Golden-path chat transcripts in `dev` and `uat`; tool execution smoke tests; canary in `prod`
+
+## Operational runbooks
+
+- **Create a new assistant**: add YAML → PR → CI plans → approve → deploy to `uat` → UAT signoff → deploy to `prod`
+- **Change a tool**: update tool YAML; bump assistant `spec.tools`; ensure backward compatibility; run smoke tests
+- **Incident rollback**: revert commit; re-run apply; confirm labels reverted
+
+## FAQ
+
+- **How do we copy an assistant to another environment?** Export from source org (GET), normalize to YAML/JSON, check into Git, then apply to target org via CI using the deployer.
+- **What exactly is the “config”?** The full API payload needed to create/update the assistant, its referenced tools, knowledge bases, and policies. Store it declaratively and resolve environment-specific references at apply time.
+- **We don’t have built-in versioning yet. What should we do now?** Use Git as the source of truth, add labels with commit SHAs to resources, and require CI-only writes to `prod`.
+- **How do we handle environment-specific differences (models, endpoints)?** Parameterize via `environments.yaml` and templates; keep the logical spec identical across envs, only vary parameters.
+
+## Promotion checklist
+
+- **Config**: validated and reviewed
+- **Secrets**: present in target environment
+- **Diff**: plan shows expected changes only
+- **Tests**: UAT signoff recorded
+- **Approvals**: change ticket and reviewers complete
+- **Backups**: exported current `prod` state saved
+- **Monitoring**: alerts enabled for error rate and tool failures
+
+## Minimal example: render + apply (Node)
+
+```javascript
+import { readFileSync } from 'fs';
+import yaml from 'js-yaml';
+import fetch from 'node-fetch';
+
+const token = process.env.API_TOKEN;
+const orgId = process.env.ORG_ID;
+
+async function upsertAssistant(doc) {
+  const url = `https://api.vendor.com/v1/assistants/${doc.metadata.name}?org=${orgId}`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': process.env.IDEMPOTENCY_KEY
+    },
+    body: JSON.stringify(render(doc))
+  });
+  if (!res.ok) throw new Error(`Apply failed: ${res.status} ${await res.text()}`);
+}
+
+function render(doc) {
+  return {
+    name: doc.metadata.name,
+    description: doc.metadata.description,
+    model: doc.spec.model,
+    tools: doc.spec.tools.map(t => ({ name: t.ref })),
+    labels: { env: process.env.ENV, sha: process.env.GIT_SHA }
+  };
+}
+
+const doc = yaml.load(readFileSync(process.argv[2], 'utf8'));
+upsertAssistant(doc)
+  .then(() => console.log('Applied'))
+  .catch(e => { console.error(e); process.exit(1); });
+```
