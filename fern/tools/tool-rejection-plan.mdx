@@ -1,0 +1,190 @@
+---
+title: Tool rejection plan
+subtitle: Prevent unintended tool calls using conditions based on conversation state
+slug: tools/tool-rejection-plan
+---
+
+## Overview
+
+A rejection plan lets you prevent a tool from executing when certain conditions are met. You attach it to any tool call and it evaluates the recent conversation state to decide whether to reject the call.
+
+- If all conditions match (AND logic), the tool call is rejected.
+- To express OR at the top level, use a single group condition with `operator: "OR"`.
+- If `conditions` is empty or omitted, the tool always executes.
+
+<Note>
+Use on any tool call, e.g., `Assistant.hooks.do[type=tool].tool.rejectionPlan`.
+</Note>
+
+## Schema
+
+- **conditions**: Array of condition objects. Defaults to `[]`.
+  - Types:
+    - **RegexCondition**: Match message content with a regex
+      - `type`: "regex"
+      - `regex`: String pattern. RegExp.test-style substring matching. Escape backslashes in JSON (e.g., `"\\bhello\\b"`). Supports inline flags like `(?i)` for case-insensitive.
+      - `target` (optional): Which message to inspect
+        - `role`: `user` | `assistant`
+        - `position`: Integer index in history (default `-1` for the most recent). Negative counts from the end; `0` is the first message
+      - `negate` (optional): When `true`, the condition matches if the regex does NOT match (default `false`)
+    - **LiquidCondition**: Evaluate a [Liquid](https://liquidjs.com/) template that must output exactly `"true"` or `"false"`
+      - `type`: "liquid"
+      - `liquid`: The template. You can access `messages` (recent chat messages), `now`, and assistant variables. Useful filters include `last`, `where`, and `reverse`
+    - **GroupCondition**: Combine multiple conditions
+      - `type`: "group"
+      - `operator`: `AND` | `OR`
+      - `conditions`: Nested list of conditions (can recursively nest groups)
+
+## Examples
+
+### 1) Reject endCall unless the user says goodbye
+
+```json
+{
+  "conditions": [
+    {
+      "type": "regex",
+      "regex": "(?i)\\b(bye|goodbye|farewell|see you later|take care)\\b",
+      "target": { "position": -1, "role": "user" },
+      "negate": true
+    }
+  ]
+}
+```
+
+### 2) Reject transfer if the user is actually asking a question
+
+```json
+{
+  "conditions": [
+    {
+      "type": "regex",
+      "regex": "\\?",
+      "target": { "position": -1, "role": "user" }
+    }
+  ]
+}
+```
+
+### 3) Reject transfer if the user hasn't mentioned transfer recently (Liquid)
+
+Liquid template for readability:
+
+```liquid
+{% assign recentMessages = messages | last: 5 %}
+{% assign userMessages = recentMessages | where: 'role', 'user' %}
+{% assign mentioned = false %}
+{% for msg in userMessages %}
+  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'representative' %}
+    {% assign mentioned = true %}
+  {% endif %}
+{% endfor %}
+{% if mentioned %}false{% else %}true{% endif %}
+```
+
+Wired into a rejection plan:
+
+```json
+{
+  "conditions": [
+    {
+      "type": "liquid",
+      "liquid": "{% assign recentMessages = messages | last: 5 %}{% assign userMessages = recentMessages | where: 'role', 'user' %}{% assign mentioned = false %}{% for msg in userMessages %}{% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'representative' %}{% assign mentioned = true %}{% endif %}{% endfor %}{% if mentioned %}false{% else %}true{% endif %}"
+    }
+  ]
+}
+```
+
+### 4) Top-level OR using a group
+
+```json
+{
+  "conditions": [
+    {
+      "type": "group",
+      "operator": "OR",
+      "conditions": [
+        { "type": "regex", "regex": "(?i)\\bcancel\\b", "target": { "role": "user" } },
+        { "type": "regex", "regex": "(?i)\\bstop\\b",   "target": { "role": "user" } }
+      ]
+    }
+  ]
+}
+```
+
+## Normal tool call example
+
+Attach `rejectionPlan` directly on a tool in your assistant configuration (`model.tools`):
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      { "role": "system", "content": "Only end the call after the user says goodbye." }
+    ],
+    "tools": [
+      {
+        "type": "endCall",
+        "rejectionPlan": {
+          "conditions": [
+            {
+              "type": "regex",
+              "regex": "(?i)\\b(bye|goodbye|farewell|see you later|take care)\\b",
+              "target": { "position": -1, "role": "user" },
+              "negate": true
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+### Another example: transferCall with rejection
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      { "role": "system", "content": "Transfer only if the user clearly asks to be connected." }
+    ],
+    "tools": [
+      {
+        "type": "transferCall",
+        "destinations": [
+          { "type": "number", "number": "+1234567890" }
+        ],
+        "rejectionPlan": {
+          "conditions": [
+            {
+              "type": "group",
+              "operator": "OR",
+              "conditions": [
+                { "type": "regex", "regex": "(?i)\\bconnect\\b", "target": { "role": "user" } },
+                { "type": "regex", "regex": "(?i)\\btransfer\\b", "target": { "role": "user" } }
+              ]
+            },
+            {
+              "type": "regex",
+              "regex": "\\?",
+              "target": { "position": -1, "role": "user" },
+              "negate": true
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+## Tips
+
+- Escape backslashes in regex patterns: write `\\b` in JSON to mean `\b` in the regex engine.
+- `position: -1` targets the most recent message. Omit `role` to target regardless of role.
+- Prefer a `group` with `operator: "OR"` for disjunctive logic at the top level.
