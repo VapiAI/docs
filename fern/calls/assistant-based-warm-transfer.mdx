@@ -42,17 +42,16 @@ The `function.name` property identifies your transfer tool. Use this name when i
 {
   "type": "transferCall",
   "function": {
-    "name": "warmTransferAssistant"
+    "name": "salesTransferAssistant"
   },
   "destinations": [
     {
       "type": "number",
       "number": "+14155551234",
-      "message": "I am forwarding your call to customer support. Please stay on the line.",
       "transferPlan": {
         "mode": "warm-transfer-experimental",
         "transferAssistant": {
-          "firstMessage": "Hi, I have a customer waiting. Are you available to take this call?",
+          "firstMessage": "Hello, I have a customer on the line. Are you available to take this call?",
           "maxDurationSeconds": 120,
           "model": {
             "provider": "openai",
@@ -60,7 +59,7 @@ The `function.name` property identifies your transfer tool. Use this name when i
             "messages": [
               {
                 "role": "system",
-                "content": "You are handling a warm transfer. Check if the operator is available. If yes, call transferSuccessful. If no answer or voicemail detected, call transferCancel."
+                "content": "You are a transfer assistant designed to facilitate call transfers between a customer and an operator. Your core responsibility is to talk to the operator and manage the transfer process efficiently. \n\n## Core Responsibility \n - Facilitate the transfer process by using transferSuccessful or transferCancel tools. Engage briefly with the operator as needed and then facilitate the transfer by calling the corresponding transfer tool. \n ## When to Respond\n- Answer questions about the transfer process or provide summaries when specifically asked by the operator\n- Respond to direct questions about the current transfer situation\n\\n ## Transfer Tools\n- Use transferSuccessful when the operator agrees to accept the call\n- Use transferCancel when the transfer cannot be completed\n\n- Only call the tool when you addressed all the operators questions"
               }
             ]
           }
@@ -71,7 +70,11 @@ The `function.name` property identifies your transfer tool. Use this name when i
   "messages": [
     {
       "type": "request-start",
-      "content": "I am forwarding your call to customer support. Please stay on the line."
+      "content": "I'll transfer you to our sales team. Please hold for a moment."
+    },
+    {
+      "type": "request-failed",
+      "content": "I apologize, but I'm having trouble connecting your call. Is there anything else I can help you with?"
     }
   ]
 }
@@ -134,7 +137,6 @@ The transfer assistant can be configured to handle various operator responses:
     {
       "type": "number",
       "number": "+14155551234",
-      "message": "Transferring you to our specialist. Please hold.",
       "transferPlan": {
         "mode": "warm-transfer-experimental",
         "transferAssistant": {
@@ -150,10 +152,6 @@ The transfer assistant can be configured to handle various operator responses:
               }
             ]
           }
-        },
-        "fallbackPlan": {
-          "message": "I couldn't reach our specialist. Let me help you directly instead.",
-          "endCallEnabled": false
         }
       }
     }
@@ -162,6 +160,11 @@ The transfer assistant can be configured to handle various operator responses:
     {
       "type": "request-start",
       "content": "Transferring you to our specialist. Please hold."
+    },
+    {
+      "type": "request-failed",
+      "content": "I couldn't reach our specialist. Please try again later.",
+      "endCallAfterSpokenEnabled": true
     }
   ]
 }
@@ -177,20 +180,15 @@ Configure different transfer assistants for different departments:
 {
   "type": "transferCall",
   "function": {
-    "name": "warmTransferAssistant"
+    "name": "departmentTransferAssistant"
   },
   "destinations": [
     {
       "type": "number",
       "number": "+1234567890",
-      "description": "Sales Department",
+      "description": "Sales team transfer line",
       "transferPlan": {
         "mode": "warm-transfer-experimental",
-        "holdAudioUrl": "https://assets.example.com/hold-music.mp3",
-        "fallbackPlan": {
-          "message": "Sorry, none of our account executives are available right now. Our team get back to you later",
-          "endCallEnabled": false
-        },
         "transferAssistant": {
           "firstMessage": "Hey there, I have a potential customer interested in our enterprise plans. Are you available to pick up the call?",
           "maxDurationSeconds": 60,
@@ -200,7 +198,49 @@ Configure different transfer assistants for different departments:
             "messages": [
               {
                 "role": "system",
-                "content": "You are a transfer assistant designed to facilitate call transfers between a customer and an operator. Your core responsibility is to talk to the operator and manage the transfer process efficiently. \n\n## Core Responsibility \n - Facilitate the transfer process by using transferSuccessful or transferCancel tools. Engage briefly with the operator as needed and then facilitate the transfer by calling the corresponding transfer tool. \n ## When to Respond\n- Answer questions about the transfer process or provide summaries when specifically asked by the operator\n- Respond to direct questions about the current transfer situation\n\\n ## Transfer Tools\n- Use transferSuccessful when the operator agrees to accept the call\n- Use transferCancel when the transfer cannot be completed\n\n Rule: Only call the tool when you addressed all the operators questions"
+                "content": "You are a transfer assistant designed to facilitate call transfers between a customer and an operator. Your core responsibility is to talk to the operator and manage the transfer process efficiently. \n\n## Core Responsibility \n - Facilitate the transfer process by using transferSuccessful or transferCancel tools. Engage briefly with the operator as needed and then facilitate the transfer by calling the corresponding transfer tool. \n ## When to Respond\n- Answer questions about the transfer process or provide summaries when specifically asked by the operator\n- Respond to direct questions about the current transfer situation\n\\n ## Transfer Tools\n- Use transferSuccessful when the operator agrees to accept the call\n- Use transferCancel when the transfer cannot be completed\n\n- Only call the tool when you addressed all the operators questions"
+              }
+            ],
+            "tools": [
+              {
+                "type": "transferSuccessful", // built-in tool
+                "function": {
+                  "name": "transferSuccessful",
+                  "description": "Confirm the transfer when operator accepts"
+                },
+                "messages": [
+                  {
+                    "type": "request-start",
+                    "content": "Great! I'll connect you to the customer now. One moment please."
+                  },
+                  {
+                    "type": "request-complete",
+                    "content": "https://desert-horse-9859.twil.io/assets/call_complete_chime.mp3"
+                  }
+                ]
+              },
+              {
+                "type": "transferCancel", // built-in tool
+                "function": {
+                  "name": "transferCancel",
+                  "description": "Cancel the transfer if operator declines or is unavailable"
+                },
+                "messages": [
+                  {
+                    "type": "request-complete",
+                    "content": "I'll let the customer know about it."
+                  }
+                ]
+              },
+              {
+                "type": "function", // custom tool
+                "function": {
+                  "name": "getCustomerInfo",
+                  "description": "Get detailed customer information"
+                },
+                "server": {
+                    "url": "https://vapi-webhook-listener-five.vercel.app/customer"
+                }
               }
             ]
           }
@@ -210,22 +250,15 @@ Configure different transfer assistants for different departments:
     {
       "type": "number",
       "number": "+0987654321",
-      "description": "Technical Support",
+      "description": "Technical Support team transfer line",
       "transferPlan": {
         "mode": "warm-transfer-experimental",
-        "holdAudioUrl": "https://assets.example.com/hold-music.mp3",
         "transferAssistant": {
           "firstMessage": "Hey there, I have a customer experiencing issues with API integration. Can you help?",
           "maxDurationSeconds": 90,
           "model": {
             "provider": "openai",
-            "model": "gpt-4o",
-            "messages": [
-              {
-                "role": "system",
-                "content": "Transfer to tech support. Explain the technical issue the customer is experiencing."
-              }
-            ]
+            "model": "gpt-4o"
           }
         }
       }
@@ -234,7 +267,15 @@ Configure different transfer assistants for different departments:
   "messages": [
     {
       "type": "request-start",
-      "content": "I am forwarding your call to enterprise team. Please stay on the line."
+      "content": "I'll transfer you to our team. Please hold for a moment."
+    },
+    {
+      "type": "request-complete",
+      "content": "https://desert-horse-9859.twil.io/assets/soothing-sound.mp3"   // played as hold music on the customer's side of the call
+    },
+    {
+      "type": "request-failed",
+      "content": "Sorry, none of our account executives are available right now. Our team get back to you later."
     }
   ]
 }
@@ -270,7 +311,7 @@ Configure your transfer assistant to:
 - Requires `warm-transfer-experimental` mode
 - Only works with Twilio phone numbers
 - Calls are limited by `maxDurationSeconds` to prevent indefinite duration
-- Built-in tools (`transferSuccessful`, `transferCancel`) are predefined and cannot be modified
+- Built-in tools (`transferSuccessful`, `transferCancel`) are predefined and cannot be removed
 - The transfer assistant has access to the previous conversation context
 </Info>
 
