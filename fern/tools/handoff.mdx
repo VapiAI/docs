@@ -1,0 +1,464 @@
+---
+title: Handoff Tool
+subtitle: 'Transfer the call to another assistant.'
+slug: tools/handoff
+---
+
+The handoff tool enables seamless call transfers between assistants in a multi-agent system. This guide covers all configuration patterns and use cases.
+
+## Table of Contents
+- [Overview](#overview)
+- [System Prompt Best Practices](#system-prompt-best-practices)
+- [Basic Configuration](#basic-configuration)
+- [Multiple Destinations](#multiple-destinations)
+- [Dynamic Handoffs](#dynamic-handoffs)
+- [Context Engineering](#context-engineering)
+- [Variable Extraction](#variable-extraction)
+- [Custom Function Definitions](#custom-function-definitions)
+
+## Overview
+
+The handoff tool allows assistants to transfer calls to other assistants. Key features:
+- Transfer to specific assistants by ID or name (in a Squad)
+- Support for multiple destination options
+- Dynamic destination determination via webhook
+- Context manipulation during handoff
+- Variable extraction from conversations for subsequent assistants to use
+
+## System Prompt Best Practices
+
+When using the handoff tool, add this to your system prompt for optimal agent coordination:
+https://openai.github.io/openai-agents-python/ref/extensions/handoff_prompt/
+
+```markdown
+# System context
+
+You are part of a multi-agent system designed to make agent coordination and execution easy. 
+Agents uses two primary abstraction: **Agents** and **Handoffs**. An agent encompasses 
+instructions and tools and can hand off a conversation to another agent when appropriate. 
+Handoffs are achieved by calling a handoff function, generally named `handoff_to_<agent_name>`. 
+Handoffs between agents are handled seamlessly in the background; do not mention or draw 
+attention to these handoffs in your conversation with the user.
+
+# Agent context
+
+{put your agent system prompt here}
+```
+
+## Basic Configuration
+
+### 1. Single Destination Handoff
+
+#### Using Assistant ID
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "03e11cfe-4528-4243-a43d-6aded66ab7ba",
+          "description": "customer wants to speak with technical support",
+          "contextEngineeringPlan": {
+            "type": "all"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Using Assistant Name (for Squad Members)
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantName": "TechnicalSupportAgent",
+          "description": "customer needs technical assistance",
+          "contextEngineeringPlan": {
+            "type": "all"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Multiple Destinations
+
+### 2.1 Multiple Tools Pattern (OpenAI Recommended)
+
+Best for OpenAI models - creates separate tool definitions for each destination:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "name": "handoff_to_sales",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "sales-assistant-123",
+          "description": "customer wants to learn about pricing or make a purchase",
+          "contextEngineeringPlan": {
+            "type": "all"
+          }
+        }
+      ]
+    },
+    {
+      "type": "handoff",
+      "name": "handoff_to_support",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "support-assistant-456",
+          "description": "customer needs help with an existing product or service",
+          "contextEngineeringPlan": {
+            "type": "all"
+          }
+        }
+      ]
+    },
+    {
+      "type": "handoff",
+      "name": "handoff_to_billing",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "billing-assistant-789",
+          "description": "customer has questions about invoices, payments, or refunds",
+          "contextEngineeringPlan": {
+            "type": "lastNMessages",
+            "maxMessages": 5 // Only keeps the last 5 messages
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 2.2 Single Tool Pattern (Anthropic Recommended)
+
+Best for Anthropic models - single tool with multiple destination options:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "name": "handoff_to_specialist",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "03e11cfe-4528-4243-a43d-6aded66ab7ba",
+          "description": "customer wants to learn about pricing or make a purchase"
+        },
+        {
+          "type": "assistant",
+          "assistantName": "support-assistant",
+          "description": "customer needs help with an existing product or service"
+        },
+        {
+          "type": "assistant",
+          "assistantName": "billing-assistant",
+          "description": "customer has questions about invoices, payments, or refunds"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Dynamic Handoffs
+
+### 3.1 Basic Dynamic Handoff
+
+The destination is determined at runtime via `handoff-destination-request` webhook:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "dynamic",
+          "server": {
+            "url": "https://api.example.com/determine-handoff-destination",
+            "headers": {
+              "Authorization": "Bearer YOUR_API_KEY"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Your server must respond to this request with a single destination. You may pass `assistantId`, `assistantName` (if using squads), or a transient `assistant`. For example:
+
+```json
+destination: {
+    "type": "assistant",
+    "assistantId": "assistant-id",
+    "variableExtractionPlan": {
+        "schema": {
+        "type": "object",
+        "properties": {
+            "name": {
+            "type": "string",
+            "description": "Name of the customer",
+            },
+        },
+        "required": ["name"],
+        },
+    },
+    "contextEngineeringPlan": {
+        "type": "none",
+    },
+},
+```
+
+### 3.2 Dynamic Handoff with Custom Parameters
+
+Pass additional context to your webhook for intelligent routing:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "dynamic",
+          "server": {
+            "url": "https://api.example.com/intelligent-routing"
+          }
+        }
+      ],
+      "function": {
+        "name": "handoff_with_context",
+        "description": "Transfer the call to the most appropriate specialist",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "type": "string",
+              "description": "Use 'dynamic' to route to the best available agent",
+              "enum": ["dynamic"]
+            },
+            "customerAreaCode": {
+              "type": "number",
+              "description": "Customer's area code for regional routing"
+            },
+            "customerIntent": {
+              "type": "string",
+              "enum": ["new-customer", "existing-customer", "partner"],
+              "description": "Customer type for proper routing"
+            },
+            "customerSentiment": {
+              "type": "string",
+              "enum": ["positive", "negative", "neutral", "escalated"],
+              "description": "Current emotional state of the customer"
+            },
+            "issueCategory": {
+              "type": "string",
+              "enum": ["technical", "billing", "sales", "general"],
+              "description": "Primary category of the customer's issue"
+            },
+            "priority": {
+              "type": "string",
+              "enum": ["low", "medium", "high", "urgent"],
+              "description": "Urgency level of the request"
+            }
+          },
+          "required": ["destination", "customerIntent", "issueCategory"]
+        }
+      }
+    }
+  ]
+}
+```
+
+## Context Engineering
+
+Control what conversation history is passed to the next assistant:
+
+### All Messages (Default)
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "all"
+  }
+}
+```
+
+### Last N Messages
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "lastNMessages",
+    "maxMessages": 10
+  }
+}
+```
+
+### No Context
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "none"
+  }
+}
+```
+
+## Variable Extraction
+
+Extract and pass structured data during handoff:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "order-processing-assistant",
+          "description": "customer is ready to place an order",
+          "contextEngineeringPlan": {
+            "type": "lastNMessages",
+            "maxMessages": 5
+          },
+          "variableExtractionPlan": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "customerName": {
+                  "type": "string",
+                  "description": "Full name of the customer"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email",
+                  "description": "Customer's email address"
+                },
+                "productIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "List of product IDs customer wants to order"
+                },
+                "shippingAddress": {
+                  "type": "object",
+                  "properties": {
+                    "street": { "type": "string" },
+                    "city": { "type": "string" },
+                    "state": { "type": "string" },
+                    "zipCode": { "type": "string" }
+                  }
+                }
+              },
+              "required": ["customerName", "productIds"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Custom Function Definitions
+
+Override the default function definition for more control. You can overwrite the function name for each tool to put into the system prompt or pass custom parameters in a dynamic handoff request. 
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "function": {
+        "name": "transfer_to_department",
+        "description": "Transfer the customer to the appropriate department based on their needs. Only use when explicitly requested or when the current assistant cannot help.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "type": "string",
+              "description": "Department to transfer to",
+              "enum": ["sales-team", "technical-support", "billing-department", "management"]
+            },
+            "reason": {
+              "type": "string",
+              "description": "Brief reason for the transfer"
+            },
+            "urgency": {
+              "type": "boolean",
+              "description": "Whether this is an urgent transfer"
+            }
+          },
+          "required": ["destination", "reason"]
+        }
+      },
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "sales-team",
+          "description": "Sales inquiries and purchases"
+        },
+        {
+          "type": "assistant",
+          "assistantId": "technical-support",
+          "description": "Technical issues and support"
+        },
+        {
+          "type": "assistant",
+          "assistantId": "billing-department",
+          "description": "Billing and payment issues"
+        },
+        {
+          "type": "assistant",
+          "assistantId": "management",
+          "description": "Escalations and complaints"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Best Practices
+
+1. **Clear Descriptions**: Write specific, actionable descriptions for each destination in your sytem prompt. Use `tool.function.name` to customize the name of the function to put into your prompt.
+2. **Context Management**: Use `lastNMessages` to limit context size for performance
+3. **Model Optimization**: Use multiple tools for OpenAI, single tool for Anthropic
+4. **Variable Extraction**: Extract key data before handoff to maintain context
+5. **Testing**: Test handoff scenarios thoroughly, including edge cases
+
+
+## Troubleshooting
+
+- Ensure assistant IDs are valid and accessible
+- Verify webhook server URLs are reachable and return proper format
+- Check that required parameters in custom functions match destinations
+- Monitor context size to avoid token limits
+- Test variable extraction schemas with sample data
+- Validate that assistant names exist in the same squad
+
+---
+
+*Last updated: August 2025*
+*VAPI Documentation - Handoff Tool*
