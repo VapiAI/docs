@@ -1,0 +1,235 @@
+---
+title: Voicemail Tool
+subtitle: Learn how to use the assistant-controlled voicemail tool for flexible voicemail handling
+slug: tools/voicemail-tool
+---
+
+<Warning>
+**Beta Feature**: The voicemail tool is currently in beta. Features and behavior may change as we continue to improve this functionality based on user feedback.
+</Warning>
+
+## Overview
+
+The voicemail tool gives your assistant direct control over when and how to leave voicemail messages. Unlike [automatic voicemail detection](/calls/voicemail-detection), which operates independently of your assistant, this tool allows your assistant to decide when it's reached a voicemail system and leave a configured message.
+
+**Key benefits:**
+- **Maximum flexibility** - Assistant decides when and what to say
+- **Cost-effective** - Only triggers when needed
+- **Context-aware** - Messages can be customized based on conversation
+- **Simple integration** - Works like other built-in tools
+
+## How it works
+
+When you add the voicemail tool to your assistant:
+
+1. Your assistant listens for voicemail indicators (greetings mentioning "unavailable", "leave a message", etc.)
+2. Upon detecting voicemail, the assistant calls the tool
+3. The tool delivers your configured message
+4. The call ends automatically after message delivery
+
+<Note>
+This approach differs from [automatic voicemail detection](/calls/voicemail-detection), which detects voicemail at the system level. The voicemail tool puts detection and response entirely in the assistant's hands.
+</Note>
+
+## Configuration
+
+Add the voicemail tool to your assistant's tools array:
+
+<CodeBlocks>
+```json title="API Configuration"
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "type": "system",
+        "content": "You are a sales representative for Acme Corp. If at any point you determine you're speaking to a voicemail system (greeting mentions 'unavailable', 'leave a message', 'voicemail', etc.), immediately use the leave_voicemail tool."
+      }
+    ],
+    "tools": [
+      {
+        "type": "voicemail",
+        "function": {
+          "name": "leave_voicemail",
+          "description": "Leave a voicemail message when you detect you've reached a voicemail system"
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "Hi, this is {{company}}. {{message}}. Please call us back at {{phone}}."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+```typescript title="TypeScript SDK"
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+const assistant = await vapi.assistants.create({
+  model: {
+    provider: "openai",
+    model: "gpt-4o",
+    messages: [{
+      type: "system",
+      content: `You are a sales representative for Acme Corp. 
+                If at any point you determine you're speaking to a voicemail system 
+                (greeting mentions 'unavailable', 'leave a message', 'voicemail', etc.), 
+                immediately use the leave_voicemail tool.`
+    }],
+    tools: [{
+      type: "voicemail",
+      function: {
+        name: "leave_voicemail",
+        description: "Leave a voicemail message when you detect you've reached a voicemail system"
+      },
+      messages: [{
+        type: "request-start",
+        content: "Hi, this is {{company}}. {{message}}. Please call us back at {{phone}}."
+      }]
+    }]
+  }
+});
+```
+```python title="Python SDK"
+from vapi import Vapi
+
+client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+assistant = client.assistants.create(
+    model={
+        "provider": "openai",
+        "model": "gpt-4o",
+        "messages": [{
+            "type": "system",
+            "content": """You are a sales representative for Acme Corp. 
+                         If at any point you determine you're speaking to a voicemail system 
+                         (greeting mentions 'unavailable', 'leave a message', 'voicemail', etc.), 
+                         immediately use the leave_voicemail tool."""
+        }],
+        "tools": [{
+            "type": "voicemail",
+            "function": {
+                "name": "leave_voicemail",
+                "description": "Leave a voicemail message when you detect you've reached a voicemail system"
+            },
+            "messages": [{
+                "type": "request-start",
+                "content": "Hi, this is {{company}}. {{message}}. Please call us back at {{phone}}."
+            }]
+        }]
+    }
+)
+```
+</CodeBlocks>
+
+## Message Configuration
+
+Define the voicemail message in the tool configuration:
+
+```json
+{
+  "messages": [
+    {
+      "type": "request-start",
+      "content": "Hi, this is {{company}}. {{message}}. Please call us back at {{phone}}."
+    }
+  ]
+}
+```
+
+<Tip>
+Use template variables like `{{company}}`, `{{message}}`, and `{{phone}}` to make your voicemail messages dynamic while keeping them consistent.
+</Tip>
+
+## Advanced Examples
+
+### Dynamic voicemail with context
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "type": "system",
+        "content": "You are calling leads about their recent inquiry. If you reach voicemail, use the leave_voicemail tool and mention their specific interest."
+      }
+    ],
+    "tools": [
+      {
+        "type": "voicemail",
+        "function": {
+          "name": "leave_voicemail",
+          "description": "Leave a personalized voicemail message"
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "Hi {{customer_name}}, this is {{agent_name}} from {{company}} following up on your inquiry about {{product_interest}}. I'd love to discuss how we can help. Please call me back at {{callback_number}} or I'll try you again tomorrow. Thanks!"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+
+
+## Best Practices
+
+### Detection prompting
+Be specific about voicemail indicators in your system prompt:
+- "unavailable"
+- "leave a message"
+- "voicemail"
+- "at the tone"
+- "beep"
+
+### Message structure
+Keep voicemail messages:
+- **Brief** - Under 30 seconds
+- **Clear** - State name, company, and purpose
+- **Actionable** - Include callback number or next steps
+- **Professional** - Match your brand voice
+
+### Error handling
+Consider edge cases:
+- Long voicemail greetings
+- Voicemail box full scenarios
+- Systems requiring keypad input
+
+## Voicemail Tool vs. Automatic Detection
+
+| Feature | Voicemail Tool | [Automatic Detection](/calls/voicemail-detection) |
+|---------|----------------|---------------------------------------------------|
+| Control | Assistant-driven | System-driven |
+| Flexibility | High - custom logic | Medium - predefined behavior |
+| Cost | Lower - only when used | Higher - continuous monitoring |
+| Setup complexity | Simple - just add tool | Moderate - configure detection |
+| Message customization | Full control | Limited to configured message |
+| Detection accuracy | Depends on prompt | Provider-specific (Vapi, Google, etc.) |
+
+<Info>
+Choose the **voicemail tool** when you need maximum flexibility and cost efficiency. Choose **automatic detection** when you need guaranteed system-level detection without relying on assistant prompting.
+</Info>
+
+## Common Use Cases
+
+- **Sales outreach** - Personalized follow-up messages
+- **Appointment reminders** - Leave detailed appointment information
+- **Customer service** - Callback scheduling with ticket numbers
+- **Lead qualification** - Leave targeted messages based on lead data
+
+## Next steps
+
+- Learn about other [default tools](/tools/default-tools)
+- Explore [automatic voicemail detection](/calls/voicemail-detection) for system-level handling
+- See how to create [custom tools](/tools/custom-tools) for your specific needs
+
