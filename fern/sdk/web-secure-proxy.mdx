@@ -1,0 +1,169 @@
+---
+title: Secure transient assistants on web
+subtitle: Start calls via a proxy without exposing assistant config
+slug: sdk/web-secure-proxy
+---
+
+## Overview
+
+Keep your assistant configuration on the server while using the Web SDK. This guide shows how to inject server‑owned transient assistant config at a proxy so the browser never sees secrets.
+
+**In this guide, you'll learn to:**
+- Start web calls without exposing model/voice/system prompt
+- Use `apiBaseUrl` to route through your proxy
+- Harden your proxy for production
+
+<Warning>Joining an already-created call by ID is not publicly documented in the Web SDK today. Use the proxy‑injection approach below, or confirm timing with support.</Warning>
+
+## When to use this
+
+- **Transient assistants**: You don’t want model, voice, or prompts in the browser
+- **Policy constraints**: You must keep secrets server-side
+- **Low latency**: Avoid creating a persistent assistant before each call
+
+## Implementation
+
+<Steps>
+  <Step title="Set up a secure proxy">
+    Implement a proxy that constructs the assistant payload server-side and authenticates with your server API key. Ignore any client-sent assistant config.
+
+    <CodeBlocks>
+```javascript title="Express proxy (Node.js)"
+import express from "express";
+import fetch from "node-fetch";
+import cors from "cors";
+
+const app = express();
+app.use(express.json({ limit: "1mb" }));
+
+// Allow only your frontend origin
+app.use(cors({ origin: "https://your-frontend.example.com", credentials: true }));
+
+// Minimal app->proxy auth (recommended)
+app.use((req, res, next) => {
+  const token = req.header("x-app-auth");
+  if (token !== process.env.APP_PROXY_TOKEN) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+});
+
+// Only forward the Vapi paths you need
+const isAllowedVapiPath = (pathname) => pathname === "/call" || pathname.startsWith("/call/");
+
+app.all("*", async (req, res) => {
+  const url = new URL(req.url, "http://proxy.local");
+  if (!isAllowedVapiPath(url.pathname)) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  try {
+    // Non-sensitive hints from client
+    const clientMetadata = (req.body && req.body.metadata) || {};
+    const scenario = clientMetadata.scenario || "default";
+
+    // Server-owned assistant config
+    const assistantConfigByScenario = {
+      default: {
+        model: { provider: "openai", model: "gpt-4o-mini" },
+        voice: { provider: "11labs", voiceId: "burt" },
+        messages: [{ role: "system", content: "You are an assistant." }],
+      },
+      onboarding: {
+        model: { provider: "openai", model: "gpt-4o" },
+        voice: { provider: "11labs", voiceId: "rachel" },
+        messages: [{ role: "system", content: "You help onboard new users." }],
+      },
+    };
+
+    const assistant = assistantConfigByScenario[scenario] || assistantConfigByScenario.default;
+
+    // Authoritative body (ignore any client-sent assistant config)
+    const serverBody = {
+      assistant,
+      metadata: clientMetadata,
+    };
+
+    const vapiResponse = await fetch(`https://api.vapi.ai${url.pathname}${url.search}` , {
+      method: req.method,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${process.env.VAPI_API_KEY}`,
+      },
+      body: req.method === "GET" || req.method === "HEAD" ? undefined : JSON.stringify(serverBody),
+    });
+
+    const text = await vapiResponse.text();
+    res.setHeader("content-type", vapiResponse.headers.get("content-type") || "application/json");
+    res.status(vapiResponse.status).send(text);
+  } catch (error) {
+    console.error("Proxy error:", error);
+    res.status(502).json({ error: "Upstream error" });
+  }
+});
+
+const port = process.env.PORT || 3001;
+app.listen(port, () => console.log(`Proxy listening on ${port}`));
+```
+    </CodeBlocks>
+
+    <Tip>
+      Do not forward client Authorization. Always set your server API key in the proxy.
+    </Tip>
+  </Step>
+
+  <Step title="Initialize the Web SDK against your proxy">
+    Point the Web SDK at your proxy using `apiBaseUrl` and keep only the public key on the client.
+
+    <CodeBlocks>
+```typescript title="Frontend init (TypeScript)"
+import Vapi from "@vapi-ai/web";
+
+const vapi = new Vapi(
+  process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!,  // public key
+  "https://your-proxy.example.com"           // apiBaseUrl -> your proxy
+);
+```
+    </CodeBlocks>
+  </Step>
+
+  <Step title="Start a call without exposing config">
+    Send only non-sensitive metadata from the client. The proxy injects model, voice, and system prompt.
+
+    <CodeBlocks>
+```typescript title="Start a call (Frontend)"
+await vapi.start({
+  metadata: { scenario: "onboarding", userId: "abc_123" }
+});
+```
+    </CodeBlocks>
+
+    <Check>Assistant configuration never leaves your server.</Check>
+  </Step>
+
+  <Step title="Harden the proxy">
+    - Replace Authorization with your server API key
+    - Whitelist required Vapi paths only (e.g., `/call`)
+    - Validate inputs and discard client-sent assistant config
+    - Restrict CORS to your domain
+    - Add rate limiting and minimal app auth (`x-app-auth`)
+    - Avoid logging request bodies or secrets
+  </Step>
+</Steps>
+
+## Alternatives
+
+- **Ephemeral assistantId**: Create a short-lived assistant server-side, then `vapi.start({ assistantId })`.
+  - Pros: No config in browser. Cons: Extra API call; less “transient”.
+- **Backend-create-and-join (Daily-first)**: Create the call server-side and provide a Daily join token/URL to the client; wire UI/events with Daily JS.
+  - Pros: Zero config in browser. Cons: More custom plumbing.
+
+## Notes on join-by-ID
+
+<Note>Joining an existing call by ID in the web SDK is not publicly documented at this time. If this becomes available, you can switch to a backend-create-then-join flow without the proxy injection.</Note>
+
+## Reference
+
+- Web SDK basics: [/sdk/web](/sdk/web)
+- Quickstart (web): [/quickstart/web](/quickstart/web)
+- API reference: [/fern/api-reference](/fern/api-reference)
