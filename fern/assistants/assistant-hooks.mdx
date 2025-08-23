@@ -15,7 +15,7 @@ Supported events include:
 - `customer.speech.interrupted`: When the customer's speech is interrupted
 - `customer.speech.timeout`: When the customer doesn't speak within a specified time
 
-You can combine actions and add filters to control when hooks trigger.
+You can combine actions and add filters to control when hooks trigger. Multiple `customer.speech.timeout` hooks can be attached to an assistant with staggered trigger delay to support different actions at different timing in the conversation.
 
 ## How hooks work
 
@@ -145,6 +145,10 @@ Perform multiple actions—say a message, call a function, and transfer the call
   }]
 }
 ```
+ 
+<Note>
+Use `"oneOf": ["pipeline-error"]` as a catch-all filter for any pipeline-related error reason.
+</Note>
 
 ## Example: Handle speech interruptions
 
@@ -205,9 +209,73 @@ The `customer.speech.timeout` hook supports special options:
 - `triggerResetMode`: Whether to reset the trigger count when user speaks (default: "never")
 </Note>
 
-<Note>
-Use `"oneOf": ["pipeline-error"]` as a catch-all filter for any pipeline-related error reason.
-</Note>
+## Example: End call if user hasn't spoken for 30s
+
+Assistant checks with the user at the 10 and 20s mark from when the user is silent, and ends the call after 30s of silence. 
+
+```json
+{
+  "hooks": [
+    {
+      "hooks": [
+        {
+          "on": "customer.speech.timeout",
+          "options": {
+            "timeoutSeconds": 10,
+            "triggerMaxCount": 3,
+            "triggerResetMode": "onUserSpeech"
+          },
+          "do": [
+            {
+              "type": "say",
+              "exact": "Are you still there? Please let me know how I can help you."
+            }
+          ]
+        },
+        {
+          "on": "customer.speech.timeout",
+          "options": {
+            "timeoutSeconds": 20,
+            "triggerMaxCount": 3,
+            "triggerResetMode": "onUserSpeech"
+          },
+          "do": [
+            {
+              "type": "say",
+              "prompt": "The user has not responded in 20s. Based on the above conversation in {{transcript}} ask the user if they need help or if not you will be ending the call"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hooks": [
+        {
+          "on": "customer.speech.timeout",
+          "options": {
+            "timeoutSeconds": 30,
+            "triggerMaxCount": 3,
+            "triggerResetMode": "onUserSpeech"
+          },
+          "do": [
+            {
+              "type" : "say",
+              "exact" : "I'll be ending the call now, please feel free to call back at any time."
+            },
+            {
+              "type": "tool",
+              "tool": {
+                "type": "endCall"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
 
 ## Common use cases
 
