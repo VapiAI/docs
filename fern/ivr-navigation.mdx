@@ -1,0 +1,99 @@
+---
+title: IVR Navigation
+subtitle: How to navigate IVR menu systems effectively
+slug: ivr-navigation
+---
+
+## Overview
+
+Vapi offers the [DTMF tool](https://docs.vapi.ai/tools/default-tools#dial-keypad-dtmf) to enable your assistants to navigate IVR menus and enter digits (for example, member IDs, account numbers, and dates).
+
+IVR systems can be sensitive to timing and formatting; this guide explains common challenges and provides practical recommendations to make IVR navigation reliable.
+
+## Recommendations
+
+### 1. Add short pauses between digits
+
+Some IVRs buffer audio or expect digits at a slower pace. Sending digits too quickly (for example, `123456#`) can cause missed or misread inputs. Prompt your assistant to insert brief pauses between digits, so it has better chances of success, as it gives the IVR more time to register each tone.
+
+Provider-specific pause characters
+
+- **Twilio / Telnyx**: Use `w` for a 0.5s pause, `W` for a 1s pause. Example: `1w2w3W4#`
+- **Vonage**: Use `p` for a 0.5s pause. Example: `1p2p3#`
+
+Start with 0.5s pauses and increase only if digits are still missed.
+
+<Warning>Vapi phone numbers and BYOK SIP do not support pause characters at this time.</Warning>
+
+### 2. Give menus time to finish before responding
+
+IVR menus often speak slowly and include longer silences than typical user speech. If your assistant responds too quickly, it may send tones before the IVR has finished listing options and there's a chance that is not ready to receive inputs.
+
+- **Wait for all options to be spoken** before sending the first DTMF sequence.
+- **Stay silent while waiting** by replying with a single space character (" ") so nothing is spoken.
+- **Avoid overlapping speech** with IVR audio; prioritize listening until the option is clear.
+
+**Prompt Example**
+
+```txt
+[When navigating an IVR tree]
+  - WAIT for all options to be spoken before proceeding
+  - Once you have heard all options, use the dtmf tool with an input digit that matches the option you want to select
+  - Avoid saying anything if using the dtmf tool at the same time
+
+[When waiting]
+  - Reply with an empty string like " " to ensure nothing is spoken
+
+[Call Flow]
+  1. Navigate IVR tree (if needed)
+    - In order to get connected with a live representative that can handle your request, you may need to navigate an IVR tree.
+    - This might sound like "Press 1 for..."
+    - Look for options that indicate operator assistance
+    - As soon as you get connected to a human, proceed to the next step
+```
+
+**LiveKit Smart Endpointing**
+
+Use a [startSpeakingPlan](https://docs.vapi.ai/customization/speech-configuration#start-speaking-plan) that allows slower cadence at the beginning of calls (commonly when interacting with IVRs) and faster cadence once a human answers.
+
+```json title="startSpeakingPlan"
+{
+  "startSpeakingPlan": {
+    "smartEndpointingPlan": {
+      "provider": "livekit",
+      "waitFunction": "t < 30 ? (x * 500 + 300) : (20 + 500 * sqrt(x) + 2500 * x^3)"
+    }
+  }
+}
+```
+
+<Info>In the waitFunction, <code>t</code> represents <strong>time elapsed in seconds</strong>. This function favors slower responses in the first 30 seconds, then accelerates for human conversations. Adjust the threshold and coefficients to match your IVR timing and human conversation cadence.</Info>
+
+### 3. Retry with progressively slower inputs or spoken fallback
+
+Some IVRs accept inputs more reliably on a second attempt or when digits arrive more slowly. If digits fail, retry with increased spacing; if tones still fail, speak the option out loud as a fallback.
+
+Examples:
+
+```txt title="Progressive retries"
+1st try  →  123#           (fast)
+2nd try  →  1w2w3#         (medium; 0.5s gaps)
+3rd try  →  1W2W3#         (slow; 1s gaps)
+```
+
+```txt title="Fallback to spoken input"
+User: For Sales press 1 or say "Sales"
+Assistant: dtmf(digits=1)
+User: For Sales press 1 or say "Sales"
+Assistant: dtmf(digits=w1)
+User: For Sales press 1 or say "Sales"
+Assistant: Sales
+```
+
+### 4. Compare telephony transports for your target IVRs
+
+DTMF sending varies across telephony providers due to internal implementations. For the phone numbers and IVRs you target, test multiple transports and choose the most reliable for your use case.
+
+- **Try and compare**: Twilio, Telnyx, Vonage, Vapi Numbers, and BYOK SIP
+- **Evaluate**: digit recognition accuracy, latency between digits, and success rate across menu depths.
+
