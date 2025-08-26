@@ -1,0 +1,787 @@
+---
+title: Structured outputs
+subtitle: Extract structured data from conversations using AI-powered analysis
+slug: assistants/structured-outputs
+---
+
+## Overview
+
+Structured outputs enable automatic extraction of specific information from voice conversations in a structured format. Define your data requirements using JSON Schema, and we will identify and extract that information from your calls.
+
+**Key benefits:**
+- Extract customer information, appointments, and orders automatically
+- Validate data with JSON Schema constraints
+- Use any AI model for extraction (OpenAI, Anthropic, Google, Azure)
+- Reuse extraction definitions across multiple assistants
+
+## How it works
+
+<Steps>
+  <Step title="Define your schema">
+    Create a JSON Schema that describes the data you want to extract
+  </Step>
+  <Step title="Create structured output">
+    Use the API to create a reusable structured output definition
+  </Step>
+  <Step title="Link to assistants or workflows">
+    Connect the structured output to one or more assistants or workflows
+  </Step>
+  <Step title="Extract from calls">
+    Data is automatically extracted after each call and stored in call artifacts
+  </Step>
+</Steps>
+
+## Quick start
+
+### Create a structured output
+
+<CodeBlocks>
+```typescript title="TypeScript (Server SDK)"
+import { Vapi } from '@vapi-ai/server-sdk';
+
+const vapi = new Vapi({ apiKey: process.env.VAPI_API_KEY });
+
+const structuredOutput = await vapi.structuredOutputs.create({
+  name: "Customer Info",
+  type: "ai",
+  description: "Extract customer contact information",
+  schema: {
+    type: "object",
+    properties: {
+      firstName: {
+        type: "string",
+        description: "Customer's first name"
+      },
+      lastName: {
+        type: "string",
+        description: "Customer's last name"
+      },
+      email: {
+        type: "string",
+        format: "email",
+        description: "Customer's email address"
+      },
+      phone: {
+        type: "string",
+        pattern: "^\\+?[1-9]\\d{1,14}$",
+        description: "Phone number in E.164 format"
+      }
+    },
+    required: ["firstName", "lastName"]
+  }
+});
+
+console.log('Created structured output:', structuredOutput.id);
+```
+
+```python title="Python (Server SDK)"
+from vapi_python import Vapi
+
+vapi = Vapi(api_key=os.environ['VAPI_API_KEY'])
+
+structured_output = vapi.structured_outputs.create(
+    name="Customer Info",
+    type="ai",
+    description="Extract customer contact information",
+    schema={
+        "type": "object",
+        "properties": {
+            "firstName": {
+                "type": "string",
+                "description": "Customer's first name"
+            },
+            "lastName": {
+                "type": "string",
+                "description": "Customer's last name"
+            },
+            "email": {
+                "type": "string",
+                "format": "email",
+                "description": "Customer's email address"
+            },
+            "phone": {
+                "type": "string",
+                "pattern": "^\\+?[1-9]\\d{1,14}$",
+                "description": "Phone number in E.164 format"
+            }
+        },
+        "required": ["firstName", "lastName"]
+    }
+)
+
+print(f"Created structured output: {structured_output.id}")
+```
+
+```bash title="cURL"
+curl -X POST https://api.vapi.ai/structured-output \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Info",
+    "type": "ai",
+    "description": "Extract customer contact information",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "Customer'\''s first name"
+        },
+        "lastName": {
+          "type": "string",
+          "description": "Customer'\''s last name"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Customer'\''s email address"
+        },
+        "phone": {
+          "type": "string",
+          "pattern": "^\\+?[1-9]\\d{1,14}$",
+          "description": "Phone number in E.164 format"
+        }
+      },
+      "required": ["firstName", "lastName"]
+    }
+  }'
+```
+</CodeBlocks>
+
+### Link to an assistant
+
+Add the structured output ID to your assistant's configuration:
+
+<CodeBlocks>
+```typescript title="TypeScript (Server SDK)"
+const assistant = await vapi.assistants.create({
+  name: "Customer Support Agent",
+  // ... other assistant configuration
+  artifactPlan: {
+    structuredOutputIds: [structuredOutput.id]
+  }
+});
+```
+
+```python title="Python (Server SDK)"
+assistant = vapi.assistants.create(
+    name="Customer Support Agent",
+    # ... other assistant configuration
+    artifact_plan={
+        "structuredOutputIds": [structured_output.id]
+    }
+)
+```
+
+```bash title="cURL"
+curl -X POST https://api.vapi.ai/assistant \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Support Agent",
+    "artifactPlan": {
+      "structuredOutputIds": ["output-id-here"]
+    }
+  }'
+```
+</CodeBlocks>
+
+### Access extracted data
+
+After a call completes, retrieve the extracted data:
+
+<CodeBlocks>
+```typescript title="TypeScript (Server SDK)"
+const call = await vapi.calls.get(callId);
+
+// Access structured outputs from call artifacts
+const outputs = call.artifact?.structuredOutputs;
+
+if (outputs) {
+  for (const [outputId, data] of Object.entries(outputs)) {
+    console.log(`Output: ${data.name}`);
+    console.log(`Result:`, data.result);
+    
+    // Handle the extracted data
+    if (data.result) {
+      // Process successful extraction
+      const { firstName, lastName, email, phone } = data.result;
+      // ... save to database, send notifications, etc.
+    }
+  }
+}
+```
+
+```python title="Python (Server SDK)"
+call = vapi.calls.get(call_id)
+
+# Access structured outputs from call artifacts
+outputs = call.artifact.get('structuredOutputs', {})
+
+for output_id, data in outputs.items():
+    print(f"Output: {data['name']}")
+    print(f"Result: {data['result']}")
+    
+    # Handle the extracted data
+    if data['result']:
+        # Process successful extraction
+        result = data['result']
+        first_name = result.get('firstName')
+        last_name = result.get('lastName')
+        email = result.get('email')
+        phone = result.get('phone')
+        # ... save to database, send notifications, etc.
+```
+
+```javascript title="Webhook Response"
+// In your webhook handler
+app.post('/vapi/webhook', (req, res) => {
+  const { type, call } = req.body;
+  
+  if (type === 'call.ended') {
+    const outputs = call.artifact?.structuredOutputs;
+    
+    if (outputs) {
+      Object.entries(outputs).forEach(([outputId, data]) => {
+        console.log(`Extracted ${data.name}:`, data.result);
+        // Process the extracted data
+      });
+    }
+  }
+  
+  res.status(200).send('OK');
+});
+```
+</CodeBlocks>
+
+## Schema types
+
+### Primitive types
+
+Extract simple values directly:
+
+<CodeBlocks>
+```json title="String"
+{
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 100,
+  "pattern": "^[A-Z][a-z]+$"
+}
+```
+
+```json title="Number"
+{
+  "type": "number",
+  "minimum": 0,
+  "maximum": 100,
+  "multipleOf": 0.5
+}
+```
+
+```json title="Boolean"
+{
+  "type": "boolean",
+  "description": "Whether customer agreed to terms"
+}
+```
+
+```json title="Enum"
+{
+  "type": "string",
+  "enum": ["small", "medium", "large", "extra-large"]
+}
+```
+</CodeBlocks>
+
+### Object types
+
+Extract structured data with multiple fields:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Full name"
+    },
+    "age": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 120
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    }
+  },
+  "required": ["name", "email"]
+}
+```
+
+### Array types
+
+Extract lists of items:
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "product": {
+        "type": "string"
+      },
+      "quantity": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "minItems": 1,
+  "maxItems": 10
+}
+```
+
+### Nested structures
+
+Extract complex hierarchical data:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "customer": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "contact": {
+          "type": "object",
+          "properties": {
+            "email": {"type": "string", "format": "email"},
+            "phone": {"type": "string"}
+          }
+        }
+      }
+    },
+    "order": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku": {"type": "string"},
+              "quantity": {"type": "integer"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## Validation features
+
+### String formats
+
+Vapi supports standard JSON Schema formats for validation:
+
+| Format | Description | Example |
+|--------|-------------|---------|
+| `email` | Email addresses | john@example.com |
+| `date` | Date in YYYY-MM-DD | 2024-01-15 |
+| `time` | Time in HH:MM:SS | 14:30:00 |
+| `date-time` | ISO 8601 datetime | 2024-01-15T14:30:00Z |
+| `uri` | Valid URI | https://example.com |
+| `uuid` | UUID format | 123e4567-e89b-12d3-a456-426614174000 |
+
+### Pattern matching
+
+Use regular expressions for custom validation:
+
+```json
+{
+  "type": "string",
+  "pattern": "^[A-Z]{2}-\\d{6}$",
+  "description": "Order ID like US-123456"
+}
+```
+
+### Conditional logic
+
+Use `if/then/else` for conditional requirements:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "serviceType": {
+      "type": "string",
+      "enum": ["emergency", "scheduled"]
+    },
+    "appointmentTime": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "if": {
+    "properties": {
+      "serviceType": {"const": "scheduled"}
+    }
+  },
+  "then": {
+    "required": ["appointmentTime"]
+  }
+}
+```
+
+## Custom models
+
+Configure which AI model performs the extraction:
+
+<CodeBlocks>
+```typescript title="TypeScript"
+const structuredOutput = await vapi.structuredOutputs.create({
+  name: "Sentiment Analysis",
+  type: "ai",
+  schema: {
+    type: "object",
+    properties: {
+      sentiment: {
+        type: "string",
+        enum: ["positive", "negative", "neutral"]
+      },
+      confidence: {
+        type: "number",
+        minimum: 0,
+        maximum: 1
+      }
+    }
+  },
+  model: {
+    provider: "openai",
+    model: "gpt-4-turbo-preview",
+    temperature: 0.1,
+    messages: [
+      {
+        role: "system",
+        content: "You are an expert at analyzing customer sentiment. Be precise and consistent."
+      },
+      {
+        role: "user",
+        content: "Analyze the sentiment of this conversation:\n{{transcript}}"
+      }
+    ]
+  }
+});
+```
+
+```python title="Python"
+structured_output = vapi.structured_outputs.create(
+    name="Sentiment Analysis",
+    type="ai",
+    schema={
+        "type": "object",
+        "properties": {
+            "sentiment": {
+                "type": "string",
+                "enum": ["positive", "negative", "neutral"]
+            },
+            "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+            }
+        }
+    },
+    model={
+        "provider": "openai",
+        "model": "gpt-4-turbo-preview",
+        "temperature": 0.1,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are an expert at analyzing customer sentiment. Be precise and consistent."
+            },
+            {
+                "role": "user",
+                "content": "Analyze the sentiment of this conversation:\n{{transcript}}"
+            }
+        ]
+    }
+)
+```
+</CodeBlocks>
+
+### Available variables
+
+Use these variables in custom prompts:
+
+- `{{transcript}}` - Full conversation transcript
+- `{{messages}}` - Conversation messages array
+- `{{callEndedReason}}` - How the call ended
+- `{{structuredOutput.name}}` - Output name
+- `{{structuredOutput.description}}` - Output description
+- `{{structuredOutput.schema}}` - Schema definition
+
+## API reference
+
+<EndpointRequestSnippet endpoint='POST /structured-output' />
+
+### Create structured output
+
+<ParamField path="name" type="string" required>
+  Display name for the structured output (max 40 characters)
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Must be set to "ai"
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description of what data to extract
+</ParamField>
+
+<ParamField path="schema" type="object" required>
+  JSON Schema defining the structure of data to extract
+</ParamField>
+
+<ParamField path="assistantIds" type="array">
+  Array of assistant IDs to link this output to
+</ParamField>
+
+<ParamField path="model" type="object">
+  Custom model configuration for extraction
+</ParamField>
+
+### Update structured output
+
+<EndpointRequestSnippet endpoint='PATCH /structured-output/{id}' />
+
+<Warning>
+To update the top level schema type after creation, you must include `?schemaOverride=true` as a query parameter in the URL
+</Warning>
+
+### List structured outputs
+
+<EndpointRequestSnippet endpoint='GET /structured-output' />
+
+Query parameters:
+- `page` - Page number (default: 1)
+- `limit` - Results per page (default: 20, max: 100)
+
+### Delete structured output
+
+<EndpointRequestSnippet endpoint='DELETE /structured-output/{id}' />
+
+## Common use cases
+
+### Customer information collection
+
+```json
+{
+  "name": "Customer Profile",
+  "type": "ai",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {"type": "string"},
+      "email": {"type": "string", "format": "email"},
+      "phone": {"type": "string"},
+      "accountNumber": {"type": "string"},
+      "preferredContactMethod": {
+        "type": "string",
+        "enum": ["email", "phone", "sms"]
+      }
+    }
+  }
+}
+```
+
+### Appointment scheduling
+
+```json
+{
+  "name": "Appointment Request",
+  "type": "ai",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "preferredDate": {"type": "string", "format": "date"},
+      "preferredTime": {"type": "string", "format": "time"},
+      "duration": {"type": "integer", "enum": [15, 30, 45, 60]},
+      "serviceType": {
+        "type": "string",
+        "enum": ["consultation", "follow-up", "procedure"]
+      },
+      "notes": {"type": "string"}
+    },
+    "required": ["preferredDate", "preferredTime", "serviceType"]
+  }
+}
+```
+
+### Order processing
+
+```json
+{
+  "name": "Order Details",
+  "type": "ai",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "product": {"type": "string"},
+            "quantity": {"type": "integer", "minimum": 1},
+            "specialInstructions": {"type": "string"}
+          },
+          "required": ["product", "quantity"]
+        }
+      },
+      "deliveryAddress": {
+        "type": "object",
+        "properties": {
+          "street": {"type": "string"},
+          "city": {"type": "string"},
+          "zipCode": {"type": "string", "pattern": "^\\d{5}$"}
+        }
+      },
+      "deliveryInstructions": {"type": "string"}
+    }
+  }
+}
+```
+
+### Lead qualification
+
+```json
+{
+  "name": "Lead Information",
+  "type": "ai",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "company": {"type": "string"},
+      "role": {"type": "string"},
+      "budget": {
+        "type": "string",
+        "enum": ["< $10k", "$10k-50k", "$50k-100k", "> $100k"]
+      },
+      "timeline": {
+        "type": "string",
+        "enum": ["immediate", "1-3 months", "3-6 months", "6+ months"]
+      },
+      "painPoints": {
+        "type": "array",
+        "items": {"type": "string"}
+      },
+      "nextSteps": {"type": "string"}
+    }
+  }
+}
+```
+
+## Best practices
+
+<CardGroup cols={2}>
+  <Card title="Start simple" icon="seedling">
+    Begin with basic schemas and add complexity as needed. Test with real conversations before adding advanced features.
+  </Card>
+  
+  <Card title="Use descriptive names" icon="tag">
+    Help the AI understand what to extract by using clear field names and descriptions in your schema.
+  </Card>
+  
+  <Card title="Set appropriate constraints" icon="shield-check">
+    Balance flexibility with validation. Too strict and extraction may fail; too loose and data quality suffers.
+  </Card>
+  
+  <Card title="Handle optional fields" icon="question-circle">
+    Only mark fields as required if they're truly essential. Use optional fields for information that might not be mentioned.
+  </Card>
+</CardGroup>
+
+### Performance tips
+
+- **Keep schemas focused**: Extract only what you need to minimize processing time
+- **Use appropriate models**: GPT-4 for complex schemas, GPT-3.5 for simple ones
+- **Set low temperature**: Use 0.1 or lower for consistent extraction
+- **Monitor success rates**: Track extraction failures and adjust schemas accordingly
+
+### Error handling
+
+Always check for null results which indicate extraction failure:
+
+```typescript
+if (data.result === null) {
+  console.log(`Extraction failed for ${data.name}`);
+  // Implement fallback logic
+}
+```
+
+## Troubleshooting
+
+### No data extracted
+
+<Steps>
+  <Step title="Verify schema validity">
+    Ensure your JSON Schema is valid and properly formatted
+  </Step>
+  <Step title="Check conversation content">
+    Confirm the required information was actually mentioned
+  </Step>
+  <Step title="Review assistant configuration">
+    Verify the structured output ID is linked to your assistant
+  </Step>
+  <Step title="Test with simpler schema">
+    Try a basic schema to isolate the issue
+  </Step>
+</Steps>
+
+### Incorrect extraction
+
+- Add more descriptive field descriptions
+- Provide examples in custom prompts
+- Use stricter validation patterns
+- Lower the model temperature
+
+### Partial extraction
+
+- Make fields optional if they might not be mentioned
+- Verify data types match expected values
+
+## HIPAA compliance
+
+<Warning>
+**Important for HIPAA-enabled organizations:**
+
+If your organization has HIPAA compliance enabled (`hipaaEnabled: true`), structured outputs are **disabled by default** to protect PHI (Protected Health Information).
+
+To use structured outputs with HIPAA compliance:
+- Contact the Vapi team to enable structured outputs
+- Ensure you understand the implications for PHI handling
+- Follow all HIPAA compliance best practices when extracting sensitive health data
+</Warning>
+
+## Limitations
+
+<Warning>
+- Schema updates require `?schemaOverride=true` parameter
+- Extraction occurs after call completion (not real-time)
+- Name field limited to 40 characters
+</Warning>
+
+## Related
+
+- [Call analysis](/assistants/call-analysis) - Summarize and evaluate calls
+- [Custom tools](/tools/custom-tools) - Trigger actions during calls
+- [Webhooks](/server-url) - Receive extracted data via webhooks
+- [Variables](/assistants/dynamic-variables) - Use dynamic data in conversations

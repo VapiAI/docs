@@ -1,0 +1,1233 @@
+---
+title: Structured outputs examples
+subtitle: Real-world examples and templates for common use cases
+slug: assistants/structured-outputs-examples
+---
+
+## Overview
+
+This page provides production-ready examples of structured outputs for common business scenarios. Each example includes the complete schema, configuration, and integration code.
+
+## Healthcare appointment booking
+
+Extract patient information and appointment preferences from healthcare calls.
+
+<CodeBlocks>
+```json title="Schema"
+{
+  "name": "Healthcare Appointment",
+  "type": "ai",
+  "description": "Extract patient and appointment information for medical scheduling",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "patient": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "description": "Patient's first name"
+          },
+          "lastName": {
+            "type": "string",
+            "description": "Patient's last name"
+          },
+          "dateOfBirth": {
+            "type": "string",
+            "format": "date",
+            "description": "Patient's date of birth (YYYY-MM-DD)"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "pattern": "^\\+?[1-9]\\d{1,14}$",
+            "description": "Patient's contact number"
+          },
+          "insuranceProvider": {
+            "type": "string",
+            "description": "Insurance provider name"
+          },
+          "memberID": {
+            "type": "string",
+            "description": "Insurance member ID"
+          }
+        },
+        "required": ["firstName", "lastName", "phoneNumber"]
+      },
+      "appointment": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["new-patient", "follow-up", "annual-checkup", "urgent-care", "specialist"],
+            "description": "Type of appointment"
+          },
+          "department": {
+            "type": "string",
+            "enum": ["general", "cardiology", "dermatology", "orthopedics", "pediatrics", "obgyn"],
+            "description": "Medical department"
+          },
+          "preferredDates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "maxItems": 3,
+            "description": "Up to 3 preferred appointment dates"
+          },
+          "preferredTimeSlot": {
+            "type": "string",
+            "enum": ["morning", "afternoon", "evening", "any"],
+            "description": "Preferred time of day"
+          },
+          "symptoms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of symptoms or reasons for visit"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["routine", "soon", "urgent"],
+            "description": "How urgent is the appointment"
+          }
+        },
+        "required": ["type", "department", "urgency"]
+      },
+      "additionalNotes": {
+        "type": "string",
+        "description": "Any additional notes or special requirements"
+      }
+    },
+    "required": ["patient", "appointment"]
+  }
+}
+```
+
+```json title="Example Output"
+{
+  "patient": {
+    "firstName": "Sarah",
+    "lastName": "Johnson",
+    "dateOfBirth": "1985-03-15",
+    "phoneNumber": "+14155551234",
+    "insuranceProvider": "Blue Cross Blue Shield",
+    "memberID": "BCB123456789"
+  },
+  "appointment": {
+    "type": "follow-up",
+    "department": "cardiology",
+    "preferredDates": ["2024-01-15", "2024-01-16", "2024-01-17"],
+    "preferredTimeSlot": "morning",
+    "symptoms": ["chest pain", "shortness of breath"],
+    "urgency": "urgent"
+  },
+  "additionalNotes": "Patient prefers female doctor if available"
+}
+```
+</CodeBlocks>
+
+## E-commerce order processing
+
+Capture order details, shipping information, and payment preferences.
+
+<CodeBlocks>
+```json title="Schema"
+{
+  "name": "E-commerce Order",
+  "type": "ai",
+  "description": "Extract complete order information from sales calls",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "customer": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Customer full name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Customer email for order confirmation"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Contact number"
+          },
+          "loyaltyNumber": {
+            "type": "string",
+            "description": "Loyalty program member number if mentioned"
+          }
+        },
+        "required": ["name", "email"]
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "productName": {
+              "type": "string",
+              "description": "Name or description of the product"
+            },
+            "sku": {
+              "type": "string",
+              "description": "Product SKU if mentioned"
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Quantity ordered"
+            },
+            "size": {
+              "type": "string",
+              "enum": ["XS", "S", "M", "L", "XL", "XXL", "custom"],
+              "description": "Size if applicable"
+            },
+            "color": {
+              "type": "string",
+              "description": "Color preference"
+            },
+            "customization": {
+              "type": "string",
+              "description": "Any customization requests"
+            }
+          },
+          "required": ["productName", "quantity"]
+        },
+        "minItems": 1,
+        "description": "List of items being ordered"
+      },
+      "shipping": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": ["standard", "express", "overnight", "pickup"],
+            "description": "Shipping method"
+          },
+          "address": {
+            "type": "object",
+            "properties": {
+              "street": {
+                "type": "string"
+              },
+              "apartment": {
+                "type": "string",
+                "description": "Apartment or suite number"
+              },
+              "city": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              },
+              "zipCode": {
+                "type": "string",
+                "pattern": "^\\d{5}(-\\d{4})?$"
+              },
+              "country": {
+                "type": "string",
+                "default": "USA"
+              }
+            },
+            "required": ["street", "city", "state", "zipCode"]
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Special delivery instructions"
+          },
+          "giftWrap": {
+            "type": "boolean",
+            "description": "Whether gift wrapping was requested"
+          },
+          "giftMessage": {
+            "type": "string",
+            "description": "Gift message if applicable"
+          }
+        },
+        "required": ["method", "address"]
+      },
+      "payment": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": ["credit_card", "debit_card", "paypal", "apple_pay", "google_pay", "invoice"],
+            "description": "Payment method"
+          },
+          "cardLastFour": {
+            "type": "string",
+            "pattern": "^\\d{4}$",
+            "description": "Last 4 digits of card if provided"
+          },
+          "billingAddressSameAsShipping": {
+            "type": "boolean",
+            "description": "Whether billing address is same as shipping"
+          }
+        },
+        "required": ["method"]
+      },
+      "promotions": {
+        "type": "object",
+        "properties": {
+          "promoCode": {
+            "type": "string",
+            "description": "Promotional code mentioned"
+          },
+          "referralSource": {
+            "type": "string",
+            "description": "How customer heard about us"
+          }
+        }
+      },
+      "specialRequests": {
+        "type": "string",
+        "description": "Any special requests or notes"
+      }
+    },
+    "required": ["customer", "items", "shipping"]
+  }
+}
+```
+
+```json title="Example Output"
+{
+  "customer": {
+    "name": "Michael Chen",
+    "email": "michael.chen@example.com",
+    "phone": "+14155552468",
+    "loyaltyNumber": "LOYAL123456"
+  },
+  "items": [
+    {
+      "productName": "Wireless Headphones XL",
+      "quantity": 1,
+      "size": null,
+      "color": "Black",
+      "price": 149.99
+    },
+    {
+      "productName": "USB-C Cable 6ft",
+      "quantity": 2,
+      "size": null,
+      "color": null,
+      "price": 19.99
+    }
+  ],
+  "shipping": {
+    "address": {
+      "street": "123 Market Street",
+      "city": "San Francisco",
+      "state": "CA",
+      "zip": "94102",
+      "country": "USA"
+    },
+    "method": "express",
+    "priority": "standard",
+    "giftWrap": false
+  },
+  "payment": {
+    "method": "credit-card",
+    "lastFourDigits": "4242"
+  },
+  "promotions": {
+    "promoCode": "SAVE20",
+    "giftWrap": false
+  },
+  "specialInstructions": "Please leave package with doorman"
+}
+```
+</CodeBlocks>
+
+## Real estate lead qualification
+
+Qualify real estate leads and capture property preferences.
+
+<CodeBlocks>
+```json title="Schema"
+{
+  "name": "Real Estate Lead",
+  "type": "ai",
+  "description": "Qualify real estate leads and extract property preferences",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "contact": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "preferredContactMethod": {
+            "type": "string",
+            "enum": ["phone", "email", "text", "any"]
+          },
+          "bestTimeToContact": {
+            "type": "string",
+            "enum": ["morning", "afternoon", "evening", "weekends", "any"]
+          }
+        },
+        "required": ["firstName", "phone"]
+      },
+      "propertySearch": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["buy", "rent", "sell", "invest"]
+          },
+          "propertyType": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["single-family", "condo", "townhouse", "multi-family", "commercial", "land"]
+            }
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "area": {
+                  "type": "string",
+                  "description": "Neighborhood, city, or region"
+                },
+                "schools": {
+                  "type": "boolean",
+                  "description": "Important to be near good schools"
+                },
+                "commute": {
+                  "type": "string",
+                  "description": "Commute requirements mentioned"
+                }
+              }
+            }
+          },
+          "budget": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "number",
+                "minimum": 0
+              },
+              "max": {
+                "type": "number"
+              },
+              "preApproved": {
+                "type": "boolean",
+                "description": "Whether they have mortgage pre-approval"
+              }
+            }
+          },
+          "features": {
+            "type": "object",
+            "properties": {
+              "bedrooms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "bathrooms": {
+                "type": "number",
+                "minimum": 0
+              },
+              "squareFeet": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "garage": {
+                "type": "boolean"
+              },
+              "pool": {
+                "type": "boolean"
+              },
+              "yard": {
+                "type": "boolean"
+              },
+              "mustHaves": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of must-have features"
+              },
+              "dealBreakers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of deal-breakers"
+              }
+            }
+          }
+        },
+        "required": ["type", "propertyType", "budget"]
+      },
+      "timeline": {
+        "type": "object",
+        "properties": {
+          "urgency": {
+            "type": "string",
+            "enum": ["immediate", "1-3months", "3-6months", "6-12months", "browsing"]
+          },
+          "moveInDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Target move-in date if mentioned"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason for moving/buying"
+          }
+        }
+      },
+      "currentSituation": {
+        "type": "object",
+        "properties": {
+          "currentlyOwns": {
+            "type": "boolean",
+            "description": "Whether they currently own property"
+          },
+          "needToSell": {
+            "type": "boolean",
+            "description": "Need to sell before buying"
+          },
+          "firstTimeBuyer": {
+            "type": "boolean"
+          }
+        }
+      },
+      "leadScore": {
+        "type": "object",
+        "properties": {
+          "motivation": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+            "description": "Buyer/seller motivation level"
+          },
+          "qualified": {
+            "type": "boolean",
+            "description": "Whether lead seems qualified"
+          },
+          "followUpPriority": {
+            "type": "string",
+            "enum": ["hot", "warm", "cold"],
+            "description": "Follow-up priority"
+          }
+        }
+      }
+    },
+    "required": ["contact", "propertySearch", "timeline"]
+  }
+}
+```
+
+```json title="Example Output"
+{
+  "contact": {
+    "name": "Jennifer Martinez",
+    "email": "jmartinez@example.com",
+    "phone": "+14085551234",
+    "preferredContactMethod": "email"
+  },
+  "propertySearch": {
+    "propertyType": "single-family",
+    "locations": [
+      {
+        "area": "Palo Alto",
+        "importance": "high"
+      },
+      {
+        "area": "Mountain View",
+        "importance": "medium"
+      }
+    ],
+    "budget": {
+      "min": 1500000,
+      "max": 2200000,
+      "preApproved": true
+    },
+    "features": {
+      "bedrooms": 4,
+      "bathrooms": 3,
+      "squareFeet": 2500,
+      "mustHaves": ["garage", "backyard", "good schools"],
+      "niceToHaves": ["pool", "home office"]
+    }
+  },
+  "timeline": {
+    "urgency": "3-6-months",
+    "moveInDate": "2024-06-01",
+    "reasonForMove": "job relocation"
+  },
+  "currentSituation": {
+    "currentlyOwns": false,
+    "renting": true,
+    "firstTimeBuyer": false,
+    "needToSell": false
+  },
+  "leadScore": {
+    "motivation": "high",
+    "financialReadiness": "qualified",
+    "decisionTimeframe": "actively-looking",
+    "followUpPriority": "warm"
+  }
+}
+```
+</CodeBlocks>
+
+## Insurance claim intake
+
+Capture insurance claim details and incident information.
+
+<CodeBlocks>
+```json title="Schema"
+{
+  "name": "Insurance Claim",
+  "type": "ai",
+  "description": "Extract insurance claim information and incident details",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "policyholder": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "policyNumber": {
+            "type": "string",
+            "description": "Insurance policy number"
+          },
+          "dateOfBirth": {
+            "type": "string",
+            "format": "date"
+          },
+          "contactPhone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": ["name", "policyNumber"]
+      },
+      "incident": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["auto", "property", "theft", "injury", "liability", "other"]
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date of incident"
+          },
+          "time": {
+            "type": "string",
+            "format": "time",
+            "description": "Approximate time of incident"
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "city": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "zipCode": {
+                "type": "string"
+              }
+            }
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of what happened"
+          },
+          "policeReportFiled": {
+            "type": "boolean"
+          },
+          "policeReportNumber": {
+            "type": "string",
+            "description": "Police report number if available"
+          }
+        },
+        "required": ["type", "date", "description"]
+      },
+      "damages": {
+        "type": "object",
+        "properties": {
+          "propertyDamage": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "description": "Damaged item or property"
+                },
+                "estimatedValue": {
+                  "type": "number",
+                  "description": "Estimated value or repair cost"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Description of damage"
+                }
+              }
+            }
+          },
+          "injuries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "person": {
+                  "type": "string",
+                  "description": "Injured person's name"
+                },
+                "relationship": {
+                  "type": "string",
+                  "enum": ["self", "family", "passenger", "pedestrian", "other-driver", "other"],
+                  "description": "Relationship to policyholder"
+                },
+                "injuryDescription": {
+                  "type": "string"
+                },
+                "medicalTreatment": {
+                  "type": "boolean",
+                  "description": "Whether medical treatment was received"
+                },
+                "hospital": {
+                  "type": "string",
+                  "description": "Hospital or clinic name if treated"
+                }
+              }
+            }
+          },
+          "estimatedTotalLoss": {
+            "type": "number",
+            "description": "Total estimated loss amount"
+          }
+        }
+      },
+      "otherParties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string",
+              "enum": ["other-driver", "witness", "property-owner", "passenger"],
+              "description": "Role in incident"
+            },
+            "contactInfo": {
+              "type": "string",
+              "description": "Phone or email"
+            },
+            "insuranceCompany": {
+              "type": "string",
+              "description": "Their insurance company if known"
+            },
+            "policyNumber": {
+              "type": "string",
+              "description": "Their policy number if known"
+            }
+          }
+        }
+      },
+      "documentation": {
+        "type": "object",
+        "properties": {
+          "photosAvailable": {
+            "type": "boolean"
+          },
+          "receiptsAvailable": {
+            "type": "boolean"
+          },
+          "witnessStatements": {
+            "type": "boolean"
+          }
+        }
+      },
+      "urgency": {
+        "type": "string",
+        "enum": ["emergency", "urgent", "standard"],
+        "description": "Claim urgency level"
+      }
+    },
+    "required": ["policyholder", "incident"]
+  }
+}
+```
+
+```json title="Example Output"
+{
+  "policyholder": {
+    "name": "Robert Thompson",
+    "policyNumber": "POL-2024-789456",
+    "dateOfBirth": "1975-08-22",
+    "email": "rthompson@example.com",
+    "phone": "+15105551234"
+  },
+  "incident": {
+    "type": "auto",
+    "date": "2024-01-10",
+    "time": "14:30",
+    "location": {
+      "street": "Highway 101 North",
+      "city": "San Jose",
+      "state": "CA",
+      "zip": "95110"
+    },
+    "description": "Rear-ended at traffic light, other driver at fault",
+    "policeReportNumber": "SJ-2024-001234",
+    "otherPartyInvolved": true
+  },
+  "damages": {
+    "vehicleDamage": {
+      "description": "Rear bumper and trunk damage",
+      "driveable": true,
+      "airbagDeployed": false
+    },
+    "injuries": [
+      {
+        "person": "policyholder",
+        "type": "whiplash",
+        "medicalTreatment": true,
+        "hospital": "Valley Medical Center"
+      }
+    ],
+    "estimatedTotalLoss": 8500,
+    "propertyDamage": null
+  },
+  "witnesses": [
+    {
+      "name": "Maria Garcia",
+      "phone": "+14085559876",
+      "statement": "Saw the other car hit from behind at red light"
+    }
+  ],
+  "urgency": "standard",
+  "additionalInfo": "Other driver admitted fault, have dashcam footage available"
+}
+```
+</CodeBlocks>
+
+## Financial services application
+
+Process loan or credit applications with financial information.
+
+<CodeBlocks>
+```json title="Schema"
+{
+  "name": "Financial Application",
+  "type": "ai",
+  "description": "Extract loan or credit application information",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "applicant": {
+        "type": "object",
+        "properties": {
+          "personalInfo": {
+            "type": "object",
+            "properties": {
+              "firstName": {
+                "type": "string"
+              },
+              "lastName": {
+                "type": "string"
+              },
+              "ssn": {
+                "type": "string",
+                "pattern": "^\\d{3}-\\d{2}-\\d{4}$",
+                "description": "Social Security Number (XXX-XX-XXXX)"
+              },
+              "dateOfBirth": {
+                "type": "string",
+                "format": "date"
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "phone": {
+                "type": "string"
+              },
+              "currentAddress": {
+                "type": "object",
+                "properties": {
+                  "street": {
+                    "type": "string"
+                  },
+                  "city": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "zipCode": {
+                    "type": "string"
+                  },
+                  "yearsAtAddress": {
+                    "type": "number"
+                  },
+                  "rentOrOwn": {
+                    "type": "string",
+                    "enum": ["rent", "own", "other"]
+                  }
+                }
+              }
+            },
+            "required": ["firstName", "lastName", "dateOfBirth"]
+          },
+          "employment": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["employed", "self-employed", "unemployed", "retired", "student"]
+              },
+              "employer": {
+                "type": "string",
+                "description": "Employer name"
+              },
+              "position": {
+                "type": "string",
+                "description": "Job title"
+              },
+              "yearsEmployed": {
+                "type": "number"
+              },
+              "annualIncome": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Annual gross income"
+              },
+              "otherIncome": {
+                "type": "number",
+                "description": "Other income sources"
+              },
+              "incomeVerifiable": {
+                "type": "boolean",
+                "description": "Can provide income verification"
+              }
+            },
+            "required": ["status", "annualIncome"]
+          },
+          "financial": {
+            "type": "object",
+            "properties": {
+              "creditScore": {
+                "type": "integer",
+                "minimum": 300,
+                "maximum": 850,
+                "description": "Self-reported credit score"
+              },
+              "monthlyDebt": {
+                "type": "number",
+                "description": "Total monthly debt payments"
+              },
+              "bankruptcyHistory": {
+                "type": "boolean",
+                "description": "Any bankruptcy in past 7 years"
+              },
+              "existingAccounts": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["checking", "savings", "credit-card", "mortgage", "auto-loan", "student-loan"]
+                },
+                "description": "Existing accounts with institution"
+              }
+            }
+          }
+        }
+      },
+      "loanDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["personal", "auto", "mortgage", "home-equity", "business", "student"],
+            "description": "Type of loan"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Requested loan amount"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Purpose of the loan"
+          },
+          "term": {
+            "type": "integer",
+            "description": "Desired loan term in months"
+          },
+          "collateral": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["vehicle", "property", "savings", "none"],
+                "description": "Type of collateral"
+              },
+              "value": {
+                "type": "number",
+                "description": "Estimated value of collateral"
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of collateral"
+              }
+            }
+          }
+        },
+        "required": ["type", "amount", "purpose"]
+      },
+      "coApplicant": {
+        "type": "object",
+        "properties": {
+          "hasCoApplicant": {
+            "type": "boolean"
+          },
+          "relationship": {
+            "type": "string",
+            "enum": ["spouse", "partner", "family", "business-partner", "other"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "income": {
+            "type": "number"
+          }
+        }
+      },
+      "preferences": {
+        "type": "object",
+        "properties": {
+          "preferredRate": {
+            "type": "string",
+            "enum": ["fixed", "variable", "no-preference"]
+          },
+          "automaticPayment": {
+            "type": "boolean",
+            "description": "Interested in automatic payment"
+          },
+          "paperless": {
+            "type": "boolean",
+            "description": "Prefers paperless statements"
+          }
+        }
+      }
+    },
+    "required": ["applicant", "loanDetails"]
+  }
+}
+```
+
+```json title="Example Output"
+{
+  "applicant": {
+    "personalInfo": {
+      "firstName": "David",
+      "lastName": "Kim",
+      "dateOfBirth": "1988-11-15",
+      "ssn": "***-**-6789",
+      "email": "dkim@example.com",
+      "phone": "+12065551234",
+      "currentAddress": {
+        "street": "456 Pine Street",
+        "city": "Seattle",
+        "state": "WA",
+        "zip": "98101",
+        "yearsAtAddress": 3
+      }
+    },
+    "employment": {
+      "status": "full-time",
+      "employerName": "Tech Corp",
+      "jobTitle": "Senior Engineer",
+      "yearsEmployed": 5,
+      "annualIncome": 150000,
+      "otherIncome": 12000,
+      "incomeVerifiable": true
+    },
+    "financial": {
+      "creditScore": 750,
+      "monthlyDebt": 2500,
+      "bankruptcyHistory": false,
+      "existingAccounts": ["checking", "savings", "credit-card"],
+      "accountNumbers": ["****1234", "****5678"]
+    }
+  },
+  "loanDetails": {
+    "type": "mortgage",
+    "amount": 450000,
+    "term": 30,
+    "purpose": "home-purchase",
+    "propertyAddress": {
+      "street": "789 Oak Avenue",
+      "city": "Bellevue",
+      "state": "WA",
+      "zip": "98004"
+    },
+    "propertyValue": 550000,
+    "downPayment": 100000,
+    "collateral": {
+      "type": "real-estate",
+      "value": 550000,
+      "description": "Single family home"
+    }
+  },
+  "coApplicant": {
+    "hasCoApplicant": true,
+    "relationship": "spouse",
+    "name": "Sarah Kim",
+    "income": 85000
+  },
+  "preferences": {
+    "preferredRate": "fixed",
+    "preferredPaymentDate": 1,
+    "autopayInterest": true
+  },
+  "additionalInfo": "Looking to close within 45 days, have pre-approval from another lender"
+}
+```
+</CodeBlocks>
+
+## Best practices for complex schemas
+
+<CardGroup cols={2}>
+  <Card title="Modular design" icon="puzzle-piece">
+    Break complex schemas into reusable object definitions for maintainability
+  </Card>
+  
+  <Card title="Progressive extraction" icon="layer-group">
+    Start with essential fields as required, make detailed fields optional
+  </Card>
+  
+  <Card title="Clear descriptions" icon="comment">
+    Add descriptions to every field to help AI understand context
+  </Card>
+  
+  <Card title="Validation balance" icon="balance-scale">
+    Use constraints for data quality but avoid being too restrictive
+  </Card>
+</CardGroup>
+
+## Testing recommendations
+
+### Test scenarios
+
+Always test your structured outputs with these scenarios:
+
+1. **Complete information** - All fields mentioned clearly
+2. **Partial information** - Some required fields missing
+3. **Ambiguous data** - Unclear or conflicting information
+4. **Edge cases** - Boundary values, special characters
+5. **Real conversations** - Actual call recordings or transcripts
+
+### Monitoring checklist
+
+Track these metrics for production deployments:
+
+- Extraction success rate per field
+- Average extraction time
+- Token usage and costs
+- Schema validation failures
+- Most commonly missing fields
+
+## Output data structure
+
+### Webhook payload format
+
+When structured outputs are extracted, they're delivered in this format:
+
+```json
+{
+  "type": "call.ended",
+  "call": {
+    "id": "call_abc123",
+    "artifact": {
+      "structuredOutputs": {
+        "550e8400-e29b-41d4-a716-446655440001": {
+          "name": "Customer Support Ticket",
+          "result": {
+            "customer": {
+              "name": "John Smith",
+              "email": "john@example.com"
+            },
+            "issue": {
+              "description": "Login issues",
+              "priority": "high"
+            }
+          }
+        },
+        "550e8400-e29b-41d4-a716-446655440002": {
+          "name": "Satisfaction Score",
+          "result": {
+            "score": 8,
+            "feedback": "Very helpful agent"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### API response format
+
+When retrieving call data via API:
+
+```json
+{
+  "id": "call_abc123",
+  "status": "ended",
+  "endedAt": "2024-01-10T15:30:00Z",
+  "artifact": {
+    "structuredOutputs": {
+      "outputId1": {
+        "name": "Output Name",
+        "result": {
+          // Your extracted data here
+        }
+      }
+    }
+  }
+}
+```
+
+## Related resources
+
+- [Structured outputs overview](/assistants/structured-outputs) - Main documentation
+- [Quickstart guide](/assistants/structured-outputs-quickstart) - Get started quickly
+- [API reference](/api-reference#structured-output) - Complete API documentation
+- [JSON Schema specification](https://json-schema.org/) - JSON Schema standard
