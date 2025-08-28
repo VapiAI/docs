@@ -36,9 +36,9 @@ function injectVapiWidget() {
 
     const internalDiv = widget.querySelector('div');
     if (internalDiv) {
-      internalDiv.style.position = 'fixed';
-      internalDiv.style.right = 'var(--ask-ai-panel-width)';
-      internalDiv.style.transition = 'right 0.5s ease-out';
+      internalDiv.style.position = 'fixed !important';
+      internalDiv.style.right = 'var(--ask-ai-panel-width) !important';
+      internalDiv.style.transition = 'right 0.5s ease-out !important';
     }
   };
   document.body.appendChild(script);
