@@ -13,6 +13,11 @@ function injectVapiWidget() {
     return;
   }
 
+  // Add --ask-ai-panel-width CSS variable for widget positioning if it doesn't exist already
+  if (!getComputedStyle(document.documentElement).getPropertyValue('--ask-ai-panel-width').trim()) {
+    document.documentElement.style.setProperty('--ask-ai-panel-width', '0px');
+  }
+
   const script = document.createElement('script');
   script.src = WIDGET_SCRIPT_URL;
   script.async = true;
@@ -28,6 +33,13 @@ function injectVapiWidget() {
     widget.style.zIndex = '9999';
     document.body.appendChild(widget);
     console.log('[custom.js] Widget element appended to DOM');
+
+    const internalDiv = widget.querySelector('div');
+    if (internalDiv) {
+      internalDiv.style.position = 'fixed';
+      internalDiv.style.right = 'var(--ask-ai-panel-width)';
+      internalDiv.style.transition = 'right 0.5s ease-out';
+    }
   };
   document.body.appendChild(script);
   console.log('[custom.js] Widget script appended to DOM');
