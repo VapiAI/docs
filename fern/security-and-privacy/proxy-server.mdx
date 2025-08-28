@@ -1,0 +1,115 @@
+---
+title: Proxy server guide
+subtitle: Keep assistant configs and API keys on your backend. Route Web SDK calls through your proxy.
+slug: security-and-privacy/proxy-server
+---
+
+## Overview
+
+Proxy server keeps assistant configs and API keys on your backend. Frontend sends custom data, backend maps to Vapi calls.
+
+**Flow**: Frontend -> Your Proxy -> Vapi API -> Response -> Frontend
+
+<Warning>Never expose your private API key in the browser. Keep it on your server and read it from environment variables.</Warning>
+
+<Info>For public web clients, consider using <a href="/customization/jwt-authentication">JWT authentication</a> to further restrict client capabilities.</Info>
+
+## Frontend setup
+
+```javascript title="frontend.js"
+import Vapi from '@vapi-ai/web';
+
+const vapi = new Vapi('your-token', 'https://your-proxy.com');
+// Second parameter is your backend/proxy service URL. Without this, calls route to Vapi API directly.
+
+vapi.start({
+  userId: 'customer123',
+  assistantType: 'sales-coach',
+  // Send any custom data your backend needs
+});
+```
+
+<Note>
+  The frontend passes only non-sensitive context (e.g., userId, assistant type). Your backend selects the actual assistant configuration and authenticates to Vapi.
+</Note>
+
+## Backend proxy server (example)
+
+```javascript title="cloudflare-worker.js" wordWrap
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // Basic CORS support (adjust origins/headers to your needs)
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    };
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    // Handle Vapi API calls
+    if (url.pathname.startsWith('/call')) {
+      try {
+        const { userId, assistantType, ...rest } = await request.json();
+        const assistantConfig = getAssistantConfig(userId, assistantType, rest);
+
+        const response = await fetch(`https://api.vapi.ai${url.pathname}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.VAPI_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(assistantConfig),
+        });
+
+        return new Response(response.body, {
+          status: response.status,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Proxy error', details: String(error) }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+    }
+
+    return new Response('Proxy running', { headers: corsHeaders });
+  },
+};
+
+function getAssistantConfig(userId, assistantType) {
+  if (assistantType === 'existing') {
+    return { assistantId: 'YOUR_ASSISTANT_ID' };
+  }
+
+  return {
+    assistant: {
+      // Your transient assistant config here
+    },
+  };
+}
+```
+
+<Steps>
+  <Step title="Extract custom data from the request">
+    Parse and validate the fields your frontend sends (e.g., <code>userId</code>, <code>assistantType</code>), plus any other context you need.
+  </Step>
+  <Step title="Map to assistant configuration">
+    Choose a permanent assistant ID or build a transient assistant configuration based on the request.
+  </Step>
+  <Step title="Call Vapi and return the response">
+    Authenticate to Vapi with your server-side API key and stream/forward the response to the client.
+  </Step>
+</Steps>
+
+<Check>Result: Secure calls with configs and secrets hidden on your backend.</Check>
+
+### Related
+
+- <a href="/customization/jwt-authentication">JWT authentication</a>
+- <a href="/server-url">Server URLs</a>

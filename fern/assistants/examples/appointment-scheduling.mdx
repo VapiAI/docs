@@ -1,0 +1,277 @@
+---
+title: Appointment scheduling assistant
+subtitle: Build an AI receptionist that books, reschedules, and cancels appointments using Assistants and tools
+slug: assistants/examples/appointment-scheduling
+description: Build a voice AI appointment scheduling assistant with Google Calendar integration, availability checking, and automated confirmations using Vapi Assistants.
+---
+
+## Overview
+
+Build an AI-powered appointment scheduling assistant that handles inbound calls for booking, rescheduling, and canceling appointments. This approach uses a single Assistant with tools for calendar availability, customer lookups, and confirmations.
+
+**Assistant Capabilities:**
+* Real-time availability checks and booking
+* Reschedule and cancel with confirmation
+* Customer verification and data lookups
+* SMS/email confirmations via tools
+
+**What You'll Build:**
+* An assistant with a focused prompt for scheduling flows
+* Tools for calendar availability and booking
+* Optional CSV knowledge bases for customers/services
+* A phone number attached to your assistant
+
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/)
+* Google Calendar or a scheduling backend
+
+## 1. Prepare data (optional)
+
+Use sample CSVs for customers, services, and appointments during development.
+
+<Steps>
+  <Step title="Download sample spreadsheets">
+    <div className="flex gap-2">
+      <Download src="../../static/spreadsheets/appointment-scheduling/services.csv">
+        <Button intent="primary">Download services.csv</Button>
+      </Download>
+      <Download src="../../static/spreadsheets/appointment-scheduling/customers.csv">
+        <Button intent="primary">Download customers.csv</Button>
+      </Download>
+      <Download src="../../static/spreadsheets/appointment-scheduling/appointments.csv">
+        <Button intent="primary">Download appointments.csv</Button>
+      </Download>
+    </div>
+  </Step>
+  <Step title="Upload files (optional)">
+    <Tabs>
+      <Tab title="Dashboard">
+        1. Open your [Vapi Dashboard](https://dashboard.vapi.ai) → Files
+        2. Upload the three CSVs and note their file IDs
+        
+        <video autoPlay loop muted src="../../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        import { VapiClient } from "@vapi-ai/server-sdk";
+        import fs from "fs";
+
+        const vapi = new VapiClient({ token: process.env.VAPI_API_KEY! });
+
+        async function upload(file: string) {
+          const res = await vapi.files.create({ file: fs.createReadStream(file) });
+          console.log(file, res.id);
+          return res.id;
+        }
+
+        const servicesFileId = await upload("services.csv");
+        const customersFileId = await upload("customers.csv");
+        const appointmentsFileId = await upload("appointments.csv");
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        import requests, os
+
+        def upload(path: str):
+            r = requests.post(
+                "https://api.vapi.ai/file",
+                headers={"Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}"},
+                files={"file": open(path, "rb")},
+            )
+            r.raise_for_status()
+            print(path, r.json()["id"]) 
+            return r.json()["id"]
+
+        services_file_id = upload("services.csv")
+        customers_file_id = upload("customers.csv")
+        appointments_file_id = upload("appointments.csv")
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+---
+
+## 2. Create calendar tools
+
+Use the Google Calendar integration for availability and booking, or your own API via a custom tool.
+
+<Tabs>
+  <Tab title="Use Google Calendar (recommended)">
+    See: [Google Calendar Integration](/tools/google-calendar)
+    
+    Configure tools for:
+    - `check_availability(service, date)`
+    - `book_appointment(customer, service, time)`
+    - `reschedule_appointment(appointmentId, time)`
+    - `cancel_appointment(appointmentId)`
+  </Tab>
+  <Tab title="Custom tools (HTTP)">
+    See: [Custom Tools](/tools/custom-tools)
+    
+    Define function tools that call your scheduling backend. Attach CSV knowledge bases (customers/services) if using the sample data above.
+  </Tab>
+</Tabs>
+
+---
+
+## 3. Create the assistant
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create assistant">
+        - Go to Assistants → Create Assistant → Blank template
+        - Name it `Receptionist`
+      </Step>
+      <Step title="Configure system prompt">
+        ```txt title="System Prompt" maxLines=12
+        You are an AI receptionist for a barbershop. Your goals:
+        1) Verify the customer
+        2) Offer booking, rescheduling, or cancellation
+        3) Confirm details and send a confirmation
+
+        When needed, call tools: check_availability, book_appointment, reschedule_appointment, cancel_appointment.
+        Keep replies under 30 words. Confirm date/time clearly.
+        ```
+      </Step>
+      <Step title="Attach tools">
+        Add your scheduling tools to the assistant and publish.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    import { VapiClient } from "@vapi-ai/server-sdk";
+
+    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY! });
+
+    const systemPrompt = `You are an AI receptionist for a barbershop. Verify the customer, then offer booking, rescheduling, or cancellation. Use scheduling tools when needed. Keep replies under 30 words.`;
+
+    const assistant = await vapi.assistants.create({
+      name: "Receptionist",
+      firstMessage: "Welcome to Tony's Barbershop! How can I help you today?",
+      model: {
+        provider: "openai",
+        model: "gpt-4o",
+        messages: [{ role: "system", content: systemPrompt }],
+        // toolIds: [ "CHECK_AVAILABILITY_ID", "BOOK_ID", "RESCHEDULE_ID", "CANCEL_ID" ]
+      }
+    });
+    ```
+  </Tab>
+  <Tab title="Python (Server SDK)">
+    ```python
+    from vapi import Vapi
+    import os
+
+    client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+    assistant = client.assistants.create(
+        name="Receptionist",
+        first_message="Welcome to Tony's Barbershop! How can I help you today?",
+        model={
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [{"role": "system", "content": "You are an AI receptionist for a barbershop. Verify the customer, then handle booking/rescheduling/cancel."}]
+        }
+    )
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## 4. Make calls
+
+<Tabs>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript title="create web call"
+    import { VapiClient } from "@vapi-ai/server-sdk";
+
+    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY! });
+
+    await vapi.calls.create({
+      transport: { type: "web" },
+      assistant: { assistantId: "your-assistant-id" }
+    });
+    ```
+
+    ```typescript title="create phone call"
+    await vapi.calls.create({
+      phoneNumberId: "your-phone-number-id",
+      customer: { number: "+15551234567" },
+      assistant: { assistantId: "your-assistant-id" }
+    });
+    ```
+  </Tab>
+
+  <Tab title="Python (Server SDK)">
+    ```python title="create web call"
+    import os
+    from vapi import Vapi
+
+    client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+    client.calls.create(
+        transport={"type": "web"},
+        assistant_id="your-assistant-id",
+    )
+    ```
+
+    ```python title="create phone call"
+    client.calls.create(
+        phone_number_id="your-phone-number-id",
+        customer={"number": "+15551234567"},
+        assistant_id="your-assistant-id",
+    )
+    ```
+  </Tab>
+
+  <Tab title="cURL (web)">
+    ```bash
+    curl -X POST "https://api.vapi.ai/call/web" \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistant": { "assistantId": "your-assistant-id" }
+      }'
+    ```
+  </Tab>
+
+  <Tab title="cURL (phone)">
+    ```bash
+    curl -X POST "https://api.vapi.ai/call" \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "assistant": { "assistantId": "your-assistant-id" },
+        "phoneNumberId": "your-phone-number-id",
+        "customer": { "number": "+15551234567" }
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+## 5. Test and validate
+
+<Steps>
+  <Step title="Attach a phone number">
+    Create a phone number and assign your assistant. See [Phone calls quickstart](/quickstart/phone).
+  </Step>
+  <Step title="Test scenarios">
+    - New booking → check availability → book → confirm
+    - Reschedule existing appointment → confirm
+    - Cancel appointment → confirm
+  </Step>
+</Steps>
+
+## Next steps
+
+- **Tools**: [Google Calendar](/tools/google-calendar), [Custom Tools](/tools/custom-tools)
+- **Structured outputs**: [Extract structured data](/assistants/structured-outputs)
+- **Multichannel**: [Web integration](/quickstart/web)
+
