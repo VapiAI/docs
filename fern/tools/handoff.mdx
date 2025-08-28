@@ -321,7 +321,11 @@ Control what conversation history is passed to the next assistant:
 
 ## Variable Extraction
 
-Extract and pass structured data during handoff:
+Extract and pass structured data during handoff. Variables extracted by the handoff tool are available to all subsequent assistants in the conversation chain. 
+When a handoff extracts a variable with the same name as an existing one, the new value replaces the previous value.
+
+### 1. `variableExtractionPlan` in destinations
+This extraction method will make an OpenAI structured output request to extract variables. Use this method if you have multiple destinations, each with different variables that need to be extracted. 
 
 ```json
 {
@@ -331,12 +335,8 @@ Extract and pass structured data during handoff:
       "destinations": [
         {
           "type": "assistant",
-          "assistantId": "order-processing-assistant",
+          "assistantName": "order-processing-assistant",
           "description": "customer is ready to place an order",
-          "contextEngineeringPlan": {
-            "type": "lastNMessages",
-            "maxMessages": 5
-          },
           "variableExtractionPlan": {
             "schema": {
               "type": "object",
@@ -377,6 +377,66 @@ Extract and pass structured data during handoff:
 }
 ```
 
+### 2. `tool.function`
+We will also extract variables in the tool call parameters from the LLM tool call (in addition to sending these parameters to your server in a `handoff-destination-request` in a dynamic handoff). Be sure to include the `destination` parameter with the assistant names or IDs in `enum`, as that is how Vapi determines where to handoff the call to. The `destination` parameter will not be extracted as a variable. Also, remember to add `destination` and all other variables that are required to the JsonSchema's `required` array.
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantName": "order-processing-assistant",
+          "description": "customer is ready to place an order",
+        }
+      ],
+      "function": {
+        "name": "handoff_to_order_processing_assistant",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string",
+              "description": "The destination to handoff the call to.",
+              "enum": ["order-processing-assistant"]
+            },
+            "customerName": {
+              "type": "string",
+              "description": "Full name of the customer"
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Customer's email address"
+            },
+            "productIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of product IDs customer wants to order"
+            },
+            "shippingAddress": {
+              "type": "object",
+              "properties": {
+                "street": { "type": "string" },
+                "city": { "type": "string" },
+                "state": { "type": "string" },
+                "zipCode": { "type": "string" }
+              }
+            }
+          },
+          "required": ["destination", "customerName", "email"]
+        }
+      }
+    },
+  ]
+}
+```
+
+
 ## Custom Function Definitions
 
 Override the default function definition for more control. You can overwrite the function name for each tool to put into the system prompt or pass custom parameters in a dynamic handoff request. 
@@ -387,7 +447,7 @@ Override the default function definition for more control. You can overwrite the
     {
       "type": "handoff",
       "function": {
-        "name": "transfer_to_department",
+        "name": "handoff_to_department",
         "description": "Transfer the customer to the appropriate department based on their needs. Only use when explicitly requested or when the current assistant cannot help.",
         "parameters": {
           "type": "object",
