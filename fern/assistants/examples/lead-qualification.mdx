@@ -1,0 +1,125 @@
+---
+title: Lead qualification assistant
+subtitle: Build an outbound sales assistant that qualifies leads and books meetings using tools
+slug: assistants/examples/lead-qualification
+description: Build a voice AI outbound sales assistant with BANT data capture, CRM integration, objection handling, and automated follow-ups using Vapi Assistants.
+---
+
+## Overview
+
+Create an outbound sales assistant that calls prospects, qualifies them using BANT signals, and books meetings. The assistant uses tools to look up leads, score qualification, update CRM, and schedule on a calendar.
+
+**Assistant Capabilities:**
+* BANT data capture with structured outputs
+* Objection handling and call outcome logging
+* Calendar booking and follow-up creation
+* CRM updates with next steps
+
+**What You'll Build:**
+* Focused sales prompt with clear call flow
+* Tools for lead lookup, scoring, CRM update, and scheduling
+* Optional CSV knowledge bases for demo leads/products
+
+## Prerequisites
+
+* A [Vapi account](https://dashboard.vapi.ai/)
+* CRM or spreadsheet data; Google Calendar or scheduling backend
+
+## 1. Prepare sample data (optional)
+
+<Steps>
+  <Step title="Download sample spreadsheets">
+    <div className="flex gap-2">
+      <Download src="../../static/spreadsheets/lead-qualification/leads.csv">
+        <Button intent="primary">Download leads.csv</Button>
+      </Download>
+      <Download src="../../static/spreadsheets/lead-qualification/products.csv">
+        <Button intent="primary">Download products.csv</Button>
+      </Download>
+      <Download src="../../static/spreadsheets/lead-qualification/call_outcomes.csv">
+        <Button intent="primary">Download call_outcomes.csv</Button>
+      </Download>
+    </div>
+  </Step>
+  <Step title="Upload files (optional)">
+    <Tabs>
+      <Tab title="Dashboard">
+        Upload `leads.csv`, `products.csv`, and `call_outcomes.csv` and note file IDs.
+        
+        <video autoPlay loop muted src="../../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        import { VapiClient } from "@vapi-ai/server-sdk";
+        import fs from "fs";
+        const vapi = new VapiClient({ token: process.env.VAPI_API_KEY! });
+        async function upload(p: string) { return (await vapi.files.create({ file: fs.createReadStream(p) })).id; }
+        const leadsFileId = await upload("leads.csv");
+        const productsFileId = await upload("products.csv");
+        const outcomesFileId = await upload("call_outcomes.csv");
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+---
+
+## 2. Create sales tools
+
+Configure function tools or your CRM API for:
+- `lookup_lead(leadId)`
+- `score_lead(budget, authority, need, timeline)`
+- `update_crm(leadId, callOutcome, nextSteps)`
+- `book_meeting(prospect, time)`
+
+See [Custom Tools](/tools/custom-tools) and [Google Calendar](/tools/google-calendar).
+
+---
+
+## 3. Define the assistant
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create assistant">
+        - Name: `Outbound SDR`
+        - First message: concise opener asking permission to talk
+      </Step>
+      <Step title="System prompt">
+        ```txt title="System Prompt" maxLines=12
+        You are an outbound SDR. Goals: get permission, qualify with BANT, schedule a meeting, and log the outcome. Keep answers ≤ 25 words and be respectful. Use tools when needed.
+        ```
+      </Step>
+      <Step title="Structured outputs">
+        Capture: `permission_status`, `bant_budget`, `bant_authority`, `bant_need`, `bant_timeline`, `meeting_time`, `call_outcome`.
+        See [Structured outputs](/assistants/structured-outputs).
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript
+    import { VapiClient } from "@vapi-ai/server-sdk";
+    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY! });
+    const systemPrompt = `Outbound SDR. Get permission, qualify with BANT, then book. Keep responses short. Use lookup_lead, score_lead, update_crm, book_meeting.`;
+    const assistant = await vapi.assistants.create({
+      name: "Outbound SDR",
+      firstMessage: "Hi, this is Alex from TechFlow. Is now a good time to chat for 2 minutes?",
+      model: { provider: "openai", model: "gpt-4o", messages: [{ role: "system", content: systemPrompt }] }
+    });
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## 4. Test outbound calls
+
+Create a phone number or trigger an outbound call. See [Phone calls](/quickstart/phone).
+
+## Next steps
+
+- **CRM integration**: Connect your CRM via [Custom Tools](/tools/custom-tools)
+- **Calendar**: [Google Calendar](/tools/google-calendar)
+- **Escalation**: Use a [Squad](/squads) to hand off to a specialized closer
+
