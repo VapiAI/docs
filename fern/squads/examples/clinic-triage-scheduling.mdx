@@ -37,7 +37,142 @@ Compose multiple assistants into a Squad for safe, specialized healthcare flows:
 
 See: [Silent transfers](/squads/silent-transfers).
 
-## 3. Test
+## 3. Implement
+
+<Tabs>
+  <Tab title="TypeScript (Server SDK)">
+    ```typescript title="create web call with transient squad"
+    import { VapiClient } from "@vapi-ai/server-sdk";
+
+    const vapi = new VapiClient({ token: process.env.VAPI_API_KEY! });
+
+    await vapi.calls.create({
+      transport: { type: "web" },
+      squad: {
+        members: [
+          {
+            assistant: {
+              name: "Triage",
+              model: {
+                provider: "openai",
+                model: "gpt-4o",
+                messages: [{ role: "system", content: "Medical triage assistant. Identify red flags." }],
+              },
+              firstMessage: "Hello, how can I help you today?",
+              firstMessageMode: "assistant-speaks-first",
+            },
+          },
+          {
+            assistant: {
+              name: "Emergency",
+              model: {
+                provider: "openai",
+                model: "gpt-4o",
+                messages: [{ role: "system", content: "Emergency protocol assistant. Keep interaction brief and connect immediately." }],
+              },
+            },
+          },
+          {
+            assistant: {
+              name: "Scheduler",
+              model: {
+                provider: "openai",
+                model: "gpt-4o",
+                messages: [{ role: "system", content: "Clinic scheduler. Offer next available slots, then confirm." }],
+              },
+            },
+          },
+        ],
+      },
+    });
+    ```
+
+    ```typescript title="create phone call with transient squad"
+    await vapi.calls.create({
+      phoneNumberId: "YOUR_PHONE_NUMBER_ID",
+      customer: { number: "+15551234567" },
+      squad: { /* same squad as above */ members: [] },
+    });
+    ```
+
+    ```typescript title="create and reuse a squad (optional)"
+    const squad = await vapi.squads.create({
+      name: "Clinic Triage",
+      members: [ /* same members as above */ ],
+    });
+
+    await vapi.calls.create({ transport: { type: "web" }, squadId: squad.id });
+    ```
+  </Tab>
+
+  <Tab title="Python (Server SDK)">
+    ```python title="create web call with transient squad"
+    import os
+    from vapi import Vapi
+
+    client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+    client.calls.create(
+        transport={"type": "web"},
+        squad={
+            "members": [
+                {"assistant": {"name": "Triage", "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": "Medical triage assistant. Identify red flags."}]}, "first_message": "Hello, how can I help you today?", "first_message_mode": "assistant-speaks-first"}},
+                {"assistant": {"name": "Emergency", "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": "Emergency protocol assistant. Keep interaction brief and connect immediately."}]}}},
+                {"assistant": {"name": "Scheduler", "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": "Clinic scheduler. Offer next available slots, then confirm."}]}}},
+            ]
+        },
+    )
+    ```
+
+    ```python title="create phone call with transient squad"
+    client.calls.create(
+        phone_number_id="YOUR_PHONE_NUMBER_ID",
+        customer={"number": "+15551234567"},
+        squad={"members": []},  # same members as above
+    )
+    ```
+
+    ```python title="create and reuse a squad (optional)"
+    squad = client.squads.create(
+        name="Clinic Triage",
+        members=[ /* same members as above */ ],
+    )
+    client.calls.create(transport={"type": "web"}, squad_id=squad["id"])
+    ```
+  </Tab>
+
+  <Tab title="cURL (web)">
+    ```bash title="create web call"
+    curl -X POST "https://api.vapi.ai/call/web" \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "squad": {
+          "members": [
+            { "assistant": { "name": "Triage", "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": "Medical triage assistant. Identify red flags."}] }, "firstMessage": "Hello, how can I help you today?", "firstMessageMode": "assistant-speaks-first" } },
+            { "assistant": { "name": "Emergency", "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": "Emergency protocol assistant. Keep interaction brief and connect immediately."}] } } },
+            { "assistant": { "name": "Scheduler", "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": "Clinic scheduler. Offer next available slots, then confirm."}] } } }
+          ]
+        }
+      }'
+    ```
+  </Tab>
+
+  <Tab title="cURL (phone)">
+    ```bash title="create phone call"
+    curl -X POST "https://api.vapi.ai/call" \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+        "customer": { "number": "+15551234567" },
+        "squad": { "members": [] }
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+## 4. Test
 
 Attach a phone number to the Squad (or start with a Squad when creating a call) and test urgent vs routine scenarios.
 
