@@ -1,4 +1,5 @@
 const WIDGET_TAG = 'vapi-voice-agent-widget';
+const ENABLE_VOICE_WIDGET = false; // Feature flag to enable/disable the floating voice widget
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const WIDGET_SCRIPT_URL = isLocalhost
   ? 'http://localhost:9001/widget.js'
@@ -46,13 +47,15 @@ function initializeHockeyStack() {
   hsscript.dataset.apikey = HOCKEYSTACK_API_KEY;
   hsscript.dataset.cookieless = 1;
   hsscript.dataset.autoIdentify = 1;
-  
+
   document.getElementsByTagName('head')[0].append(hsscript);
 }
 
 function initializeAll() {
   initializeHockeyStack();
-  injectVapiWidget();
+  if (ENABLE_VOICE_WIDGET) {
+    injectVapiWidget();
+  }
 }
 
 if (document.readyState === 'loading') {
