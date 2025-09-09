@@ -3,131 +3,553 @@ title: Server authentication
 slug: server-url/server-authentication
 ---
 
-When configuring webhooks for your assistant, you can authenticate your server endpoints using either a secret token, custom headers, or OAuth2. This ensures that only authorized requests from Vapi are processed by your server.
+When configuring webhooks for your assistant, you can authenticate your server endpoints by creating **Custom Credentials** and referencing them using a `credentialId`. This approach provides better security, reusability, and centralized management of your authentication credentials.
 
-## Credential Configuration
+## Overview
 
-Credentials can be configured at multiple levels:
+Vapi now uses a **credential-based authentication system** where you:
 
-1. **Tool Call Level**: Create individual credentials for each tool call
-2. **Assistant Level**: Set credentials directly in the assistant configuration
-3. **Phone Number Level**: Configure credentials for specific phone numbers
-4. **Organization Level**: Manage credentials in the [API Keys page](https://dashboard.vapi.ai/keys)
+1. **Create Custom Credentials** through the dashboard
+2. **Reference credentials by ID** in your server configurations  
+3. **Reuse credentials** across multiple assistants, phone numbers, and tools
 
-The order of precedence is:
-1. Tool call-level credentials
-2. Assistant-level credentials
-3. Phone number-level credentials
-4. Organization-level credentials from the API Keys page
+This replaces the previous inline authentication approach and provides better security and management capabilities.
 
-## Authentication Methods
+## Quick start
 
-### Secret Token Authentication
-
-The simplest way to authenticate webhook requests is using a secret token. Vapi will include this token in the `X-Vapi-Signature` header of each request.
-
-#### Configuration
-
-```json
-{
-  "server": {
-    "url": "https://your-server.com/webhook",
-    "secret": "your-secret-token"
-  }
-}
-```
-
-### Custom Headers Authentication
-
-For more complex authentication scenarios, you can configure custom headers that Vapi will include with each webhook request.
-
-This could include short lived JWTs/API Keys passed along via the Authorization header, or any other header that your server checks for.
-
-#### Configuration
-
-```json
-{
-  "server": {
-    "url": "https://your-server.com/webhook",
-    "headers": {
-      "Authorization": "Bearer your-api-key",
-      "Custom-Header": "custom-value"
-    }
-  }
-}
-```
-
-### OAuth2 Authentication
-
-For OAuth2-protected webhook endpoints, you can configure OAuth2 credentials that Vapi will use to obtain and refresh access tokens.
-
-#### Configuration (at the assistant-level)
-
-```json
-{
-  "server": {
-    "url": "https://your-server.com/webhook"
-  },
-  "credentials": [
+<Steps>
+  <Step title="Create a Custom Credential">
+    In the Vapi dashboard, navigate to Custom Credentials and create a new credential:
+    
+    - Choose **Bearer Token** for simple API key authentication
+    - Enter a descriptive name like "Production API Auth"  
+    - Add your API token
+    - Save the credential and note the generated ID (e.g., `cred_abc123`)
+  </Step>
+  
+  <Step title="Use the credential in your assistant">
+    Reference the credential when configuring server webhooks:
+    
+    ```json
     {
-      "provider": "webhook",
-      "authenticationPlan": {
-        "type": "oauth2",
-        "url": "https://your-server.com/oauth/token",
-        "clientId": "your-client-id",
-        "clientSecret": "your-client-secret",
-        "scope": "optional, only needed to specify which scopes to request access for"
+      "name": "Support Assistant",
+      "server": {
+        "url": "https://api.yourcompany.com/webhook",
+        "credentialId": "cred_abc123"
+      },
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4"
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Test your webhook">
+    Make a test call - Vapi will now authenticate requests to your webhook using the configured credential.
+  </Step>
+</Steps>
+
+## Creating Custom Credentials
+
+### Dashboard Management
+
+Custom Credentials are managed through the Vapi dashboard. Navigate to your organization settings to create and manage authentication credentials.
+
+<Frame caption="Custom Credentials management dashboard">
+  <img src="../static/images/server-url/authentication/custom-credentials-dashboard.png" />
+</Frame>
+
+You can create different types of authentication credentials:
+
+- **Bearer Token**: Simple token-based authentication
+- **OAuth 2.0**: OAuth 2.0 client credentials flow
+- **HMAC**: HMAC signature-based authentication
+
+## Authentication Types
+
+### Bearer Token Authentication
+
+The most common authentication method using a bearer token in the Authorization header.
+
+<Steps>
+  <Step title="Create Bearer Token Credential">
+    In the dashboard, select "Bearer Token" as the authentication type and configure:
+    
+    - **Credential Name**: A descriptive name for the credential
+    - **Token**: Your API token or secret
+    - **Header Name**: The header to send the token in (default: `Authorization`)
+    - **Include Bearer Prefix**: Whether to prefix the token with "Bearer "
+  </Step>
+  
+  <Step title="Use credential in server configuration">
+    Reference the credential by its ID in your server configuration:
+    
+    ```json
+    {
+      "server": {
+        "url": "https://your-server.com/webhook",
+        "credentialId": "cred_abc123"
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Frame caption="Creating a Bearer Token credential">
+  <img src="../static/images/server-url/authentication/bearer-token-credential.png" />
+</Frame>
+
+#### Standard Authorization Header
+
+The most common Bearer Token configuration uses the standard `Authorization` header with the Bearer prefix:
+
+<Steps>
+  <Step title="Create standard Bearer Token credential">
+    Configure a Bearer Token credential with:
+    
+    - **Header Name**: `Authorization` (default)
+    - **Include Bearer Prefix**: Enabled (toggle on)
+    - **Token**: Your API token or secret key
+  </Step>
+  
+  <Step title="Use in server configuration">
+    Reference this credential in your server setup - Vapi will send your token as `Authorization: Bearer your-token`.
+    
+    ```json
+    {
+      "server": {
+        "url": "https://api.example.com/webhook",
+        "credentialId": "cred_bearer_standard_123"
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Handle authentication in your server">
+    Your server will receive the standard Authorization header:
+    
+    ```http
+    POST /webhook HTTP/1.1
+    Host: api.example.com
+    Authorization: Bearer your-api-token-here
+    Content-Type: application/json
+    ```
+  </Step>
+</Steps>
+
+This is the recommended approach for modern API authentication and works with most authentication frameworks and libraries.
+
+#### Legacy X-Vapi-Secret Support
+
+For backward compatibility with existing implementations, you can configure a Bearer Token credential to use the `X-Vapi-Secret` header (matching the previous inline `secret` field behavior):
+
+<Steps>
+  <Step title="Create X-Vapi-Secret credential">
+    Configure a Bearer Token credential with:
+    
+    - **Header Name**: `X-Vapi-Secret` (instead of `Authorization`)
+    - **Include Bearer Prefix**: Disabled (toggle off)
+    - **Token**: Your secret token value
+  </Step>
+  
+  <Step title="Use in server configuration">
+    Reference this credential in your server setup - Vapi will send your token in the `X-Vapi-Secret` header exactly like the previous inline behavior.
+  </Step>
+</Steps>
+
+<Frame caption="X-Vapi-Secret Bearer Token credential configuration">
+  <img src="../static/images/server-url/authentication/x-vapi-secret-credential.png" />
+</Frame>
+
+### OAuth 2.0 Authentication
+
+For OAuth 2.0 protected endpoints, configure client credentials flow with automatic token refresh.
+
+<Steps>
+  <Step title="Create OAuth 2.0 Credential">
+    Select "OAuth 2.0" as the authentication type and configure:
+    
+    - **Credential Name**: A descriptive name for the credential  
+    - **Token URL**: Your OAuth token endpoint
+    - **Client ID**: OAuth client identifier
+    - **Client Secret**: OAuth client secret
+    - **Scope**: Optional scopes to request
+  </Step>
+  
+  <Step title="Reference in server configuration">
+    Use the credential ID in your server setup:
+    
+    ```json
+    {
+      "server": {
+        "url": "https://your-server.com/webhook", 
+        "credentialId": "cred_oauth_xyz789"
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Frame caption="OAuth 2.0 credential configuration">
+  <img src="../static/images/server-url/authentication/oauth2-credential.png" />
+</Frame>
+
+#### OAuth 2.0 Flow
+
+1. Vapi makes a token request to your OAuth endpoint with client credentials
+2. Your server validates the credentials and returns an access token
+3. Vapi includes the access token in the Authorization header for webhook requests
+4. When tokens expire, Vapi automatically requests new ones
+
+#### Token Response Format
+
+Your OAuth server should return:
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer", 
+  "expires_in": 3600
+}
+```
+
+### HMAC Authentication
+
+For maximum security, use HMAC signature-based authentication to verify request integrity.
+
+<Steps>
+  <Step title="Create HMAC Credential">
+    Select "HMAC" as the authentication type and configure:
+    
+    - **Credential Name**: A descriptive name for the credential
+    - **Secret Key**: Your HMAC secret key
+    - **Algorithm**: Hash algorithm (SHA256, SHA1, etc.)
+    - **Signature Header**: Header name for the signature (e.g., `x-signature`)
+    - **Timestamp Header**: Optional timestamp header for replay protection
+    - **Payload Format**: How to format the payload for signing
+  </Step>
+  
+  <Step title="Use credential in server configuration">
+    Reference the HMAC credential:
+    
+    ```json
+    {
+      "server": {
+        "url": "https://your-server.com/webhook",
+        "credentialId": "cred_hmac_456"
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Frame caption="HMAC credential configuration">
+  <img src="../static/images/server-url/authentication/hmac-credential.png" />
+</Frame>
+
+## Using Credentials
+
+### In Assistant Configuration
+
+Reference credentials in your assistant's server configuration:
+
+<CodeBlocks>
+```json title="API Request"
+{
+  "server": {
+    "url": "https://api.example.com/webhook",
+    "credentialId": "cred_bearer_auth_123"
+  }
+}
+```
+
+```typescript title="TypeScript SDK" 
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const client = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+const assistant = await client.assistants.create({
+  server: {
+    url: "https://api.example.com/webhook",
+    credentialId: "cred_bearer_auth_123"
+  },
+  // ... other assistant config
+});
+```
+
+```python title="Python SDK"
+from vapi import Vapi
+
+client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+assistant = client.assistants.create(
+    server={
+        "url": "https://api.example.com/webhook",
+        "credentialId": "cred_bearer_auth_123"
+    }
+    # ... other assistant config
+)
+```
+</CodeBlocks>
+
+<Frame caption="Credential selection in assistant server configuration">
+  <img src="../static/images/server-url/authentication/credential-selection-assistant-server.png" />
+</Frame>
+
+### In Phone Number Configuration
+
+Assign credentials to phone numbers for incoming call authentication:
+
+<CodeBlocks>
+```json title="API Request"
+{
+  "phoneNumber": "+1234567890",
+  "server": {
+    "url": "https://api.example.com/calls",
+    "credentialId": "cred_oauth_456"
+  }
+}
+```
+
+```typescript title="TypeScript SDK"
+const phoneNumber = await client.phoneNumbers.create({
+  phoneNumber: "+1234567890",
+  server: {
+    url: "https://api.example.com/calls", 
+    credentialId: "cred_oauth_456"
+  }
+});
+```
+</CodeBlocks>
+
+<Frame caption="Credential selection in phone number server configuration">
+  <img src="../static/images/server-url/authentication/credential-selection-phone-number-server.png" />
+</Frame>
+
+### In Tool Configuration  
+
+Secure your function tool endpoints with credentials:
+
+<CodeBlocks>
+```json title="API Request"
+{
+  "type": "function",
+  "function": {
+    "name": "get_weather",
+    "description": "Get current weather",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "location": { "type": "string" }
+      }
+    }
+  },
+  "server": {
+    "url": "https://api.example.com/weather",
+    "credentialId": "cred_hmac_789"
+  }
+}
+```
+
+```typescript title="TypeScript SDK"
+const tool = await client.tools.create({
+  type: "function",
+  function: {
+    name: "get_weather",
+    description: "Get current weather", 
+    parameters: {
+      type: "object",
+      properties: {
+        location: { type: "string" }
+      }
+    }
+  },
+  server: {
+    url: "https://api.example.com/weather",
+    credentialId: "cred_hmac_789" 
+  }
+});
+```
+</CodeBlocks>
+
+## Credential Management
+
+### Dashboard Features
+
+The Custom Credentials dashboard provides:
+
+- **Credential Creation**: Create new authentication credentials
+- **Credential Editing**: Modify existing credential configurations  
+- **Credential Deletion**: Remove unused credentials
+- **Usage Tracking**: See where credentials are being used
+
+<Frame caption="Credential selection in server configuration">
+  <img src="../static/images/server-url/authentication/credential-selection.png" />
+</Frame>
+
+### Best Practices
+
+<Tip>
+**Credential Naming**: Use descriptive names like "Production API Key" or "Staging OAuth" to easily identify credentials.
+</Tip>
+
+<Tip>
+**Credential Rotation**: Regularly rotate credentials for enhanced security. Update the credential in the dashboard without changing your configurations.
+</Tip>
+
+<Warning>
+**Credential Security**: Store credential secrets securely. Once created, secrets are encrypted and cannot be viewed in the dashboard.
+</Warning>
+
+### Migration from Inline Authentication
+
+If you're currently using inline authentication, migrate to the credential system:
+
+<Steps>
+  <Step title="Create equivalent credentials">
+    For each inline authentication configuration, create a matching Custom Credential in the dashboard:
+    
+    - **For `secret` field**: Create a Bearer Token credential with header `X-Vapi-Secret` and no Bearer prefix (see [Legacy X-Vapi-Secret Support](#legacy-x-vapi-secret-support))
+    - **For `headers` field**: Create a Bearer Token credential with the appropriate header name
+    - **For OAuth configurations**: Create an OAuth 2.0 credential
+  </Step>
+  
+  <Step title="Update configurations">  
+    Replace inline authentication with `credentialId` references:
+    
+    **Before (inline secret):**
+    ```json
+    {
+      "server": {
+        "url": "https://api.example.com/webhook",
+        "secret": "your-secret-token"
+      }
+    }
+    ```
+    
+    **After (credential reference):**
+    ```json
+    {
+      "server": {
+        "url": "https://api.example.com/webhook", 
+        "credentialId": "cred_x_vapi_secret_123"
+      }
+    }
+    ```
+    
+    Your server will continue receiving the same `X-Vapi-Secret` header with identical behavior.
+  </Step>
+  
+  <Step title="Test and deploy">
+    Verify that your webhooks continue working with the new credential system. The authentication behavior should be identical to your previous inline configuration.
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+### Single Credential for Multiple Resources
+
+Reuse the same credential across different components:
+
+<CodeBlocks>
+```json title="Shared Credential Usage"
+{
+  "assistant": {
+    "server": {
+      "url": "https://api.yourcompany.com/assistant-webhook",
+      "credentialId": "cred_production_api_123"
+    }
+  },
+  "phoneNumber": {
+    "server": {
+      "url": "https://api.yourcompany.com/call-webhook", 
+      "credentialId": "cred_production_api_123"
+    }
+  },
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_user_info"
+      },
+      "server": {
+        "url": "https://api.yourcompany.com/user-info",
+        "credentialId": "cred_production_api_123"
       }
     }
   ]
 }
 ```
+</CodeBlocks>
 
-#### Configuration (via our Dashboard)
+### Environment-Specific Credentials
 
-<Steps>
-  <Step title="Visit the API Keys page">
-    Go to [https://dashboard.vapi.ai/keys](https://dashboard.vapi.ai/keys) to manage your OAuth2 credentials.
-  </Step>
-</Steps>
+Use different credentials for staging and production:
 
-<Frame caption="OAuth2 configuration in the Vapi dashboard">
-  <img src="../static/images/server-url/authentication/webhook.png" />
-</Frame>
-
-#### OAuth2 Flow
-
-1. Vapi makes a request to your token endpoint with client credentials (Content-Type `application/x-www-form-urlencoded`)
-2. Your server validates the credentials and returns an access token
-3. Vapi includes the access token in the Authorization header for webhook requests
-4. Your server validates the access token before processing the webhook
-5. When the token expires, Vapi automatically requests a new one
-
-#### OAuth2 Token Response Format
-
-Your server should return a JSON response with the following format:
-
-```json
+<CodeBlocks>
+```json title="Staging Environment"
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "Bearer",
-  "expires_in": 3600
+  "server": {
+    "url": "https://staging-api.yourcompany.com/webhook",
+    "credentialId": "cred_staging_api_456"
+  }
 }
 ```
 
-Example error response:
-
-```json
+```json title="Production Environment" 
 {
-  "error": "invalid_client",
-  "error_description": "Invalid client credentials"
+  "server": {
+    "url": "https://api.yourcompany.com/webhook",
+    "credentialId": "cred_production_api_123"
+  }
 }
 ```
+</CodeBlocks>
 
-Common error types:
-- `invalid_client`: Invalid client credentials
-- `invalid_grant`: Invalid or expired refresh token
-- `invalid_scope`: Invalid scope requested
-- `unauthorized_client`: Client not authorized for this grant type
+### Service-Specific Credentials
 
-<Note> If using the OAuth2 flow for authenticating tool calls, make sure the server for the tool is the URL that should be hit *after* we have completed the token exchange. </Note>
+Use different credentials for different services:
+
+<CodeBlocks>
+```json title="Multiple Service Credentials"
+{
+  "assistant": {
+    "server": {
+      "url": "https://auth.yourcompany.com/webhook",
+      "credentialId": "cred_auth_service_789"
+    }
+  },
+  "tools": [
+    {
+      "type": "function", 
+      "function": {
+        "name": "payment_processing"
+      },
+      "server": {
+        "url": "https://payments.yourcompany.com/process",
+        "credentialId": "cred_payment_service_321"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "user_management"
+      },
+      "server": {
+        "url": "https://users.yourcompany.com/manage", 
+        "credentialId": "cred_user_service_654"
+      }
+    }
+  ]
+}
+```
+</CodeBlocks>
+
+## Next steps
+
+Now that you have authentication configured:
+
+- **[Setting server URLs](./setting-server-urls):** Learn where server URLs can be configured
+- **[Server events](./events):** Understand what webhook events Vapi sends
+- **[Local development](./developing-locally):** Set up local webhook testing
