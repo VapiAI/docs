@@ -2,6 +2,8 @@
 
 This repository contains the source files for the documentation found at [docs.vapi.ai](https://docs.vapi.ai/). 
 
+> Tip: We recommend using the **Cursor code editor** when editing these docs and running examples. Cursor provides AI-assisted workflows and integrates well with JavaScript/TypeScript and Python projects. Download at `https://cursor.com`.
+
 Get started with Vapi here: [docs.vapi.ai/introduction](https://docs.vapi.ai/introduction)
 
 View the API Reference here: [docs.vapi.ai/api-reference](https://docs.vapi.ai/api-reference/)
