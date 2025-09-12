@@ -1,0 +1,413 @@
+---
+title: Migrating from Trieve
+subtitle: Essential migration guide for Trieve users - service ending November 1st, 2025
+slug: knowledge-base/migrating-from-trieve
+---
+
+<Warning>
+  **URGENT: Trieve is shutting down on November 1st, 2025.** All Trieve-based knowledge bases must be migrated before this date to avoid service disruption.
+</Warning>
+
+## Overview
+
+Trieve [is shutting down their cloud service](https://www.trieve.ai/blog/trieve-is-being-acquired-by-mintlify) on November 1st, 2025. If you're currently using Trieve for your Vapi knowledge bases, you need to migrate before this date to avoid service disruption.
+
+This guide provides two migration paths to ensure your assistant continues working seamlessly.
+
+**Available migration options:**
+- **Custom Knowledge Base**: Full control with your own search infrastructure
+- **Google Knowledge Base**: Managed solution using Google's Gemini models
+
+<Note>
+  **Important Behavioral Difference**: Google knowledge bases work as tools that the assistant calls when needed based on your prompt instructions. Custom knowledge bases are queried on every user request automatically. Choose based on whether you want selective or automatic knowledge retrieval.
+</Note>
+
+<Tip>
+  **Recommendation**: To maintain the same assistant behavior as your previous Trieve setup, we recommend migrating to a **Custom Knowledge Base**. This ensures your assistant continues to automatically query your knowledge on every user message, just like it did with Trieve.
+</Tip>
+
+## Migration Options Comparison
+
+Choose the migration path that best fits your needs:
+
+<CardGroup cols={2}>
+  <Card title="Custom Knowledge Base" icon="server" href="#migrating-to-custom-knowledge-base">
+    **Best for:** Advanced users wanting automatic knowledge retrieval
+    
+    - Queried on every user message
+    - Full control over search logic
+    - Use any vector database or search system
+    - Requires server development
+  </Card>
+  <Card title="Google Knowledge Base" icon="brain" href="#migrating-to-google-knowledge-base">
+    **Best for:** Quick migration with selective knowledge use
+    
+    - Works as a tool called when needed
+    - Simple file upload process  
+    - No server maintenance required
+    - Assistant decides when to use knowledge
+  </Card>
+</CardGroup>
+
+### Decision Matrix
+
+| Factor | Custom Knowledge Base | Google Knowledge Base |
+|--------|----------------------|----------------------|
+| **Retrieval Behavior** | Queried on every user message | Called as tool when needed by assistant |
+| **Latency** | Lower (direct database query) | Higher (Google Gemini model processing) |
+| **Technical Complexity** | High | Low |
+| **Ongoing Maintenance** | Server management required | None |
+| **Customization** | Complete flexibility | Limited |
+| **Cost** | Server hosting costs | Included in Vapi |
+| **Search Quality** | Depends on implementation | Google Gemini quality |
+
+## Migrating to Custom Knowledge Base
+
+### Step 1: Export Your Data
+
+Your export process depends on how your Trieve knowledge base was originally created:
+
+#### Option A: User-Managed Trieve Dataset (Import Plan)
+If you created your knowledge base with your own Trieve dataset:
+
+1. Access your Trieve dashboard directly
+2. Export your datasets in your preferred format
+3. Download all document chunks and metadata
+4. Save any custom embeddings if applicable
+
+#### Option B: Vapi-Managed Trieve Dataset (Create Plan)  
+If Vapi created and managed your Trieve dataset:
+
+1. Navigate to the **Files** page in your Vapi dashboard
+2. Download the individual files that were uploaded to create the knowledge base
+3. These files are stored in Vapi and are not affected by the Trieve shutdown
+
+<Note>
+  **Files uploaded to Vapi are safe**: If your knowledge base was created using files uploaded to Vapi, those files remain available in your Vapi account and are not affected by the Trieve shutdown.
+</Note>
+
+### Step 2: Set Up Your Custom Server
+
+Choose your infrastructure and implement the knowledge base endpoint:
+
+<CodeBlocks>
+```typescript title="Node.js Example"
+import express from 'express';
+import { PineconeClient } from '@pinecone-database/pinecone';
+
+const app = express();
+const pinecone = new PineconeClient();
+
+app.post('/kb/search', async (req, res) => {
+  try {
+    const { message } = req.body;
+    const userMessages = message.messages.filter(msg => msg.role === 'user');
+    const latestQuery = userMessages[userMessages.length - 1]?.content || '';
+
+    // Search your vector database
+    const index = pinecone.Index('your-knowledge-base');
+    const searchResults = await index.query({
+      vector: await getEmbedding(latestQuery),
+      topK: 5,
+      includeMetadata: true
+    });
+
+    // Format response
+    const documents = searchResults.matches.map(match => ({
+      content: match.metadata.content,
+      similarity: match.score,
+      uuid: match.id
+    }));
+
+    res.json({ documents });
+  } catch (error) {
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
+app.listen(3000);
+```
+
+```python title="Python Example"
+from fastapi import FastAPI
+import weaviate
+from sentence_transformers import SentenceTransformer
+
+app = FastAPI()
+client = weaviate.Client("http://localhost:8080")
+
+@app.post("/kb/search")
+async def search_knowledge_base(request: dict):
+    try:
+        message = request.get('message', {})
+        user_messages = [msg for msg in message.get('messages', []) if msg.get('role') == 'user']
+        latest_query = user_messages[-1].get('content', '') if user_messages else ''
+
+        # Search your vector database
+        result = client.query.get("Document", ["content", "title"]) \
+            .with_near_text({"concepts": [latest_query]}) \
+            .with_limit(5) \
+            .with_additional(["certainty"]) \
+            .do()
+
+        documents = []
+        for doc in result['data']['Get']['Document']:
+            documents.append({
+                "content": doc['content'],
+                "similarity": doc['_additional']['certainty'],
+                "uuid": doc.get('title', 'unknown')
+            })
+
+        return {"documents": documents}
+    except Exception as error:
+        return {"error": str(error)}
+```
+</CodeBlocks>
+
+### Step 3: Create Custom Knowledge Base in Vapi
+
+<CodeBlocks>
+```bash title="cURL"
+curl --location 'https://api.vapi.ai/knowledge-base' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer YOUR_VAPI_API_KEY' \
+--data '{
+    "provider": "custom-knowledge-base",
+    "server": {
+        "url": "https://your-domain.com/kb/search",
+        "secret": "your-webhook-secret"
+    }
+}'
+```
+
+```typescript title="TypeScript SDK"
+const knowledgeBase = await vapi.knowledgeBases.create({
+  provider: "custom-knowledge-base",
+  server: {
+    url: "https://your-domain.com/kb/search",
+    secret: "your-webhook-secret"
+  }
+});
+```
+</CodeBlocks>
+
+### Step 4: Update Your Assistant
+
+Replace your Trieve knowledge base with the custom one:
+
+<CodeBlocks>
+```bash title="cURL"
+curl --location --request PATCH 'https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer YOUR_VAPI_API_KEY' \
+--data '{
+    "model": {
+        "model": "gpt-4o",
+        "provider": "openai",
+        "messages": [
+            {
+                "role": "system",
+                "content": "Your existing system prompt..."
+            }
+        ],
+        "knowledgeBaseId": "YOUR_NEW_KNOWLEDGE_BASE_ID"
+    }
+}'
+```
+
+```typescript title="TypeScript SDK"
+// Get existing configuration
+const existingAssistant = await vapi.assistants.get("YOUR_ASSISTANT_ID");
+
+// Update with new knowledge base
+const updatedAssistant = await vapi.assistants.update("YOUR_ASSISTANT_ID", {
+  model: {
+    ...existingAssistant.model,
+    knowledgeBaseId: knowledgeBase.id
+  }
+});
+```
+</CodeBlocks>
+
+## Migrating to Google Knowledge Base
+
+### Step 1: Prepare Your Files
+
+Your file preparation depends on how your Trieve knowledge base was originally created:
+
+#### Option A: User-Managed Trieve Dataset (Import Plan)
+If you created your knowledge base with your own Trieve dataset:
+
+1. Export your Trieve datasets as individual files
+2. Organize files by topic or domain
+3. Ensure files are in supported formats (`.txt`, `.pdf`, `.docx`, `.md`, etc.)
+4. Keep individual files under 300KB for optimal processing
+5. **Upload these files to Vapi** (you'll need them in Vapi to create the query tool)
+
+#### Option B: Vapi-Managed Trieve Dataset (Create Plan)
+If Vapi created and managed your Trieve dataset:
+
+1. Navigate to the **Files** page in your Vapi dashboard
+2. Locate the files that were used to create your Trieve knowledge base
+3. Note the **file IDs** - you'll use these directly to create your query tool
+4. **No need to download or re-upload** - the files are already in Vapi
+
+<Note>
+  **Files uploaded to Vapi are safe**: If your knowledge base was created using files uploaded to Vapi, those files remain available and are not affected by the Trieve shutdown.
+</Note>
+
+### Step 2: Upload Files to Vapi (Option A Only)
+
+<Note>
+  **This step is only required for Option A (User-Managed Trieve)**. If you're using Option B (Vapi-Managed), skip to Step 3 as your files are already in Vapi.
+</Note>
+
+If you exported files from your own Trieve dataset (Option A):
+
+1. Navigate to **Build > Files** in your Vapi dashboard
+2. Click **Upload** and select your exported files
+3. Wait for processing and note the generated file IDs
+
+### Step 3: Create Query Tool
+
+Create a query tool using your file IDs:
+
+- **Option A**: Use the file IDs from the files you just uploaded in Step 2
+- **Option B**: Use the existing file IDs you noted from your Vapi Files page
+
+For detailed instructions, see our [Query Tool documentation](/knowledge-base/using-query-tool).
+
+<Warning>
+  **Don't forget**: You must update your assistant's system prompt to explicitly name the tool to use. Add instructions like: "When users ask about products or support topics, use the 'knowledge-search' tool to search the knowledge base." Replace 'knowledge-search' with your actual tool function name.
+</Warning>
+
+<CodeBlocks>
+```bash title="cURL"
+curl --location 'https://api.vapi.ai/tool' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer YOUR_VAPI_API_KEY' \
+--data '{
+    "type": "query",
+    "function": {
+        "name": "knowledge-search"
+    },
+    "knowledgeBases": [
+        {
+            "provider": "google",
+            "name": "product-support-documentation",
+            "description": "Contains comprehensive information about our products, services, features, pricing, and technical support documentation. Includes troubleshooting guides and company information.",
+            "fileIds": [
+                "FILE_ID_1",
+                "FILE_ID_2",
+                "FILE_ID_3"
+            ]
+        }
+    ]
+}'
+```
+
+```typescript title="TypeScript SDK"
+const queryTool = await vapi.tools.create({
+  type: "query",
+  function: {
+    name: "knowledge-search"
+  },
+  knowledgeBases: [
+    {
+      provider: "google",
+      name: "product-support-documentation",
+      description: "Contains comprehensive information about our products, services, features, pricing, and technical support documentation. Includes troubleshooting guides and company information.",
+      fileIds: [
+        "FILE_ID_1", 
+        "FILE_ID_2", 
+        "FILE_ID_3"
+      ]
+    }
+  ]
+});
+```
+</CodeBlocks>
+
+### Step 4: Update Your Assistant
+
+Remove Trieve tools and add your new query tool:
+
+<CodeBlocks>
+```bash title="cURL"
+curl --location --request PATCH 'https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer YOUR_VAPI_API_KEY' \
+--data '{
+    "model": {
+        "model": "gpt-4o",
+        "provider": "openai",
+        "messages": [
+            {
+                "role": "system", 
+                "content": "Your existing system prompt..."
+            }
+        ],
+        "toolIds": ["YOUR_NEW_QUERY_TOOL_ID"]
+    }
+}'
+```
+
+```typescript title="TypeScript SDK"
+// Get existing assistant
+const existingAssistant = await vapi.assistants.get("YOUR_ASSISTANT_ID");
+
+// Update with new tool
+const updatedAssistant = await vapi.assistants.update("YOUR_ASSISTANT_ID", {
+  model: {
+    ...existingAssistant.model,
+    toolIds: [queryTool.id]
+  }
+});
+```
+</CodeBlocks>
+
+## Post-Migration Checklist
+
+After completing your migration:
+
+- [ ] **Test all assistants** to ensure knowledge retrieval is working
+- [ ] **Monitor response quality** and adjust configurations if needed
+- [ ] **Remove the old Trieve knowledge base** from Vapi using API.
+- [ ] **Remove Trieve credentials** from Vapi dashboard
+
+## Troubleshooting Common Issues
+
+### Poor Search Quality After Migration
+
+**Custom Knowledge Base:**
+- Verify your embedding model matches or exceeds Trieve's quality
+- Adjust similarity thresholds based on your model
+- Test different chunking strategies
+- Consider implementing hybrid search (semantic + keyword)
+
+**Google Knowledge Base:**
+- Review file formatting and structure
+- Optimize knowledge base descriptions
+- Test with different query phrasings
+- Consider splitting large files into smaller, focused documents
+
+### Performance Issues
+
+**Custom Knowledge Base:**
+- Implement caching for frequently searched content
+- Optimize your vector database configuration
+- Consider using faster embedding models for latency-critical applications
+- Monitor and optimize server response times
+
+**Google Knowledge Base:**
+- Ensure files are under 300KB each
+- Use clear, well-structured file formats
+- Minimize the number of files per knowledge base where possible
+
+## Next Steps
+
+Once you've completed your migration:
+
+- **[Custom Knowledge Base](/knowledge-base/custom-knowledge-base):** Learn advanced customization options
+- **[Query Tool Configuration](/knowledge-base/using-query-tool):** Optimize your Google knowledge base setup
+- **[Assistant Configuration](/assistants):** Fine-tune your assistant's knowledge base usage
