@@ -1,0 +1,537 @@
+---
+title: Custom Knowledge Base
+subtitle: Create and implement your own knowledge base server for full control over document retrieval
+slug: knowledge-base/custom-knowledge-base
+---
+
+## Overview
+
+Custom Knowledge Bases allow you to implement your own document retrieval server, giving you complete control over how your assistant searches and retrieves information. Instead of relying on Vapi's built-in knowledge base providers, you can integrate your own search infrastructure, vector databases, or custom retrieval logic.
+
+**With Custom Knowledge Bases, you can:**
+- Use your own vector database or search infrastructure
+- Implement custom retrieval algorithms and scoring
+- Integrate with existing document management systems
+- Apply custom business logic to document filtering
+- Maintain full control over data security and privacy
+
+## How Custom Knowledge Bases Work
+
+Custom Knowledge Bases operate through a webhook-style integration where Vapi forwards search requests to your server and expects structured responses containing relevant documents.
+
+<CardGroup cols={3}>
+  <Card title="User Query" icon="message-dots" iconType="solid">
+    User asks assistant a question during conversation
+  </Card>
+  <Card title="Search Request" icon="search" iconType="solid">
+    Vapi sends search request to your custom endpoint
+  </Card>
+  <Card title="Document Response" icon="file-text" iconType="solid">
+    Your server returns relevant documents or direct response
+  </Card>
+</CardGroup>
+
+## Creating a Custom Knowledge Base
+
+### Step 1: Create the Knowledge Base
+
+Use the Vapi API to create a custom knowledge base configuration:
+
+<CodeBlocks>
+```bash title="cURL"
+curl --location 'https://api.vapi.ai/knowledge-base' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer YOUR_VAPI_API_KEY' \
+--data '{
+    "provider": "custom-knowledge-base",
+    "server": {
+        "url": "https://your-domain.com/kb/search",
+        "secret": "your-webhook-secret"
+    }
+}'
+```
+
+```typescript title="TypeScript SDK"
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const vapi = new VapiClient({ 
+  token: process.env.VAPI_API_KEY 
+});
+
+try {
+  const knowledgeBase = await vapi.knowledgeBases.create({
+    provider: "custom-knowledge-base",
+    server: {
+      url: "https://your-domain.com/kb/search",
+      secret: "your-webhook-secret"
+    }
+  });
+  
+  console.log(`Custom Knowledge Base created: ${knowledgeBase.id}`);
+} catch (error) {
+  console.error("Failed to create knowledge base:", error);
+}
+```
+
+```python title="Python SDK"
+import os
+from vapi import Vapi
+
+client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+try:
+    knowledge_base = client.knowledge_bases.create(
+        provider="custom-knowledge-base",
+        server={
+            "url": "https://your-domain.com/kb/search",
+            "secret": "your-webhook-secret"
+        }
+    )
+    
+    print(f"Custom Knowledge Base created: {knowledge_base.id}")
+except Exception as error:
+    print(f"Failed to create knowledge base: {error}")
+```
+</CodeBlocks>
+
+### Step 2: Attach to Your Assistant
+
+<Note>
+  Custom knowledge bases can **only** be attached to assistants via the API. This functionality is not available through the dashboard interface.
+</Note>
+
+To attach a custom knowledge base to your assistant, update the assistant's model configuration. You must provide the **complete** model configuration including all existing messages, as partial patches are not supported for nested objects:
+
+<CodeBlocks>
+```bash title="cURL"
+curl --location --request PATCH 'https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer YOUR_VAPI_API_KEY' \
+--data '{
+    "model": {
+        "model": "gpt-4o",
+        "provider": "openai",
+        "messages": [
+            {
+                "role": "system",
+                "content": "Your existing system prompt and instructions..."
+            }
+        ],
+        "knowledgeBaseId": "YOUR_KNOWLEDGE_BASE_ID"
+    }
+}'
+```
+
+```typescript title="TypeScript SDK"
+// First, get the existing assistant to preserve current configuration
+const existingAssistant = await vapi.assistants.get("YOUR_ASSISTANT_ID");
+
+const updatedAssistant = await vapi.assistants.update("YOUR_ASSISTANT_ID", {
+  model: {
+    ...existingAssistant.model, // Preserve existing model configuration
+    knowledgeBaseId: "YOUR_KNOWLEDGE_BASE_ID" // Add knowledge base
+  }
+});
+```
+
+```python title="Python SDK"
+# First, get the existing assistant to preserve current configuration
+existing_assistant = client.assistants.get(id="YOUR_ASSISTANT_ID")
+
+updated_assistant = client.assistants.update(
+    id="YOUR_ASSISTANT_ID",
+    model={
+        **existing_assistant.model,  # Preserve existing model configuration
+        "knowledgeBaseId": "YOUR_KNOWLEDGE_BASE_ID"  # Add knowledge base
+    }
+)
+```
+</CodeBlocks>
+
+<Warning>
+  When updating an assistant's model, you must include the **complete model object** including all existing messages and configuration. The API replaces the entire model object and doesn't support partial updates for nested objects.
+</Warning>
+
+## Implementing the Custom Endpoint
+
+Your custom knowledge base server must handle POST requests at the configured URL and return structured responses.
+
+### Request Structure
+
+Vapi will send requests to your endpoint with the following structure:
+
+```json title="Request Format"
+{
+  "message": {
+    "type": "knowledge-base-request",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is your return policy?"
+      },
+      {
+        "role": "assistant", 
+        "content": "I'll help you with information about our return policy."
+      },
+      {
+        "role": "user",
+        "content": "How long do I have to return items?"
+      }
+    ]
+    // Additional metadata fields about the call or chat will be included here
+  }
+}
+```
+
+### Response Options
+
+Your endpoint can respond in two ways:
+
+#### Option 1: Return Documents for AI Processing
+
+Return an array of relevant documents that the AI will use to formulate a response:
+
+```json title="Document Response"
+{
+  "documents": [
+    {
+      "content": "Our return policy allows customers to return items within 30 days of purchase for a full refund. Items must be in original condition with tags attached.",
+      "similarity": 0.92,
+      "uuid": "doc-return-policy-1" // optional
+    },
+    {
+      "content": "Extended return periods apply during holiday seasons - customers have up to 60 days to return items purchased between November 1st and December 31st.",
+      "similarity": 0.78,
+      "uuid": "doc-return-policy-holiday" // optional
+    }
+  ]
+}
+```
+
+#### Option 2: Return Direct Response
+
+Return a complete response that the assistant will speak directly:
+
+```json title="Direct Response"
+{
+  "message": {
+    "role": "assistant",
+    "content": "You have 30 days to return items for a full refund. Items must be in original condition with tags attached. During the holiday season (November 1st to December 31st), you get an extended 60-day return period."
+  }
+}
+```
+
+### Implementation Examples
+
+Here are complete server implementations in different languages:
+
+<CodeBlocks>
+```typescript title="Node.js/Express"
+import express from 'express';
+import crypto from 'crypto';
+
+const app = express();
+app.use(express.json());
+
+// Your knowledge base data (replace with actual database/vector store)
+const documents = [
+  {
+    id: "return-policy-1",
+    content: "Our return policy allows customers to return items within 30 days of purchase for a full refund. Items must be in original condition with tags attached.",
+    category: "returns"
+  },
+  {
+    id: "shipping-info-1", 
+    content: "We offer free shipping on orders over $50. Standard shipping takes 3-5 business days.",
+    category: "shipping"
+  }
+];
+
+app.post('/kb/search', (req, res) => {
+  try {
+    // Verify webhook secret (recommended)
+    const signature = req.headers['x-vapi-signature'];
+    const secret = process.env.VAPI_WEBHOOK_SECRET;
+    
+    if (signature && secret) {
+      const expectedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(JSON.stringify(req.body))
+        .digest('hex');
+        
+      if (signature !== `sha256=${expectedSignature}`) {
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const { message } = req.body;
+    
+    if (message.type !== 'knowledge-base-request') {
+      return res.status(400).json({ error: 'Invalid request type' });
+    }
+
+    // Get the latest user message
+    const userMessages = message.messages.filter(msg => msg.role === 'user');
+    const latestQuery = userMessages[userMessages.length - 1]?.content || '';
+
+    // Simple keyword-based search (replace with vector search)
+    const relevantDocs = documents
+      .map(doc => ({
+        ...doc,
+        similarity: calculateSimilarity(latestQuery, doc.content)
+      }))
+      .filter(doc => doc.similarity > 0.1)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 3);
+
+    // Return documents for AI processing
+    res.json({
+      documents: relevantDocs.map(doc => ({
+        content: doc.content,
+        similarity: doc.similarity,
+        uuid: doc.id
+      }))
+    });
+
+  } catch (error) {
+    console.error('Knowledge base search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+function calculateSimilarity(query: string, content: string): number {
+  // Simple similarity calculation (replace with proper vector similarity)
+  const queryWords = query.toLowerCase().split(' ');
+  const contentWords = content.toLowerCase().split(' ');
+  const matches = queryWords.filter(word => 
+    contentWords.some(cWord => cWord.includes(word))
+  ).length;
+  
+  return matches / queryWords.length;
+}
+
+app.listen(3000, () => {
+  console.log('Custom Knowledge Base server running on port 3000');
+});
+```
+
+```python title="Python/FastAPI"
+from fastapi import FastAPI, HTTPException, Request
+import hashlib
+import hmac
+import os
+from typing import List, Dict, Any
+import uvicorn
+
+app = FastAPI()
+
+# Your knowledge base data (replace with actual database/vector store)
+documents = [
+    {
+        "id": "return-policy-1",
+        "content": "Our return policy allows customers to return items within 30 days of purchase for a full refund. Items must be in original condition with tags attached.",
+        "category": "returns"
+    },
+    {
+        "id": "shipping-info-1",
+        "content": "We offer free shipping on orders over $50. Standard shipping takes 3-5 business days.",
+        "category": "shipping"
+    }
+]
+
+@app.post("/kb/search")
+async def knowledge_base_search(request: Request):
+    try:
+        body = await request.json()
+        
+        # Verify webhook secret (recommended)
+        signature = request.headers.get('x-vapi-signature')
+        secret = os.getenv('VAPI_WEBHOOK_SECRET')
+        
+        if signature and secret:
+            body_bytes = await request.body()
+            expected_signature = f"sha256={hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()}"
+            
+            if signature != expected_signature:
+                raise HTTPException(status_code=401, detail="Invalid signature")
+
+        message = body.get('message', {})
+        
+        if message.get('type') != 'knowledge-base-request':
+            raise HTTPException(status_code=400, detail="Invalid request type")
+
+        # Get the latest user message
+        user_messages = [msg for msg in message.get('messages', []) if msg.get('role') == 'user']
+        latest_query = user_messages[-1].get('content', '') if user_messages else ''
+
+        # Simple keyword-based search (replace with vector search)
+        relevant_docs = []
+        for doc in documents:
+            similarity = calculate_similarity(latest_query, doc['content'])
+            if similarity > 0.1:
+                relevant_docs.append({
+                    **doc,
+                    'similarity': similarity
+                })
+
+        # Sort by similarity and take top 3
+        relevant_docs.sort(key=lambda x: x['similarity'], reverse=True)
+        relevant_docs = relevant_docs[:3]
+
+        # Return documents for AI processing
+        return {
+            "documents": [
+                {
+                    "content": doc['content'],
+                    "similarity": doc['similarity'],
+                    "uuid": doc['id']
+                }
+                for doc in relevant_docs
+            ]
+        }
+
+    except Exception as error:
+        print(f"Knowledge base search error: {error}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+def calculate_similarity(query: str, content: str) -> float:
+    """Simple similarity calculation (replace with proper vector similarity)"""
+    query_words = query.lower().split()
+    content_words = content.lower().split()
+    
+    matches = sum(1 for word in query_words 
+                  if any(word in cword for cword in content_words))
+    
+    return matches / len(query_words) if query_words else 0
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+</CodeBlocks>
+
+## Advanced Implementation Patterns
+
+### Vector Database Integration
+
+For production use, integrate with a proper vector database:
+
+<CodeBlocks>
+```typescript title="Pinecone Integration"
+import { PineconeClient } from '@pinecone-database/pinecone';
+import OpenAI from 'openai';
+
+const pinecone = new PineconeClient();
+const openai = new OpenAI();
+
+app.post('/kb/search', async (req, res) => {
+  try {
+    const { message } = req.body;
+    const latestQuery = getLatestUserMessage(message);
+
+    // Generate embedding for the query
+    const embedding = await openai.embeddings.create({
+      model: 'text-embedding-ada-002',
+      input: latestQuery
+    });
+
+    // Search vector database
+    const index = pinecone.Index('knowledge-base');
+    const searchResults = await index.query({
+      vector: embedding.data[0].embedding,
+      topK: 5,
+      includeMetadata: true
+    });
+
+    // Format response
+    const documents = searchResults.matches.map(match => ({
+      content: match.metadata.content,
+      similarity: match.score,
+      uuid: match.id
+    }));
+
+    res.json({ documents });
+  } catch (error) {
+    console.error('Vector search error:', error);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+```
+
+```python title="Weaviate Integration"
+import weaviate
+from sentence_transformers import SentenceTransformer
+
+client = weaviate.Client("http://localhost:8080")
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+@app.post("/kb/search")
+async def search_with_weaviate(request: Request):
+    try:
+        body = await request.json()
+        message = body.get('message', {})
+        latest_query = get_latest_user_message(message)
+
+        # Search using Weaviate
+        result = client.query.get("Document", ["content", "title"]) \
+            .with_near_text({"concepts": [latest_query]}) \
+            .with_limit(5) \
+            .with_additional(["certainty"]) \
+            .do()
+
+        documents = []
+        for doc in result['data']['Get']['Document']:
+            documents.append({
+                "content": doc['content'],
+                "similarity": doc['_additional']['certainty'],
+                "uuid": doc.get('title', 'unknown')
+            })
+
+        return {"documents": documents}
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+```
+</CodeBlocks>
+
+## Security and Best Practices
+
+### Performance Optimization
+
+<Warning>
+  **Response time is critical**: Your endpoint should respond in **milliseconds** (ideally under ~50ms) for optimal user experience. While Vapi allows up to 10 seconds timeout, slower responses will significantly affect your assistant's conversational flow and response quality.
+</Warning>
+
+<Tip>
+  **Cache frequently requested documents** and implement request timeouts to ensure fast response times. Consider using in-memory caches, CDNs, or pre-computed embeddings for faster retrieval.
+</Tip>
+
+### Error Handling
+
+Always handle errors gracefully and return appropriate HTTP status codes:
+
+```typescript
+app.post('/kb/search', async (req, res) => {
+  try {
+    // Your search logic here
+  } catch (error) {
+    console.error('Search error:', error);
+    
+    // Return empty documents rather than failing
+    res.json({ 
+      documents: [],
+      error: "Search temporarily unavailable"
+    });
+  }
+});
+```
+
+## Next Steps
+
+Now that you have a custom knowledge base implementation:
+
+- **[Query Tool Configuration](/knowledge-base/using-query-tool):** Learn advanced query tool configurations
+- **[Vector Databases](/knowledge-base/integrating-with-trieve):** Explore vector database integrations
+- **[Assistant Configuration](/assistants):** Optimize your assistant's use of knowledge bases
+
+<Note>
+  Custom Knowledge Bases require a webhook endpoint that's publicly accessible. For production deployments, ensure your server can handle concurrent requests and has appropriate error handling and monitoring in place.
+</Note>
