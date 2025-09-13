@@ -1,16 +1,388 @@
 ---
 title: OpenAI Realtime
-subtitle: You can use OpenAI's newest speech-to-speech model with your Vapi assistants.
+subtitle: Build voice assistants with OpenAI's native speech-to-speech models for ultra-low latency conversations
 slug: openai-realtime
 ---
 
-<Note>
-  The Realtime API is currently in beta, and not recommended for production use by OpenAI. We're excited to have you try this new feature and welcome your [feedback](https://discord.com/invite/pUFNcf2WmH) as we continue to refine and improve the experience.
-</Note>
+## Overview
 
 OpenAI’s Realtime API enables developers to use a native speech-to-speech model. Unlike other Vapi configurations which orchestrate a transcriber, model and voice API to simulate speech-to-speech, OpenAI’s Realtime API natively processes audio in and audio out.
 
-To start using it with your Vapi assistants, select `gpt-4o-realtime-preview-2024-12-17` as your model. 
-- Please note that only OpenAI voices may be selected while using this model. The voice selection will not act as a TTS (text-to-speech) model, but rather as the voice used within the speech-to-speech model.
-- Also note that we don’t currently support Knowledge Bases with the Realtime API.
-- Lastly, note that our Realtime integration still retains the rest of Vapi's orchestration layer such as Endpointing and Interruption models to enable a reliable conversational flow.
+**In this guide, you'll learn to:**
+- Choose the right realtime model for your use case
+- Configure voice assistants with realtime capabilities
+- Implement best practices for production deployments
+- Optimize prompts specifically for realtime models
+
+## Available models
+
+<Tip>
+  The `gpt-realtime-2025-08-28` model is production-ready.
+</Tip>
+
+OpenAI offers three realtime models, each with different capabilities and cost/performance trade-offs:
+
+| Model | Status | Best For | Key Features |
+|-------|---------|----------|--------------|
+| `gpt-realtime-2025-08-28` | **Production** | Production workloads | Production Ready |
+| `gpt-4o-realtime-preview-2024-12-17` | Preview | Development & testing | Balanced performance/cost |
+| `gpt-4o-mini-realtime-preview-2024-12-17` | Preview | Cost-sensitive apps | Lower latency, reduced cost |
+
+## Voice options
+
+Realtime models support a specific set of OpenAI voices optimized for speech-to-speech:
+
+<CardGroup cols={2}>
+  <Card title="Standard Voices" icon="microphone">
+    Available across all realtime models:
+    - `alloy` - Neutral and balanced
+    - `echo` - Warm and engaging  
+    - `shimmer` - Energetic and expressive
+  </Card>
+  <Card title="Realtime-Exclusive Voices" icon="sparkles">
+    Only available with realtime models:
+    - `marin` - Professional and clear
+    - `cedar` - Natural and conversational
+  </Card>
+</CardGroup>
+
+<Warning>
+  The following voices are **NOT** supported by realtime models: ash, ballad, coral, fable, onyx, and nova.
+</Warning>
+
+## Configuration
+
+### Basic setup
+
+Configure a realtime assistant with function calling:
+
+<CodeBlocks>
+```json title="Assistant Configuration"
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-realtime-2025-08-28",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a helpful assistant. Be concise and friendly."
+      }
+    ],
+    "temperature": 0.7,
+    "maxTokens": 250,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "getWeather",
+          "description": "Get the current weather",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "The city name"
+              }
+            },
+            "required": ["location"]
+          }
+        }
+      }
+    ]
+  },
+  "voice": {
+    "provider": "openai",
+    "voiceId": "alloy"
+  }
+}
+```
+```typescript title="TypeScript SDK"
+import { Vapi } from '@vapi-ai/server-sdk';
+
+const vapi = new Vapi({ token: process.env.VAPI_API_KEY });
+
+const assistant = await vapi.assistants.create({
+  model: {
+    provider: "openai",
+    model: "gpt-realtime-2025-08-28",
+    messages: [{
+      role: "system",
+      content: "You are a helpful assistant. Be concise and friendly."
+    }],
+    temperature: 0.7,
+    maxTokens: 250,
+    tools: [{
+      type: "function",
+      function: {
+        name: "getWeather",
+        description: "Get the current weather",
+        parameters: {
+          type: "object",
+          properties: {
+            location: {
+              type: "string",
+              description: "The city name"
+            }
+          },
+          required: ["location"]
+        }
+      }
+    }]
+  },
+  voice: {
+    provider: "openai",
+    voiceId: "alloy"
+  }
+});
+```
+```python title="Python SDK"
+from vapi import Vapi
+
+vapi = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+assistant = vapi.assistants.create(
+    model={
+        "provider": "openai",
+        "model": "gpt-realtime-2025-08-28",
+        "messages": [{
+            "role": "system",
+            "content": "You are a helpful assistant. Be concise and friendly."
+        }],
+        "temperature": 0.7,
+        "maxTokens": 250,
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "getWeather",
+                "description": "Get the current weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "The city name"
+                        }
+                    },
+                    "required": ["location"]
+                }
+            }
+        }]
+    },
+    voice={
+        "provider": "openai",
+        "voiceId": "alloy"
+    }
+)
+```
+</CodeBlocks>
+
+### Using realtime-exclusive voices
+
+To use the enhanced voices only available with realtime models:
+
+```json
+{
+  "voice": {
+    "provider": "openai",
+    "voiceId": "marin"  // or "cedar"
+  }
+}
+```
+
+### Handling instructions
+
+<Info>
+  Unlike traditional OpenAI models, realtime models receive instructions through the session configuration. Vapi automatically converts your system messages to session instructions during WebSocket initialization.
+</Info>
+
+The system message in your model configuration is automatically optimized for realtime processing:
+
+1. System messages are converted to session instructions
+2. Instructions are sent during WebSocket session initialization  
+3. The instructions field supports the same prompting strategies as system messages
+
+## Prompting best practices
+
+<Note>
+  Realtime models benefit from different prompting techniques than text-based models. These guidelines are based on [OpenAI's official prompting guide](https://cookbook.openai.com/examples/realtime_prompting_guide).
+</Note>
+
+### General tips
+
+- **Iterate relentlessly**: Small wording changes can significantly impact behavior
+- **Use bullet points over paragraphs**: Clear, short bullets outperform long text blocks
+- **Guide with examples**: The model closely follows sample phrases you provide
+- **Be precise**: Ambiguity or conflicting instructions degrade performance
+- **Control language**: Pin output to a target language to prevent unwanted switching
+- **Reduce repetition**: Add variety rules to avoid robotic phrasing
+- **Capitalize for emphasis**: Use CAPS for key rules to make them stand out
+
+### Prompt structure
+
+Organize your prompts with clear sections for better model comprehension:
+
+```
+# Role & Objective
+You are a customer service agent for Acme Corp. Your goal is to resolve issues quickly.
+
+# Personality & Tone  
+- Friendly, professional, and empathetic
+- Speak naturally at a moderate pace
+- Keep responses to 2-3 sentences
+
+# Instructions
+- Greet callers warmly
+- Ask clarifying questions before offering solutions
+- Always confirm understanding before proceeding
+
+# Tools
+Use the available tools to look up account information and process requests.
+
+# Safety
+If a caller becomes aggressive or requests something outside your scope, 
+politely offer to transfer them to a specialist.
+```
+
+### Realtime-specific techniques
+
+<Tabs>
+  <Tab title="Speaking Speed">
+    Control the model's speaking pace with explicit instructions:
+    
+    ```
+    ## Pacing
+    - Deliver responses at a natural, conversational speed
+    - Do not rush through information
+    - Pause briefly between key points
+    ```
+  </Tab>
+  <Tab title="Personality">
+    Realtime models excel at maintaining consistent personality:
+    
+    ```
+    ## Personality
+    - Warm and approachable like a trusted advisor
+    - Professional but not robotic
+    - Show genuine interest in helping
+    ```
+  </Tab>
+  <Tab title="Conversation Flow">
+    Guide natural conversation progression:
+    
+    ```
+    ## Conversation Flow
+    1. Greeting: Welcome caller and ask how you can help
+    2. Discovery: Understand their specific needs
+    3. Solution: Offer the best available option
+    4. Confirmation: Ensure they're satisfied before ending
+    ```
+  </Tab>
+</Tabs>
+
+## Migration guide
+
+Transitioning from standard STT/TTS to realtime models:
+
+<Steps>
+  <Step title="Update your model configuration">
+    Change your model to one of the realtime options:
+    ```json
+    {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-realtime-2025-08-28"  // Changed from gpt-4
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Verify voice compatibility">
+    Ensure your selected voice is supported (alloy, echo, shimmer, marin, or cedar)
+  </Step>
+  
+  <Step title="Remove transcriber configuration">
+    Realtime models handle speech-to-speech natively, so transcriber settings are not needed
+  </Step>
+  
+  <Step title="Test function calling">
+    Your existing function configurations work unchanged with realtime models
+  </Step>
+  
+  <Step title="Optimize your prompts">
+    Apply realtime-specific prompting techniques for best results
+  </Step>
+</Steps>
+
+## Best practices
+
+### Model selection strategy
+
+<AccordionGroup>
+  <Accordion title="When to use gpt-realtime-2025-08-28">
+    **Best for production workloads requiring:**
+    - Structured outputs for form filling or data collection
+    - Complex function orchestration
+    - Highest quality voice interactions
+    - Responses API integration
+  </Accordion>
+  
+  <Accordion title="When to use gpt-4o-realtime-preview">
+    **Best for development and testing:**
+    - Prototyping voice applications
+    - Balanced cost/performance during development
+    - Testing conversation flows before production
+  </Accordion>
+  
+  <Accordion title="When to use gpt-4o-mini-realtime-preview">
+    **Best for cost-sensitive applications:**
+    - High-volume voice interactions
+    - Simple Q&A or routing scenarios
+    - Applications where latency is critical
+  </Accordion>
+</AccordionGroup>
+
+### Performance optimization
+
+- **Temperature settings**: Use 0.5-0.7 for consistent yet natural responses
+- **Max tokens**: Set appropriate limits (200-300) for conversational responses
+- **Voice selection**: Test different voices to match your brand personality
+- **Function design**: Keep function schemas simple for faster execution
+
+### Error handling
+
+Handle edge cases gracefully:
+
+```json
+{
+  "messages": [{
+    "role": "system", 
+    "content": "If you don't understand the user, politely ask them to repeat. Never make assumptions about unclear requests."
+  }]
+}
+```
+
+## Current limitations
+
+<Warning>
+  Be aware of these limitations when implementing realtime models:
+</Warning>
+
+- **Knowledge Bases** are not currently supported with the Realtime API
+- **Endpointing and Interruption** models are managed by Vapi's orchestration layer
+- **Custom voice cloning** is not available for realtime models
+- **Some OpenAI voices** (ash, ballad, coral, fable, onyx, nova) are incompatible
+- **Transcripts** may have slight differences from traditional STT output
+
+## Additional resources
+
+- [OpenAI Realtime Documentation](https://platform.openai.com/docs/guides/realtime)
+- [Realtime Prompting Guide](https://platform.openai.com/docs/guides/realtime-models-prompting)
+- [Prompting Cookbook](https://cookbook.openai.com/examples/realtime_prompting_guide)
+- [Vapi Discord Community](https://discord.com/invite/pUFNcf2WmH)
+
+## Next steps
+
+Now that you understand OpenAI Realtime models:
+- **[Phone Calling Guide](/phone-calling):** Set up inbound and outbound calling
+- **[Assistant Hooks](/assistants/assistant-hooks):** Add custom logic to your conversations
+- **[Voice Providers](/providers/voice/openai):** Explore other voice options
