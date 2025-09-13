@@ -174,22 +174,27 @@ Uses AI models to analyze speech patterns, context, and audio cues to predict wh
     ```
   </Tab>
   <Tab title="Providers">
-    **livekit**  
-    Advanced model trained on conversation data (recommended for English)
-
-    **vapi**
-    Alternative VAPI-trained model
+    **Text-based providers:**
+    - **livekit**: Advanced model trained on conversation data (English only)
+    - **vapi**: VAPI-trained model (non-English conversations or LiveKit alternative)
+    
+    **Audio-based providers:**
+    - **krisp**: Audio-based model analyzing prosodic features (intonation, pitch, rhythm)
+    
+    **Audio-text based providers:**
+    - **assembly**: Transcriber with built-in end-of-turn detection (English only)
 
   </Tab>
 </Tabs>
 
 **When to use:**
 
-- English conversations
-- Natural conversation flow requirements
-- Reduced false endpointing triggers
+- **LiveKit**: English conversations requiring sophisticated speech pattern analysis
+- **Vapi**: Non-English conversations with default stop speaking plan settings
+- **Krisp**: Non-English conversations with a robustly configured stop speaking plan
+- **Assembly**: Best used when Assembly is already your transcriber provider for English conversations with integrated end-of-turn detection
 
-### Wait function
+### LiveKit's Wait function
 
 Mathematical expression that determines wait time based on speech completion probability. The function takes a confidence value (0-1) and returns a wait time in milliseconds.
 
@@ -222,6 +227,83 @@ Mathematical expression that determines wait time based on speech completion pro
 - **Behavior:** Very patient, rarely interrupts users
 - **Use case:** Healthcare, formal settings, sensitive conversations
 - **Timing:** ~2700ms wait at 50% confidence, ~700ms at 90% confidence
+
+### Krisp threshold configuration
+
+Krisp's audio-base model returns a probability between 0 and 1, where 1 means the user definitely stopped speaking and 0 means they're still speaking.
+
+**Threshold settings:**
+
+- **0.0-0.3:** Very aggressive detection - responds quickly but may interrupt users mid-sentence
+- **0.4-0.6:** Balanced detection (default: 0.5) - good balance between responsiveness and accuracy
+- **0.7-1.0:** Conservative detection - waits longer to ensure users have finished speaking
+
+**Configuration example:**
+
+```json
+{
+  "startSpeakingPlan": {
+    "smartEndpointingPlan": {
+      "provider": "krisp",
+      "threshold": 0.5
+    }
+  }
+}
+```
+
+**Important considerations:**
+Since Krisp is audio-based, it always notifies when the user is done speaking, even for brief acknowledgments. Configure the stop speaking plan with appropriate `acknowledgementPhrases` and `numWords` settings to handle backchanneling properly.
+
+### Assembly turn detection
+
+AssemblyAI's turn detection model uses a neural network to detect when someone has finished speaking. The model understands the meaning and flow of speech to make better decisions about when a turn has ended.
+
+When the model detects an end-of-turn, it returns `end_of_turn=True` in the response.
+
+**Quick start configurations:**
+
+To use Assembly's turn detection, set Assembly as your transcriber provider and configure these fields in the assistant's transcriber (**do not set any smartEndpointingPlan**):
+
+**Aggressive (Fast Response):**
+
+```json
+{
+  "endOfTurnConfidenceThreshold": 0.4,
+  "minEndOfTurnSilenceWhenConfident": 160,
+  "maxTurnSilence": 400
+}
+```
+
+- **Use cases:** Agent Assist, IVR replacements, Retail/E-commerce, Telecom
+- **Behavior:** Ends turns very quickly, optimized for short responses
+
+**Balanced (Natural Flow):**
+
+```json
+{
+  "endOfTurnConfidenceThreshold": 0.4,
+  "minEndOfTurnSilenceWhenConfident": 400,
+  "maxTurnSilence": 1280
+}
+```
+
+- **Use cases:** Customer Support, Tech Support, Financial Services, Travel & Hospitality
+- **Behavior:** Natural middle ground, allowing enough pause for conversational turns
+
+**Conservative (Patient Response):**
+
+```json
+{
+  "endOfTurnConfidenceThreshold": 0.7,
+  "minEndOfTurnSilenceWhenConfident": 800,
+  "maxTurnSilence": 3600
+}
+```
+
+- **Use cases:** Healthcare, Mental Health Support, Sales & Consulting, Legal & Insurance
+- **Behavior:** Holds the floor longer, optimized for reflective or complex speech
+
+For detailed information about how Assembly's turn detection works, see the [AssemblyAI Turn Detection documentation](https://www.assemblyai.com/docs/speech-to-text/universal-streaming/turn-detection).
 
 ### Wait seconds
 
@@ -453,6 +535,58 @@ User Interrupts → Assistant Audio Stopped → backoffSeconds Blocks All Output
 ```
 
 **Optimized for:** Text-based endpointing with longer timeouts for different speech patterns and international support.
+
+### Audio-based endpointing (Krisp example)
+
+```json
+{
+  "startSpeakingPlan": {
+    "waitSeconds": 0.4,
+    "smartEndpointingPlan": {
+      "provider": "krisp",
+      "threshold": 0.5
+    }
+  },
+  "stopSpeakingPlan": {
+    "numWords": 2,
+    "voiceSeconds": 0.2,
+    "backoffSeconds": 1.0,
+    "acknowledgementPhrases": [
+      "okay",
+      "right",
+      "uh-huh",
+      "yeah",
+      "mm-hmm",
+      "got it"
+    ]
+  }
+}
+```
+
+**Optimized for:** Non-English conversations with robust backchanneling configuration to handle audio-based detection limitations.
+
+### Audio-text based endpointing (Assembly example)
+
+```json
+{
+  "transcriber": {
+    "provider": "assembly",
+    "endOfTurnConfidenceThreshold": 0.4,
+    "minEndOfTurnSilenceWhenConfident": 400,
+    "maxTurnSilence": 1280
+  },
+  "startSpeakingPlan": {
+    "waitSeconds": 0.4
+  },
+  "stopSpeakingPlan": {
+    "numWords": 0,
+    "voiceSeconds": 0.2,
+    "backoffSeconds": 1.0
+  }
+}
+```
+
+**Optimized for:** English conversations with integrated transcriber and sophisticated end-of-turn detection.
 
 ### Education and training
 
