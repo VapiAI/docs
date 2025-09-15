@@ -1,6 +1,6 @@
 ---
-title: Custom Keywords
-subtitle: Enhanced transcription accuracy guide
+title: Deepgram Keywords and Keyterm Prompting
+subtitle: Boost STT accuracy for domain words and phrases
 slug: customization/custom-keywords
 ---
 
@@ -18,21 +18,25 @@ Keyword boosting is beneficial for:
 ### Important Notes
 
 - Keywords should be uncommon words or proper nouns not frequently recognized by the model.
-- Custom model training is the most effective way to ensure accurate keyword recognition.
-- For more than 50 keywords, consider custom model training by contacting Deepgram.
+- Use single words for `keywords` (no spaces or punctuation). For multi-word phrases, use `keyterm` instead.
+- Custom model training is the most effective way to ensure accurate keyword recognition when you need extensive vocabulary coverage.
+
+### Model support
+
+- Keywords is available on Deepgram Nova-2, Nova-1, Enhanced, and Base speech-to-text models.
+- For Nova-3 models, use Keyterm Prompting instead of Keywords.
 
 ## Enabling Keyword Boosting in Vapi
 
 ### API Call Integration
 
-To enable keyword boosting, you need to add a `keywords` parameter to your Vapi assistant's transcriber section. This parameter should include the keywords and their respective intensifiers.
+To enable keyword boosting, add the `keywords` parameter to your assistant's `transcriber` configuration when using the Deepgram provider. You can also supply `keyterm` to boost recall for phrases.
 
 ### Example of POST Request
 
 To create an assistant with keyword boosting enabled, you can make the following POST request to Vapi:
 
 ```bash
-bashCopy code
 curl \
   --request POST \
   --header 'Authorization: Bearer <token>' \
@@ -40,27 +44,33 @@ curl \
   --data '{
     "name": "Emma",
     "model": {
-        "model": "gpt-4o",
-        "provider": "openai"
+      "model": "gpt-4o",
+      "provider": "openai"
     },
     "voice": {
-        "voiceId": "emma",
-        "provider": "azure"
+      "voiceId": "emma",
+      "provider": "azure"
     },
     "transcriber": {
-        "provider": "deepgram",
-        "model": "nova-2",
-        "language": "bg",
-        "smartFormat": true,
-        "keywords": [
-            "snuffleupagus:1"
-        ]
+      "provider": "deepgram",
+      "model": "nova-2",
+      "language": "en",
+      "smartFormat": true,
+      "keywords": [
+        "snuffleupagus:5",
+        "systrom",
+        "krieger"
+      ],
+      "keyterm": [
+        "order number",
+        "account ID",
+        "PCI compliance"
+      ]
     },
     "firstMessage": "Hi, I am Emma, what is your name?",
     "firstMessageMode": "assistant-speaks-first"
   }' \
   https://api.vapi.ai/assistant
-
 ```
 
 In this configuration:
@@ -68,28 +78,44 @@ In this configuration:
 - **name**: The name of the assistant.
 - **model**: Specifies the model and provider for the assistant's conversational capabilities.
 - **voice**: Specifies the voice and provider for the assistant's speech.
-- **transcriber**: Specifies Deepgram as the transcription provider, along with the model, language, smart formatting, and keywords for boosting.
+- **transcriber**: Specifies Deepgram as the transcription provider, along with the model, language, smart formatting, and both `keywords` (single words) and `keyterm` (phrases) for boosting.
 - **firstMessage**: The initial message the assistant will speak.
 - **firstMessageMode**: Specifies that the assistant speaks first.
 
-### Intensifiers
+### Format and intensifiers
 
-Intensifiers are exponential factors that boost or suppress the likelihood of the specified keyword being recognized. The default intensifier is `1`. Higher values increase the likelihood, while `0` is equivalent to not specifying a keyword.
+The `keywords` array accepts single-word tokens consisting of letters and digits, with an optional integer intensifier after a colon:
+
+- Accepted forms: `apple`, `apple:3`, `apple:-2`
+- Not accepted: `order number` (use `keyterm`), `hello-world`, `foo_bar`, `rate:1.5` (decimals are not supported by this schema)
+
+Intensifiers are exponential factors that boost or suppress the likelihood of the specified keyword being recognized. The default intensifier is `1`. Higher values increase the likelihood, while `0` is equivalent to not specifying a keyword. Negative values suppress recognition.
 
 - **Boosting Example:** `keywords=snuffleupagus:5`
 - **Suppressing Example:** `keywords=kansas:-10`
 
-### Best Practices for Keyword Boosting
+### Keyterm prompting (phrases)
 
-1. **Send Uncommon Keywords:** Focus on keywords not successfully transcribed by the model.
-2. **Send Keywords Once:** Avoid repeating keywords.
-3. **Use Individual Keywords:** Prefer individual terms over phrases.
-4. **Use Proper Spelling:** Spell proper nouns as you want them to appear in transcripts.
-5. **Moderate Intensifiers:** Start with small increments to avoid false positives.
-6. **Custom Model Training:** For extensive vocabulary needs, consider custom model training.
+Deepgram's Keyterm Prompting improves Keyword Recall Rate (KRR) for important keyterms or phrases. Use `keyterm` for multi‑word phrases you want the model to detect more reliably. Unlike `keywords`, keyterms are specified as plain strings without intensifiers.
+
+Example: `"keyterm": ["account number", "confirmation code", "HIPAA compliance"]`
+
+### Best Practices for Keyword and Keyterm Boosting
+
+1. **Start small:** Begin without any boosting; add keywords/keyterms only where needed.
+2. **Send uncommon words:** Focus on proper nouns or domain terms the model often misses.
+3. **Use `keywords` for single words; `keyterm` for phrases:** Avoid spaces in `keywords`.
+4. **Avoid duplicates:** Send each keyword once; duplicates don't improve results.
+5. **Moderate intensifiers:** Use minimal integer boosts to reduce false positives; increase cautiously.
+6. **Correct spelling/casing:** Provide the spelling and capitalization you want in transcripts.
+7. **Consider custom models:** For extensive vocabularies, consider custom model training with Deepgram.
 
 ### Additional Resources
 
-For more detailed information on Deepgram's keyword boosting feature, refer to the Deepgram Keyword Boosting Documentation.
+For more details, see:
+
+- Deepgram Keywords: [developers.deepgram.com/docs/keywords](https://developers.deepgram.com/docs/keywords)
+- Deepgram Keyterm Prompting: [developers.deepgram.com/docs/keyterm](https://developers.deepgram.com/docs/keyterm)
+- API reference: Deepgram transcriber `keywords` and `keyterm` in the [API reference](https://api.vapi.ai/api#:~:text=DeepgramTranscriber)
 
 By following these guidelines, you can effectively utilize Deepgram's keyword boosting feature within your Vapi assistant, ensuring enhanced transcription accuracy for specialized terminology and uncommon proper nouns.
