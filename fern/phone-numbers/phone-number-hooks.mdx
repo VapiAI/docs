@@ -5,16 +5,66 @@ slug: phone-numbers/phone-number-hooks
 
 ## Overview
 
-Phone number hooks allow you to configure actions that will be performed when specific events occur during a call. Currently, hooks support the `call.ringing` event (which is triggered when a call is ringing).
+Phone number hooks allow you to configure actions that will be performed when specific events occur during a call.
+
+Supported events:
+
+- `call.ringing`: Triggered when a call is ringing
+- `call.ending`: Triggered when a call is ending (supports filters for assistant-request failures)
 
 ## Usage
 
 Hooks are defined in the `hooks` array of a phone number. Each hook consists of:
 
-- `on`: The event that triggers the hook (supports `call.ringing`)
-- `do`: The actions to perform when the hook triggers (supports `transfer` and `say`)
+- `on`: The event that triggers the hook (supports `call.ringing`, `call.ending`)
+- `do`: The action(s) to perform when the hook triggers
+- `filters` (for `call.ending` only): Optional conditions for when the hook should trigger. Filters for phone numbers are restricted to assistant-request related ended reasons on `call.endedReason`.
 
-## Example: Say Message on Call Ringing
+<Note>
+For `call.ending` on phone numbers, the filter key is fixed to `call.endedReason` and the values are limited to assistant-request related reasons.
+</Note>
+
+<Info>
+When `do` includes a transfer, the destination can be a phone `number` or a `sip` URI. See the API reference for destination options.
+</Info>
+
+## Example: Transfer on Call Ending (assistant-request failures)
+
+Transfer the call immediately to a fallback number if the assistant request fails or returns an error/invalid/no assistant:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/phone-number/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [
+    {
+      "on": "call.ending",
+      "filters": [
+        {
+          "type": "oneOf",
+          "key": "call.endedReason",
+          "oneOf": [
+            "assistant-request-failed",
+            "assistant-request-returned-error",
+            "assistant-request-returned-invalid-assistant",
+            "assistant-request-returned-no-assistant"
+          ]
+        }
+      ],
+      "do": {
+        "type": "transfer",
+        "destination": {
+          "type": "number",
+          "number": "+15xxxx3"
+        }
+      }
+    }
+  ]
+}'
+```
+
+## Example: Say message on call ringing
 
 This example shows how to play a message when a call is ringing:
 
@@ -33,7 +83,7 @@ curl -X PATCH "https://api.vapi.ai/phone-number/<id>" \
 }'
 ```
 
-## Example: Transfer on Call Ringing
+## Example: Transfer on call ringing
 
 This example shows how to transfer a call when it starts ringing:
 
@@ -78,3 +128,20 @@ curl -X PATCH "https://api.vapi.ai/phone-number/<id>" \
 
 Common use cases for phone number hooks include:
 - Disabling inbound calling by playing a message or transferring
+
+## How to enable
+
+Use the Phone Numbers Update API to add hooks to a phone number’s config.
+
+```bash
+curl -X PATCH "https://api.vapi.ai/phone-number/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [ /* your hook objects */ ]
+}'
+```
+
+<Tip>
+Looking to add hooks at the assistant level instead? Use the Assistants Update API and see [Assistant hooks](mdc:docs/assistants/assistant-hooks).
+</Tip>
