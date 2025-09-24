@@ -1,0 +1,287 @@
+---
+title: Recording consent plan
+subtitle: Configure consent management for call recording compliance
+slug: security-and-privacy/recording-consent-plan
+description: Learn how to configure recording consent plans to ensure compliance with privacy laws and regulations
+---
+
+<Warning>
+  **Enterprise Feature**: Recording consent plans are only available for
+  Enterprise customers. Contact your account manager or [sales
+  team](https://form.typeform.com/to/iOcCsqVP?typeform-source=vapi.ai) to enable
+  this feature.
+</Warning>
+
+## Overview
+
+The recording consent plan feature automatically creates a consent assistant that asks users for permission to record calls before transferring them to your main assistant. Call recording only begins after consent is granted, ensuring compliance with privacy laws and regulations across different jurisdictions.
+
+**Recording consent plans enable you to:**
+
+- Automatically request recording consent before each call
+- Handle consent through two different interaction patterns
+- Ensure compliance with privacy regulations (GDPR, CCPA, etc.)
+- Maintain audit trails of consent decisions while ensuring privacy during the consent process
+
+**How it works:**
+
+1. A consent assistant is automatically created and placed first in the call flow
+2. Users interact with the consent assistant to grant or deny recording permission
+3. If consent is granted, the call transfers to your original assistant
+4. If consent is denied, the call ends or transfers based on your configuration
+
+## Consent Types
+
+Vapi supports two types of recording consent plans, each designed for different use cases and legal requirements.
+
+### Stay-on-Line Consent
+
+This type assumes consent is granted if the user remains on the call after hearing the consent message. It's commonly used for customer service scenarios where staying on the line implies agreement.
+
+**Best practices for stay-on-line messages:**
+
+- Clearly state that staying on the line implies consent
+- Mention the purpose of recording (quality, training, etc.)
+- Provide clear instructions to hang up if they don't consent
+
+**Example message:**
+
+```
+"For quality and training purposes, this call may be recorded. Please stay on the line if you agree to being recorded, or hang up if you do not consent."
+```
+
+### Verbal Consent
+
+This type requires explicit verbal consent from the user. The AI assistant will ask for clear confirmation and continue asking until the user provides explicit consent or declines.
+
+**Best practices for verbal consent messages:**
+
+- Ask for explicit verbal confirmation
+- Use clear yes/no language
+- Explain what happens if they decline
+
+**Example message:**
+
+```
+"This call may be recorded for quality and training purposes. Do you consent to being recorded? Please say 'yes' if you agree or 'no' if you decline."
+```
+
+## Configuration
+
+Add the recording consent plan to your assistant's `compliancePlan`:
+
+### Basic Stay-on-Line Configuration
+
+```json
+{
+  "compliancePlan": {
+    "recordingConsentPlan": {
+      "type": "stay-on-line",
+      "message": "For quality and training purposes, this call may be recorded. Please stay on the line if you agree to being recorded, or hang up if you do not consent.",
+      "voice": {
+        "voiceId": "Neha",
+        "provider": "vapi"
+      },
+      "waitSeconds": 3
+    }
+  }
+}
+```
+
+### Basic Verbal Consent Configuration
+
+```json
+{
+  "compliancePlan": {
+    "recordingConsentPlan": {
+      "type": "verbal",
+      "message": "Can I record you please?",
+      "voice": {
+        "voiceId": "Neha",
+        "provider": "vapi"
+      },
+      "declineToolId": "09dd39cc-75f0-45eb-ace3-796ee3aa9c1e"
+    }
+  }
+}
+```
+
+## Implementation
+
+<Steps>
+  <Step title="Configure Your Assistant">
+    Add the recording consent plan to your assistant's compliance plan configuration.
+
+    <Tabs>
+      <Tab title="Dashboard">
+        1. Navigate to **Assistants** in your Vapi dashboard
+        2. Create a new assistant or edit an existing one
+        3. Go to the **Compliance** section
+        4. Enable **Recording Consent Plan**
+        5. Choose your consent type (Stay-on-Line or Verbal)
+        6. Enter your consent message
+        7. Configure additional options (voice, decline tool, etc.)
+        8. Save your assistant
+      </Tab>
+      <Tab title="TypeScript (Server SDK)">
+        ```typescript
+        import { VapiClient } from "@vapi-ai/server-sdk";
+
+        const client = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+        const assistant = await client.assistants.create({
+          name: "Customer Support Assistant",
+          model: {
+            provider: "openai",
+            model: "gpt-4o"
+          },
+          voice: {
+            provider: "11labs",
+            voiceId: "sarah"
+          },
+          compliancePlan: {
+            recordingConsentPlan: {
+              type: "verbal",
+              message: "This call may be recorded for quality and training purposes. Do you consent to being recorded?",
+              declineTool: {
+                type: "endCall"
+              }
+            }
+          }
+        });
+        ```
+      </Tab>
+      <Tab title="Python (Server SDK)">
+        ```python
+        from vapi import Vapi
+
+        client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+        assistant = client.assistants.create({
+            "name": "Customer Support Assistant",
+            "model": {
+                "provider": "openai",
+                "model": "gpt-4o"
+            },
+            "voice": {
+                "provider": "11labs",
+                "voiceId": "sarah"
+            },
+            "compliancePlan": {
+                "recordingConsentPlan": {
+                    "type": "verbal",
+                    "message": "This call may be recorded for quality and training purposes. Do you consent to being recorded?",
+                    "declineTool": {
+                        "type": "endCall"
+                    }
+                }
+            }
+        })
+        ```
+      </Tab>
+    </Tabs>
+
+  </Step>
+
+  <Step title="Test Your Configuration">
+    Create a test call to verify your consent flow works correctly.
+
+    <Tabs>
+      <Tab title="Dashboard">
+        1. Go to your assistant's page
+        2. Click **Test Call**
+        3. Verify the consent message plays correctly
+        4. Test both consent and decline scenarios
+        5. Check that the call transfers properly after consent
+      </Tab>
+      <Tab title="API">
+        ```typescript
+        // Create a test call
+        const call = await client.calls.create({
+          assistantId: assistant.id,
+          phoneNumberId: "your-phone-number-id"
+        });
+
+        // Monitor the call to verify consent flow
+        console.log("Call created:", call.id);
+        ```
+      </Tab>
+    </Tabs>
+
+  </Step>
+
+  <Step title="Monitor Consent Decisions">
+    Check your call logs to verify consent decisions are being recorded correctly.
+
+    ```typescript
+    // Get call details to check consent status
+    const call = await client.calls.get(callId);
+
+    if (call.compliance?.recordingConsent?.grantedAt) {
+      console.log("Consent granted at:", call.compliance.recordingConsent.grantedAt);
+      console.log("Consent type:", call.compliance.recordingConsent.type);
+    } else {
+      console.log("No consent was granted for this call");
+    }
+    ```
+
+  </Step>
+</Steps>
+
+## Decline Tool Options
+
+When users decline recording consent, you can configure different actions using decline tools:
+
+For detailed information about these tools, see:
+
+- **[Handoff Tool](/tools/handoff)** - Transfer to other assistants
+- **[Default Tools](/tools/default-tools)** - Transfer calls and end calls
+
+## Best Practices
+
+### Message Design
+
+- **Stay-on-Line**: Clearly state that staying implies consent
+- **Verbal**: Ask for explicit confirmation with clear yes/no options
+- **Length**: Keep messages concise but comprehensive
+- **Tone**: Use professional, clear language appropriate for your industry
+
+### Voice Selection
+
+- Use a different voice for consent messages to create distinction
+- Choose voices that match your brand and industry requirements
+- Consider using more formal voices for compliance scenarios
+
+### Decline Handling
+
+- **End Call**: Use when you cannot provide service without recording
+- **Transfer**: Use when you have alternative service options
+- **Handoff**: Use when you have non-recording assistants available
+
+### Testing
+
+- Test both consent and decline scenarios thoroughly
+- Verify timing works correctly for your use case
+- Check that decline tools execute properly
+- Monitor call logs to ensure compliance data is recorded
+
+## Troubleshooting
+
+**Users not hearing consent message**
+
+- Verify the consent message is not empty
+- Check that the voice configuration is valid
+- Test with different voice providers if needed
+
+**Decline tool not executing**
+
+- Verify the decline tool configuration is valid
+- Check that referenced assistants or phone numbers exist
+- Ensure the tool type matches your intended action
+
+## Next Steps
+
+- **[Call Recording](/assistants/call-recording)** - Learn about technical recording implementation
+- **[Handoff Tool](/tools/handoff)** - Transfer between assistants
+- **[Default Tools](/tools/default-tools)** - Transfer calls and end calls
+- **[API Reference](/api-reference/assistants/create)** - Explore assistant configuration options
