@@ -1,31 +1,140 @@
 ---
-title: Call recording
-subtitle: Record and store calls for analysis and training
+title: Call recording, logging and transcribing
+subtitle: Record, log, and transcribe calls using artifact plans
 slug: assistants/call-recording
-description: Learn how to record calls and store them for quality assurance and analysis
+description: Learn how to configure artifact plans to record calls, generate transcripts, and store logs for analysis
 ---
+
+<Warning>
+  **Deprecated**: The old `recordingEnabled`, `recordingPath`, and `recordingCredentials` properties are deprecated. Use the new `artifactPlan` configuration instead for recording, logging, and transcript generation.
+</Warning>
 
 ## Overview
 
-Vapi provides comprehensive call recording capabilities that allow you to capture, store, and analyze voice conversations for quality assurance, training, and compliance purposes.
+Vapi's artifact plan system provides comprehensive call recording, logging, and transcription capabilities that allow you to capture, store, and analyze voice conversations for quality assurance, training, and compliance purposes.
 
-**Call recording enables you to:**
+**Artifact plans enable you to:**
+- Record audio conversations for quality monitoring
+- Generate detailed call logs for debugging and analysis
+- Create transcripts for conversation analysis
+- Store artifacts in custom storage or Vapi's secure cloud
 - Monitor conversation quality and assistant performance
-- Train and improve your voice AI models
 - Ensure compliance with regulatory requirements
-- Analyze customer interactions for insights
 
-## Recording Configuration
+## Use Cases
 
-### Enable Recording
+### Payment Flows
 
-You can enable call recording at the assistant level or per individual call:
+Protect sensitive payment information by using a middle assistant with all artifacts disabled:
+
+```json
+{
+  "squad": {
+    "members": [
+      {
+        "assistant": {
+          "name": "Service Assistant",
+          "artifactPlan": {
+            "recordingEnabled": true,
+            "loggingEnabled": true,
+            "transcriptPlan": { "enabled": true }
+          }
+        }
+      },
+      {
+        "assistant": {
+          "name": "Payment Assistant",
+          "artifactPlan": {
+            "recordingEnabled": false,
+            "loggingEnabled": false,
+            "transcriptPlan": { "enabled": false }
+          }
+        }
+      },
+      {
+        "assistant": {
+          "name": "Confirmation Assistant",
+          "artifactPlan": {
+            "recordingEnabled": true,
+            "loggingEnabled": true,
+            "transcriptPlan": { "enabled": true }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+This flow ensures that:
+- Service conversations are recorded for quality assurance
+- Payment details (credit card numbers, CVV codes) are never recorded or logged
+- Confirmation conversations are recorded for compliance
+
+### Consent Gathering
+
+For Enterprise customers, Vapi provides built-in [recording consent plans](/security-and-privacy/recording-consent-plan) that automatically create a consent assistant to request recording permission before transferring to your main assistant.
+
+The Enterprise consent feature supports both:
+- **Verbal consent**: Requires explicit "yes" confirmation from users
+- **Implicit consent**: Assumes consent if users stay on the line after hearing the consent message
+
+The system automatically tracks consent decisions and provides compliance data in the end-of-call report, including whether consent was granted and when it was obtained.
+
+Alternatively, you can implement custom consent flows using squads:
+
+```json
+{
+  "squad": {
+    "members": [
+      {
+        "assistant": {
+          "name": "Consent Assistant",
+          "artifactPlan": {
+            "recordingEnabled": false,
+            "loggingEnabled": false,
+            "transcriptPlan": { "enabled": false }
+          }
+        }
+      },
+      {
+        "assistant": {
+          "name": "Main Assistant", 
+          "artifactPlan": {
+            "recordingEnabled": true,
+            "loggingEnabled": true,
+            "transcriptPlan": { "enabled": true }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+The consent assistant runs without generating artifacts, while the main assistant records the actual conversation after consent is obtained.
+
+## Artifact Plan Configuration
+
+### Basic Configuration
+
+Configure recording, logging, and transcript generation using the `artifactPlan`:
 
 <CodeBlocks>
 ```json title="Assistant Configuration"
 {
   "name": "Customer Support Assistant",
-  "recordingEnabled": true,
+  "artifactPlan": {
+    "recordingEnabled": true,
+    "recordingFormat": "wav;l16",
+    "loggingEnabled": true,
+    "pcapEnabled": true,
+    "transcriptPlan": {
+      "enabled": true,
+      "assistantName": "Assistant",
+      "userName": "Customer"
+    }
+  },
   "model": {
     "provider": "openai",
     "model": "gpt-4"
@@ -40,82 +149,251 @@ You can enable call recording at the assistant level or per individual call:
 ```json title="Per-Call Configuration"
 {
   "assistant": {
-    "name": "Support Agent"
+    "name": "Support Agent",
+    "artifactPlan": {
+      "recordingEnabled": true,
+      "recordingFormat": "wav;l16",
+      "loggingEnabled": true,
+      "pcapEnabled": true,
+      "transcriptPlan": {
+        "enabled": true,
+        "assistantName": "Support Agent",
+        "userName": "Customer"
+      }
+    }
   },
-  "recordingEnabled": true,
   "phoneNumberId": "your-phone-number-id"
 }
 ```
 </CodeBlocks>
 
-### Recording Options
+### Artifact Plan Options
 
-Configure recording behavior with these options:
+Configure different types of artifacts with these options:
 
-- **`recordingEnabled`**: Enable or disable recording for this assistant/call
-- **`recordingChannelCount`**: Number of audio channels to record (1 for mono, 2 for stereo)
-- **`recordingFormat`**: Audio format for recordings (mp3, wav, etc.)
+- **`recordingEnabled`**: Enable call recording (stored in `call.artifact.recording`) Default: `true`
+- **`recordingFormat`**: Audio format for recordings (e.g., "wav;l16", "mp3") Default: "wav;l16"
+- **`loggingEnabled`**: Enable detailed call logs (stored in `call.artifact.logUrl`) Default: `true`
+- **`pcapEnabled`**: Enable SIP packet capture for phone calls (stored in `call.artifact.pcapUrl`) Default: `true`
+- **`transcriptPlan`**: Configure transcript generation with speaker names 
 
-## Storage Options
+## Storage Configuration
 
 ### Default Storage
 
-By default, Vapi stores recordings securely in the cloud:
+By default, Vapi stores artifacts securely in the cloud:
 
-- Recordings are encrypted at rest and in transit
+- Recordings, logs, and transcripts are encrypted at rest and in transit
 - Access is controlled through your API credentials
-- Recordings are automatically cleaned up based on your retention policy
+- Artifacts are automatically cleaned up based on your retention policy
 
 ### Custom Storage
 
-For advanced use cases, you can configure custom storage:
+Configure custom storage for different artifact types:
 
 <CodeBlocks>
 ```json title="S3 Storage Configuration"
 {
-  "recordingEnabled": true,
-  "recordingPath": "https://your-bucket.s3.amazonaws.com/recordings/",
-  "recordingCredentials": {
-    "provider": "aws",
-    "region": "us-east-1",
-    "accessKeyId": "your-access-key",
-    "secretAccessKey": "your-secret-key"
-  }
+  "artifactPlan": {
+    "recordingEnabled": true,
+    "recordingFormat": "wav;l16",
+    "loggingEnabled": true,
+    "pcapEnabled": true,
+    "recordingUseCustomStorageEnabled": true,
+    "loggingUseCustomStorageEnabled": true,
+    "pcapUseCustomStorageEnabled": true,
+    "recordingPath": "https://your-bucket.s3.amazonaws.com/recordings/",
+    "loggingPath": "https://your-bucket.s3.amazonaws.com/logs/",
+    "pcapS3PathPrefix": "/pcaps",
+    "transcriptPlan": {
+      "enabled": true,
+      "assistantName": "Assistant",
+      "userName": "Customer"
+    }
+  },
+  "credentials": [
+    {
+      "provider": "aws",
+      "region": "us-east-1",
+      "accessKeyId": "your-access-key",
+      "secretAccessKey": "your-secret-key"
+    }
+  ]
 }
 ```
 
 ```json title="Google Cloud Storage"
 {
-  "recordingEnabled": true,
-  "recordingPath": "gs://your-bucket/recordings/",
-  "recordingCredentials": {
-    "provider": "gcp",
-    "serviceAccountKey": "your-service-account-json"
-  }
+  "artifactPlan": {
+    "recordingEnabled": true,
+    "recordingFormat": "wav;l16",
+    "loggingEnabled": true,
+    "pcapEnabled": true,
+    "recordingUseCustomStorageEnabled": true,
+    "loggingUseCustomStorageEnabled": true,
+    "pcapUseCustomStorageEnabled": true,
+    "recordingPath": "gs://your-bucket/recordings/",
+    "loggingPath": "gs://your-bucket/logs/",
+    "transcriptPlan": {
+      "enabled": true,
+      "assistantName": "Assistant",
+      "userName": "Customer"
+    }
+  },
+  "credentials": [
+    {
+      "provider": "gcp",
+      "serviceAccountKey": "your-service-account-json"
+    }
+  ]
 }
 ```
 </CodeBlocks>
 
-## Accessing Recordings
+### Storage Control Options
+
+Control where each artifact type is stored:
+
+- **`recordingUseCustomStorageEnabled`**: Use custom storage for recordings (default: true)
+- **`loggingUseCustomStorageEnabled`**: Use custom storage for logs (default: true)
+- **`pcapUseCustomStorageEnabled`**: Use custom storage for SIP packet capture (default: true)
+- **`recordingPath`**: Custom path for recording storage
+- **`loggingPath`**: Custom path for log storage
+- **`pcapS3PathPrefix`**: S3 path prefix for PCAP files
+
+## Squad and Transfer Behavior
+
+### Dynamic Artifact Control
+
+In squads with multiple assistants, artifact generation (recording, logging, transcripts) can be controlled per assistant. When assistants are swapped or transferred during a call:
+
+- **Recording**: Pauses when `recordingEnabled: false` assistant is active, resumes when `recordingEnabled: true` assistant takes over
+- **Logging**: Pauses when `loggingEnabled: false` assistant is active, resumes when `loggingEnabled: true` assistant takes over  
+- **Transcripts**: Pauses when `transcriptPlan.enabled: false` assistant is active, resumes when `transcriptPlan.enabled: true` assistant takes over
+
+## Transcript Configuration
+
+### Automatic Transcription
+
+Configure transcript generation using the `transcriptPlan`:
+
+```json
+{
+  "artifactPlan": {
+    "transcriptPlan": {
+      "enabled": true,
+      "assistantName": "Assistant",
+      "userName": "Customer"
+    }
+  }
+}
+```
+
+### Transcript Plan Options
+
+- **`enabled`**: Enable or disable transcript generation
+- **`assistantName`**: Name to use for assistant messages in transcripts
+- **`userName`**: Name to use for user messages in transcripts
+
+### Transcript Features
+
+- **Real-time transcription**: Transcripts are generated during the call
+- **Speaker identification**: Distinguishes between assistant and user messages
+- **Timestamps**: Each message includes timing information
+- **OpenAI formatting**: Available in `call.artifact.messagesOpenAIFormatted`
+
+### Transcript Structure
+
+```json
+{
+  "callId": "call-123",
+  "artifact": {
+    "transcript": [
+      {
+        "role": "assistant",
+        "message": "Hello! How can I help you today?",
+        "time": 0.5
+      },
+      {
+        "role": "user", 
+        "message": "I need help with my account",
+        "time": 3.2
+      }
+    ],
+    "messagesOpenAIFormatted": [
+      {
+        "role": "assistant",
+        "content": "Hello! How can I help you today?"
+      },
+      {
+        "role": "user",
+        "content": "I need help with my account"
+      }
+    ]
+  }
+}
+```
+
+## Logging Configuration
+
+### Detailed Call Logs
+
+Enable comprehensive logging for debugging and analysis:
+
+```json
+{
+  "artifactPlan": {
+    "loggingEnabled": true,
+    "loggingUseCustomStorageEnabled": true,
+    "loggingPath": "https://your-bucket.s3.amazonaws.com/logs/"
+  }
+}
+```
+
+### Log Features
+
+- **Debug information**: Detailed logs for troubleshooting
+- **Performance metrics**: Call timing and performance data
+- **Error tracking**: Comprehensive error logs and stack traces
+- **Workflow execution**: Step-by-step workflow node execution
+
+### Accessing Logs
+
+Logs are available through:
+- **Dashboard**: View logs in the call details page
+- **API**: Access via `call.artifact.logUrl`
+- **Custom storage**: Store logs in your S3/GCP bucket
+
+## Accessing Artifacts
 
 ### Via Dashboard
 
 1. Navigate to **Calls** in your Vapi dashboard
 2. Select a specific call from the list
-3. Click on the **Recording** tab to play or download the audio
+3. View artifacts in the **Artifacts** section:
+   - **Recording**: Play or download the audio recording
+   - **Transcript**: View the full conversation transcript
+   - **Logs**: Access detailed call logs for debugging
+   - **PCAP**: Download SIP packet capture (phone calls only)
 
 ### Via API
 
-Retrieve recording URLs programmatically:
+Retrieve artifact URLs programmatically:
 
 ```typescript
 import { VapiClient } from "@vapi-ai/server-sdk";
 
 const client = new VapiClient({ token: "your-api-key" });
 
-// Get call details including recording URL
+// Get call details including all artifacts
 const call = await client.calls.get("call-id");
-console.log("Recording URL:", call.recordingUrl);
+
+console.log("Recording URL:", call.artifact.recording);
+console.log("Transcript:", call.artifact.transcript);
+console.log("Log URL:", call.artifact.logUrl);
+console.log("PCAP URL:", call.artifact.pcapUrl);
+console.log("Messages:", call.artifact.messages);
+console.log("Nodes:", call.artifact.nodes);
 ```
 
 ## Privacy and Compliance
@@ -127,6 +405,15 @@ console.log("Recording URL:", call.recordingUrl);
 - **Consent requirements** - Inform participants about recording
 - **Data protection** regulations (GDPR, CCPA, etc.)
 - **Industry standards** (PCI DSS, HIPAA, etc.)
+
+### Built-in Consent Management
+
+For Enterprise customers, Vapi provides automated consent management through [recording consent plans](/security-and-privacy/recording-consent-plan). This feature automatically:
+
+- Creates a consent assistant that requests recording permission
+- Handles both verbal and stay-on-line consent types
+- Only begins recording after consent is granted
+- Maintains audit trails of consent decisions
 
 ### Best Practices
 
@@ -141,60 +428,107 @@ console.log("Recording URL:", call.recordingUrl);
 
 ## Recording Analysis
 
-### Transcription
+### Call Artifacts
 
-Recorded calls are automatically transcribed for analysis:
+Use the comprehensive artifact data for analysis:
 
 ```json
 {
   "callId": "call-123",
-  "transcript": [
-    {
-      "role": "assistant",
-      "message": "Hello! How can I help you today?",
-      "time": 0.5
-    },
-    {
-      "role": "user", 
-      "message": "I need help with my account",
-      "time": 3.2
+  "artifact": {
+    "recording": "https://api.vapi.ai/recordings/call-123.mp3",
+    "transcript": [
+      {
+        "role": "assistant",
+        "message": "Hello! How can I help you today?",
+        "time": 0.5
+      },
+      {
+        "role": "user", 
+        "message": "I need help with my account",
+        "time": 3.2
+      }
+    ],
+    "logUrl": "https://api.vapi.ai/logs/call-123.json",
+    "messages": [
+      {
+        "role": "assistant",
+        "message": "Hello! How can I help you today?"
+      },
+      {
+        "role": "user",
+        "message": "I need help with my account"
+      }
+    ],
+    "nodes": [
+      {
+        "name": "greeting",
+        "messages": ["Hello! How can I help you today?"],
+        "variables": {}
+      }
+    ],
+    "variableValues": {
+      "customerName": "John Doe",
+      "issueType": "account_access"
     }
-  ],
-  "recordingUrl": "https://api.vapi.ai/recordings/call-123.mp3"
+  }
 }
 ```
 
-### Call Analysis
+### Analysis Use Cases
 
-Use recorded data for insights:
+Use artifact data for comprehensive insights:
 
-- **Conversation flow** analysis
-- **Response quality** evaluation  
-- **Customer satisfaction** metrics
-- **Assistant performance** tracking
+- **Conversation flow** analysis using `artifact.nodes`
+- **Response quality** evaluation using `artifact.messages`
+- **Customer satisfaction** metrics from transcript analysis
+- **Assistant performance** tracking using logs and recordings
+- **Workflow optimization** using node execution data
+- **Variable tracking** using `artifact.variableValues`
 
 ## FAQ
 
 <AccordionGroup>
-  <Accordion title="Are recordings automatically transcribed?">
-    Yes, all recordings are automatically transcribed and available through the API and dashboard.
+  <Accordion title="How do I enable recording, logging, and transcripts?">
+    Use the `artifactPlan` configuration in your assistant or call settings. Set `recordingEnabled`, `loggingEnabled`, and configure `transcriptPlan.enabled` to `true` to enable all three features.
   </Accordion>
   
-  <Accordion title="How long are recordings stored?">
-    Default retention is 30 days. You can configure custom retention policies for your account.
+  <Accordion title="Where are artifacts stored?">
+    By default, artifacts are stored securely in Vapi's cloud storage. You can configure custom storage using S3 or Google Cloud Storage with the `recordingPath`, `loggingPath`, and storage control options.
+  </Accordion>
+  
+  <Accordion title="How do I access artifacts after a call?">
+    Artifacts are available through the API via `call.artifact.recording`, `call.artifact.transcript`, `call.artifact.logUrl`, and other properties. You can also view them in the Vapi dashboard.
+  </Accordion>
+  
+  <Accordion title="What's the difference between transcript and messages?">
+    The `transcript` includes timing information and is optimized for conversation analysis. The `messages` property contains the same content but in a simpler format, while `messagesOpenAIFormatted` is structured for OpenAI API compatibility.
+  </Accordion>
+  
+  <Accordion title="How do I configure speaker names in transcripts?">
+    Use the `transcriptPlan` configuration with `assistantName` and `userName` properties to customize how speakers are identified in the transcript output.
   </Accordion>
   
   <Accordion title="Can I disable recording for specific calls?">
-    Yes, you can enable/disable recording at both the assistant level and per individual call.
+    Yes, you can configure artifact plans at both the assistant level and per individual call. This gives you granular control over what artifacts are generated for each conversation.
   </Accordion>
   
-  <Accordion title="Is recording available in all regions?">
-    Call recording is available in all supported Vapi regions with local data residency options.
+  <Accordion title="What is PCAP and when is it available?">
+    PCAP (Packet Capture) is available for phone calls and contains SIP packet data for debugging telephony issues. It's stored in `call.artifact.pcapUrl` when `pcapEnabled` is set to `true`.
+  </Accordion>
+  
+  <Accordion title="How long are artifacts stored?">
+    Default retention is 30 days for all artifacts. You can configure custom retention policies and use custom storage for longer-term archival.
+  </Accordion>
+  
+  <Accordion title="How do artifacts work with squad transfers?">
+    In squads, each assistant can have different artifact settings. Recording, logging, and transcripts pause when an assistant with disabled artifacts is active, and resume when an assistant with enabled artifacts takes over. This allows for privacy-conscious flows like consent collection.
   </Accordion>
 </AccordionGroup>
 
 ## Next Steps
 
 - **[Call Analysis](/assistants/call-analysis)** - Analyze recorded conversations for insights
+- **[Recording Consent Plans](/security-and-privacy/recording-consent-plan)** - Automated consent management for Enterprise customers
 - **[Privacy Compliance](/security-and-privacy/GDPR)** - Ensure GDPR and privacy compliance
 - **[API Reference](/api-reference/calls/create)** - Explore recording configuration options
