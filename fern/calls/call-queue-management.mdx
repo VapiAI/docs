@@ -1,0 +1,711 @@
+---
+title: Call queue management with Twilio
+subtitle: Handle high-volume calls with Twilio queues when hitting Vapi concurrency limits
+slug: calls/call-queue-management
+description: Build a call queue system using Twilio to handle large volumes of calls while respecting Vapi concurrency limits, ensuring no calls are dropped.
+---
+
+## Overview
+
+When your application receives more simultaneous calls than your Vapi concurrency limit allows, calls can be rejected. A call queue system using Twilio queues solves this by holding excess calls in a queue and processing them as capacity becomes available.
+
+**In this guide, you'll learn to:**
+- Set up Twilio call queues for high-volume scenarios  
+- Implement concurrency tracking to respect Vapi limits
+- Build a queue processing system with JavaScript
+- Handle call dequeuing and Vapi integration seamlessly
+
+<Tip>
+This approach is ideal for call centers, customer support lines, or any application expecting call volumes that exceed your Vapi concurrency limit.
+</Tip>
+
+## Prerequisites
+
+Before implementing call queue management, ensure you have:
+
+- **Vapi Account**: Access to the [Vapi Dashboard](https://dashboard.vapi.ai/org/api-keys) with your API key
+- **Twilio Account**: Active Twilio account with Account SID and Auth Token
+- **Twilio CLI**: Install from [twil.io/cli](https://twil.io/cli) for queue management
+- **Phone Number**: Twilio phone number configured for incoming calls
+- **Assistant**: Configured Vapi assistant ID for handling calls
+- **Server Environment**: Node.js server capable of receiving webhooks
+- **Redis Instance**: Redis server for persistent state management (local, cloud, or serverless-compatible)
+
+<Note>
+You'll need to know your Vapi account's concurrency limit. Check your plan details in the [Vapi Dashboard](https://dashboard.vapi.ai/settings/billing) under billing settings.
+</Note>
+
+<Tip>
+For production deployments, especially in serverless environments, Redis ensures your call counters persist across server restarts and function invocations.
+</Tip>
+
+## How it works
+
+The queue management system operates in three phases:
+
+<CardGroup cols={3}>
+  <Card title="Queue Incoming" icon="phone-incoming" iconType="solid">
+    Incoming calls are automatically placed in a Twilio queue when received
+  </Card>
+  <Card title="Track Capacity" icon="gauge-high" iconType="solid">  
+    Server monitors active Vapi calls against your concurrency limit
+  </Card>
+  <Card title="Process Queue" icon="arrow-right" iconType="solid">
+    When capacity is available, calls are dequeued and connected to Vapi
+  </Card>
+</CardGroup>
+
+**Call Flow:**
+
+1. **Incoming call** → Twilio receives call and executes webhook
+2. **Queue placement** → Call is placed in Twilio queue with hold music  
+3. **Automatic processing** → Server processes queue immediately when capacity changes
+4. **Capacity check** → Server verifies if Vapi concurrency limit allows new calls using Redis
+5. **Dequeue & connect** → Available calls are dequeued and connected to Vapi assistants
+6. **Persistent tracking** → Redis tracks active calls across server restarts and serverless invocations
+
+---
+
+## Implementation Guide
+
+<Steps>
+  <Step title="Create Twilio Queue">
+    First, create a Twilio queue using the Twilio CLI to hold incoming calls.
+
+    ```bash
+    twilio api:core:queues:create \
+       --friendly-name customer-support
+    ```
+
+    **Expected Response:**
+    ```json
+    {
+      "account_sid": "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "average_wait_time": 0,
+      "current_size": 0,
+      "date_created": "2024-01-15T18:39:09.000Z",
+      "date_updated": "2024-01-15T18:39:09.000Z", 
+      "friendly_name": "customer-support",
+      "max_size": 100,
+      "sid": "QUaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "uri": "/2010-04-01/Accounts/ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/Queues/QUaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+    }
+    ```
+
+    <Warning>
+    Save the queue `sid` (e.g., `QUaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`) - you'll need this for queue operations.
+    </Warning>
+  </Step>
+
+  <Step title="Configure Phone Number Webhook">
+    Configure your Twilio phone number to send incoming calls to your queue endpoint.
+
+    1. Go to [Twilio Console > Phone Numbers](https://console.twilio.com/us1/develop/phone-numbers/manage/incoming)
+    2. Select your phone number
+    3. Set **A call comes in** webhook to: `https://your-server.com/incoming`
+    4. Set HTTP method to `POST`
+    5. Save configuration
+  </Step>
+
+  <Step title="Set up Redis for Persistent State">
+    Configure Redis for persistent call counter storage. Choose the option that best fits your deployment:
+
+    <Tabs>
+      <Tab title="Local Development">
+        **Install Redis locally:**
+        ```bash
+        # macOS (using Homebrew)
+        brew install redis
+        brew services start redis
+
+        # Ubuntu/Debian
+        sudo apt update
+        sudo apt install redis-server
+        sudo systemctl start redis-server
+
+        # Docker
+        docker run -d -p 6379:6379 redis:alpine
+        ```
+
+        **Test connection:**
+        ```bash
+        redis-cli ping
+        # Should return: PONG
+        ```
+      </Tab>
+      
+      <Tab title="Cloud Redis">
+        **Popular Redis cloud providers:**
+        
+        - **[Redis Cloud](https://redis.com/redis-enterprise-cloud/)**: Free tier available
+        - **[AWS ElastiCache](https://aws.amazon.com/elasticache/)**: Managed Redis on AWS  
+        - **[Google Cloud Memorystore](https://cloud.google.com/memorystore)**: Managed Redis on GCP
+        - **[Azure Cache for Redis](https://azure.microsoft.com/services/cache/)**: Managed Redis on Azure
+        
+        Get your connection URL from your provider's dashboard.
+      </Tab>
+      
+      <Tab title="Serverless (Upstash)">
+        **[Upstash Redis](https://upstash.com/)** is optimized for serverless environments:
+        
+        1. Create free account at [console.upstash.com](https://console.upstash.com)
+        2. Create new Redis database
+        3. Copy the REST URL for serverless compatibility
+        4. Use connection pooling for better performance
+        
+        **Upstash offers:**
+        - Pay-per-request pricing
+        - Global edge locations
+        - Built-in connection pooling
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Set up Server Environment">
+    Create your Node.js server with the required dependencies and environment variables.
+
+    **Install Dependencies:**
+    ```bash
+    npm install express twilio axios dotenv redis
+    ```
+
+    **Environment Variables (.env):**
+    ```bash
+    # Vapi Configuration
+    VAPI_API_KEY=your_vapi_api_key_here
+    VAPI_PHONE_NUMBER_ID=your_phone_number_id
+    VAPI_ASSISTANT_ID=your_assistant_id
+
+    # Twilio Configuration  
+    TWILIO_ACCOUNT_SID=your_twilio_account_sid
+    TWILIO_AUTH_TOKEN=your_twilio_auth_token
+    TWILIO_QUEUE_SID=QUaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+    # Redis Configuration (for persistent state)
+    REDIS_URL=redis://localhost:6379
+    # For Redis Cloud: REDIS_URL=rediss://username:password@host:port
+    # For Upstash (serverless): REDIS_URL=rediss://default:password@host:port
+
+    # Server Configuration
+    PORT=3000
+    MAX_CONCURRENCY=5
+    ```
+  </Step>
+
+  <Step title="Implement Queue Management Server">
+    Create the main server file with queue handling, concurrency tracking, and Vapi integration.
+
+    ```javascript title="server.js"
+    const express = require('express');
+    const twilio = require('twilio');
+    const axios = require('axios');
+    const redis = require('redis');
+    require('dotenv').config();
+
+    const app = express();
+    const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
+    // Redis client for persistent state management
+    const redisClient = redis.createClient({
+      url: process.env.REDIS_URL || 'redis://localhost:6379'
+    });
+
+    const MAX_CONCURRENCY = parseInt(process.env.MAX_CONCURRENCY) || 5;
+    const REDIS_KEYS = {
+      ACTIVE_CALLS: 'vapi:queue:active_calls',
+      CALLS_IN_QUEUE: 'vapi:queue:calls_in_queue'
+    };
+
+    // Middleware
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+
+    // Initialize Redis connection
+    async function initializeRedis() {
+      try {
+        await redisClient.connect();
+        console.log('Connected to Redis');
+        
+        // Initialize counters if they don't exist
+        const activeCalls = await redisClient.get(REDIS_KEYS.ACTIVE_CALLS);
+        const callsInQueue = await redisClient.get(REDIS_KEYS.CALLS_IN_QUEUE);
+        
+        if (activeCalls === null) {
+          await redisClient.set(REDIS_KEYS.ACTIVE_CALLS, '0');
+        }
+        if (callsInQueue === null) {
+          await redisClient.set(REDIS_KEYS.CALLS_IN_QUEUE, '0');
+        }
+      } catch (error) {
+        console.error('Redis connection failed:', error);
+        process.exit(1);
+      }
+    }
+
+    // Helper functions for Redis operations
+    async function getActiveCalls() {
+      const count = await redisClient.get(REDIS_KEYS.ACTIVE_CALLS);
+      return parseInt(count) || 0;
+    }
+
+    async function getCallsInQueue() {
+      const count = await redisClient.get(REDIS_KEYS.CALLS_IN_QUEUE);
+      return parseInt(count) || 0;
+    }
+
+    async function incrementActiveCalls() {
+      return await redisClient.incr(REDIS_KEYS.ACTIVE_CALLS);
+    }
+
+    async function decrementActiveCalls() {
+      const current = await getActiveCalls();
+      if (current > 0) {
+        return await redisClient.decr(REDIS_KEYS.ACTIVE_CALLS);
+      }
+      return current;
+    }
+
+    async function incrementCallsInQueue() {
+      return await redisClient.incr(REDIS_KEYS.CALLS_IN_QUEUE);
+    }
+
+    async function decrementCallsInQueue() {
+      const current = await getCallsInQueue();
+      if (current > 0) {
+        return await redisClient.decr(REDIS_KEYS.CALLS_IN_QUEUE);
+      }
+      return current;
+    }
+
+    async function syncCallsInQueue() {
+      await redisClient.set(REDIS_KEYS.CALLS_IN_QUEUE, '0');
+    }
+
+    // Incoming call handler - adds calls to queue
+    app.post('/incoming', async (req, res) => {
+      try {
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+          <Response>
+            <Enqueue>customer-support</Enqueue>
+          </Response>`;
+        
+        res.set('Content-Type', 'application/xml');
+        res.send(twiml);
+        
+        // Increment queue counter in Redis
+        const queueCount = await incrementCallsInQueue();
+        console.log(`Call ${req.body.CallSid} added to queue. Calls in queue: ${queueCount}`);
+        
+        // Immediately check if we can process this call
+        setImmediate(() => processQueue());
+        
+      } catch (error) {
+        console.error('Error handling incoming call:', error);
+        res.status(500).send('Error processing call');
+      }
+    });
+
+    async function processQueue() {
+      try {
+        const activeCalls = await getActiveCalls();
+        const callsInQueue = await getCallsInQueue();
+        
+        // Check if we have capacity for more calls
+        if (activeCalls >= MAX_CONCURRENCY) {
+          return;
+        }
+
+        // Check if there are calls in queue
+        if (callsInQueue === 0) {
+          return;
+        }
+
+        // Get next call from queue
+        const members = await twilioClient.queues(process.env.TWILIO_QUEUE_SID)
+          .members
+          .list({ limit: 1 });
+
+        if (members.length === 0) {
+          // No calls in queue - sync our counter
+          await syncCallsInQueue();
+          return;
+        }
+
+        const member = members[0];
+        console.log(`Processing queued call: ${member.callSid}`);
+
+        // Get Vapi TwiML for this call
+        const twiml = await initiateVapiCall(member.callSid, member.phoneNumber);
+        
+        if (twiml) {
+          // Update call with Vapi TwiML
+          await twilioClient.calls(member.callSid).update({ twiml });
+          
+          // Update counters in Redis
+          const newActiveCalls = await incrementActiveCalls();
+          const newQueueCount = await decrementCallsInQueue();
+          
+          console.log(`Call connected to Vapi. Active calls: ${newActiveCalls}/${MAX_CONCURRENCY}, Queue: ${newQueueCount}`);
+          
+          // Check if we can process more calls immediately
+          if (newActiveCalls < MAX_CONCURRENCY && newQueueCount > 0) {
+            setImmediate(() => processQueue());
+          }
+        } else {
+          console.error(`Failed to get TwiML for call ${member.callSid}`);
+        }
+      } catch (error) {
+        console.error('Error processing queue:', error);
+      }
+    }
+
+    // Generate Vapi TwiML for a call
+    async function initiateVapiCall(callSid, customerNumber) {
+      const payload = {
+        phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
+        phoneCallProviderBypassEnabled: true,
+        customer: { number: customerNumber },
+        assistantId: process.env.VAPI_ASSISTANT_ID,
+      };
+
+      const headers = {
+        'Authorization': `Bearer ${process.env.VAPI_API_KEY}`,
+        'Content-Type': 'application/json',
+      };
+
+      try {
+        const response = await axios.post('https://api.vapi.ai/call', payload, { headers });
+        
+        if (response.data && response.data.phoneCallProviderDetails) {
+          return response.data.phoneCallProviderDetails.twiml;
+        } else {
+          throw new Error('Invalid response structure from Vapi');
+        }
+      } catch (error) {
+        console.error(`Error initiating Vapi call for ${callSid}:`, error.message);
+        return null;
+      }
+    }
+
+    // Webhook for call completion - triggers immediate queue processing
+    app.post('/call-ended', async (req, res) => {
+      try {
+        // Handle Vapi end-of-call-report webhook
+        const message = req.body.message;
+        
+        if (message && message.type === 'end-of-call-report') {
+          const callId = message.call?.id;
+          
+          const newActiveCalls = await decrementActiveCalls();
+          console.log(`Vapi call ${callId} ended. Active calls: ${newActiveCalls}/${MAX_CONCURRENCY}`);
+          
+          // Immediately process queue when capacity becomes available
+          setImmediate(() => processQueue());
+        }
+        
+        res.status(200).send('OK');
+      } catch (error) {
+        console.error('Error handling Vapi webhook:', error);
+        res.status(500).send('Error');
+      }
+    });
+
+    // Manual queue processing endpoint (for testing/monitoring)
+    app.post('/process-queue', async (req, res) => {
+      try {
+        await processQueue();
+        const activeCalls = await getActiveCalls();
+        const callsInQueue = await getCallsInQueue();
+        
+        res.json({ 
+          message: 'Queue processing triggered',
+          activeCalls,
+          callsInQueue,
+          maxConcurrency: MAX_CONCURRENCY 
+        });
+      } catch (error) {
+        console.error('Error in manual queue processing:', error);
+        res.status(500).json({ error: 'Failed to process queue' });
+      }
+    });
+
+    // Health check endpoint
+    app.get('/health', async (req, res) => {
+      try {
+        const activeCalls = await getActiveCalls();
+        const callsInQueue = await getCallsInQueue();
+        
+        res.json({
+          status: 'healthy',
+          activeCalls,
+          callsInQueue,
+          maxConcurrency: MAX_CONCURRENCY,
+          availableCapacity: MAX_CONCURRENCY - activeCalls,
+          redis: redisClient.isOpen ? 'connected' : 'disconnected'
+        });
+      } catch (error) {
+        console.error('Error in health check:', error);
+        res.status(500).json({ 
+          status: 'error', 
+          error: error.message,
+          redis: redisClient.isOpen ? 'connected' : 'disconnected'
+        });
+      }
+    });
+
+    // Graceful shutdown
+    process.on('SIGINT', async () => {
+      console.log('Shutting down gracefully...');
+      await redisClient.quit();
+      process.exit(0);
+    });
+
+    process.on('SIGTERM', async () => {
+      console.log('Shutting down gracefully...');
+      await redisClient.quit();
+      process.exit(0);
+    });
+
+    // Start server
+    async function startServer() {
+      await initializeRedis();
+      
+      const PORT = process.env.PORT || 3000;
+      app.listen(PORT, () => {
+        console.log(`Queue management server running on port ${PORT}`);
+        console.log(`Max concurrency: ${MAX_CONCURRENCY}`);
+        console.log('Using callback-driven queue processing (no timers)');
+      });
+    }
+
+    startServer().catch(console.error);
+
+    module.exports = app;
+    ```
+  </Step>
+
+  <Step title="Configure Vapi Webhooks for Call Tracking">
+    Configure your Vapi assistant to send end-of-call-report webhooks for accurate concurrency tracking.
+
+    **Assistant Configuration:**
+    You need to configure your assistant with proper webhook settings to receive call status updates.
+
+    ```javascript title="assistant-configuration.js"
+    const assistantConfig = {
+      name: "Queue Management Assistant",
+      // ... other assistant configuration
+      
+      // Configure server URL for webhooks
+      server: {
+        url: "https://your-server.com",
+        timeoutSeconds: 20
+      },
+      
+      // Configure which messages to send to your server
+      serverMessages: ["end-of-call-report", "status-update"]
+    };
+    ```
+
+    <Note>
+    The webhook will be sent to your server URL with the message type `end-of-call-report` when calls end. This allows you to decrement your active call counter accurately. See the [Assistant API reference](https://docs.vapi.ai/api-reference/assistants/create#request.body.serverMessages) for all available server message types.
+    </Note>
+
+    **Webhook Payload Example:**
+    Your `/call-ended` endpoint will receive a webhook with this structure:
+    
+    ```json title="end-of-call-report-payload.json"
+    {
+      "message": {
+        "type": "end-of-call-report",
+        "call": {
+          "id": "73a6da0f-c455-4bb6-bf4a-5f0634871430",
+          "status": "ended",
+          "endedReason": "assistant-ended-call"
+        }
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Test the Queue System">
+    Deploy your server and test the complete queue management flow.
+
+    **Start Your Server:**
+    ```bash
+    node server.js
+    ```
+
+    **Test Scenarios:**
+    1. **Single call**: Call your Twilio number - should connect immediately
+    2. **Multiple calls**: Make several simultaneous calls to test queuing
+    3. **Capacity limit**: Make more calls than your `MAX_CONCURRENCY` setting
+    4. **Queue processing**: Check that calls are processed as others end
+
+    **Monitor Queue Status:**
+    ```bash
+    # Check server health and capacity
+    curl https://your-server.com/health
+
+    # Manually trigger queue processing
+    curl -X POST https://your-server.com/process-queue
+    ```
+  </Step>
+</Steps>
+
+## Callback-Driven Queue Processing
+
+The system uses **event-driven queue processing** that responds immediately to capacity changes, eliminating the need for timers and preventing memory leaks:
+
+### How It Works
+
+- **Event-driven**: Queue processing is triggered by actual events (call start, call end)
+- **Redis persistence**: Call counters are stored in Redis, surviving server restarts and serverless deployments
+- **Immediate processing**: Uses `setImmediate()` to process queue as soon as capacity becomes available
+- **No timers**: Eliminates memory leak risks from long-running intervals
+- **Recursive processing**: Automatically processes multiple queued calls when capacity allows
+
+### Key Improvements
+
+<CardGroup cols={2}>
+  <Card title="Instant Response" icon="bolt" iconType="solid">
+    Queue processing happens immediately when calls end or arrive
+  </Card>
+  <Card title="Serverless Ready" icon="cloud" iconType="solid">
+    Redis persistence works across serverless function invocations
+  </Card>
+  <Card title="Memory Safe" icon="shield-check" iconType="solid">
+    No timers means no memory leaks from long-running processes
+  </Card>
+  <Card title="Production Resilient" icon="server" iconType="solid">
+    Counters survive server restarts and deployments
+  </Card>
+</CardGroup>
+
+### Architecture Benefits
+
+- **Event-driven triggers**: Processing occurs on actual state changes, not arbitrary intervals
+- **Persistent state**: Redis ensures counters are never lost, even in serverless environments
+- **Efficient resource usage**: No CPU cycles wasted on empty queue checks
+- **Immediate capacity utilization**: New calls are processed instantly when space becomes available
+- **Graceful degradation**: Redis connection failures are handled with proper error logging
+
+### Processing Triggers
+
+Queue processing is automatically triggered when:
+
+1. **New call arrives** → `setImmediate(() => processQueue())` after adding to queue
+2. **Call ends** → `setImmediate(() => processQueue())` after decrementing active count
+3. **Successful processing** → Recursively processes more calls if capacity and queue allow
+
+<Warning>
+Redis is required for this implementation. Ensure your Redis instance is properly configured and accessible from your deployment environment.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Redis connection issues">
+    **Common causes:**
+    - Redis server not running or unreachable
+    - Incorrect `REDIS_URL` configuration
+    - Network connectivity issues in production
+    
+    **Solutions:**
+    - Test Redis connection: `redis-cli ping` (should return PONG)
+    - Verify `REDIS_URL` format matches your provider
+    - Check firewall rules and security groups
+    - Monitor Redis logs for authentication errors
+    
+    **Health check endpoint shows Redis status:**
+    ```bash
+    curl https://your-server.com/health
+    # Check "redis" field in response
+    ```
+  </Accordion>
+
+  <Accordion title="Calls not being dequeued">
+    **Common causes:**
+    - Server not receiving call-ended webhooks (check webhook URLs)
+    - Redis counter desync (rare, but possible)
+    - Vapi API errors (check API key and assistant ID)
+    
+    **Solutions:**
+    - Verify webhook URLs are publicly accessible
+    - Check Redis counters: `redis-cli get vapi:queue:active_calls`
+    - Reset counters manually if needed: `redis-cli set vapi:queue:active_calls 0`
+    - Test Vapi API calls independently
+    
+    **Debug Redis state:**
+    ```bash
+    # Check current counter values
+    redis-cli mget vapi:queue:active_calls vapi:queue:calls_in_queue
+    ```
+  </Accordion>
+  
+  <Accordion title="Queue filling up but not processing">
+    **Check these items:**
+    - `MAX_CONCURRENCY` setting is appropriate for your Vapi plan
+    - Redis counters are accurate (compare with actual Twilio queue)
+    - No errors in Vapi TwiML generation
+    
+    **Debug steps:**
+    - Call `/process-queue` endpoint manually
+    - Check `/health` endpoint for current capacity and Redis status
+    - Review server logs for Redis connection errors
+    - Verify queue processing triggers are firing
+  </Accordion>
+  
+  <Accordion title="Serverless deployment issues">
+    **Serverless-specific considerations:**
+    - Use connection pooling for Redis (Upstash recommended)
+    - Cold starts may cause initial Redis connection delays
+    - Function timeout limits may interrupt long-running operations
+    
+    **Solutions:**
+    - Configure appropriate function timeout (30+ seconds)
+    - Use Redis providers optimized for serverless (Upstash)
+    - Implement connection retry logic
+    - Monitor function execution logs for timeout errors
+  </Accordion>
+  
+  <Accordion title="Calls dropping or hanging up">
+    **Potential issues:**
+    - Invalid phone number format (use E.164 format)
+    - Incorrect Vapi configuration (phone number ID, assistant ID)
+    - Network timeouts during TwiML generation
+    - Redis operations timing out
+    
+    **Solutions:**
+    - Validate all phone numbers before processing
+    - Add timeout handling to API calls and Redis operations
+    - Implement retry logic for failed Vapi requests
+    - Monitor Redis response times
+  </Accordion>
+
+  <Accordion title="Performance optimization">
+    **Production considerations:**
+    - Redis connection pooling for high-traffic scenarios
+    - Monitor Redis memory usage and eviction policies
+    - Consider Redis clustering for extreme scale
+    - Implement circuit breakers for external API calls
+    
+    **Monitoring recommendations:**
+    - Track Redis connection health
+    - Monitor queue processing latency
+    - Alert on Redis counter anomalies
+    - Log all state transitions for debugging
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+Now that you have a production-ready call queue system with Redis persistence and callback-driven processing:
+
+- **[Advanced Call Features](mdc:docs/calls/call-features):** Explore call recording, analysis, and advanced routing options
+- **[Monitoring & Analytics](mdc:docs/assistants/call-analysis):** Set up comprehensive call analytics and performance monitoring
+- **[Scaling Considerations](mdc:docs/enterprise/plans):** Learn about enterprise features for high-volume deployments
+- **[Assistant Optimization](mdc:docs/assistants/personalization):** Enhance your assistants with personalization and dynamic variables
+
+<Tip>
+Consider implementing health checks, metrics collection, and alerting around your Redis counters and queue processing latency for production monitoring.
+</Tip>
