@@ -1,0 +1,1124 @@
+---
+title: Advanced eval testing
+subtitle: Master testing strategies and best practices for production AI agents
+slug: observability/evals-advanced
+---
+
+## Overview
+
+This guide covers advanced evaluation strategies, testing patterns, and best practices for building robust test suites that ensure your AI agents work reliably in production.
+
+**You'll learn:**
+
+- Strategic testing approaches (smoke, regression, edge case)
+- Testing patterns for different scenarios
+- Performance optimization techniques
+- Maintenance and CI/CD integration strategies
+- Advanced troubleshooting methods
+
+## Testing strategies
+
+### Smoke tests
+
+Quick validation that core functionality works. Run these first to catch obvious issues.
+
+**Purpose:** Verify assistant responds and basic conversation flow works.
+
+```json
+{
+  "name": "Smoke Test - Basic Response",
+  "description": "Verify assistant responds to simple greeting",
+  "type": "chat.mockConversation",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "regex",
+        "content": ".+"
+      }
+    }
+  ]
+}
+```
+
+**Characteristics:**
+
+- Minimal validation (just check for any response)
+- Fast execution (1-2 turns)
+- Run before detailed tests
+- Exit early if smoke tests fail
+
+**When to use:**
+
+- Before running expensive test suites
+- After deploying configuration changes
+- As health checks in monitoring
+- Quick validation during development
+
+### Regression tests
+
+Ensure fixes and updates don't break existing functionality.
+
+**Purpose:** Validate that known issues stay fixed and features keep working.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Create evaluation named with "Regression: " prefix
+    2. Include issue ticket number in description
+    3. Add exact scenario that previously failed
+    4. Validate the fix still works
+    
+    Example:
+    - Name: "Regression: Date Parsing Bug #1234"
+    - Description: "Verify dates like '3/15' parse correctly after bug fix"
+  </Tab>
+
+  <Tab title="cURL">
+```bash
+curl -X POST "https://api.vapi.ai/eval" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Regression: Date Parsing Bug #1234",
+    "description": "Verify dates like 3/15 are parsed correctly after fix",
+    "type": "chat.mockConversation",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Book me for 3/15"
+      },
+      {
+        "role": "assistant",
+        "judgePlan": {
+          "type": "exact",
+          "toolCalls": [{
+            "name": "bookAppointment",
+            "arguments": {
+              "date": "2025-03-15"
+            }
+          }]
+        }
+      }
+    ]
+  }'
+```
+  </Tab>
+</Tabs>
+
+**Best practices:**
+
+- Name tests after bugs they prevent
+- Include ticket/issue numbers in descriptions
+- Add regression tests when fixing bugs
+- Run full regression suite before major releases
+- Archive tests only when features are removed
+
+### Edge case testing
+
+Test boundary conditions and unusual inputs.
+
+**Common edge cases to test:**
+
+<AccordionGroup>
+  <Accordion title="Empty or minimal input">
+    ```json
+    {
+      "messages": [
+        {"role": "user", "content": ""},
+        {"role": "assistant", "judgePlan": {
+          "type": "ai",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [{
+              "role": "system",
+              "content": "PASS if response asks for clarification politely. Output: pass or fail"
+            }]
+          }
+        }}
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Very long input">
+    ```json
+    {
+      "messages": [
+        {
+          "role": "user",
+          "content": "I need help with... (repeat 1000 times)"
+        },
+        {
+          "role": "assistant",
+          "judgePlan": {
+            "type": "regex",
+            "content": ".+"
+          },
+          "continuePlan": {
+            "exitOnFailureEnabled": true
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Special characters and unicode">
+    ```json
+    {
+      "messages": [
+        {
+          "role": "user",
+          "content": "My name is François José 王明"
+        },
+        {
+          "role": "assistant",
+          "judgePlan": {
+            "type": "ai",
+            "model": {
+              "provider": "openai",
+              "model": "gpt-4o",
+              "messages": [{
+                "role": "system",
+                "content": "PASS if response correctly acknowledges the name with special characters. Output: pass or fail"
+              }]
+            }
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Ambiguous or unclear requests">
+    ```json
+    {
+      "messages": [
+        {
+          "role": "user",
+          "content": "asdfghjkl"
+        },
+        {
+          "role": "assistant",
+          "judgePlan": {
+            "type": "ai",
+            "model": {
+              "provider": "openai",
+              "model": "gpt-4o",
+              "messages": [{
+                "role": "system",
+                "content": "PASS if response asks for clarification without being rude. Output: pass or fail"
+              }]
+            }
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Rapid conversation changes">
+    ```json
+    {
+      "messages": [
+        {"role": "user", "content": "Book appointment"},
+        {"role": "assistant", "judgePlan": {"type": "regex", "content": ".*appointment.*"}},
+        {"role": "user", "content": "Actually, cancel that. I need tech support."},
+        {"role": "assistant", "judgePlan": {
+          "type": "ai",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [{
+              "role": "system",
+              "content": "PASS if response pivots to tech support without confusion. Output: pass or fail"
+            }]
+          }
+        }}
+      ]
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+**Edge case categories:**
+
+- **Input boundaries:** Empty, maximum length, special characters
+- **Data formats:** Invalid dates, malformed phone numbers, unusual names
+- **Conversation patterns:** Interruptions, topic changes, contradictions
+- **Timing:** Very fast responses, long pauses, timeout scenarios
+
+## Testing patterns
+
+### Happy path testing
+
+Validate ideal user journeys where everything works correctly.
+
+**Structure:**
+
+1. User provides clear, complete information
+2. Assistant responds appropriately
+3. Tools execute successfully
+4. Conversation completes with desired outcome
+
+**Example: Perfect booking flow**
+
+```json
+{
+  "name": "Happy Path - Complete Booking",
+  "description": "User provides all info clearly, booking succeeds",
+  "type": "chat.mockConversation",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I'd like to book an appointment"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "ai",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4o",
+          "messages": [
+            {
+              "role": "system",
+              "content": "PASS if response asks for date/time preferences. Output: pass or fail"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "Next Monday at 2pm please"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "exact",
+        "toolCalls": [
+          {
+            "name": "bookAppointment",
+            "arguments": {
+              "date": "2025-01-20",
+              "time": "14:00"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\": \"success\", \"confirmationId\": \"APT-12345\"}"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "regex",
+        "content": ".*(confirmed|booked).*APT-12345.*"
+      }
+    }
+  ]
+}
+```
+
+**Happy path coverage:**
+
+- Test primary user goals
+- Verify expected tool executions
+- Validate success messages
+- Confirm data accuracy
+
+### Error handling testing
+
+Test how your assistant handles failures gracefully.
+
+**Tool failure scenarios:**
+
+```json
+{
+  "name": "Error Handling - Booking Unavailable",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Book Monday at 2pm"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "exact",
+        "toolCalls": [{ "name": "bookAppointment" }]
+      }
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\": \"error\", \"message\": \"Time slot unavailable\"}"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "ai",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4o",
+          "messages": [
+            {
+              "role": "system",
+              "content": "Evaluate: {{messages[-1]}}\n\nPASS if:\n- Response acknowledges the time is unavailable\n- Response offers alternatives or asks for different time\n- Tone remains helpful (not apologetic to excess)\n\nFAIL if:\n- Response ignores the error\n- Response doesn't offer next steps\n- Tone is frustrated or rude\n\nOutput: pass or fail"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+**Invalid input handling:**
+
+```json
+{
+  "name": "Error Handling - Invalid Date Format",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Book me for the 45th of Octember"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "ai",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4o",
+          "messages": [
+            {
+              "role": "system",
+              "content": "PASS if response politely asks for valid date without mocking user. Output: pass or fail"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+**API timeout simulation:**
+
+```json
+{
+  "name": "Error Handling - Tool Timeout",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Check my order status"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "exact",
+        "toolCalls": [{ "name": "checkOrderStatus" }]
+      }
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\": \"error\", \"message\": \"Request timeout\"}"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "ai",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4o",
+          "messages": [
+            {
+              "role": "system",
+              "content": "PASS if response acknowledges technical issue and suggests retry or alternative. Output: pass or fail"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+**Error categories to test:**
+
+- Tool/API failures
+- Invalid user input
+- Timeout scenarios
+- Rate limit errors
+- Partial data availability
+- Permission/authorization issues
+
+### Boundary testing
+
+Test limits and thresholds of your system.
+
+**Maximum conversation length:**
+
+```json
+{
+  "name": "Boundary - Max Turns",
+  "description": "Test assistant handles long conversations (20+ turns)",
+  "messages": [
+    { "role": "user", "content": "Question 1" },
+    { "role": "assistant", "judgePlan": { "type": "regex", "content": ".+" } },
+    { "role": "user", "content": "Question 2" },
+    { "role": "assistant", "judgePlan": { "type": "regex", "content": ".+" } },
+    // ... repeat up to boundary ...
+    { "role": "user", "content": "Final question" },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "ai",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4o",
+          "messages": [
+            {
+              "role": "system",
+              "content": "PASS if response is coherent and maintains context from earlier conversation. Output: pass or fail"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+**Rate limits:**
+
+Test behavior at or near rate limits:
+
+- Multiple tool calls in succession
+- Rapid user input
+- Large data processing requests
+
+**Data size boundaries:**
+
+```json
+{
+  "name": "Boundary - Large Data Response",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Get all customer records"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "exact",
+        "toolCalls": [{ "name": "getAllCustomers" }]
+      }
+    },
+    {
+      "role": "tool",
+      "content": "{\"customers\": [/* 1000 customer objects */]}"
+    },
+    {
+      "role": "assistant",
+      "judgePlan": {
+        "type": "ai",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4o",
+          "messages": [
+            {
+              "role": "system",
+              "content": "PASS if response summarizes data rather than reading full list. Output: pass or fail"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+## Best practices
+
+### Evaluation design principles
+
+<CardGroup cols={2}>
+  <Card title="Single responsibility" icon="bullseye">
+    Each evaluation should test one specific behavior or feature.
+    
+    ✅ **Good:** "Test greeting acknowledgment"
+    
+    ❌ **Bad:** "Test greeting, booking, and error handling"
+  </Card>
+
+{" "}
+
+<Card title="Clear naming" icon="tag">
+  Use descriptive names that explain what's being tested. ✅ **Good:** "Booking
+  - Validates Date Format" ❌ **Bad:** "Test 1" or "Eval ABC"
+</Card>
+
+{" "}
+
+<Card title="Comprehensive descriptions" icon="file-lines">
+  Document why the test exists and what it validates. Include context: business
+  requirement, bug ticket, or feature spec.
+</Card>
+
+  <Card title="Maintainable complexity" icon="layer-group">
+    Keep evaluations focused (5-10 turns max).
+    
+    Split complex scenarios into multiple targeted tests.
+  </Card>
+</CardGroup>
+
+### Validation approach selection
+
+Choose the right judge type for each scenario:
+
+<AccordionGroup>
+  <Accordion title="Use Exact Match when...">
+    **Ideal for:**
+    - Critical business data (confirmation IDs, totals, dates)
+    - Tool call validation with specific arguments
+    - Compliance-required exact wording
+    - Success/failure status messages
+    
+    **Example:** Booking confirmation ID must be exact
+    ```json
+    {
+      "judgePlan": {
+        "type": "exact",
+        "content": "Your confirmation ID is APT-12345"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use Regex when...">
+    **Ideal for:**
+    - Responses with variable data (names, dates, IDs)
+    - Pattern matching (email formats, phone numbers)
+    - Flexible phrasing with specific keywords
+    - Multiple acceptable phrasings
+    
+    **Example:** Confirmation with variable ID format
+    ```json
+    {
+      "judgePlan": {
+        "type": "regex",
+        "content": ".*confirmation (ID|number|code): [A-Z]{3}-[0-9]{5}.*"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use AI Judge when...">
+    **Ideal for:**
+    - Semantic meaning validation
+    - Tone and sentiment evaluation
+    - Contextual appropriateness
+    - Complex multi-factor criteria
+    - Helpfulness assessment
+    
+    **Example:** Validate polite rejection
+    ```json
+    {
+      "judgePlan": {
+        "type": "ai",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4o",
+          "messages": [{
+            "role": "system",
+            "content": "PASS if response politely declines without being rude and offers alternative. Output: pass or fail"
+          }]
+        }
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+**Decision tree:**
+
+```
+Is the exact wording critical?
+├─ Yes → Use Exact Match
+└─ No → Does it follow a pattern?
+    ├─ Yes → Use Regex
+    └─ No → Does it require understanding context/tone?
+        ├─ Yes → Use AI Judge
+        └─ No → Use Regex with flexible pattern
+```
+
+### Performance optimization
+
+**Minimize test execution time:**
+
+1. **Use exit-on-failure for early steps:**
+
+```json
+{
+  "continuePlan": {
+    "exitOnFailureEnabled": true
+  }
+}
+```
+
+Stops test immediately when critical validation fails.
+
+2. **Run critical tests first:**
+   Organize test suites so smoke tests and critical validations run before expensive tests.
+
+3. **Keep conversations focused:**
+   Aim for 5-10 turns maximum. Split longer scenarios into multiple tests.
+
+4. **Batch related tests:**
+   Group similar evaluations to run sequentially rather than one-off.
+
+5. **Optimize AI judge prompts:**
+
+- Use faster models (gpt-3.5-turbo) for simple validations
+- Use advanced models (gpt-4o) only for complex semantic evaluation
+- Keep prompts concise and specific
+
+**Performance comparison:**
+
+| Judge Type   | Speed       | Cost       | Use Case               |
+| ------------ | ----------- | ---------- | ---------------------- |
+| Exact        | ⚡⚡⚡ Fast | $ Low      | Critical exact matches |
+| Regex        | ⚡⚡ Fast   | $ Low      | Pattern matching       |
+| AI (GPT-3.5) | ⚡ Medium   | $$ Medium  | Simple semantic checks |
+| AI (GPT-4)   | ⏱ Slower    | $$$ Higher | Complex evaluation     |
+
+### Maintenance strategies
+
+**Version control your evaluations:**
+
+Store evaluation definitions alongside your codebase:
+
+```bash
+/tests
+  /evals
+    /greeting
+      - basic-greeting.json
+      - multilingual-greeting.json
+    /booking
+      - happy-path-booking.json
+      - error-handling-booking.json
+    /regression
+      - date-parsing-bug-1234.json
+```
+
+**Regular review cycle:**
+
+<Steps>
+  <Step title="Weekly: Review failed tests">
+    Investigate all failures. Update tests if expectations changed, or fix assistant if behavior regressed.
+  </Step>
+
+{" "}
+
+<Step title="Monthly: Audit test coverage">
+  Review test suite completeness: - All critical user flows covered? - New
+  features have tests? - Deprecated features removed?
+</Step>
+
+  <Step title="Quarterly: Refactor and optimize">
+    - Remove duplicate tests
+    - Update outdated validation criteria
+    - Optimize slow-running tests
+    - Document test rationale
+  </Step>
+</Steps>
+
+**Update tests when:**
+
+- Assistant prompts or behavior change intentionally
+- New features are added
+- Bugs are fixed (add regression tests)
+- User feedback reveals edge cases
+- Business requirements evolve
+
+**Deprecation strategy:**
+
+Don't delete tests immediately when features change:
+
+1. Mark test as "deprecated" in description
+2. Update expected behavior to match new requirements
+3. Run for one release cycle to verify
+4. Archive after confirmed stable
+
+### CI/CD integration
+
+Automate evaluation runs in your deployment pipeline.
+
+**Basic workflow:**
+
+```yaml
+# .github/workflows/test-assistant.yml
+name: Test Assistant Changes
+
+on:
+  pull_request:
+    paths:
+      - "assistants/**"
+      - "prompts/**"
+
+jobs:
+  run-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run critical evals
+        run: |
+          # Run smoke tests
+          curl -X POST "https://api.vapi.ai/eval/run" \
+            -H "Authorization: Bearer ${{ secrets.VAPI_API_KEY }}" \
+            -d '{"evalId": "$SMOKE_TEST_ID", "target": {...}}'
+
+          # Check results
+          # Fail build if tests fail
+```
+
+**Advanced patterns:**
+
+<AccordionGroup>
+  <Accordion title="Staging environment validation">
+    Run full eval suite against staging before production deploy:
+    
+    ```bash
+    # Run all evals against staging assistant
+    for eval_id in $EVAL_IDS; do
+      run_result=$(curl -X POST "https://api.vapi.ai/eval/run" \
+        -H "Authorization: Bearer $VAPI_API_KEY" \
+        -d "{\"evalId\": \"$eval_id\", \"target\": {\"type\": \"assistant\", \"assistantId\": \"$STAGING_ASSISTANT_ID\"}}")
+      
+      # Check if passed
+      status=$(echo $run_result | jq -r '.results[0].status')
+      if [ "$status" != "pass" ]; then
+        echo "Eval $eval_id failed!"
+        exit 1
+      fi
+    done
+    ```
+  </Accordion>
+
+  <Accordion title="Parallel test execution">
+    Run multiple evals concurrently to speed up CI:
+    
+    ```bash
+    # Run evals in parallel
+    for eval_id in $EVAL_IDS; do
+      (curl -X POST "https://api.vapi.ai/eval/run" \
+        -H "Authorization: Bearer $VAPI_API_KEY" \
+        -d "{\"evalId\": \"$eval_id\", ...}" > results_$eval_id.json) &
+    done
+    wait
+    
+    # Aggregate results
+    for result_file in results_*.json; do
+      # Check each result
+    done
+    ```
+  </Accordion>
+
+{" "}
+
+<Accordion title="Quality gates">
+  Block deployment if test pass rate falls below threshold: ```bash # Calculate
+  pass rate total_tests=10 passed_tests=$(grep -c '"status":"pass"'
+  all_results.json) pass_rate=$((passed_tests * 100 / total_tests)) if [
+  $pass_rate -lt 95 ]; then echo "Pass rate $pass_rate% below threshold 95%"
+  exit 1 fi ```
+</Accordion>
+
+  <Accordion title="Scheduled regression runs">
+    Run full regression suite nightly:
+    
+    ```yaml
+    # .github/workflows/nightly-regression.yml
+    on:
+      schedule:
+        - cron: '0 2 * * *'  # 2 AM daily
+    
+    jobs:
+      regression-suite:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Run regression tests
+            run: ./scripts/run-regression-suite.sh
+          
+          - name: Notify on failures
+            if: failure()
+            run: |
+              # Send Slack notification
+              # Create GitHub issue
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Advanced troubleshooting
+
+### Debugging failed evaluations
+
+**Step-by-step investigation:**
+
+<Steps>
+  <Step title="Examine failure reason">
+    Check `judge.failureReason` for specific details:
+    
+    ```json
+    {
+      "judge": {
+        "status": "fail",
+        "failureReason": "Expected exact match: 'confirmed' but got: 'booked'"
+      }
+    }
+    ```
+    
+    This tells you exactly what differed.
+  </Step>
+
+{" "}
+
+<Step title="Review full conversation transcript">
+  Look at `results[0].messages` to see complete interaction: - What did the user
+  actually say? - How did the assistant respond? - Were tool calls made
+  correctly? - Did tool responses contain expected data?
+</Step>
+
+{" "}
+
+<Step title="Compare expected vs actual">
+  For exact match failures: - Check for extra spaces or newlines - Verify
+  punctuation matches exactly - Look for case sensitivity issues For tool call
+  failures: - Verify argument types (string vs number) - Check for extra/missing
+  arguments - Validate argument values
+</Step>
+
+{" "}
+
+<Step title="Test validation logic separately">
+  For regex: - Test pattern with online validators - Try pattern against actual
+  response - Check for escaped special characters For AI judge: - Test prompt
+  with known good/bad examples - Verify binary pass/fail criteria - Check for
+  ambiguous requirements
+</Step>
+
+  <Step title="Reproduce manually">
+    Test the assistant interactively:
+    - Use same input as eval
+    - Compare live behavior to eval results
+    - Check if issue is with assistant or eval validation
+  </Step>
+</Steps>
+
+### Common failure patterns
+
+<AccordionGroup>
+  <Accordion title="Exact match fails with similar text">
+    **Problem:** Expected "Hello, how can I help?" but got "Hello, how may I help?"
+    
+    **Solutions:**
+    - Switch to regex for flexibility: `Hello, how (can|may) I help\?`
+    - Use AI judge for semantic matching
+    - Update expected value if new phrasing is acceptable
+  </Accordion>
+
+{" "}
+
+<Accordion title="Tool calls don't match">
+  **Problem:** Arguments have different types or extra fields **Solutions:** -
+  Check argument types: `"14:00"` (string) vs `14` (number) - Use partial
+  matching: omit `arguments` to match only function name - Normalize data
+  formats in tool implementation
+</Accordion>
+
+{" "}
+
+<Accordion title="AI judge inconsistent results">
+  **Problem:** Same response sometimes passes, sometimes fails **Solutions:** -
+  Make criteria more specific and binary - Add explicit examples of pass/fail
+  cases in prompt - Use temperature=0 for deterministic evaluation - Switch to
+  regex if pattern-based validation works
+</Accordion>
+
+{" "}
+
+<Accordion title="Test times out or hangs">
+  **Problem:** Eval status stuck in "running" **Solutions:** - Check assistant
+  configuration for errors - Verify tool endpoints are accessible - Reduce
+  conversation complexity - Check for infinite loops in assistant logic
+</Accordion>
+
+  <Accordion title="Regex doesn't match expected">
+    **Problem:** Pattern seems correct but fails
+    
+    **Solutions:**
+    - Escape special regex characters: `.`, `?`, `*`, `+`, `(`, `)`
+    - Use `.*` for flexible matching around keywords
+    - Test pattern with online regex validators
+    - Check for hidden characters or unicode
+  </Accordion>
+</AccordionGroup>
+
+### Debugging tools and techniques
+
+**Use structured logging:**
+
+Track eval executions systematically:
+
+```javascript
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "evalId": "eval-123",
+  "evalName": "Booking Flow Test",
+  "runId": "run-456",
+  "target": "assistant-789",
+  "result": "fail",
+  "failedStep": 3,
+  "failureReason": "Tool call mismatch",
+  "actualBehavior": "Called cancelAppointment instead of bookAppointment"
+}
+```
+
+**Isolate variables:**
+
+When tests fail inconsistently:
+
+1. Run same eval multiple times
+2. Test with different assistants (A/B comparison)
+3. Simplify conversation to minimum reproduction
+4. Check for race conditions or timing issues
+
+**Progressive validation:**
+
+Build up complexity gradually:
+
+```json
+// Step 1: Verify basic response
+{"judgePlan": {"type": "regex", "content": ".+"}}
+
+// Step 2: Verify contains keyword
+{"judgePlan": {"type": "regex", "content": ".*appointment.*"}}
+
+// Step 3: Verify exact format
+{"judgePlan": {"type": "exact", "content": "Appointment confirmed"}}
+```
+
+## Troubleshooting reference
+
+### Status and error codes
+
+| Status  | Ended Reason          | Meaning                          | Action                                |
+| ------- | --------------------- | -------------------------------- | ------------------------------------- |
+| ended   | mockConversation.done | ✅ Test completed normally       | Check results[0].status for pass/fail |
+| ended   | assistant-error       | ❌ Assistant configuration error | Fix assistant setup, re-run           |
+| ended   | pipeline-error-\*     | ❌ Provider API error            | Check provider status, API keys       |
+| running | -                     | ⏳ Test in progress              | Wait or check for timeout             |
+| queued  | -                     | ⏳ Test waiting to start         | Normal, should start soon             |
+
+### Quick diagnostic checklist
+
+<Note>
+  **When an eval fails, check:** - [ ] `endedReason` is "mockConversation.done"
+  - [ ] Assistant works correctly in manual testing - [ ] Tool endpoints are
+  accessible - [ ] Validation criteria match actual behavior - [ ] Regex
+  patterns are properly escaped - [ ] AI judge prompts are specific and binary -
+  [ ] Arguments match expected types (string vs number) - [ ] API keys and
+  permissions are valid - [ ] No rate limits or quota issues
+</Note>
+
+### Getting help
+
+**Include these details when reporting issues:**
+
+- Eval ID and run ID
+- Full `endedReason` value
+- Conversation transcript (`results[0].messages`)
+- Expected vs actual behavior
+- Assistant/squad configuration
+- Provider and model being used
+
+**Resources:**
+
+- [Eval API Reference](/api-reference/eval/create)
+- [Discord Community](https://discord.gg/pUFNcf2WmH) - #testing channel
+- [Support](mailto:support@vapi.ai) - Include eval run ID
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Evals quickstart"
+    icon="rocket"
+    href="/observability/evals-quickstart"
+  >
+    Return to quickstart guide for basic evaluation setup
+  </Card>
+
+{" "}
+<Card title="Assistants guide" icon="robot" href="/assistants/quickstart">
+  Learn to build and configure assistants for testing
+</Card>
+
+{" "}
+<Card title="Tools documentation" icon="wrench" href="/tools/custom-tools">
+  Build custom tools and test their behavior
+</Card>
+
+  <Card
+    title="Eval API reference"
+    icon="book"
+    href="/api-reference/eval/create"
+  >
+    Complete API documentation for evaluations
+  </Card>
+</CardGroup>
+
+## Summary
+
+<Tip>
+**Key takeaways for advanced eval testing:**
+
+**Testing strategy:**
+
+- Use smoke tests before comprehensive suites
+- Build regression tests when fixing bugs
+- Cover edge cases systematically
+
+**Validation selection:**
+
+- Exact match for critical data
+- Regex for pattern matching
+- AI judge for semantic evaluation
+
+**Performance:**
+
+- Exit early on critical failures
+- Keep conversations focused (5-10 turns)
+- Batch related tests together
+
+**Maintenance:**
+
+- Version control evaluations
+- Review failures promptly
+- Update tests with features
+- Document test purpose clearly
+
+**CI/CD:**
+
+- Automate critical tests in pipelines
+- Use staging for full suite validation
+- Set quality gate thresholds
+- Run regression suites regularly
+  </Tip>
