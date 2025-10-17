@@ -740,6 +740,34 @@
         "summary": "List Calls",
         "parameters": [
           {
+            "name": "assistantOverrides",
+            "required": false,
+            "in": "query",
+            "description": "Filter by assistant overrides. Use variableValues to filter by template variables.",
+            "schema": {
+              "example": {
+                "variableValues": {
+                  "name": "John",
+                  "age": "25"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "customer",
+            "required": false,
+            "in": "query",
+            "description": "Filter by customer properties. Supports filtering by number, name, externalId, and extension.",
+            "schema": {
+              "example": {
+                "number": "+1234567890",
+                "name": "John Doe"
+              },
+              "type": "object"
+            }
+          },
+          {
             "name": "assistantId",
             "required": false,
             "in": "query",
@@ -6789,7 +6817,8 @@
                   "base-conversationalai",
                   "base-voicemail",
                   "base-video",
-                  "whisper"
+                  "whisper",
+                  "flux-general-en"
                 ]
               },
               {
@@ -6909,14 +6938,23 @@
           },
           "eagerEotThreshold": {
             "type": "number",
+            "description": "Eager end-of-turn confidence required to fire a eager end-of-turn event. Setting a value here will enable EagerEndOfTurn and SpeechResumed events. It is disabled by default. Only used with Flux models.",
+            "minimum": 0,
+            "maximum": 1,
             "example": 0.3
           },
           "eotThreshold": {
             "type": "number",
+            "description": "End-of-turn confidence required to finish a turn. Only used with Flux models.\n\n@default 0.7",
+            "minimum": 0.5,
+            "maximum": 0.9,
             "example": 0.7
           },
           "eotTimeoutMs": {
             "type": "number",
+            "description": "A turn will be finished when this much time has passed after speech, regardless of EOT confidence. Only used with Flux models.\n\n@default 5000",
+            "minimum": 500,
+            "maximum": 10000,
             "example": 5000
           },
           "keywords": {
@@ -8624,7 +8662,8 @@
                   "base-conversationalai",
                   "base-voicemail",
                   "base-video",
-                  "whisper"
+                  "whisper",
+                  "flux-general-en"
                 ]
               },
               {
@@ -8744,14 +8783,23 @@
           },
           "eagerEotThreshold": {
             "type": "number",
+            "description": "Eager end-of-turn confidence required to fire a eager end-of-turn event. Setting a value here will enable EagerEndOfTurn and SpeechResumed events. It is disabled by default. Only used with Flux models.",
+            "minimum": 0,
+            "maximum": 1,
             "example": 0.3
           },
           "eotThreshold": {
             "type": "number",
+            "description": "End-of-turn confidence required to finish a turn. Only used with Flux models.\n\n@default 0.7",
+            "minimum": 0.5,
+            "maximum": 0.9,
             "example": 0.7
           },
           "eotTimeoutMs": {
             "type": "number",
+            "description": "A turn will be finished when this much time has passed after speech, regardless of EOT confidence. Only used with Flux models.\n\n@default 5000",
+            "minimum": 500,
+            "maximum": 10000,
             "example": 5000
           },
           "keywords": {
@@ -11695,6 +11743,14 @@
               ]
             }
           },
+          "function": {
+            "description": "This is the optional function definition that will be passed to the LLM.\nIf this is not defined, we will construct this based on the other properties.\n\nFor example, given the following tools definition:\n```json\n{\n  \"tools\": [\n    {\n      \"type\": \"handoff\",\n      \"destinations\": [\n        {\n          \"type\": \"assistant\",\n          \"assistantId\": \"assistant-123\",\n          \"description\": \"customer wants to be handed off to assistant-123\",\n          \"contextEngineeringPlan\": {\n            \"type\": \"all\"\n          }\n        },\n        {\n          \"type\": \"assistant\",\n          \"assistantId\": \"assistant-456\",\n          \"description\": \"customer wants to be handed off to assistant-456\",\n          \"contextEngineeringPlan\": {\n            \"type\": \"all\"\n          }\n        }\n      ],\n    }\n  ]\n}\n```\n\nWe will construct the following function definition:\n```json\n{\n  \"function\": {\n    \"name\": \"handoff_to_assistant-123\",\n    \"description\": \"\n         Use this function to handoff the call to the next assistant.\n         Only use it when instructions explicitly ask you to use the handoff_to_assistant function.\n         DO NOT call this function unless you are instructed to do so.\n         Here are the destinations you can handoff the call to:\n         1. assistant-123. When: customer wants to be handed off to assistant-123\n         2. assistant-456. When: customer wants to be handed off to assistant-456\n    \",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"destination\": {\n          \"type\": \"string\",\n          \"description\": \"Options: assistant-123 (customer wants to be handed off to assistant-123), assistant-456 (customer wants to be handed off to assistant-456)\",\n          \"enum\": [\"assistant-123\", \"assistant-456\"]\n        },\n      },\n      \"required\": [\"destination\"]\n    }\n  }\n}\n```\n\nTo override this function, please provide an OpenAI function definition and refer to it in the system prompt.\nYou may override parts of the function definition (i.e. you may only want to change the function name for your prompt).\nIf you choose to override the function parameters, it must include `destination` as a required parameter, and it must evaluate to either an assistantId, assistantName, or a the string literal `dynamic`.\n\nTo pass custom parameters to the server in a dynamic handoff, you can use the function parameters, with `dynamic` as the destination.\n```json\n{\n  \"function\": {\n    \"name\": \"dynamic_handoff\",\n    \"description\": \"\n         Call this function when the customer is ready to be handed off to the next assistant\n    \",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"destination\": {\n          \"type\": \"string\",\n          \"enum\": [\"dynamic\"]\n        },\n        \"customerAreaCode\": {\n          \"type\": \"number\",\n          \"description\": \"Area code of the customer\"\n        },\n        \"customerIntent\": {\n          \"type\": \"string\",\n          \"enum\": [\"new-customer\", \"existing-customer\"],\n          \"description\": \"Use new-customer when customer is a new customer, existing-customer when customer is an existing customer\"\n        },\n        \"customerSentiment\": {\n          \"type\": \"string\",\n          \"enum\": [\"positive\", \"negative\", \"neutral\"],\n          \"description\": \"Use positive when customer is happy, negative when customer is unhappy, neutral when customer is neutral\"\n        }\n      },\n      \"required\": [\"destination\", \"customerAreaCode\", \"customerIntent\", \"customerSentiment\"]\n    }\n  }\n}\n```",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIFunction"
+              }
+            ]
+          },
           "rejectionPlan": {
             "description": "This is the plan to reject a tool call based on the conversation state.\n\n// Example 1: Reject endCall if user didn't say goodbye\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '(?i)\\\\b(bye|goodbye|farewell|see you later|take care)\\\\b',\n    target: { position: -1, role: 'user' },\n    negate: true  // Reject if pattern does NOT match\n  }]\n}\n```\n\n// Example 2: Reject transfer if user is actually asking a question\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '\\\\?',\n    target: { position: -1, role: 'user' }\n  }]\n}\n```\n\n// Example 3: Reject transfer if user didn't mention transfer recently\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 5 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' %}\n{% assign mentioned = false %}\n{% for msg in userMessages %}\n  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'speak to' %}\n    {% assign mentioned = true %}\n    {% break %}\n  {% endif %}\n{% endfor %}\n{% if mentioned %}\n  false\n{% else %}\n  true\n{% endif %}`\n  }]\n}\n```\n\n// Example 4: Reject endCall if the bot is looping and trying to exit\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 6 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' | reverse %}\n{% if userMessages.size < 3 %}\n  false\n{% else %}\n  {% assign msg1 = userMessages[0].content | downcase %}\n  {% assign msg2 = userMessages[1].content | downcase %}\n  {% assign msg3 = userMessages[2].content | downcase %}\n  {% comment %} Check for repetitive messages {% endcomment %}\n  {% if msg1 == msg2 or msg1 == msg3 or msg2 == msg3 %}\n    true\n  {% comment %} Check for common loop phrases {% endcomment %}\n  {% elsif msg1 contains 'cool thanks' or msg2 contains 'cool thanks' or msg3 contains 'cool thanks' %}\n    true\n  {% elsif msg1 contains 'okay thanks' or msg2 contains 'okay thanks' or msg3 contains 'okay thanks' %}\n    true\n  {% elsif msg1 contains 'got it' or msg2 contains 'got it' or msg3 contains 'got it' %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{% endif %}`\n  }]\n}\n```",
             "allOf": [
@@ -12611,7 +12667,8 @@
               "claude-3-7-sonnet-20250219",
               "claude-opus-4-20250514",
               "claude-sonnet-4-20250514",
-              "claude-sonnet-4-5-20250929"
+              "claude-sonnet-4-5-20250929",
+              "claude-haiku-4-5-20251001"
             ]
           },
           "provider": {
@@ -14969,7 +15026,8 @@
               "claude-3-7-sonnet-20250219",
               "claude-opus-4-20250514",
               "claude-sonnet-4-20250514",
-              "claude-sonnet-4-5-20250929"
+              "claude-sonnet-4-5-20250929",
+              "claude-haiku-4-5-20251001"
             ]
           },
           "thinking": {
@@ -17381,6 +17439,13 @@
               }
             ]
           },
+          "maxDurationSeconds": {
+            "type": "number",
+            "description": "This is the maximum duration of the call in seconds.\n\nAfter this duration, the call will automatically end.\n\nDefault is 1800 (30 minutes), max is 43200 (12 hours), and min is 10 seconds.",
+            "minimum": 10,
+            "maximum": 43200,
+            "example": 600
+          },
           "name": {
             "type": "string",
             "maxLength": 80
@@ -17769,7 +17834,9 @@
             "enum": [
               "grok-beta",
               "grok-2",
-              "grok-3"
+              "grok-3",
+              "grok-4-fast-reasoning",
+              "grok-4-fast-non-reasoning"
             ]
           },
           "provider": {
@@ -18658,9 +18725,10 @@
             "type": "string",
             "description": "This is the model that will be used.",
             "enum": [
-              "octave"
+              "octave",
+              "octave2"
             ],
-            "example": "octave"
+            "example": "octave2"
           },
           "voiceId": {
             "type": "string",
@@ -20731,9 +20799,10 @@
             "type": "string",
             "description": "This is the model that will be used.",
             "enum": [
-              "octave"
+              "octave",
+              "octave2"
             ],
-            "example": "octave"
+            "example": "octave2"
           },
           "voiceId": {
             "type": "string",
@@ -27632,6 +27701,93 @@
               ]
             }
           },
+          "tools:append": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CreateApiRequestToolDTO",
+                  "title": "ApiRequestTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateBashToolDTO",
+                  "title": "BashTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateComputerToolDTO",
+                  "title": "ComputerTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateDtmfToolDTO",
+                  "title": "DtmfTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateEndCallToolDTO",
+                  "title": "EndCallTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateFunctionToolDTO",
+                  "title": "FunctionTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelCalendarAvailabilityToolDTO",
+                  "title": "GoHighLevelCalendarAvailabilityTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelCalendarEventCreateToolDTO",
+                  "title": "GoHighLevelCalendarEventCreateTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelContactCreateToolDTO",
+                  "title": "GoHighLevelContactCreateTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoHighLevelContactGetToolDTO",
+                  "title": "GoHighLevelContactGetTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarCheckAvailabilityToolDTO",
+                  "title": "GoogleCalendarCheckAvailabilityTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleCalendarCreateEventToolDTO",
+                  "title": "GoogleCalendarCreateEventTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateGoogleSheetsRowAppendToolDTO",
+                  "title": "GoogleSheetsRowAppendTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateHandoffToolDTO",
+                  "title": "HandoffTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateMcpToolDTO",
+                  "title": "McpTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateQueryToolDTO",
+                  "title": "QueryTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSlackSendMessageToolDTO",
+                  "title": "SlackSendMessageTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateSmsToolDTO",
+                  "title": "SmsTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTextEditorToolDTO",
+                  "title": "TextEditorTool"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateTransferCallToolDTO",
+                  "title": "TransferCallTool"
+                }
+              ]
+            }
+          },
           "variableValues": {
             "type": "object",
             "description": "These are values that will be used to replace the template variables in the assistant messages and other text-based fields.\nThis uses LiquidJS syntax. https://liquidjs.com/tutorials/intro-to-liquid.html\n\nSo for example, `{{ name }}` will be replaced with the value of `name` in `variableValues`.\n`{{\"now\" | date: \"%b %d, %Y, %I:%M %p\", \"America/New_York\"}}` will be replaced with the current date and time in New York.\n Some VAPI reserved defaults:\n - *customer* - the customer object"
@@ -27740,7 +27896,6 @@
         "properties": {
           "assistantDestinations": {
             "type": "array",
-            "description": "These are the other assistants that this assistant can transfer or handoff to.\n\nSupports both:\n- TransferDestinationAssistant: For transfer call tool (legacy)\n- HandoffDestinationAssistant: For handoff tool (recommended)\n\nIf the assistant already has transfer call or handoff tools, these destinations are just appended to existing ones.",
             "items": {
               "oneOf": [
                 {
@@ -28382,6 +28537,13 @@
               }
             ]
           },
+          "maxDurationSeconds": {
+            "type": "number",
+            "description": "This is the maximum duration of the call in seconds.\n\nAfter this duration, the call will automatically end.\n\nDefault is 1800 (30 minutes), max is 43200 (12 hours), and min is 10 seconds.",
+            "minimum": 10,
+            "maximum": 43200,
+            "example": 600
+          },
           "id": {
             "type": "string"
           },
@@ -29007,6 +29169,13 @@
               }
             ]
           },
+          "maxDurationSeconds": {
+            "type": "number",
+            "description": "This is the maximum duration of the call in seconds.\n\nAfter this duration, the call will automatically end.\n\nDefault is 1800 (30 minutes), max is 43200 (12 hours), and min is 10 seconds.",
+            "minimum": 10,
+            "maximum": 43200,
+            "example": 600
+          },
           "name": {
             "type": "string",
             "maxLength": 80
@@ -29613,6 +29782,13 @@
                 "title": "Vapi"
               }
             ]
+          },
+          "maxDurationSeconds": {
+            "type": "number",
+            "description": "This is the maximum duration of the call in seconds.\n\nAfter this duration, the call will automatically end.\n\nDefault is 1800 (30 minutes), max is 43200 (12 hours), and min is 10 seconds.",
+            "minimum": 10,
+            "maximum": 43200,
+            "example": 600
           },
           "name": {
             "type": "string",
@@ -30611,7 +30787,7 @@
               "call.start.error-subscription-concurrency-limit-reached",
               "call.start.error-enterprise-feature-not-available-recording-consent",
               "assistant-not-valid",
-              "database-error",
+              "call.start.error-vapifault-database-error",
               "assistant-not-found",
               "pipeline-error-openai-voice-failed",
               "pipeline-error-cartesia-voice-failed",
@@ -31087,6 +31263,7 @@
               "call.in-progress.error-transfer-failed",
               "customer-busy",
               "customer-ended-call",
+              "customer-ended-call-before-warm-transfer",
               "customer-ended-call-after-warm-transfer-attempt",
               "customer-did-not-answer",
               "customer-did-not-give-microphone-permission",
@@ -35820,6 +35997,14 @@
                 "$ref": "#/components/schemas/ToolRejectionPlan"
               }
             ]
+          },
+          "function": {
+            "description": "This is the optional function definition that will be passed to the LLM.\nIf this is not defined, we will construct this based on the other properties.\n\nFor example, given the following tools definition:\n```json\n{\n  \"tools\": [\n    {\n      \"type\": \"handoff\",\n      \"destinations\": [\n        {\n          \"type\": \"assistant\",\n          \"assistantId\": \"assistant-123\",\n          \"description\": \"customer wants to be handed off to assistant-123\",\n          \"contextEngineeringPlan\": {\n            \"type\": \"all\"\n          }\n        },\n        {\n          \"type\": \"assistant\",\n          \"assistantId\": \"assistant-456\",\n          \"description\": \"customer wants to be handed off to assistant-456\",\n          \"contextEngineeringPlan\": {\n            \"type\": \"all\"\n          }\n        }\n      ],\n    }\n  ]\n}\n```\n\nWe will construct the following function definition:\n```json\n{\n  \"function\": {\n    \"name\": \"handoff_to_assistant-123\",\n    \"description\": \"\n         Use this function to handoff the call to the next assistant.\n         Only use it when instructions explicitly ask you to use the handoff_to_assistant function.\n         DO NOT call this function unless you are instructed to do so.\n         Here are the destinations you can handoff the call to:\n         1. assistant-123. When: customer wants to be handed off to assistant-123\n         2. assistant-456. When: customer wants to be handed off to assistant-456\n    \",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"destination\": {\n          \"type\": \"string\",\n          \"description\": \"Options: assistant-123 (customer wants to be handed off to assistant-123), assistant-456 (customer wants to be handed off to assistant-456)\",\n          \"enum\": [\"assistant-123\", \"assistant-456\"]\n        },\n      },\n      \"required\": [\"destination\"]\n    }\n  }\n}\n```\n\nTo override this function, please provide an OpenAI function definition and refer to it in the system prompt.\nYou may override parts of the function definition (i.e. you may only want to change the function name for your prompt).\nIf you choose to override the function parameters, it must include `destination` as a required parameter, and it must evaluate to either an assistantId, assistantName, or a the string literal `dynamic`.\n\nTo pass custom parameters to the server in a dynamic handoff, you can use the function parameters, with `dynamic` as the destination.\n```json\n{\n  \"function\": {\n    \"name\": \"dynamic_handoff\",\n    \"description\": \"\n         Call this function when the customer is ready to be handed off to the next assistant\n    \",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"destination\": {\n          \"type\": \"string\",\n          \"enum\": [\"dynamic\"]\n        },\n        \"customerAreaCode\": {\n          \"type\": \"number\",\n          \"description\": \"Area code of the customer\"\n        },\n        \"customerIntent\": {\n          \"type\": \"string\",\n          \"enum\": [\"new-customer\", \"existing-customer\"],\n          \"description\": \"Use new-customer when customer is a new customer, existing-customer when customer is an existing customer\"\n        },\n        \"customerSentiment\": {\n          \"type\": \"string\",\n          \"enum\": [\"positive\", \"negative\", \"neutral\"],\n          \"description\": \"Use positive when customer is happy, negative when customer is unhappy, neutral when customer is neutral\"\n        }\n      },\n      \"required\": [\"destination\", \"customerAreaCode\", \"customerIntent\", \"customerSentiment\"]\n    }\n  }\n}\n```",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIFunction"
+              }
+            ]
           }
         },
         "required": [
@@ -37778,6 +37963,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ToolRejectionPlan"
+              }
+            ]
+          },
+          "function": {
+            "description": "This is the optional function definition that will be passed to the LLM.\nIf this is not defined, we will construct this based on the other properties.\n\nFor example, given the following tools definition:\n```json\n{\n  \"tools\": [\n    {\n      \"type\": \"handoff\",\n      \"destinations\": [\n        {\n          \"type\": \"assistant\",\n          \"assistantId\": \"assistant-123\",\n          \"description\": \"customer wants to be handed off to assistant-123\",\n          \"contextEngineeringPlan\": {\n            \"type\": \"all\"\n          }\n        },\n        {\n          \"type\": \"assistant\",\n          \"assistantId\": \"assistant-456\",\n          \"description\": \"customer wants to be handed off to assistant-456\",\n          \"contextEngineeringPlan\": {\n            \"type\": \"all\"\n          }\n        }\n      ],\n    }\n  ]\n}\n```\n\nWe will construct the following function definition:\n```json\n{\n  \"function\": {\n    \"name\": \"handoff_to_assistant-123\",\n    \"description\": \"\n         Use this function to handoff the call to the next assistant.\n         Only use it when instructions explicitly ask you to use the handoff_to_assistant function.\n         DO NOT call this function unless you are instructed to do so.\n         Here are the destinations you can handoff the call to:\n         1. assistant-123. When: customer wants to be handed off to assistant-123\n         2. assistant-456. When: customer wants to be handed off to assistant-456\n    \",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"destination\": {\n          \"type\": \"string\",\n          \"description\": \"Options: assistant-123 (customer wants to be handed off to assistant-123), assistant-456 (customer wants to be handed off to assistant-456)\",\n          \"enum\": [\"assistant-123\", \"assistant-456\"]\n        },\n      },\n      \"required\": [\"destination\"]\n    }\n  }\n}\n```\n\nTo override this function, please provide an OpenAI function definition and refer to it in the system prompt.\nYou may override parts of the function definition (i.e. you may only want to change the function name for your prompt).\nIf you choose to override the function parameters, it must include `destination` as a required parameter, and it must evaluate to either an assistantId, assistantName, or a the string literal `dynamic`.\n\nTo pass custom parameters to the server in a dynamic handoff, you can use the function parameters, with `dynamic` as the destination.\n```json\n{\n  \"function\": {\n    \"name\": \"dynamic_handoff\",\n    \"description\": \"\n         Call this function when the customer is ready to be handed off to the next assistant\n    \",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"destination\": {\n          \"type\": \"string\",\n          \"enum\": [\"dynamic\"]\n        },\n        \"customerAreaCode\": {\n          \"type\": \"number\",\n          \"description\": \"Area code of the customer\"\n        },\n        \"customerIntent\": {\n          \"type\": \"string\",\n          \"enum\": [\"new-customer\", \"existing-customer\"],\n          \"description\": \"Use new-customer when customer is a new customer, existing-customer when customer is an existing customer\"\n        },\n        \"customerSentiment\": {\n          \"type\": \"string\",\n          \"enum\": [\"positive\", \"negative\", \"neutral\"],\n          \"description\": \"Use positive when customer is happy, negative when customer is unhappy, neutral when customer is neutral\"\n        }\n      },\n      \"required\": [\"destination\", \"customerAreaCode\", \"customerIntent\", \"customerSentiment\"]\n    }\n  }\n}\n```",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIFunction"
               }
             ]
           }
@@ -39936,7 +40129,6 @@
             "type": "string",
             "description": "This is the description of the eval.\nThis helps describe the eval and its purpose in detail. It will not be used to evaluate the flow of the conversation.",
             "example": "This eval checks if the user flow is verified.",
-            "minLength": 1,
             "maxLength": 500
           },
           "type": {
@@ -40010,7 +40202,6 @@
             "type": "string",
             "description": "This is the description of the eval.\nThis helps describe the eval and its purpose in detail. It will not be used to evaluate the flow of the conversation.",
             "example": "This eval checks if the user flow is verified.",
-            "minLength": 1,
             "maxLength": 500
           },
           "type": {
@@ -40093,7 +40284,6 @@
             "type": "string",
             "description": "This is the description of the eval.\nThis helps describe the eval and its purpose in detail. It will not be used to evaluate the flow of the conversation.",
             "example": "This eval checks if the user flow is verified.",
-            "minLength": 1,
             "maxLength": 500
           },
           "type": {
@@ -40173,8 +40363,7 @@
           "content": {
             "type": "string",
             "description": "This is the content of the system message that would have been added in the middle of the conversation.\nDo not include the assistant prompt as a part of this message. It will automatically be fetched during runtime.",
-            "example": "You are a helpful assistant.",
-            "maxLength": 100000000
+            "example": "You are a helpful assistant."
           }
         },
         "required": [
@@ -40199,8 +40388,7 @@
             "examples": [
               "The weather in San Francisco is sunny.",
               "{weather: sunny}"
-            ],
-            "maxLength": 1000
+            ]
           }
         },
         "required": [
@@ -40478,7 +40666,8 @@
               "claude-3-7-sonnet-20250219",
               "claude-opus-4-20250514",
               "claude-sonnet-4-20250514",
-              "claude-sonnet-4-5-20250929"
+              "claude-sonnet-4-5-20250929",
+              "claude-haiku-4-5-20251001"
             ]
           },
           "thinking": {
@@ -40850,7 +41039,6 @@
             "type": "string",
             "description": "This is the description of the eval.\nThis helps describe the eval and its purpose in detail. It will not be used to evaluate the flow of the conversation.",
             "example": "This eval checks if the user flow is verified.",
-            "minLength": 1,
             "maxLength": 500
           },
           "type": {
@@ -46089,6 +46277,9 @@
           },
           "organizationId": {
             "type": "string"
+          },
+          "tags": {
+            "type": "object"
           }
         },
         "required": [
@@ -46281,24 +46472,6 @@
         "required": [
           "type",
           "token"
-        ]
-      },
-      "CredentialSessionDTO": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "enum": [
-              "google.calendar.oauth2-client",
-              "google.calendar.oauth2-authorization",
-              "google.sheets.oauth2-authorization",
-              "slack.oauth2-authorization"
-            ],
-            "description": "The type of credential to generate a session for. Only Nango user-facing providers are supported."
-          }
-        },
-        "required": [
-          "provider"
         ]
       },
       "ToolTemplateSetup": {
@@ -49674,7 +49847,7 @@
               "call.start.error-subscription-concurrency-limit-reached",
               "call.start.error-enterprise-feature-not-available-recording-consent",
               "assistant-not-valid",
-              "database-error",
+              "call.start.error-vapifault-database-error",
               "assistant-not-found",
               "pipeline-error-openai-voice-failed",
               "pipeline-error-cartesia-voice-failed",
@@ -50150,6 +50323,7 @@
               "call.in-progress.error-transfer-failed",
               "customer-busy",
               "customer-ended-call",
+              "customer-ended-call-before-warm-transfer",
               "customer-ended-call-after-warm-transfer-attempt",
               "customer-did-not-answer",
               "customer-did-not-give-microphone-permission",
@@ -50971,7 +51145,7 @@
               "call.start.error-subscription-concurrency-limit-reached",
               "call.start.error-enterprise-feature-not-available-recording-consent",
               "assistant-not-valid",
-              "database-error",
+              "call.start.error-vapifault-database-error",
               "assistant-not-found",
               "pipeline-error-openai-voice-failed",
               "pipeline-error-cartesia-voice-failed",
@@ -51447,6 +51621,7 @@
               "call.in-progress.error-transfer-failed",
               "customer-busy",
               "customer-ended-call",
+              "customer-ended-call-before-warm-transfer",
               "customer-ended-call-after-warm-transfer-attempt",
               "customer-did-not-answer",
               "customer-did-not-give-microphone-permission",

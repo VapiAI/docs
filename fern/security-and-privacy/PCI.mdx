@@ -58,6 +58,175 @@ Example configuration for `PCI compliant` assistant is:
 ```
 Note: The default value for `compliancePlan.pciEnabled` is false. Activating this setting aligns your assistant with PCI DSS standards by ensuring data is securely transmitted without being stored on Vapi’s systems.
 
+## Selective Recording with Squads
+
+For businesses that need to collect payment information while maintaining compliance, you can use **squads** to selectively disable recording, logging, and transcription only during sensitive payment collection phases. This approach allows you to:
+
+- **Record the beginning and end** of calls for quality assurance
+- **Disable all artifacts** during payment data collection
+- **Stay compliant** while gathering credit card information
+- **Use handoff tools** to seamlessly transfer between assistants
+- **Leverage Vapi's logging and trace recording** for non-sensitive portions while staying compliant
+
+### Payment Collection Squad Example
+
+Here's a complete squad configuration that demonstrates this approach:
+
+```json
+{
+    "name": "Payment Squad Without Recording",
+    "members": [
+        {
+            "assistant": {
+                "name": "Assistant 1",
+                "model": {
+                    "model": "gpt-4o",
+                    "provider": "openai",
+                    "messages": [
+                        {
+                            "content": "You are a helpful QuickSend assistant. Greet the caller, let them know you'll help them add a new payment method, and then smoothly transfer them to the payment setup assistant.",
+                            "role": "system"
+                        }
+                    ]
+                },
+                "voice": {
+                    "voiceId": "Elliot",
+                    "provider": "vapi"
+                },
+                "transcriber": {
+                    "model": "nova-2",
+                    "provider": "deepgram",
+                    "language": "en"
+                },
+                "keypadInputPlan": {
+                    "enabled": true,
+                    "timeoutSeconds": 10,
+                    "delimiters": [
+                        "#"
+                    ]
+                },
+                "firstMessage": "Welcome to QuickSend! I'll help you add a new payment method. Let's get started.",
+                "firstMessageMode": "assistant-speaks-first"
+            },
+            "assistantDestinations": [
+                {
+                    "type": "assistant",
+                    "assistantName": "Assistant 2",
+                    "description": "Transfer the caller to the payment setup assistant."
+                }
+            ]
+        },
+        {
+            "assistant": {
+                "name": "Assistant 2",
+                "model": {
+                    "model": "gpt-4o",
+                    "provider": "openai",
+                    "messages": [
+                        {
+                            "content": "You are a payment setup assistant. Ask the caller to enter their new card number followed by the pound (#) key. When you receive it, repeat it back clearly for confirmation. Once confirmed, transfer them to the payment confirmation assistant.",
+                            "role": "system"
+                        }
+                    ]
+                },
+                "artifactPlan": {
+                    "recordingEnabled": false,
+                    "loggingEnabled": false,
+                    "transcriptPlan": {
+                        "enabled": false
+                    }
+                },
+                "voice": {
+                    "voiceId": "Elliot",
+                    "provider": "vapi"
+                },
+                "transcriber": {
+                    "model": "nova-2",
+                    "provider": "deepgram",
+                    "language": "en"
+                },
+                "firstMessage": "Please enter your new card number followed by the POUND key.",
+                "firstMessageMode": "assistant-speaks-first",
+                "keypadInputPlan": {
+                    "enabled": true,
+                    "timeoutSeconds": 10,
+                    "delimiters": [
+                        "#"
+                    ]
+                }
+            },
+            "assistantDestinations": [
+                {
+                    "type": "assistant",
+                    "assistantName": "Assistant 3",
+                    "description": "Transfer the caller to the payment confirmation assistant.",
+                    "contextEngineeringPlan": {
+                        "type": "none"
+                    },
+                    "variableExtractionPlan": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "lastFourDigits": {
+                                    "type": "string",
+                                    "description": "last four digits of the card the user gave as input"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "assistant": {
+                "name": "Assistant 3",
+                "model": {
+                    "model": "gpt-4o",
+                    "provider": "openai",
+                    "messages": [
+                        {
+                            "content": "You are a payment confirmation assistant. Thank the caller for providing their card number. Read out the last four digits to them and confirm that they are correct. Once confirmed, let the caller know the payment method has been added successfully and close the conversation politely. Last four digits are {{lastFourDigits}}",
+                            "role": "system"
+                        }
+                    ]
+                },
+                "voice": {
+                    "voiceId": "Elliot",
+                    "provider": "vapi"
+                },
+                "transcriber": {
+                    "model": "nova-2",
+                    "provider": "deepgram",
+                    "language": "en"
+                },
+                "firstMessage": "Thanks for providing your card number. Do you want to proceed with your payment?",
+                "firstMessageMode": "assistant-speaks-first"
+            }
+        }
+    ]
+}
+```
+
+### How This Squad Works
+
+1. **Assistant 1** (Greeting): Records and logs the initial conversation
+2. **Assistant 2** (Payment Collection): **Disables all artifacts** using `artifactPlan` while collecting credit card data via keypad input
+3. **Assistant 3** (Confirmation): Records and logs the final confirmation
+
+The key component is the `artifactPlan` in Assistant 2:
+
+```json
+"artifactPlan": {
+    "recordingEnabled": false,
+    "loggingEnabled": false,
+    "transcriptPlan": {
+        "enabled": false
+    }
+}
+```
+
+This ensures that sensitive payment information is never recorded, logged, or transcribed, while still allowing you to maintain call quality data for the non-sensitive portions of the conversation.
+
 ## Can PCI be used alongside HIPAA?
 Yes, you can enable both HIPAA and PCI compliance for an assistant. In this case, the restrictions from both compliances will apply, meaning that no recordings or transcripts will be stored or transmitted, even if you have specified cloud storage endpoints or webhooks for storing transcripts.
 
