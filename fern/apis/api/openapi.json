@@ -911,7 +911,8 @@
                   "eq": "2",
                   "gt": "1"
                 }
-              }
+              },
+              "type": "object"
             }
           },
           {
@@ -15094,6 +15095,504 @@
           "provider"
         ]
       },
+      "TransferHookAction": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of action - must be \"transfer\"",
+            "enum": [
+              "transfer"
+            ]
+          },
+          "destination": {
+            "description": "This is the destination details for the transfer - can be a phone number or SIP URI",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TransferDestinationNumber",
+                "title": "NumberTransferDestination"
+              },
+              {
+                "$ref": "#/components/schemas/TransferDestinationSip",
+                "title": "SipTransferDestination"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "FunctionCallHookAction": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "description": "These are the messages that will be spoken to the user as the tool is running.\n\nFor some tools, this is auto-filled based on special fields like `tool.destinations`. For others like the function tool, these can be custom configured.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ToolMessageStart",
+                  "title": "ToolMessageStart"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageComplete",
+                  "title": "ToolMessageComplete"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageFailed",
+                  "title": "ToolMessageFailed"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageDelayed",
+                  "title": "ToolMessageDelayed"
+                }
+              ]
+            }
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "function"
+            ],
+            "description": "The type of tool. \"function\" for Function tool."
+          },
+          "async": {
+            "type": "boolean",
+            "example": false,
+            "description": "This determines if the tool is async.\n\n  If async, the assistant will move forward without waiting for your server to respond. This is useful if you just want to trigger something on your server.\n\n  If sync, the assistant will wait for your server to respond. This is useful if want assistant to respond with the result from your server.\n\n  Defaults to synchronous (`false`)."
+          },
+          "server": {
+            "description": "\n  This is the server where a `tool-calls` webhook will be sent.\n\n  Notes:\n  - Webhook is sent to this server when a tool call is made.\n  - Webhook contains the call, assistant, and phone number objects.\n  - Webhook contains the variables set on the assistant.\n  - Webhook is sent to the first available URL in this order: {{tool.server.url}}, {{assistant.server.url}}, {{phoneNumber.server.url}}, {{org.server.url}}.\n  - Webhook expects a response with tool call result.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Server"
+              }
+            ]
+          },
+          "rejectionPlan": {
+            "description": "This is the plan to reject a tool call based on the conversation state.\n\n// Example 1: Reject endCall if user didn't say goodbye\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '(?i)\\\\b(bye|goodbye|farewell|see you later|take care)\\\\b',\n    target: { position: -1, role: 'user' },\n    negate: true  // Reject if pattern does NOT match\n  }]\n}\n```\n\n// Example 2: Reject transfer if user is actually asking a question\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '\\\\?',\n    target: { position: -1, role: 'user' }\n  }]\n}\n```\n\n// Example 3: Reject transfer if user didn't mention transfer recently\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 5 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' %}\n{% assign mentioned = false %}\n{% for msg in userMessages %}\n  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'speak to' %}\n    {% assign mentioned = true %}\n    {% break %}\n  {% endif %}\n{% endfor %}\n{% if mentioned %}\n  false\n{% else %}\n  true\n{% endif %}`\n  }]\n}\n```\n\n// Example 4: Reject endCall if the bot is looping and trying to exit\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 6 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' | reverse %}\n{% if userMessages.size < 3 %}\n  false\n{% else %}\n  {% assign msg1 = userMessages[0].content | downcase %}\n  {% assign msg2 = userMessages[1].content | downcase %}\n  {% assign msg3 = userMessages[2].content | downcase %}\n  {% comment %} Check for repetitive messages {% endcomment %}\n  {% if msg1 == msg2 or msg1 == msg3 or msg2 == msg3 %}\n    true\n  {% comment %} Check for common loop phrases {% endcomment %}\n  {% elsif msg1 contains 'cool thanks' or msg2 contains 'cool thanks' or msg3 contains 'cool thanks' %}\n    true\n  {% elsif msg1 contains 'okay thanks' or msg2 contains 'okay thanks' or msg3 contains 'okay thanks' %}\n    true\n  {% elsif msg1 contains 'got it' or msg2 contains 'got it' or msg3 contains 'got it' %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{% endif %}`\n  }]\n}\n```",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ToolRejectionPlan"
+              }
+            ]
+          },
+          "function": {
+            "description": "This is the function definition of the tool.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIFunction"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "SayHookAction": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of action - must be \"say\"",
+            "enum": [
+              "say"
+            ]
+          },
+          "prompt": {
+            "description": "This is the prompt for the assistant to generate a response based on existing conversation.\nCan be a string or an array of chat messages.",
+            "oneOf": [
+              {
+                "type": "string",
+                "title": "String"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SystemMessage",
+                      "title": "SystemMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UserMessage",
+                      "title": "UserMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssistantMessage",
+                      "title": "AssistantMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ToolMessage",
+                      "title": "ToolMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DeveloperMessage",
+                      "title": "DeveloperMessage"
+                    }
+                  ]
+                },
+                "title": "MessageArray"
+              }
+            ],
+            "examples": [
+              "Ask the user if they're still in the call",
+              [
+                {
+                  "role": "system",
+                  "content": "You are a helpful assistant, and would like to know if the user is still in the call based on the conversation history in {{transcript}}"
+                }
+              ]
+            ]
+          },
+          "exact": {
+            "type": "object",
+            "description": "This is the message to say"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "CallHookFilter": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of filter - currently only \"oneOf\" is supported",
+            "enum": [
+              "oneOf"
+            ],
+            "maxLength": 1000
+          },
+          "key": {
+            "type": "string",
+            "description": "This is the key to filter on (e.g. \"call.endedReason\")",
+            "maxLength": 1000
+          },
+          "oneOf": {
+            "description": "This is the array of possible values to match against",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          }
+        },
+        "required": [
+          "type",
+          "key",
+          "oneOf"
+        ]
+      },
+      "CallHookCallEnding": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "string",
+            "description": "This is the event that triggers this hook",
+            "enum": [
+              "call.ending"
+            ],
+            "maxLength": 1000
+          },
+          "do": {
+            "type": "array",
+            "description": "This is the set of actions to perform when the hook triggers",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ToolCallHookAction",
+                  "title": "ToolCallHookAction"
+                }
+              ]
+            }
+          },
+          "filters": {
+            "description": "This is the set of filters that must match for the hook to trigger",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CallHookFilter"
+            }
+          }
+        },
+        "required": [
+          "on",
+          "do"
+        ]
+      },
+      "CallHookAssistantSpeechInterrupted": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "string",
+            "description": "This is the event that triggers this hook",
+            "enum": [
+              "assistant.speech.interrupted"
+            ],
+            "maxLength": 1000
+          },
+          "do": {
+            "type": "array",
+            "description": "This is the set of actions to perform when the hook triggers",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SayHookAction",
+                  "title": "SayHookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolCallHookAction",
+                  "title": "ToolCallHookAction"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "on",
+          "do"
+        ]
+      },
+      "CallHookCustomerSpeechInterrupted": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "string",
+            "description": "This is the event that triggers this hook",
+            "enum": [
+              "customer.speech.interrupted"
+            ],
+            "maxLength": 1000
+          },
+          "do": {
+            "type": "array",
+            "description": "This is the set of actions to perform when the hook triggers",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SayHookAction",
+                  "title": "SayHookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolCallHookAction",
+                  "title": "ToolCallHookAction"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "on",
+          "do"
+        ]
+      },
+      "ToolCallHookAction": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of action - must be \"tool\"",
+            "enum": [
+              "tool"
+            ]
+          },
+          "tool": {
+            "description": "This is the tool to call. To use an existing tool, send `toolId` instead.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CreateApiRequestToolDTO",
+                "title": "ApiRequestTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateBashToolDTO",
+                "title": "BashTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateComputerToolDTO",
+                "title": "ComputerTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateDtmfToolDTO",
+                "title": "DtmfTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateEndCallToolDTO",
+                "title": "EndCallTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateFunctionToolDTO",
+                "title": "FunctionTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateGoHighLevelCalendarAvailabilityToolDTO",
+                "title": "GoHighLevelCalendarAvailabilityTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateGoHighLevelCalendarEventCreateToolDTO",
+                "title": "GoHighLevelCalendarEventCreateTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateGoHighLevelContactCreateToolDTO",
+                "title": "GoHighLevelContactCreateTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateGoHighLevelContactGetToolDTO",
+                "title": "GoHighLevelContactGetTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateGoogleCalendarCheckAvailabilityToolDTO",
+                "title": "GoogleCalendarCheckAvailabilityTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateGoogleCalendarCreateEventToolDTO",
+                "title": "GoogleCalendarCreateEventTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateGoogleSheetsRowAppendToolDTO",
+                "title": "GoogleSheetsRowAppendTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateHandoffToolDTO",
+                "title": "HandoffTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateMcpToolDTO",
+                "title": "McpTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateQueryToolDTO",
+                "title": "QueryTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateSlackSendMessageToolDTO",
+                "title": "SlackSendMessageTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateSmsToolDTO",
+                "title": "SmsTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateTextEditorToolDTO",
+                "title": "TextEditorTool"
+              },
+              {
+                "$ref": "#/components/schemas/CreateTransferCallToolDTO",
+                "title": "TransferCallTool"
+              }
+            ]
+          },
+          "toolId": {
+            "type": "string",
+            "description": "This is the tool to call. To use a transient tool, send `tool` instead."
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "CustomerSpeechTimeoutOptions": {
+        "type": "object",
+        "properties": {
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is the timeout in seconds before action is triggered.\nThe clock starts when the assistant finishes speaking and remains active until the user speaks.\n\n@default 7.5",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "triggerMaxCount": {
+            "type": "number",
+            "description": "This is the maximum number of times the hook will trigger in a call.\n\n@default 3",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "triggerResetMode": {
+            "type": "object",
+            "description": "This is whether the counter for hook trigger resets the user speaks.\n\n@default never"
+          }
+        },
+        "required": [
+          "timeoutSeconds"
+        ]
+      },
+      "CallHookCustomerSpeechTimeout": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "string",
+            "description": "Must be either \"customer.speech.timeout\" or match the pattern \"customer.speech.timeout[property=value]\"",
+            "maxLength": 1000
+          },
+          "do": {
+            "type": "array",
+            "description": "This is the set of actions to perform when the hook triggers",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SayHookAction",
+                  "title": "SayHookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolCallHookAction",
+                  "title": "ToolCallHookAction"
+                }
+              ]
+            }
+          },
+          "options": {
+            "description": "This is the set of filters that must match for the hook to trigger",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomerSpeechTimeoutOptions"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the hook, it can be set by the user to identify the hook.\nIf no name is provided, the hook will be auto generated as UUID.\n\n@default UUID",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "on",
+          "do"
+        ]
+      },
+      "CallHookModelResponseTimeout": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "string",
+            "description": "This is the event that triggers this hook",
+            "enum": [
+              "model.response.timeout"
+            ],
+            "maxLength": 1000
+          },
+          "do": {
+            "type": "array",
+            "description": "This is the set of actions to perform when the hook triggers",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SayHookAction",
+                  "title": "SayHookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolCallHookAction",
+                  "title": "ToolCallHookAction"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "on",
+          "do"
+        ]
+      },
       "AIEdgeCondition": {
         "type": "object",
         "properties": {
@@ -16453,6 +16952,10 @@
                 {
                   "$ref": "#/components/schemas/CallHookCustomerSpeechTimeout",
                   "title": "CallHookCustomerSpeechTimeout"
+                },
+                {
+                  "$ref": "#/components/schemas/CallHookModelResponseTimeout",
+                  "title": "CallHookModelResponseTimeout"
                 }
               ]
             }
@@ -16724,6 +17227,12 @@
           "voicemailDetection": {
             "description": "This is the voicemail detection plan for the workflow.",
             "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              },
               {
                 "$ref": "#/components/schemas/GoogleVoicemailDetectionPlan",
                 "title": "Google"
@@ -23248,471 +23757,6 @@
           "groupId"
         ]
       },
-      "TransferHookAction": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of action - must be \"transfer\"",
-            "enum": [
-              "transfer"
-            ]
-          },
-          "destination": {
-            "description": "This is the destination details for the transfer - can be a phone number or SIP URI",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/TransferDestinationNumber",
-                "title": "NumberTransferDestination"
-              },
-              {
-                "$ref": "#/components/schemas/TransferDestinationSip",
-                "title": "SipTransferDestination"
-              }
-            ]
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
-      "FunctionCallHookAction": {
-        "type": "object",
-        "properties": {
-          "messages": {
-            "type": "array",
-            "description": "These are the messages that will be spoken to the user as the tool is running.\n\nFor some tools, this is auto-filled based on special fields like `tool.destinations`. For others like the function tool, these can be custom configured.",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/ToolMessageStart",
-                  "title": "ToolMessageStart"
-                },
-                {
-                  "$ref": "#/components/schemas/ToolMessageComplete",
-                  "title": "ToolMessageComplete"
-                },
-                {
-                  "$ref": "#/components/schemas/ToolMessageFailed",
-                  "title": "ToolMessageFailed"
-                },
-                {
-                  "$ref": "#/components/schemas/ToolMessageDelayed",
-                  "title": "ToolMessageDelayed"
-                }
-              ]
-            }
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "function"
-            ],
-            "description": "The type of tool. \"function\" for Function tool."
-          },
-          "async": {
-            "type": "boolean",
-            "example": false,
-            "description": "This determines if the tool is async.\n\n  If async, the assistant will move forward without waiting for your server to respond. This is useful if you just want to trigger something on your server.\n\n  If sync, the assistant will wait for your server to respond. This is useful if want assistant to respond with the result from your server.\n\n  Defaults to synchronous (`false`)."
-          },
-          "server": {
-            "description": "\n  This is the server where a `tool-calls` webhook will be sent.\n\n  Notes:\n  - Webhook is sent to this server when a tool call is made.\n  - Webhook contains the call, assistant, and phone number objects.\n  - Webhook contains the variables set on the assistant.\n  - Webhook is sent to the first available URL in this order: {{tool.server.url}}, {{assistant.server.url}}, {{phoneNumber.server.url}}, {{org.server.url}}.\n  - Webhook expects a response with tool call result.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Server"
-              }
-            ]
-          },
-          "rejectionPlan": {
-            "description": "This is the plan to reject a tool call based on the conversation state.\n\n// Example 1: Reject endCall if user didn't say goodbye\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '(?i)\\\\b(bye|goodbye|farewell|see you later|take care)\\\\b',\n    target: { position: -1, role: 'user' },\n    negate: true  // Reject if pattern does NOT match\n  }]\n}\n```\n\n// Example 2: Reject transfer if user is actually asking a question\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '\\\\?',\n    target: { position: -1, role: 'user' }\n  }]\n}\n```\n\n// Example 3: Reject transfer if user didn't mention transfer recently\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 5 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' %}\n{% assign mentioned = false %}\n{% for msg in userMessages %}\n  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'speak to' %}\n    {% assign mentioned = true %}\n    {% break %}\n  {% endif %}\n{% endfor %}\n{% if mentioned %}\n  false\n{% else %}\n  true\n{% endif %}`\n  }]\n}\n```\n\n// Example 4: Reject endCall if the bot is looping and trying to exit\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 6 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' | reverse %}\n{% if userMessages.size < 3 %}\n  false\n{% else %}\n  {% assign msg1 = userMessages[0].content | downcase %}\n  {% assign msg2 = userMessages[1].content | downcase %}\n  {% assign msg3 = userMessages[2].content | downcase %}\n  {% comment %} Check for repetitive messages {% endcomment %}\n  {% if msg1 == msg2 or msg1 == msg3 or msg2 == msg3 %}\n    true\n  {% comment %} Check for common loop phrases {% endcomment %}\n  {% elsif msg1 contains 'cool thanks' or msg2 contains 'cool thanks' or msg3 contains 'cool thanks' %}\n    true\n  {% elsif msg1 contains 'okay thanks' or msg2 contains 'okay thanks' or msg3 contains 'okay thanks' %}\n    true\n  {% elsif msg1 contains 'got it' or msg2 contains 'got it' or msg3 contains 'got it' %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{% endif %}`\n  }]\n}\n```",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ToolRejectionPlan"
-              }
-            ]
-          },
-          "function": {
-            "description": "This is the function definition of the tool.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/OpenAIFunction"
-              }
-            ]
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
-      "SayHookAction": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of action - must be \"say\"",
-            "enum": [
-              "say"
-            ]
-          },
-          "prompt": {
-            "description": "This is the prompt for the assistant to generate a response based on existing conversation.\nCan be a string or an array of chat messages.",
-            "oneOf": [
-              {
-                "type": "string",
-                "title": "String"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/SystemMessage",
-                      "title": "SystemMessage"
-                    },
-                    {
-                      "$ref": "#/components/schemas/UserMessage",
-                      "title": "UserMessage"
-                    },
-                    {
-                      "$ref": "#/components/schemas/AssistantMessage",
-                      "title": "AssistantMessage"
-                    },
-                    {
-                      "$ref": "#/components/schemas/ToolMessage",
-                      "title": "ToolMessage"
-                    },
-                    {
-                      "$ref": "#/components/schemas/DeveloperMessage",
-                      "title": "DeveloperMessage"
-                    }
-                  ]
-                },
-                "title": "MessageArray"
-              }
-            ],
-            "examples": [
-              "Ask the user if they're still in the call",
-              [
-                {
-                  "role": "system",
-                  "content": "You are a helpful assistant, and would like to know if the user is still in the call based on the conversation history in {{transcript}}"
-                }
-              ]
-            ]
-          },
-          "exact": {
-            "type": "object",
-            "description": "This is the message to say"
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
-      "CallHookFilter": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of filter - currently only \"oneOf\" is supported",
-            "enum": [
-              "oneOf"
-            ],
-            "maxLength": 1000
-          },
-          "key": {
-            "type": "string",
-            "description": "This is the key to filter on (e.g. \"call.endedReason\")",
-            "maxLength": 1000
-          },
-          "oneOf": {
-            "description": "This is the array of possible values to match against",
-            "type": "array",
-            "items": {
-              "type": "string",
-              "maxLength": 1000
-            }
-          }
-        },
-        "required": [
-          "type",
-          "key",
-          "oneOf"
-        ]
-      },
-      "CallHookCallEnding": {
-        "type": "object",
-        "properties": {
-          "on": {
-            "type": "string",
-            "description": "This is the event that triggers this hook",
-            "enum": [
-              "call.ending"
-            ],
-            "maxLength": 1000
-          },
-          "do": {
-            "type": "array",
-            "description": "This is the set of actions to perform when the hook triggers",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/ToolCallHookAction",
-                  "title": "ToolCallHookAction"
-                }
-              ]
-            }
-          },
-          "filters": {
-            "description": "This is the set of filters that must match for the hook to trigger",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CallHookFilter"
-            }
-          }
-        },
-        "required": [
-          "on",
-          "do"
-        ]
-      },
-      "CallHookAssistantSpeechInterrupted": {
-        "type": "object",
-        "properties": {
-          "on": {
-            "type": "string",
-            "description": "This is the event that triggers this hook",
-            "enum": [
-              "assistant.speech.interrupted"
-            ],
-            "maxLength": 1000
-          },
-          "do": {
-            "type": "array",
-            "description": "This is the set of actions to perform when the hook triggers",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/SayHookAction",
-                  "title": "SayHookAction"
-                },
-                {
-                  "$ref": "#/components/schemas/ToolCallHookAction",
-                  "title": "ToolCallHookAction"
-                }
-              ]
-            }
-          }
-        },
-        "required": [
-          "on",
-          "do"
-        ]
-      },
-      "CallHookCustomerSpeechInterrupted": {
-        "type": "object",
-        "properties": {
-          "on": {
-            "type": "string",
-            "description": "This is the event that triggers this hook",
-            "enum": [
-              "customer.speech.interrupted"
-            ],
-            "maxLength": 1000
-          },
-          "do": {
-            "type": "array",
-            "description": "This is the set of actions to perform when the hook triggers",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/SayHookAction",
-                  "title": "SayHookAction"
-                },
-                {
-                  "$ref": "#/components/schemas/ToolCallHookAction",
-                  "title": "ToolCallHookAction"
-                }
-              ]
-            }
-          }
-        },
-        "required": [
-          "on",
-          "do"
-        ]
-      },
-      "ToolCallHookAction": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of action - must be \"tool\"",
-            "enum": [
-              "tool"
-            ]
-          },
-          "tool": {
-            "description": "This is the tool to call. To use an existing tool, send `toolId` instead.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/CreateApiRequestToolDTO",
-                "title": "ApiRequestTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateBashToolDTO",
-                "title": "BashTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateComputerToolDTO",
-                "title": "ComputerTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateDtmfToolDTO",
-                "title": "DtmfTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateEndCallToolDTO",
-                "title": "EndCallTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateFunctionToolDTO",
-                "title": "FunctionTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateGoHighLevelCalendarAvailabilityToolDTO",
-                "title": "GoHighLevelCalendarAvailabilityTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateGoHighLevelCalendarEventCreateToolDTO",
-                "title": "GoHighLevelCalendarEventCreateTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateGoHighLevelContactCreateToolDTO",
-                "title": "GoHighLevelContactCreateTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateGoHighLevelContactGetToolDTO",
-                "title": "GoHighLevelContactGetTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateGoogleCalendarCheckAvailabilityToolDTO",
-                "title": "GoogleCalendarCheckAvailabilityTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateGoogleCalendarCreateEventToolDTO",
-                "title": "GoogleCalendarCreateEventTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateGoogleSheetsRowAppendToolDTO",
-                "title": "GoogleSheetsRowAppendTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateHandoffToolDTO",
-                "title": "HandoffTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateMcpToolDTO",
-                "title": "McpTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateQueryToolDTO",
-                "title": "QueryTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateSlackSendMessageToolDTO",
-                "title": "SlackSendMessageTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateSmsToolDTO",
-                "title": "SmsTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateTextEditorToolDTO",
-                "title": "TextEditorTool"
-              },
-              {
-                "$ref": "#/components/schemas/CreateTransferCallToolDTO",
-                "title": "TransferCallTool"
-              }
-            ]
-          },
-          "toolId": {
-            "type": "string",
-            "description": "This is the tool to call. To use a transient tool, send `tool` instead."
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
-      "CustomerSpeechTimeoutOptions": {
-        "type": "object",
-        "properties": {
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is the timeout in seconds before action is triggered.\nThe clock starts when the assistant finishes speaking and remains active until the user speaks.\n\n@default 7.5",
-            "minimum": 1,
-            "maximum": 1000
-          },
-          "triggerMaxCount": {
-            "type": "number",
-            "description": "This is the maximum number of times the hook will trigger in a call.\n\n@default 3",
-            "minimum": 1,
-            "maximum": 10
-          },
-          "triggerResetMode": {
-            "type": "object",
-            "description": "This is whether the counter for hook trigger resets the user speaks.\n\n@default never"
-          }
-        },
-        "required": [
-          "timeoutSeconds"
-        ]
-      },
-      "CallHookCustomerSpeechTimeout": {
-        "type": "object",
-        "properties": {
-          "on": {
-            "type": "string",
-            "description": "Must be either \"customer.speech.timeout\" or match the pattern \"customer.speech.timeout[property=value]\"",
-            "maxLength": 1000
-          },
-          "do": {
-            "type": "array",
-            "description": "This is the set of actions to perform when the hook triggers",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/SayHookAction",
-                  "title": "SayHookAction"
-                },
-                {
-                  "$ref": "#/components/schemas/ToolCallHookAction",
-                  "title": "ToolCallHookAction"
-                }
-              ]
-            }
-          },
-          "options": {
-            "description": "This is the set of filters that must match for the hook to trigger",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CustomerSpeechTimeoutOptions"
-              }
-            ]
-          },
-          "name": {
-            "type": "string",
-            "description": "This is the name of the hook, it can be set by the user to identify the hook.\nIf no name is provided, the hook will be auto generated as UUID.\n\n@default UUID",
-            "maxLength": 1000
-          }
-        },
-        "required": [
-          "on",
-          "do"
-        ]
-      },
       "SQLInjectionSecurityFilter": {
         "type": "object",
         "properties": {
@@ -24015,8 +24059,14 @@
             "example": "assistant-speaks-first"
           },
           "voicemailDetection": {
-            "description": "These are the settings to configure or disable voicemail detection. Alternatively, voicemail detection can be configured using the model.tools=[VoicemailTool].\nThis uses Twilio's built-in detection while the VoicemailTool relies on the model to detect if a voicemail was reached.\nYou can use neither of them, one of them, or both of them. By default, Twilio built-in detection is enabled while VoicemailTool is not.",
+            "description": "These are the settings to configure or disable voicemail detection. Alternatively, voicemail detection can be configured using the model.tools=[VoicemailTool].\nBy default, voicemail detection is disabled.",
             "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              },
               {
                 "$ref": "#/components/schemas/GoogleVoicemailDetectionPlan",
                 "title": "Google"
@@ -24816,8 +24866,14 @@
             "example": "assistant-speaks-first"
           },
           "voicemailDetection": {
-            "description": "These are the settings to configure or disable voicemail detection. Alternatively, voicemail detection can be configured using the model.tools=[VoicemailTool].\nThis uses Twilio's built-in detection while the VoicemailTool relies on the model to detect if a voicemail was reached.\nYou can use neither of them, one of them, or both of them. By default, Twilio built-in detection is enabled while VoicemailTool is not.",
+            "description": "These are the settings to configure or disable voicemail detection. Alternatively, voicemail detection can be configured using the model.tools=[VoicemailTool].\nBy default, voicemail detection is disabled.",
             "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              },
               {
                 "$ref": "#/components/schemas/GoogleVoicemailDetectionPlan",
                 "title": "Google"
@@ -25707,8 +25763,14 @@
             "example": "assistant-speaks-first"
           },
           "voicemailDetection": {
-            "description": "These are the settings to configure or disable voicemail detection. Alternatively, voicemail detection can be configured using the model.tools=[VoicemailTool].\nThis uses Twilio's built-in detection while the VoicemailTool relies on the model to detect if a voicemail was reached.\nYou can use neither of them, one of them, or both of them. By default, Twilio built-in detection is enabled while VoicemailTool is not.",
+            "description": "These are the settings to configure or disable voicemail detection. Alternatively, voicemail detection can be configured using the model.tools=[VoicemailTool].\nBy default, voicemail detection is disabled.",
             "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              },
               {
                 "$ref": "#/components/schemas/GoogleVoicemailDetectionPlan",
                 "title": "Google"
@@ -26508,8 +26570,14 @@
             "example": "assistant-speaks-first"
           },
           "voicemailDetection": {
-            "description": "These are the settings to configure or disable voicemail detection. Alternatively, voicemail detection can be configured using the model.tools=[VoicemailTool].\nThis uses Twilio's built-in detection while the VoicemailTool relies on the model to detect if a voicemail was reached.\nYou can use neither of them, one of them, or both of them. By default, Twilio built-in detection is enabled while VoicemailTool is not.",
+            "description": "These are the settings to configure or disable voicemail detection. Alternatively, voicemail detection can be configured using the model.tools=[VoicemailTool].\nBy default, voicemail detection is disabled.",
             "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              },
               {
                 "$ref": "#/components/schemas/GoogleVoicemailDetectionPlan",
                 "title": "Google"
@@ -27551,6 +27619,10 @@
                 {
                   "$ref": "#/components/schemas/CallHookCustomerSpeechTimeout",
                   "title": "CallHookCustomerSpeechTimeout"
+                },
+                {
+                  "$ref": "#/components/schemas/CallHookModelResponseTimeout",
+                  "title": "CallHookModelResponseTimeout"
                 }
               ]
             }
@@ -27822,6 +27894,12 @@
           "voicemailDetection": {
             "description": "This is the voicemail detection plan for the workflow.",
             "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              },
               {
                 "$ref": "#/components/schemas/GoogleVoicemailDetectionPlan",
                 "title": "Google"
@@ -28183,6 +28261,10 @@
                 {
                   "$ref": "#/components/schemas/CallHookCustomerSpeechTimeout",
                   "title": "CallHookCustomerSpeechTimeout"
+                },
+                {
+                  "$ref": "#/components/schemas/CallHookModelResponseTimeout",
+                  "title": "CallHookModelResponseTimeout"
                 }
               ]
             }
@@ -28454,6 +28536,12 @@
           "voicemailDetection": {
             "description": "This is the voicemail detection plan for the workflow.",
             "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              },
               {
                 "$ref": "#/components/schemas/GoogleVoicemailDetectionPlan",
                 "title": "Google"
@@ -28797,6 +28885,10 @@
                 {
                   "$ref": "#/components/schemas/CallHookCustomerSpeechTimeout",
                   "title": "CallHookCustomerSpeechTimeout"
+                },
+                {
+                  "$ref": "#/components/schemas/CallHookModelResponseTimeout",
+                  "title": "CallHookModelResponseTimeout"
                 }
               ]
             }
@@ -29068,6 +29160,12 @@
           "voicemailDetection": {
             "description": "This is the voicemail detection plan for the workflow.",
             "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              },
               {
                 "$ref": "#/components/schemas/GoogleVoicemailDetectionPlan",
                 "title": "Google"
@@ -31066,6 +31164,10 @@
       "CreateWebCallDTO": {
         "type": "object",
         "properties": {
+          "roomDeleteOnUserLeaveEnabled": {
+            "type": "boolean",
+            "default": true
+          },
           "assistantId": {
             "type": "string",
             "description": "This is the assistant ID that will be used for the call. To use a transient assistant, use `assistant` instead.\n\nTo start a call with:\n- Assistant, use `assistantId` or `assistant`\n- Squad, use `squadId` or `squad`\n- Workflow, use `workflowId` or `workflow`"
