@@ -24,16 +24,23 @@ Dynamic call transfers enable intelligent routing by determining transfer destin
 
 ## How It Works
 
-Dynamic transfers operate by leaving the destination unspecified initially, then using webhooks to determine the appropriate destination when needed.
+Dynamic transfers support two patterns. Choose one per your architecture:
 
-**Transfer flow:**
-1. **Trigger** - Voice agent determines a transfer is needed based on conversation
-2. **Webhook** - Vapi sends `transfer-destination-request` to your server with call context
-3. **Decision** - Your server analyzes context and external data to determine routing
-4. **Response** - Server returns destination details and transfer configuration
-5. **Transfer** - Vapi executes the transfer to the determined destination
+1) **Assistant-supplied destination (no webhook)**
+   - The transfer tool includes custom parameters (e.g., `phoneNumber`).
+   - The assistant determines the destination (via reasoning or tools) and calls the transfer tool with that parameter.
+   - Vapi executes the transfer directly. The `transfer-destination-request` webhook is not sent.
 
-**Available context:** Your webhook receives conversation transcript, extracted variables, customer information, function parameters, and call metadata.
+2) **Server-supplied destination (webhook)**
+   - The transfer tool has an empty `destinations` array and no destination parameter is provided by the assistant.
+   - Vapi sends a `transfer-destination-request` to your server.
+   - Your server decides the destination and responds with it.
+
+**Available context to servers (webhook pattern):** Your webhook receives conversation transcript, extracted variables, function parameters (if any), and call metadata.
+
+<Tip>
+Parameters for transfer tools are fully customizable. You can name and structure them however you like to guide routing (for example `phoneNumber`, `department`, `reason`, `urgency`, etc.).
+</Tip>
 
 ---
 
@@ -46,9 +53,12 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
         - Navigate to **Tools** in your dashboard
         - Click **Create Tool** 
         - Select **Transfer Call** as the tool type
-        - **Important**: Leave the destinations array empty - this creates a dynamic transfer tool
+        - **Important**: Leave the destinations array empty — this enables dynamic routing
         - Set function name: `dynamicTransfer`
-        - Add description explaining when this tool should be used
+        - Add a description describing when this tool should be used
+        - Decide your pattern:
+          - If the assistant will provide the destination: add a custom parameter like `phoneNumber`
+          - If your server will provide the destination: omit destination params and add any context params you want (e.g., `reason`, `urgency`)
       </Tab>
       <Tab title="TypeScript (Server SDK)">
         ```typescript
@@ -56,30 +66,46 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
 
         const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
 
+        // Variant A: Assistant-supplied destination (no webhook)
         const dynamicTool = await vapi.tools.create({
           type: "transferCall",
           // Empty destinations array makes this dynamic
           destinations: [],
           function: {
             name: "dynamicTransfer",
-            description: "Transfer call to appropriate destination based on customer needs",
+            description: "Transfer the call to a specific phone number (assistant provides it)",
             parameters: {
               type: "object",
               properties: {
-                reason: {
+                phoneNumber: {
                   type: "string",
-                  description: "Reason for transfer"
-                },
-                urgency: {
-                  type: "string",
-                  enum: ["low", "medium", "high", "critical"]
+                  description: "Destination in E.164 format (e.g., +19087528187)"
                 }
-              }
+              },
+              required: ["phoneNumber"]
             }
           }
         });
 
         console.log(`Dynamic transfer tool created: ${dynamicTool.id}`);
+
+        // Variant B: Server-supplied destination (webhook)
+        const webhookDrivenTool = await vapi.tools.create({
+          type: "transferCall",
+          destinations: [],
+          function: {
+            name: "dynamicTransfer",
+            description: "Initiate a transfer and let the server choose destination",
+            parameters: {
+              type: "object",
+              properties: {
+                reason: { type: "string", description: "Reason for transfer" },
+                urgency: { type: "string", enum: ["low", "medium", "high", "critical"] }
+              }
+            }
+          }
+        });
+        console.log(`Webhook-driven transfer tool created: ${webhookDrivenTool.id}`);
         ```
       </Tab>
       <Tab title="Python (Server SDK)">
@@ -87,44 +113,62 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
         import requests
         import os
 
-        def create_dynamic_transfer_tool():
+        def create_dynamic_transfer_tools():
             url = "https://api.vapi.ai/tool"
             headers = {
                 "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
                 "Content-Type": "application/json"
             }
-            
-            data = {
+
+            # Variant A: Assistant-supplied destination (no webhook)
+            assistant_supplied = {
                 "type": "transferCall",
-                "destinations": [],  # Empty for dynamic routing
+                "destinations": [],
                 "function": {
                     "name": "dynamicTransfer",
-                    "description": "Transfer call to appropriate destination based on customer needs",
+                    "description": "Transfer the call to a specific phone number (assistant provides it)",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "reason": {
+                            "phoneNumber": {
                                 "type": "string",
-                                "description": "Reason for transfer"
-                            },
-                            "urgency": {
-                                "type": "string",
-                                "enum": ["low", "medium", "high", "critical"]
+                                "description": "Destination in E.164 format (e.g., +19087528187)"
                             }
+                        },
+                        "required": ["phoneNumber"]
+                    }
+                }
+            }
+
+            # Variant B: Server-supplied destination (webhook)
+            webhook_driven = {
+                "type": "transferCall",
+                "destinations": [],
+                "function": {
+                    "name": "dynamicTransfer",
+                    "description": "Initiate a transfer and let the server choose destination",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "reason": {"type": "string", "description": "Reason for transfer"},
+                            "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]}
                         }
                     }
                 }
             }
-            
-            response = requests.post(url, headers=headers, json=data)
-            return response.json()
 
-        tool = create_dynamic_transfer_tool()
-        print(f"Dynamic transfer tool created: {tool['id']}")
+            a = requests.post(url, headers=headers, json=assistant_supplied).json()
+            b = requests.post(url, headers=headers, json=webhook_driven).json()
+            return a, b
+
+        assistant_tool, server_tool = create_dynamic_transfer_tools()
+        print(f"Assistant-supplied tool: {assistant_tool['id']}")
+        print(f"Webhook-driven tool: {server_tool['id']}")
         ```
       </Tab>
       <Tab title="cURL">
         ```bash
+        # Variant A: Assistant-supplied destination (no webhook)
         curl -X POST https://api.vapi.ai/tool \
              -H "Authorization: Bearer $VAPI_API_KEY" \
              -H "Content-Type: application/json" \
@@ -133,11 +177,31 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
                "destinations": [],
                "function": {
                  "name": "dynamicTransfer",
-                 "description": "Transfer call to appropriate destination based on customer needs",
+                 "description": "Transfer the call to a specific phone number (assistant provides it)",
                  "parameters": {
                    "type": "object",
                    "properties": {
-                     "reason": {"type": "string", "description": "Reason for transfer"},
+                     "phoneNumber": {"type": "string", "description": "Destination in E.164 format (e.g., +19087528187)"}
+                   },
+                   "required": ["phoneNumber"]
+                 }
+               }
+             }'
+
+        # Variant B: Server-supplied destination (webhook)
+        curl -X POST https://api.vapi.ai/tool \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{
+               "type": "transferCall",
+               "destinations": [],
+               "function": {
+                 "name": "dynamicTransfer",
+                 "description": "Initiate a transfer and let the server choose destination",
+                 "parameters": {
+                   "type": "object",
+                   "properties": {
+                     "reason": {"type": "string"},
                      "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]}
                    }
                  }
@@ -154,8 +218,7 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
         - Navigate to **Assistants** 
         - Create a new assistant or edit an existing one
         - Add your dynamic transfer tool to the assistant
-        - Enable the **transfer-destination-request** server event
-        - Set your server URL to handle the webhook
+        - Optional: Enable the **transfer-destination-request** server event and set your server URL if using the server-supplied pattern. This is not required when the assistant provides `phoneNumber` directly.
       </Tab>
       <Tab title="TypeScript (Server SDK)">
         ```typescript
@@ -237,6 +300,10 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
   </Step>
 
   <Step title="Build your webhook server">
+    <Info>
+      This step is only required for the <strong>server-supplied destination</strong> pattern.
+      If your assistant provides a `phoneNumber` directly when calling the transfer tool, the `transfer-destination-request` webhook will not be sent.
+    </Info>
     <Tabs>
       <Tab title="Node.js (Express)">
         ```typescript
@@ -464,6 +531,12 @@ Dynamic transfers operate by leaving the destination unspecified initially, then
 <Warning>
 **Security considerations:** Always verify webhook signatures to ensure requests come from Vapi. Never log sensitive customer data, implement proper access controls, and follow privacy regulations like GDPR and CCPA when handling customer information in routing decisions.
 </Warning>
+
+## Troubleshooting
+
+- If transfers work but you never see `transfer-destination-request` on your webhook, your assistant likely provided the destination (e.g., `phoneNumber`) directly in the tool call. This is expected and no webhook will be sent in that case.
+- If you expect a webhook but it's not firing, ensure your transfer tool has an empty `destinations` array and the assistant is not supplying a destination parameter.
+- If the assistant transfers to an unexpected number, audit your prompts, tools that return numbers, and any variables the assistant can access.
 
 ## Related Documentation
 
