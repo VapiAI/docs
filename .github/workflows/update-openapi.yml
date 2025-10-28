@@ -24,8 +24,16 @@ jobs:
           update_from_source: true
           add_timestamp: true
       - name: Enable auto-merge
-        if: steps.sync-openapi.outputs.pr_number != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr merge ${{ steps.sync-openapi.outputs.pr_number }} --auto --squash
+          # Wait a moment for PR to be fully created
+          sleep 5
+          # Get the most recent PR that starts with update-openapi-spec
+          PR_NUMBER=$(gh pr list --head update-openapi-spec --json number,headRefName --jq 'map(select(.headRefName | startswith("update-openapi-spec"))) | .[0].number')
+          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+            echo "Found PR #$PR_NUMBER, enabling auto-merge"
+            gh pr merge $PR_NUMBER --auto --squash
+          else
+            echo "No PR found for branch starting with update-openapi-spec"
+          fi
