@@ -1,0 +1,268 @@
+---
+title: Scorecard quickstart
+subtitle: Automatically grade calls against KPIs using structured outputs
+slug: observability/scorecard-quickstart
+---
+
+## Overview
+
+This quickstart shows how to create a scorecard that automatically grades calls based on your structured outputs. You’ll create a scorecard, attach it to an assistant, run a call, and retrieve the score — using API only for now.
+
+### What are scorecards?
+
+Scorecards compute objective quality metrics from the call's structured outputs after the call ends:
+
+1. Evaluate against metrics - Compare structured output values to conditions you define
+2. Allocate points - Grant points when conditions are met, per metric
+3. Filter Calls - Filter calls based on the scorecard's metrics
+
+### When are scorecards generated?
+
+- After call completion
+- Typically within seconds of call end
+- Available in `call.artifact.scorecards`
+
+### What data do scorecards use?
+
+- Structured outputs attached to the assistant (`artifactPlan.structuredOutputIds`)
+- Each metric references one structured output (must be number/integer or boolean)
+
+### Why use scorecards?
+
+- Grade calls consistently and automatically providing a quick overview of the call's quality
+- Power dashboards and automated workflows with numeric scores
+
+## What you'll build
+
+A scorecard that:
+
+- Awards points if the call objective was achieved (boolean structured output)
+- Awards points if CSAT is above a threshold (number structured output)
+- Filters calls based on the scorecard's metrics
+
+## Prerequisites
+
+<Note>
+  You need: A Vapi account and API key, an assistant with a model and voice
+  configured, structured outputs created and attached that your scorecard will
+  use
+</Note>
+<Warning>
+  Metrics can only reference structured outputs of type number/integer or boolean.
+</Warning>
+
+## Step 1: Create a scorecard
+
+Create a scorecard with metrics. Each metric references a structured output ID and one or more conditions.
+
+```bash title="cURL"
+curl -X POST https://api.vapi.ai/observability/scorecard \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Support QA Scorecard",
+    "description": "Grades calls based on success and CSAT",
+    "metrics": [
+      {
+        "structuredOutputId": "UUID-OF-BOOLEAN-STRUCTURED-OUTPUT",
+        "conditions": [
+          {
+            "type": "comparator",
+            "comparator": "=",
+            "value": true,
+            "points": 70
+          }
+        ]
+      },
+      {
+        "structuredOutputId": "UUID-OF-NUMBER-STRUCTURED-OUTPUT",
+        "conditions": [
+          {
+            "type": "comparator",
+            "comparator": ">=",
+            "value": 8,
+            "points": 30
+          }
+        ]
+      }
+    ],
+    "assistantIds": ["your-assistant-id"]
+  }'
+```
+
+Notes:
+
+- Supported comparators: `=`, `!=`, `>`, `<`, `>=`, `<=`
+- Boolean metrics support only `=` operator
+- Points for all rules must sum to 100
+- If you pass `assistantIds`, the scorecard is linked to those assistants
+
+## Step 2: Optional - Attach to an assistant
+
+Adding the assistantId to the scorecard will link the scorecard to the assistant, so that the scorecard is automatically applied to all calls made with the assistant. However, if the assistantId has not been set on the scorecard, you can still PATCH the assistant to add the scorecard.
+
+```bash title="cURL"
+curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "artifactPlan": {
+      "structuredOutputIds": [
+        "UUID-OF-BOOLEAN-STRUCTURED-OUTPUT",
+        "UUID-OF-NUMBER-STRUCTURED-OUTPUT"
+      ],
+      "scorecardIds": [
+        "YOUR_SCORECARD_ID"
+      ]
+    }'
+```
+
+<Tip>
+  If you included `assistantIds` when creating the scorecard, you can still
+  PATCH later to add more assistants.
+</Tip>
+
+## Step 3: Create and test a call
+
+Start a call with your assistant.
+
+```bash title="cURL"
+
+# For phone calls:
+curl -X POST https://api.vapi.ai/call \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "assistantId": "your-assistant-id",
+    "phoneNumberId": "your-phone-number-id",
+    "customer": { "number": "+1234567890" }
+  }'
+```
+
+## Step 4: Retrieve the score
+
+Wait a few seconds after the call ends, then fetch the call:
+
+```bash title="cURL"
+curl -X GET "https://api.vapi.ai/call/YOUR_CALL_ID" \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+Scorecards live at `call.artifact.scorecards`:
+
+```json
+{
+  "c5bd0d4e-0c7f-4b0a-82e9-5d0baf6e4a01": {
+    "name": "Support QA Scorecard",
+    "score": 70,
+    "scoreNormalized": 70,
+    "metricPoints": {
+      "UUID-OF-BOOLEAN-STRUCTURED-OUTPUT": 70,
+      "UUID-OF-NUMBER-STRUCTURED-OUTPUT": 0
+    }
+  }
+}
+```
+
+### Expected output
+
+- Root keys are scorecard IDs (UUIDs)
+- `score`: sum of awarded points
+- `scoreNormalized`: ceil(score / maxPoints * 100)
+- `metricPoints`: points awarded per structured output
+
+<Note>
+  Read extracted data values from `call.artifact.structuredOutputs`. Evaluation
+  results are under `call.artifact.scorecards[scorecardId]`.
+</Note>
+
+## Next steps
+
+- Attach multiple scorecards to the same assistant
+- Add more metrics and conditions
+- Track normalized score trends over time
+
+## Common patterns
+
+### Multiple scorecards
+
+```bash title="cURL"
+curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "artifactPlan": {
+      "structuredOutputIds": [
+        "STRUCTURED-OUTPUT-UUID-1",
+        "STRUCTURED-OUTPUT-UUID-2",
+        "STRUCTURED-OUTPUT-UUID-3"
+      ],
+      "scorecardIds": [
+        "SCORECARD-UUID-1",
+        "SCORECARD-UUID-2"
+      ]
+    }
+  }'
+```
+
+### Transient scorecards (inline)
+
+You can embed “inline” scorecards for rapid testing (no saved scorecard ID) using `artifactPlan.scorecards`:
+
+```bash title="cURL"
+curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "artifactPlan": {
+      "structuredOutputIds": ["SO-UUID-BOOLEAN", "SO-UUID-NUMBER"],
+      "scorecards": [
+        {
+          "name": "Inline Test Scorecard",
+          "metrics": [
+            {
+              "structuredOutputId": "SO-UUID-BOOLEAN",
+              "conditions": [
+                { "type": "comparator", "comparator": "=", "value": true, "points": 30 }
+              ]
+            },
+            {
+              "structuredOutputId": "SO-UUID-NUMBER",
+              "conditions": [
+                { "type": "comparator", "comparator": ">=", "value": 9, "points": 70 }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }'
+```
+
+## Validation rules
+
+- Referenced structured outputs must be type number/integer or boolean
+- Number conditions accept: `=`, `!=`, `>`, `<`, `>=`, `<=`
+- Boolean conditions accept: `=` only
+- Points must be 0–100 per condition
+
+## Tips for success
+
+- Keep metrics focused; use multiple conditions per metric to tier points
+- Use normalized score for consistent reporting across different scorecards
+- Ensure all referenced structured outputs are attached to the assistant
+
+## Troubleshooting
+
+| Issue                     | Solution                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| Scorecard missing in call | Ensure `artifactPlan.scorecardIds` or `scorecards` is set on the assistant         |
+| Score always 0            | Verify the structured outputs exist and match metric types; check comparator/value |
+| No structured outputs     | Make sure `artifactPlan.structuredOutputIds` includes the required outputs         |
+| Slow updates              | Allow a few seconds after call end for processing                                  |
+
+## Get help
+
+- [API Documentation](/api-reference)
+- [Discord Community](https://discord.gg/pUFNcf2WmH)
+- [Support](mailto:support@vapi.ai)
