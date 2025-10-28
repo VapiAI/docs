@@ -1,0 +1,243 @@
+---
+title: Client tool calls
+subtitle: Handle tools on the client using the Web SDK
+slug: assistants/client-tool-calls
+---
+
+## Overview
+
+Run tools directly in your web app. When a tool in your assistant has no `server.url`, Vapi sends a `tool-calls` message to your client. Your app executes the action locally (e.g., update UI, access browser APIs) and can optionally send results back to the assistant.
+
+**In this guide, you'll learn to:**
+- Configure a tool to run on the client
+- Enable client messages for tool calling
+- Handle `tool-calls` in the Web SDK
+- Decide when to return results vs fire-and-forget
+
+## Prerequisites
+- A Vapi assistant with at least one function tool
+- Web SDK installed and initialized
+- Familiarity with [Web Quickstart](mdc:fern/quickstart/web)
+
+## Configuration
+
+<Steps>
+  <Step title="Define a client-side tool (no server.url)">
+    Omit the `server` property so calls are sent to your client:
+
+    ```json title="Tool (client-executed)"
+    {
+      "type": "function",
+      "async": false,
+      "function": {
+        "name": "updateUI",
+        "description": "Updates UI with new data",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string" },
+            "data": { "type": "object" }
+          },
+          "required": ["action"]
+        }
+      },
+      "messages": [
+        { "type": "request-start", "content": "Let me update that for you..." },
+        { "type": "request-complete", "content": "Done!" }
+      ]
+    }
+    ```
+  </Step>
+
+  <Step title="Enable client messages on the assistant">
+    Make sure your assistant sends tool events to the client. You can include the defaults or explicitly list the ones you need:
+
+    ```json title="Assistant (excerpt)"
+    {
+      "monitorPlan": {
+        "clientMessages": [
+          "conversation-update",
+          "function-call",
+          "model-output",
+          "speech-update",
+          "status-update",
+          "tool-calls",          
+          "tool-calls-result",   
+          "transfer-update",
+          "transcript",
+          "user-interrupted"
+        ]
+      },
+      "model": {
+        "tools": [
+          {
+            "type": "function",
+            "function": { "name": "updateUI", "parameters": { "type": "object" } }
+          }
+        ]
+      }
+    }
+    ```
+
+    <Note>
+      `tool-calls` notifies your client when the model wants to run a tool. `tool-calls-result` forwards results back to clients (useful when tools execute elsewhere).
+    </Note>
+  </Step>
+</Steps>
+
+## Handle tool calls in the Web SDK
+
+<CodeBlocks>
+```tsx title="React / TypeScript"
+import React, { useEffect, useState } from 'react';
+import Vapi from '@vapi-ai/web';
+
+function App() {
+  const [vapi, setVapi] = useState<Vapi | null>(null);
+
+  useEffect(() => {
+    const client = new Vapi('YOUR_PUBLIC_API_KEY');
+    setVapi(client);
+
+    client.on('message', async (message: any) => {
+      if (message.type === 'tool-calls') {
+        // message.toolCallList: minimal list of calls
+        // message.toolWithToolCallList: tools with full definitions + calls
+        for (const call of message.toolCallList) {
+          const fn = call.function?.name;
+          const args = safeParse(call.function?.arguments);
+
+          if (fn === 'updateUI') {
+            await handleUIUpdate(args?.action, args?.data);
+            // For sync tools (async: false), optionally add a function result to context
+            client.send({
+              type: 'add-message',
+              message: {
+                role: 'function',
+                name: 'updateUI',
+                content: JSON.stringify({ ok: true })
+              }
+            });
+          }
+        }
+      } else if (message.type === 'tool-calls-result') {
+        // Optional: consume results produced by non-client tools
+        console.log('Tool result:', message.toolCallResult);
+      }
+    });
+
+    return () => client.stop();
+  }, []);
+
+  return (
+    <button onClick={() => vapi?.start('YOUR_ASSISTANT_ID')}>Start</button>
+  );
+}
+
+function safeParse(v: unknown) {
+  if (typeof v === 'string') {
+    try { return JSON.parse(v); } catch { return undefined; }
+  }
+  return v ?? undefined;
+}
+
+async function handleUIUpdate(action?: string, data?: Record<string, unknown>) {
+  if (!action) return;
+  switch (action) {
+    case 'show_notification':
+      // implement your UI behavior
+      break;
+    case 'navigate':
+      // router.push(data?.href as string)
+      break;
+    default:
+      break;
+  }
+}
+
+export default App;
+```
+
+```ts title="Vanilla TypeScript"
+import Vapi from '@vapi-ai/web';
+
+const vapi = new Vapi('YOUR_PUBLIC_API_KEY');
+
+evapi.on('message', async (message: any) => {
+  if (message.type === 'tool-calls') {
+    for (const call of message.toolCallList) {
+      const fn = call.function?.name;
+      const args = typeof call.function?.arguments === 'string'
+        ? JSON.parse(call.function.arguments)
+        : call.function?.arguments;
+
+      if (fn === 'showNotification') {
+        showToast(args?.title, args?.message, args?.variant);
+        // fire-and-forget example: if tool is async, you can skip returning a result
+      }
+    }
+  }
+});
+
+function showToast(title?: string, message?: string, variant: 'info'|'success'|'warning'|'error' = 'info') {
+  console.log(`[${variant}] ${title ?? ''} ${message ?? ''}`);
+}
+```
+</CodeBlocks>
+
+<Info>
+Results can be reflected back to the model by adding a function message via `vapi.send({ type: "add-message", message: { role: "function", name, content } })`. Additionally, when other systems execute tools, your client can receive their outcomes via the `tool-calls-result` client message.
+</Info>
+
+## When to respond vs not respond
+
+Use these rules to decide whether to send a result back after handling a tool on the client:
+
+- **Respond (send a result) when:**
+  - **Tool is sync (`async: false`)** and the model should incorporate the output into its next turn
+  - You want the transcript/history to include a structured function result
+  - The assistant prompted with `request-complete`/`request-failed` messaging that depends on outcome data
+
+- **Do not respond (fire-and-forget) when:**
+  - **Tool is async (`async: true`)** and UI-side effects are enough (e.g., open modal, play sound)
+  - The result is purely visual and doesn’t change the conversation
+  - Returning data would be redundant or overly large
+
+<Warning>
+If a tool is configured as sync but your client never returns a result (e.g., via a function message), the assistant may wait or proceed with limited context. Prefer `async: true` for one-way UI effects.
+</Warning>
+
+## Example: client-side notification tool
+
+```json
+{
+  "type": "function",
+  "async": true,
+  "function": {
+    "name": "showNotification",
+    "description": "Shows a notification to the user in the browser",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "variant": { "type": "string", "enum": ["info", "success", "warning", "error"] }
+      },
+      "required": ["message"]
+    }
+  },
+  "messages": [
+    { "type": "request-start", "content": "I'll show you that notification now." }
+  ]
+}
+```
+
+## Troubleshooting
+- **Not receiving `tool-calls` on the client?** Ensure `monitorPlan.clientMessages` includes `tool-calls` and you started the call with the Web SDK.
+- **Parse errors on arguments?** Some providers stream arguments as strings—safely `JSON.parse` when needed.
+- **Assistant waiting on results?** Either return a function message result or set the tool to `async: true`.
+
+## Next steps
+- **Web Quickstart:** Build and test calls with the [Web SDK](mdc:fern/quickstart/web)
+- **Custom tools:** Learn server-executed tools and formats in [Custom Tools](mdc:fern/tools/custom-tools)
+- **Server events:** Compare with server-side `tool-calls` in [Server events](mdc:fern/server-url/events)
