@@ -6,6 +6,7 @@ const WIDGET_SCRIPT_URL = isLocalhost
   : 'https://docs-widget.vercel.app/widget.js';
 
 const HOCKEYSTACK_API_KEY = '96e358f635f3f5ea7fda26023b10da';
+const REO_CLIENT_ID = '0dc28e3fda800b9';
 
 function injectVapiWidget() {
   console.log('[custom.js] injectVapiWidget called');
@@ -51,8 +52,27 @@ function initializeHockeyStack() {
   document.getElementsByTagName('head')[0].append(hsscript);
 }
 
+function initializeReo() {
+  if (isLocalhost) {
+    console.log('[custom.js] Skipping Reo on localhost');
+    return;
+  }
+
+  var reoScript = document.createElement("script");
+  reoScript.type = "text/javascript";
+  reoScript.src = "https://static.reo.dev/" + REO_CLIENT_ID + "/reo.js";
+  reoScript.defer = true;
+  reoScript.onload = function() {
+    if (typeof Reo !== 'undefined') {
+      Reo.init({ clientID: REO_CLIENT_ID });
+    }
+  };
+  document.head.appendChild(reoScript);
+}
+
 function initializeAll() {
   initializeHockeyStack();
+  initializeReo();
   if (ENABLE_VOICE_WIDGET) {
     injectVapiWidget();
   }
