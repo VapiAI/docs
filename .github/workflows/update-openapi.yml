@@ -23,17 +23,47 @@ jobs:
           branch: 'update-openapi-spec'
           update_from_source: true
           add_timestamp: true
-      - name: Enable auto-merge
+      - name: Auto-approve and enable auto-merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVE_TOKEN: ${{ secrets.AUTO_APPROVE_PAT }}
         run: |
-          # Wait a moment for PR to be fully created
-          sleep 5
-          # Get the most recent PR that starts with update-openapi-spec
-          PR_NUMBER=$(gh pr list --head update-openapi-spec --json number,headRefName --jq 'map(select(.headRefName | startswith("update-openapi-spec"))) | .[0].number')
-          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
-            echo "Found PR #$PR_NUMBER, enabling auto-merge"
-            gh pr merge $PR_NUMBER --auto --squash
-          else
-            echo "No PR found for branch starting with update-openapi-spec"
+          set -euo pipefail
+          
+          # Retry loop to find the PR (handles timing issues)
+          PR_NUMBER=""
+          for i in {1..10}; do
+            echo "Attempt $i: Looking for PR..."
+            PR_JSON=$(gh pr list --state open --json number,headRefName,createdAt,author,baseRefName \
+              | jq 'map(select(.headRefName | startswith("update-openapi-spec-") and .baseRefName=="main" and .author.login=="github-actions[bot]")) 
+                    | sort_by(.createdAt) | last')
+            PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number // empty')
+            
+            if [ -n "$PR_NUMBER" ]; then
+              echo "Found PR #$PR_NUMBER"
+              break
+            fi
+            
+            echo "PR not found yet, waiting 3 seconds..."
+            sleep 3
+          done
+          
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No matching PR found after retries"
+            echo "Open PRs:"
+            gh pr list --state open --json number,headRefName,author
+            exit 0
           fi
+          
+          # Auto-approve the PR using the PAT
+          if [ -n "${APPROVE_TOKEN:-}" ]; then
+            echo "Auto-approving PR #$PR_NUMBER..."
+            GH_TOKEN="$APPROVE_TOKEN" gh pr review "$PR_NUMBER" --approve --body "Auto-approved by workflow"
+          else
+            echo "Warning: AUTO_APPROVE_PAT secret not set. PR will require manual approval."
+          fi
+          
+          # Enable auto-merge
+          echo "Enabling auto-merge for PR #$PR_NUMBER..."
+          gh pr merge "$PR_NUMBER" --auto --squash
+          echo "Auto-merge enabled. PR will merge automatically once all checks pass."
