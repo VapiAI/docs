@@ -1,0 +1,296 @@
+---
+title: Client-side Tools (Web SDK)
+subtitle: Handle tool-calls in the browser without a server URL
+slug: tools/client-side-websdk
+---
+
+## Overview
+
+Use the Web SDK to handle tool-calls entirely on the client. This lets your assistant trigger UI-side effects (like showing notifications or changing state) directly in the browser.
+
+**In this guide, you'll learn to:**
+- Define a client-side tool with the Web SDK
+- Receive and handle `tool-calls` events on the client
+- Inject extra context during a call with `addMessage`
+
+<Warning>
+Client-side tools cannot send a tool "result" back to the model. If the model must use the output of a tool to continue reasoning, implement a server-based tool instead. See: <a href="https://docs.vapi.ai/tools/custom-tools" target="_blank">Server-based Custom Tools</a>.
+</Warning>
+
+<Info>
+To make a tool client-side, simply <b>do not provide a server URL</b>. The tool specification is delivered to the browser, and the Web SDK emits <code>tool-calls</code> messages that your frontend can handle.
+</Info>
+
+## Quickstart
+
+1. Install the Web SDK:
+
+```bash
+npm install @vapi-ai/web
+```
+
+2. Start a call with your tool defined in the <code>model.tools</code> array and subscribe to <code>clientMessages: ['tool-calls']</code>.
+3. Listen for <code>message.type === 'tool-calls'</code> and perform the desired UI update. No response is sent back to the model.
+4. (Optional) Inject context mid-call using <code>vapi.addMessage(...)</code>.
+
+## Complete example (React + Web SDK)
+
+```tsx
+import Vapi from '@vapi-ai/web';
+import { useCallback, useState } from 'react';
+
+const vapi = new Vapi('<YOUR_PUBLIC_KEY>');
+
+function App() {
+  const [notification, setNotification] = useState<string | null>(null);
+
+  const handleUIUpdate = useCallback((message?: string) => {
+    setNotification(message || 'UI Update Triggered!');
+    setTimeout(() => setNotification(null), 3000);
+  }, []);
+
+  // 1) Listen for client tool-calls and update the UI
+  vapi.on('message', (message) => {
+    console.log('Message:', message);
+
+    if (message.type === 'tool-calls') {
+      const toolCalls = message.toolCallList;
+
+      toolCalls.forEach((toolCall) => {
+        const functionName = toolCall.function?.name;
+        let parameters: Record<string, unknown> = {};
+
+        try {
+          const args = toolCall.function?.arguments;
+          if (typeof args === 'string') {
+            parameters = JSON.parse(args || '{}');
+          } else if (typeof args === 'object' && args !== null) {
+            parameters = args as Record<string, unknown>;
+          } else {
+            parameters = {};
+          }
+        } catch (err) {
+          console.error('Failed to parse toolCall arguments:', err);
+          return;
+        }
+
+        if (functionName === 'updateUI') {
+          handleUIUpdate((parameters as any).message);
+        }
+      });
+    }
+  });
+
+  // 2) Start the call with a client-side tool (no server URL)
+  const startCall = useCallback(() => {
+    vapi.start({
+      model: {
+        provider: 'openai',
+        model: 'gpt-4.1',
+        messages: [
+          {
+            role: 'system',
+            content:
+              "You are an attentive assistant who can interact with the application's user interface by calling available tools. Whenever the user asks to update, refresh, change, or otherwise modify the UI, or hints that some UI update should occur, always use the 'updateUI' tool call with the requested action and relevant data. Use tool calls proactively if you determine that a UI update would be helpful.",
+          },
+        ],
+        tools: [
+          {
+            type: 'function',
+            async: true,
+            function: {
+              name: 'updateUI',
+              description:
+                'Call this function to initiate any UI update whenever the user requests or implies they want the user interface to change (for example: show a message, highlight something, trigger an animation, etc). Provide an \'action\' describing the update and an optional \'data\' object with specifics.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  message: {
+                    description:
+                      'Feel free to start with any brief introduction message in 10 words.',
+                    type: 'string',
+                    default: '',
+                  },
+                },
+                required: ['message'],
+              },
+            },
+            messages: [
+              {
+                type: 'request-start',
+                content: 'Updating UI...',
+                blocking: false,
+              },
+            ],
+          },
+        ],
+      },
+      voice: { provider: 'vapi', voiceId: 'Elliot' },
+      transcriber: { provider: 'deepgram', model: 'nova-2', language: 'en' },
+      name: 'Alex - Test',
+      firstMessage: 'Hello.',
+      voicemailMessage: "Please call back when you're available.",
+      endCallMessage: 'Goodbye.',
+      clientMessages: ['tool-calls'], // subscribe to client-side tool calls
+    });
+  }, []);
+
+  const stopCall = useCallback(() => {
+    vapi.stop();
+  }, []);
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      fontFamily:
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    }}>
+      {notification && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#10b981',
+          color: '#fff',
+          padding: '16px 24px',
+          textAlign: 'center',
+          borderRadius: '12px',
+          zIndex: 1000,
+          maxWidth: 400,
+          boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
+          fontSize: '14px',
+          fontWeight: 500,
+        }}>
+          {notification}
+        </div>
+      )}
+
+      <div style={{
+        background: 'white',
+        padding: '48px',
+        borderRadius: '20px',
+        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+        textAlign: 'center',
+        maxWidth: '400px',
+        width: '100%',
+      }}>
+        <h1 style={{
+          fontSize: '32px',
+          fontWeight: 700,
+          color: '#1f2937',
+          marginBottom: '12px',
+          marginTop: 0,
+        }}>
+          Vapi Client Tool Calls
+        </h1>
+
+        <p style={{
+          fontSize: '16px',
+          color: '#6b7280',
+          marginBottom: '32px',
+          marginTop: 0,
+        }}>
+          Start a call and ask the assistant to trigger UI updates
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <button
+            onClick={startCall}
+            style={{
+              background:
+                'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              border: 'none',
+              padding: '16px 32px',
+              borderRadius: '12px',
+              fontSize: '16px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
+            }}
+            onMouseEnter={(e) => {
+              (e.target as HTMLButtonElement).style.transform = 'translateY(-2px)';
+              (e.target as HTMLButtonElement).style.boxShadow =
+                '0 6px 20px rgba(102, 126, 234, 0.5)';
+            }}
+            onMouseLeave={(e) => {
+              (e.target as HTMLButtonElement).style.transform = 'translateY(0)';
+              (e.target as HTMLButtonElement).style.boxShadow =
+                '0 4px 12px rgba(102, 126, 234, 0.4)';
+            }}
+          >
+            Start Call
+          </button>
+
+          <button
+            onClick={stopCall}
+            style={{
+              background: 'white',
+              color: '#ef4444',
+              border: '2px solid #ef4444',
+              padding: '16px 32px',
+              borderRadius: '12px',
+              fontSize: '16px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              (e.target as HTMLButtonElement).style.background = '#ef4444';
+              (e.target as HTMLButtonElement).style.color = 'white';
+            }}
+            onMouseLeave={(e) => {
+              (e.target as HTMLButtonElement).style.background = 'white';
+              (e.target as HTMLButtonElement).style.color = '#ef4444';
+            }}
+          >
+            Stop Call
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+```
+
+## Inject data during the call
+
+Use <code>addMessage</code> to provide extra context mid-call. This does not return results for a tool; it adds messages the model can see.
+
+```ts
+// Inject system-level context
+vapi.addMessage({
+  role: 'system',
+  content: 'Context: userId=123, plan=premium, theme=dark',
+});
+
+// Inject a user message
+vapi.addMessage({
+  role: 'user',
+  content: 'FYI: I switched to the settings tab.',
+});
+```
+
+<Note>
+If you need the model to <b>consume tool outputs</b> (e.g., fetch data and continue reasoning with it), implement a server-based tool. See <a href="https://docs.vapi.ai/tools/custom-tools" target="_blank">Custom Tools</a>.
+</Note>
+
+## Key points
+
+- **Client-only execution**: Omit the server URL to run tools on the client.
+- **One-way side effects**: Client tools do not send results back to the model.
+- **Subscribe to events**: Use <code>clientMessages: ['tool-calls']</code> and handle <code>message.type === 'tool-calls'</code>.
+- **Add context**: Use <code>vapi.addMessage</code> to inject data mid-call.
+
+## Next steps
+
+- **Server-based tools**: Learn how to return results back to the model with <a href="/tools/custom-tools">Custom Tools</a>.
+- **API reference**: See <a href="/api-reference/tools/create">Tools API</a> for full configuration options.
