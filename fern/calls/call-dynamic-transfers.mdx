@@ -14,7 +14,8 @@ Dynamic call transfers enable intelligent routing by determining transfer destin
 * Integration with CRM systems, databases, and external APIs
 * Conditional routing logic for departments, specialists, or geographic regions
 * Context-aware transfers with conversation summaries
-* Fallback handling for unavailable destinations
+* Custom business logic execution before completing the transfer
+* Programmatic transfer control via Vapi's Call Control API
 
 ## Prerequisites
 
@@ -24,41 +25,67 @@ Dynamic call transfers enable intelligent routing by determining transfer destin
 
 ## How It Works
 
-Dynamic transfers support two patterns. Choose one per your architecture:
+Dynamic transfers with live call control use a server-controlled pattern that gives you maximum flexibility:
 
-1) **Assistant-supplied destination (no webhook)**
-   - The transfer tool includes custom parameters (e.g., `phoneNumber`).
-   - The assistant determines the destination (via reasoning or tools) and calls the transfer tool with that parameter.
-   - Vapi executes the transfer directly. The `transfer-destination-request` webhook is not sent.
+1. **User initiates transfer**: The user requests a transfer in natural language during the conversation
+2. **Vapi triggers custom tool**: Vapi fires your custom tool to your HTTP server
+3. **Server receives control URL**: The tool payload includes `message.call.monitor.controlUrl` for live call control
+4. **Execute business logic**: Your server performs any necessary operations:
+   - Update CRM records with call summaries
+   - Extract and store conversation data
+   - Query databases for routing decisions
+   - Enrich destination systems with context
+5. **Complete transfer**: Your server makes a POST request to the `controlUrl` with the transfer destination
+6. **Call connected**: Vapi transfers the call to the specified SIP or PSTN destination
 
-2) **Server-supplied destination (webhook)**
-   - The transfer tool has an empty `destinations` array and no destination parameter is provided by the assistant.
-   - Vapi sends a `transfer-destination-request` to your server.
-   - Your server decides the destination and responds with it.
-
-**Available context to servers (webhook pattern):** Your webhook receives conversation transcript, extracted variables, function parameters (if any), and call metadata.
+Available context: Your server receives the full conversation transcript, custom parameters, call metadata, and the control URL, allowing you to make informed routing decisions and execute the transfer programmatically.
 
 <Tip>
-Parameters for transfer tools are fully customizable. You can name and structure them however you like to guide routing (for example `phoneNumber`, `department`, `reason`, `urgency`, etc.).
+Parameters for custom tools are fully customizable. You can name and structure them however you like to guide routing (for example `department`, `reason`, `urgency`, `customerId`, etc.).
 </Tip>
+
+Sequence diagram
+
+```mermaid
+sequenceDiagram
+    participant Customer
+    participant Vapi
+    participant Server as HTTP Server
+    participant CRM as CRM (Optional)
+    participant Dest as SIP/PSTN Destination
+
+    Customer->>Vapi: "Can you transfer me to support?"
+    
+    Vapi->>Server: Tool call: custom_transfer_call<br/>({ "reason": "escalation" })
+    
+    opt Business Logic
+        Server->>CRM: Update customer record
+        CRM-->>Server: Confirm updated
+    end
+    
+    Server->>Vapi: POST {controlUrl}/control<br/>(transfer destination)
+    
+    Vapi->>Dest: Transfer call
+    Dest-->>Customer: Connected to destination
+```
 
 ---
 
 ## Quick Implementation Guide
 
 <Steps>
-  <Step title="Create a dynamic transfer tool">
+  <Step title="Create a custom tool for dynamic transfers">
+    Create a custom tool that will receive the transfer request and provide you with the control URL to execute the transfer.
+
     <Tabs>
       <Tab title="Dashboard">
         - Navigate to **Tools** in your dashboard
         - Click **Create Tool** 
-        - Select **Transfer Call** as the tool type
-        - **Important**: Leave the destinations array empty — this enables dynamic routing
-        - Set function name: `dynamicTransfer`
-        - Add a description describing when this tool should be used
-        - Decide your pattern:
-          - If the assistant will provide the destination: add a custom parameter like `phoneNumber`
-          - If your server will provide the destination: omit destination params and add any context params you want (e.g., `reason`, `urgency`)
+        - Select **Custom** as the tool type
+        - Set function name: `transfer_call`
+        - Add a description: "Transfer the call to the appropriate department or agent"
+        - Define custom parameters based on your routing needs (e.g., `department`, `reason`, `urgency`, `customerId`)
+        - Set your server URL to receive the tool call
       </Tab>
       <Tab title="TypeScript (Server SDK)">
         ```typescript
@@ -66,46 +93,38 @@ Parameters for transfer tools are fully customizable. You can name and structure
 
         const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
 
-        // Variant A: Assistant-supplied destination (no webhook)
-        const dynamicTool = await vapi.tools.create({
-          type: "transferCall",
-          // Empty destinations array makes this dynamic
-          destinations: [],
+        const transferTool = await vapi.tools.create({
+          type: "function",
+          async: true,
           function: {
-            name: "dynamicTransfer",
-            description: "Transfer the call to a specific phone number (assistant provides it)",
+            name: "transfer_call",
+            description: "Transfer the call to the appropriate department or agent based on customer needs",
             parameters: {
               type: "object",
               properties: {
-                phoneNumber: {
+                department: {
                   type: "string",
-                  description: "Destination in E.164 format (e.g., +19087528187)"
+                  description: "Department to transfer to (e.g., 'support', 'sales', 'billing')"
+                },
+                reason: {
+                  type: "string",
+                  description: "Reason for the transfer"
+                },
+                urgency: {
+                  type: "string",
+                  enum: ["low", "medium", "high", "critical"],
+                  description: "Urgency level of the transfer"
                 }
               },
-              required: ["phoneNumber"]
+              required: ["department", "reason"]
             }
+          },
+          server: {
+            url: "https://your-server.com/webhook"
           }
         });
 
-        console.log(`Dynamic transfer tool created: ${dynamicTool.id}`);
-
-        // Variant B: Server-supplied destination (webhook)
-        const webhookDrivenTool = await vapi.tools.create({
-          type: "transferCall",
-          destinations: [],
-          function: {
-            name: "dynamicTransfer",
-            description: "Initiate a transfer and let the server choose destination",
-            parameters: {
-              type: "object",
-              properties: {
-                reason: { type: "string", description: "Reason for transfer" },
-                urgency: { type: "string", enum: ["low", "medium", "high", "critical"] }
-              }
-            }
-          }
-        });
-        console.log(`Webhook-driven transfer tool created: ${webhookDrivenTool.id}`);
+        console.log(`Transfer tool created: ${transferTool.id}`);
         ```
       </Tab>
       <Tab title="Python (Server SDK)">
@@ -113,98 +132,84 @@ Parameters for transfer tools are fully customizable. You can name and structure
         import requests
         import os
 
-        def create_dynamic_transfer_tools():
+        def create_transfer_tool():
             url = "https://api.vapi.ai/tool"
             headers = {
                 "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
                 "Content-Type": "application/json"
             }
 
-            # Variant A: Assistant-supplied destination (no webhook)
-            assistant_supplied = {
-                "type": "transferCall",
-                "destinations": [],
+            tool_config = {
+                "type": "function",
+                "async": True,
                 "function": {
-                    "name": "dynamicTransfer",
-                    "description": "Transfer the call to a specific phone number (assistant provides it)",
+                    "name": "transfer_call",
+                    "description": "Transfer the call to the appropriate department or agent based on customer needs",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "phoneNumber": {
+                            "department": {
                                 "type": "string",
-                                "description": "Destination in E.164 format (e.g., +19087528187)"
+                                "description": "Department to transfer to (e.g., 'support', 'sales', 'billing')"
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Reason for the transfer"
+                            },
+                            "urgency": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "critical"],
+                                "description": "Urgency level of the transfer"
                             }
                         },
-                        "required": ["phoneNumber"]
+                        "required": ["department", "reason"]
                     }
+                },
+                "server": {
+                    "url": "https://your-server.com/webhook"
                 }
             }
 
-            # Variant B: Server-supplied destination (webhook)
-            webhook_driven = {
-                "type": "transferCall",
-                "destinations": [],
-                "function": {
-                    "name": "dynamicTransfer",
-                    "description": "Initiate a transfer and let the server choose destination",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "reason": {"type": "string", "description": "Reason for transfer"},
-                            "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]}
-                        }
-                    }
-                }
-            }
+            response = requests.post(url, headers=headers, json=tool_config)
+            return response.json()
 
-            a = requests.post(url, headers=headers, json=assistant_supplied).json()
-            b = requests.post(url, headers=headers, json=webhook_driven).json()
-            return a, b
-
-        assistant_tool, server_tool = create_dynamic_transfer_tools()
-        print(f"Assistant-supplied tool: {assistant_tool['id']}")
-        print(f"Webhook-driven tool: {server_tool['id']}")
+        tool = create_transfer_tool()
+        print(f"Transfer tool created: {tool['id']}")
         ```
       </Tab>
       <Tab title="cURL">
         ```bash
-        # Variant A: Assistant-supplied destination (no webhook)
         curl -X POST https://api.vapi.ai/tool \
              -H "Authorization: Bearer $VAPI_API_KEY" \
              -H "Content-Type: application/json" \
              -d '{
-               "type": "transferCall",
-               "destinations": [],
+               "type": "function",
+               "async": true,
                "function": {
-                 "name": "dynamicTransfer",
-                 "description": "Transfer the call to a specific phone number (assistant provides it)",
+                 "name": "transfer_call",
+                 "description": "Transfer the call to the appropriate department or agent based on customer needs",
                  "parameters": {
                    "type": "object",
                    "properties": {
-                     "phoneNumber": {"type": "string", "description": "Destination in E.164 format (e.g., +19087528187)"}
+                     "department": {
+                       "type": "string",
+                       "description": "Department to transfer to (e.g., support, sales, billing)"
+                     },
+                     "reason": {
+                       "type": "string",
+                       "description": "Reason for the transfer"
+                     },
+                     "urgency": {
+                       "type": "string",
+                       "enum": ["low", "medium", "high", "critical"],
+                       "description": "Urgency level of the transfer"
+                     }
                    },
-                   "required": ["phoneNumber"]
+                   "required": ["department", "reason"]
                  }
-               }
-             }'
-
-        # Variant B: Server-supplied destination (webhook)
-        curl -X POST https://api.vapi.ai/tool \
-             -H "Authorization: Bearer $VAPI_API_KEY" \
-             -H "Content-Type: application/json" \
-             -d '{
-               "type": "transferCall",
-               "destinations": [],
-               "function": {
-                 "name": "dynamicTransfer",
-                 "description": "Initiate a transfer and let the server choose destination",
-                 "parameters": {
-                   "type": "object",
-                   "properties": {
-                     "reason": {"type": "string"},
-                     "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]}
-                   }
-                 }
+               },
+               "server": {
+                 "url": "https://your-server.com/webhook"
                }
              }'
         ```
@@ -217,8 +222,8 @@ Parameters for transfer tools are fully customizable. You can name and structure
       <Tab title="Dashboard">
         - Navigate to **Assistants** 
         - Create a new assistant or edit an existing one
-        - Add your dynamic transfer tool to the assistant
-        - Optional: Enable the **transfer-destination-request** server event and set your server URL if using the server-supplied pattern. This is not required when the assistant provides `phoneNumber` directly.
+        - Add your custom transfer tool to the assistant
+        - Configure the system prompt to guide when transfers should occur
       </Tab>
       <Tab title="TypeScript (Server SDK)">
         ```typescript
@@ -231,23 +236,23 @@ Parameters for transfer tools are fully customizable. You can name and structure
             messages: [
               {
                 role: "system",
-                content: "You help customers and transfer them when needed using the dynamicTransfer tool. Assess the customer's needs and transfer to the appropriate department."
+                content: "You help customers and can transfer them to the appropriate department when needed. Use the transfer_call tool when a customer requests to speak with someone or when you determine their issue requires specialist assistance. Always gather the reason for transfer before initiating it."
               }
             ],
-            toolIds: ["YOUR_DYNAMIC_TOOL_ID"]
+            toolIds: ["YOUR_TRANSFER_TOOL_ID"]
           },
           voice: {
             provider: "11labs", 
             voiceId: "burt"
-          },
-          serverUrl: "https://your-server.com/webhook",
-          serverUrlSecret: process.env.WEBHOOK_SECRET
+          }
         });
+
+        console.log(`Assistant created: ${assistant.id}`);
         ```
       </Tab>
       <Tab title="Python (Server SDK)">
         ```python
-        def create_assistant_with_dynamic_transfer(tool_id):
+        def create_assistant_with_transfer(tool_id):
             url = "https://api.vapi.ai/assistant"
             headers = {
                 "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
@@ -262,17 +267,18 @@ Parameters for transfer tools are fully customizable. You can name and structure
                     "model": "gpt-4o", 
                     "messages": [{
                         "role": "system",
-                        "content": "You help customers and transfer them when needed using the dynamicTransfer tool. Assess the customer's needs and transfer to the appropriate department."
+                        "content": "You help customers and can transfer them to the appropriate department when needed. Use the transfer_call tool when a customer requests to speak with someone or when you determine their issue requires specialist assistance. Always gather the reason for transfer before initiating it."
                     }],
                     "toolIds": [tool_id]
                 },
-                "voice": {"provider": "11labs", "voiceId": "burt"},
-                "serverUrl": "https://your-server.com/webhook",
-                "serverUrlSecret": os.getenv("WEBHOOK_SECRET")
+                "voice": {"provider": "11labs", "voiceId": "burt"}
             }
             
             response = requests.post(url, headers=headers, json=data)
             return response.json()
+
+        assistant = create_assistant_with_transfer("YOUR_TRANSFER_TOOL_ID")
+        print(f"Assistant created: {assistant['id']}")
         ```
       </Tab>
       <Tab title="cURL">
@@ -288,82 +294,84 @@ Parameters for transfer tools are fully customizable. You can name and structure
                  "model": "gpt-4o",
                  "messages": [{
                    "role": "system", 
-                   "content": "You help customers and transfer them when needed using the dynamicTransfer tool."
+                   "content": "You help customers and can transfer them to the appropriate department when needed. Use the transfer_call tool when a customer requests to speak with someone or when you determine their issue requires specialist assistance."
                  }],
-                 "toolIds": ["YOUR_DYNAMIC_TOOL_ID"]
+                 "toolIds": ["YOUR_TRANSFER_TOOL_ID"]
                },
-               "serverUrl": "https://your-server.com/webhook"
+               "voice": {"provider": "11labs", "voiceId": "burt"}
              }'
         ```
       </Tab>
     </Tabs>
   </Step>
 
-  <Step title="Build your webhook server">
-    <Info>
-      This step is only required for the <strong>server-supplied destination</strong> pattern.
-      If your assistant provides a `phoneNumber` directly when calling the transfer tool, the `transfer-destination-request` webhook will not be sent.
-    </Info>
+  <Step title="Build your webhook server with Live Call Control">
+    Your server will receive the tool call with `message.call.monitor.controlUrl` and use it to execute the transfer via Live Call Control.
+
     <Tabs>
       <Tab title="Node.js (Express)">
         ```typescript
         import express from 'express';
-        import crypto from 'crypto';
+        import axios from 'axios';
 
         const app = express();
         app.use(express.json());
 
-        function verifyWebhookSignature(payload: string, signature: string) {
-          const expectedSignature = crypto
-            .createHmac('sha256', process.env.WEBHOOK_SECRET!)
-            .update(payload)
-            .digest('hex');
-          return crypto.timingSafeEqual(
-            Buffer.from(signature), 
-            Buffer.from(expectedSignature)
-          );
-        }
-
-        app.post('/webhook', (req, res) => {
+        app.post('/webhook', async (req, res) => {
           try {
-            const signature = req.headers['x-vapi-signature'] as string;
-            const payload = JSON.stringify(req.body);
+            const { message } = req.body;
 
-            if (!verifyWebhookSignature(payload, signature)) {
-              return res.status(401).json({ error: 'Invalid signature' });
+            // Extract control URL from the call monitor
+            const controlUrl = message?.call?.monitor?.controlUrl;
+            
+            // Extract tool call from toolWithToolCallList
+            const toolWithToolCall = message?.toolWithToolCallList?.[0];
+            const toolCall = toolWithToolCall?.toolCall;
+
+            if (!controlUrl || !toolCall) {
+              return res.status(400).json({ error: 'Missing required data' });
             }
 
-            const request = req.body;
+            // Extract parameters from the tool call
+            const { department, reason, urgency } = toolCall.function.arguments;
 
-            if (request.type !== 'transfer-destination-request') {
-              return res.status(200).json({ received: true });
-            }
+            // Execute business logic (optional)
+            console.log(`Transfer request: ${department} - ${reason} (${urgency})`);
 
-            // Simple routing logic - customize for your needs
-            const { functionCall, customer } = request;
-            const urgency = functionCall.parameters?.urgency || 'medium';
-
+            // Determine destination based on department
             let destination;
-            if (urgency === 'critical') {
+            if (department === 'support') {
               destination = {
                 type: "number",
-                number: "+1-555-EMERGENCY",
-                message: "Connecting you to our emergency team."
+                number: "+1234567890"
+              };
+            } else if (department === 'sales') {
+              destination = {
+                type: "number",
+                number: "+1987654321"
               };
             } else {
               destination = {
-                type: "number", 
-                number: "+1-555-SUPPORT",
-                message: "Transferring you to our support team."
+                type: "number",
+                number: "+1555555555"
               };
             }
 
-            res.json({ destination });
-          } catch (error) {
-            console.error('Webhook error:', error);
-            res.status(500).json({ 
-              error: 'Transfer routing failed. Please try again.' 
+            // Execute transfer via Live Call Control
+            await axios.post(`${controlUrl}/control`, {
+              type: "transfer",
+              destination: destination,
+              content: `Transferring you to ${department} now.`
+            }, {
+              headers: { 'Content-Type': 'application/json' }
             });
+
+            // Respond to Vapi (optional acknowledgment)
+            res.json({ success: true });
+
+          } catch (error) {
+            console.error('Transfer error:', error);
+            res.status(500).json({ error: 'Transfer failed' });
           }
         });
 
@@ -375,70 +383,96 @@ Parameters for transfer tools are fully customizable. You can name and structure
       <Tab title="Python (FastAPI)">
         ```python
         import os
-        import hmac
-        import hashlib
+        import httpx
         from fastapi import FastAPI, HTTPException, Request
 
         app = FastAPI()
 
-        def verify_webhook_signature(payload: bytes, signature: str) -> bool:
-            webhook_secret = os.getenv('WEBHOOK_SECRET', '').encode()
-            expected_signature = hmac.new(
-                webhook_secret, payload, hashlib.sha256
-            ).hexdigest()
-            return hmac.compare_digest(signature, expected_signature)
-
         @app.post("/webhook")
         async def handle_webhook(request: Request):
             try:
-                body = await request.body()
-                signature = request.headers.get('x-vapi-signature', '')
+                body = await request.json()
+                message = body.get('message', {})
                 
-                if not verify_webhook_signature(body, signature):
-                    raise HTTPException(status_code=401, detail="Invalid signature")
+                # Extract control URL from the call monitor
+                control_url = message.get('call', {}).get('monitor', {}).get('controlUrl')
                 
-                request_data = await request.json()
+                # Extract tool call from toolWithToolCallList
+                tool_with_tool_call = message.get('toolWithToolCallList', [{}])[0]
+                tool_call = tool_with_tool_call.get('toolCall', {})
                 
-                if request_data.get('type') != 'transfer-destination-request':
-                    return {"received": True}
+                if not control_url or not tool_call:
+                    raise HTTPException(status_code=400, detail="Missing required data")
                 
-                # Simple routing logic - customize for your needs
-                function_call = request_data.get('functionCall', {})
-                urgency = function_call.get('parameters', {}).get('urgency', 'medium')
+                # Extract parameters from the tool call
+                arguments = tool_call.get('function', {}).get('arguments', {})
+                department = arguments.get('department')
+                reason = arguments.get('reason')
+                urgency = arguments.get('urgency', 'medium')
                 
-                if urgency == 'critical':
+                print(f"Transfer request: {department} - {reason} ({urgency})")
+                
+                # Determine destination based on department
+                if department == 'support':
                     destination = {
                         "type": "number",
-                        "number": "+1-555-EMERGENCY", 
-                        "message": "Connecting you to our emergency team."
+                        "number": "+1234567890"
+                    }
+                elif department == 'sales':
+                    destination = {
+                        "type": "number",
+                        "number": "+1987654321"
                     }
                 else:
                     destination = {
                         "type": "number",
-                        "number": "+1-555-SUPPORT",
-                        "message": "Transferring you to our support team."
+                        "number": "+1555555555"
                     }
                 
-                return {"destination": destination}
+                # Execute transfer via Live Call Control
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"{control_url}/control",
+                        json={
+                            "type": "transfer",
+                            "destination": destination,
+                            "content": f"Transferring you to {department} now."
+                        },
+                        headers={"Content-Type": "application/json"}
+                    )
+                
+                return {"success": True}
                 
             except Exception as error:
-                print(f"Webhook error: {error}")
-                raise HTTPException(
-                    status_code=500,
-                    detail="Transfer routing failed. Please try again."
-                )
+                print(f"Transfer error: {error}")
+                raise HTTPException(status_code=500, detail="Transfer failed")
         ```
       </Tab>
     </Tabs>
+
+    <Note>
+    **SIP transfers:** To transfer to a SIP endpoint, use `"type": "sip"` with `"sipUri"` instead:
+    
+    ```json
+    {
+      "type": "transfer",
+      "destination": {
+        "type": "sip",
+        "sipUri": "sip:+1234567890@sip.telnyx.com"
+      },
+      "content": "Transferring your call now."
+    }
+    ```
+    </Note>
   </Step>
 
   <Step title="Test your dynamic transfer system">
     <Tabs>
       <Tab title="Dashboard">
         - Create a phone number and assign your assistant
-        - Call the number and test different transfer scenarios
-        - Monitor your webhook server logs to see the routing decisions
-        - Verify transfers are working to the correct destinations
+        - Call the number and request a transfer to different departments
+        - Monitor your webhook server logs to see the tool calls and control URL
+        - Verify transfers are executing to the correct destinations
       </Tab>
       <Tab title="TypeScript (Testing)">
         ```typescript
@@ -452,7 +486,8 @@ Parameters for transfer tools are fully customizable. You can name and structure
 
         console.log(`Test call created: ${testCall.id}`);
         
-        // Monitor webhook server logs to see transfer requests
+        // During the call, say "I need to speak with support"
+        // Monitor webhook server logs to see the transfer execution
         ```
       </Tab>
       <Tab title="Python (Testing)">
@@ -472,6 +507,9 @@ Parameters for transfer tools are fully customizable. You can name and structure
             response = requests.post(url, headers=headers, json=data)
             call = response.json()
             print(f"Test call created: {call['id']}")
+            
+            # During the call, say "I need to speak with support"
+            # Monitor webhook server logs to see the transfer execution
             return call
         ```
       </Tab>
@@ -480,12 +518,6 @@ Parameters for transfer tools are fully customizable. You can name and structure
 </Steps>
 
 ---
-
-## Implementation Approaches
-
-**Assistant-based implementation** uses transfer-type tools with conditions interpreted by the assistant through system prompts. The assistant determines when and where to route calls based on clearly defined tool purposes and routing logic in the prompt. Best for quick setup and simpler routing scenarios.
-
-**Workflow-based implementation** uses conditional logic based on outputs from any workflow node - tools, API requests, conversation variables, or other data sources. Conditions evaluate node outputs to determine routing paths within visual workflows. Best for complex business logic, structured decision trees, and team-friendly configuration.
 
 <CardGroup cols={2}>
   <Card title="Customer Support Escalation" icon="headset" href="/assistants/examples/support-escalation">
@@ -534,9 +566,10 @@ Parameters for transfer tools are fully customizable. You can name and structure
 
 ## Troubleshooting
 
-- If transfers work but you never see `transfer-destination-request` on your webhook, your assistant likely provided the destination (e.g., `phoneNumber`) directly in the tool call. This is expected and no webhook will be sent in that case.
-- If you expect a webhook but it's not firing, ensure your transfer tool has an empty `destinations` array and the assistant is not supplying a destination parameter.
-- If the assistant transfers to an unexpected number, audit your prompts, tools that return numbers, and any variables the assistant can access.
+- **Tool call not received**: Verify your server URL is correctly configured in the custom tool and is publicly accessible. Check your server logs for incoming requests.
+- **Transfer not executing**: Make sure that you are sending a valid destination object (type number or sip). See API reference [here](https://docs.vapi.ai/api-reference/tools/create#request.body.TransferCallTool.destinations).
+- **Invalid destination format**: For phone numbers, use `"type": "number"` with E.164 format. For SIP, use `"type": "sip"` with a valid SIP URI.
+- **Transfer fails silently**: Check your server logs for errors in the axios/httpx request.
 
 ## Related Documentation
 
