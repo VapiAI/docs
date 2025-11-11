@@ -8,6 +8,8 @@ slug: assistants/structured-outputs-quickstart
 
 This quickstart guide will help you set up structured outputs to automatically extract customer information from phone calls. In just a few minutes, you'll create a structured output, link it to an assistant, and test data extraction.
 
+<iframe style="border:0;" width="800" height="450" src="https://www.tella.tv/video/cmgu4jpf9000y0cjxccked3ke/embed?b=0&title=0&a=1&loop=0&t=0&muted=0&wt=1" allowfullscreen allowtransparency></iframe>
+
 ### What are structured outputs?
 
 Structured outputs are AI-powered analysis and extraction tools that intelligently process conversation data after calls end. They go beyond simple data extraction to provide intelligent analysis and evaluation. They work by:
@@ -644,6 +646,157 @@ The extracted data (the `result` field from the API response) will look like thi
 <Note>
 When accessing via API, this data is nested inside the structured output object at `call.artifact.structuredOutputs[outputId].result`. The Dashboard shows the complete structure including the output ID and name.
 </Note>
+
+## HIPAA Compliance & Storage Settings
+
+<Warning>
+**Important for HIPAA users:** When HIPAA mode is enabled, Vapi does not store structured outputs by default. This protects privacy but limits your ability to view structured outputs in Insights and Call Logs.
+</Warning>
+
+### Understanding the default behavior
+
+When your organization or assistant has HIPAA mode enabled (`hipaaEnabled: true`):
+- **Structured outputs are NOT stored** - Results are generated but not persisted in Vapi's systems
+- **Limited visibility** - You cannot view outputs in the Dashboard's Call Logs or Insights
+- **Privacy first** - This ensures sensitive data is not retained
+- **Webhook access only** - You can still receive outputs via webhooks during the call
+
+This default behavior protects patient privacy and ensures compliance with HIPAA regulations.
+
+### Enabling storage for non-sensitive outputs
+
+For structured outputs that extract **non-sensitive, non-PHI information**, you can override this behavior using the `compliancePlan.forceStoreOnHipaaEnabled` setting.
+
+<Warning>
+**Your responsibility:** You must ensure that any structured output with storage enabled does NOT extract or generate PHI or sensitive data.
+</Warning>
+
+#### Safe use cases for storage override
+
+Enable storage for these types of non-sensitive outputs:
+
+- **Boolean outcomes**: `appointmentBooked: true/false`, `callSuccessful: true/false`
+- **General categories**: `issueCategory: "billing" | "technical" | "general"`
+- **Satisfaction scores**: `csatScore: 1-10`
+- **Call metrics**: `sentiment: "positive" | "neutral" | "negative"`
+- **Success indicators**: `issueResolved: boolean`, `followUpRequired: boolean`
+
+#### Never enable storage for these
+
+**Do not** enable storage for outputs that extract:
+- Patient names, dates of birth, or contact information
+- Diagnosis, treatment, or medication information
+- Medical record numbers or identifiers
+- Social security numbers
+- Credit card or payment details
+
+### Configuration examples
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Navigate to **Structured Outputs** in the left sidebar
+    2. Create or edit a structured output
+    3. Expand the **Compliance Settings** section
+    4. Enable the toggle for "Enable Storage of Structured Outputs while on HIPAA Mode"
+    5. **Recommendation**: Only enable if your output does not extract sensitive information
+  </Tab>
+
+  <Tab title="cURL">
+```bash
+# Creating a HIPAA-safe structured output with storage enabled
+curl -X POST https://api.vapi.ai/structured-output \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Appointment Booked",
+    "type": "ai",
+    "description": "Boolean indicator of whether appointment was booked",
+    "schema": {
+      "type": "boolean",
+      "description": "Whether an appointment was successfully booked during the call"
+    },
+    "compliancePlan": {
+      "forceStoreOnHipaaEnabled": true
+    }
+  }'
+```
+  </Tab>
+
+  <Tab title="TypeScript (Server SDK)">
+```typescript
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const vapi = new VapiClient({ token: process.env.VAPI_API_KEY! });
+
+// Safe: Boolean outcome, no PHI
+const structuredOutput = await vapi.structuredOutputs.create({
+  name: "Appointment Booked",
+  type: "ai",
+  description: "Boolean indicator of whether appointment was booked",
+  schema: {
+    type: "boolean",
+    description: "Whether an appointment was successfully booked during the call"
+  },
+  compliancePlan: {
+    forceStoreOnHipaaEnabled: true  // Safe because output contains no PHI
+  }
+});
+
+// Update existing structured output to enable storage
+await vapi.structuredOutputs.update(structuredOutput.id, {
+  compliancePlan: {
+    forceStoreOnHipaaEnabled: true
+  }
+});
+```
+  </Tab>
+
+  <Tab title="Python (Server SDK)">
+```python
+from vapi import Vapi
+import os
+
+vapi = Vapi(token=os.environ.get("VAPI_API_KEY"))
+
+# Safe: Boolean outcome, no PHI
+structured_output = vapi.structured_outputs.create(
+    name="Appointment Booked",
+    type="ai",
+    description="Boolean indicator of whether appointment was booked",
+    schema={
+        "type": "boolean",
+        "description": "Whether an appointment was successfully booked during the call"
+    },
+    compliance_plan={
+        "forceStoreOnHipaaEnabled": True
+    }
+)
+
+# Update existing structured output to enable storage
+vapi.structured_outputs.update(
+    structured_output.id,
+    compliance_plan={
+        "forceStoreOnHipaaEnabled": True
+    }
+)
+```
+  </Tab>
+</Tabs>
+
+<Warning>
+**IMPORTANT:** Only set `forceStoreOnHipaaEnabled: true` if you are certain your structured output does NOT extract PHI or sensitive data. Review your schema carefully before enabling storage.
+</Warning>
+
+### Best practices for HIPAA compliance
+
+1. **Default to privacy**: Keep storage disabled for all outputs that might contain PHI
+2. **Review schemas carefully**: Ensure your extraction logic cannot accidentally capture sensitive data
+3. **Use specific schemas**: Design narrow schemas that target only non-sensitive data
+4. **Test thoroughly**: Verify outputs don't contain PHI before enabling storage
+5. **Document decisions**: Maintain records of which outputs have storage enabled and why
+6. **Regular audits**: Periodically review stored outputs to ensure compliance
+
+For more information about HIPAA compliance with Vapi, see our [HIPAA Compliance Guide](/security-and-privacy/hipaa).
 
 ## Next steps
 

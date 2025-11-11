@@ -86,9 +86,10 @@ User Audio → VAD → Transcription → Start Speaking Decision → LLM → TTS
     Voice Activity Detection (VAD) detects utterance-stop
   </Step>
   <Step title="Endpointing decision">
-    System evaluates completion using: - Custom Rules (highest priority) - Smart
-    Endpointing Plan (LiveKit for English) - Transcription Endpointing Plan
-    (fallback)
+    System evaluates completion using this priority order:
+    1. **Transcriber EOT detection** (if transcriber has built-in EOT and no smart endpointing plan)
+    2. **Custom Rules** (highest priority when configured)
+    3. **Smart Endpointing Plan** (LiveKit for English, Vapi for non-English)
   </Step>
   <Step title="Response generation">
     LLM request sent immediately → TTS processes → waitSeconds applied →
@@ -120,6 +121,10 @@ The start speaking plan determines when your assistant begins responding after a
 ### Transcription endpointing
 
 Analyzes transcription text to determine user completion based on patterns like punctuation and numbers.
+
+<Note>
+This plan is only used if `smartEndpointingPlan` is not set and transcriber does not have built-in endpointing capabilities. If both are provided, `smartEndpointingPlan` takes precedence. This plan will also be overridden by any matching `customEndpointingRules`.
+</Note>
 
 <Tabs>
   <Tab title="Configuration">
@@ -159,6 +164,8 @@ Analyzes transcription text to determine user completion based on patterns like 
 
 Uses AI models to analyze speech patterns, context, and audio cues to predict when users have finished speaking. Only available for English conversations.
 
+**Important:** If your transcriber has built-in end-of-turn detection (like Deepgram Flux or Assembly) and you don't configure a smart endpointing plan, the system will automatically use the transcriber's EOT detection instead of smart endpointing.
+
 <Tabs>
   <Tab title="Configuration">
     ```json
@@ -182,6 +189,7 @@ Uses AI models to analyze speech patterns, context, and audio cues to predict wh
     - **krisp**: Audio-based model analyzing prosodic features (intonation, pitch, rhythm)
     
     **Audio-text based providers:**
+    - **deepgram-flux**: Deepgram's latest transcriber model with built-in conversational speech recognition. (English only)
     - **assembly**: Transcriber with built-in end-of-turn detection (English only)
 
   </Tab>
@@ -189,10 +197,41 @@ Uses AI models to analyze speech patterns, context, and audio cues to predict wh
 
 **When to use:**
 
-- **LiveKit**: English conversations requiring sophisticated speech pattern analysis
+- **Deepgram Flux**: English conversations using Deepgram as a transcriber. 
+- **Assembly**: Best used when Assembly is already your transcriber provider for English conversations with integrated end-of-turn detection
+- **LiveKit**: English conversations where Deepgram is not the transcriber of choice.
 - **Vapi**: Non-English conversations with default stop speaking plan settings
 - **Krisp**: Non-English conversations with a robustly configured stop speaking plan
-- **Assembly**: Best used when Assembly is already your transcriber provider for English conversations with integrated end-of-turn detection
+
+### Deepgram Flux configuration
+
+Deepgram Flux's end-of-turn detection is configured at the transcriber level, allowing you to fine-tune how aggressive or conservative the bot should be in detecting when users finish speaking. Do NOT set a `smartEndpointingPlan` to leverage Deepgram's end-of-turn events.
+
+**Configuration parameters:**
+
+- **eotThreshold** (Default: 0.7): Confidence level required to trigger end-of-turn detection
+  - **0.5-0.6:** Aggressive detection - responds quickly but may interrupt users mid-sentence
+  - **0.6-0.8:** Balanced detection (default: 0.7) - good balance between responsiveness and accuracy
+  - **0.9-1.0:** Conservative detection - waits longer to ensure users have finished speaking
+
+- **eotTimeoutMs** (Default: 5000): Maximum wait time in milliseconds before forcing turn end
+  - **2000-3000:** Fast timeout for quick interactions
+  - **4000-6000:** Standard timeout (default: 5000) - natural conversation flow
+  - **7000-10000:** Extended timeout for complex or thoughtful responses
+
+**Configuration example:**
+
+```json
+{
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "flux-general-en",
+    "language": "en",
+    "eotThreshold": 0.7,
+    "eotTimeoutMs": 5000
+  }
+}
+```
 
 ### LiveKit's Wait function
 
@@ -227,6 +266,44 @@ Mathematical expression that determines wait time based on speech completion pro
 - **Behavior:** Very patient, rarely interrupts users
 - **Use case:** Healthcare, formal settings, sensitive conversations
 - **Timing:** ~2700ms wait at 50% confidence, ~700ms at 90% confidence
+
+### Vapi heuristic endpointing
+
+Vapi's text-based endpointing uses heuristic rules to analyze transcription patterns and determine when users have finished speaking. The system applies these rules in priority order using the `transcriptionEndpointingPlan` settings:
+
+**Heuristic priority order:**
+
+1. **Number detection**: If the latest message ends with a number, waits for `onNumberSeconds` (default: 0.5)
+2. **Punctuation detection**: If the message contains punctuation, waits for `onPunctuationSeconds` (default: 0.1)
+3. **No punctuation fallback**: If no punctuation is detected, waits for `onNoPunctuationSeconds` (default: 1.5)
+4. **Default**: If no rules match, waits 0ms (immediate response)
+
+**How it works:**
+
+The system continuously analyzes the latest user message and applies the first matching rule. Each rule sets a specific timeout delay before triggering the end-of-turn event.
+
+**Configuration example:**
+
+```json
+{
+  "startSpeakingPlan": {
+    "smartEndpointingPlan": {
+      "provider": "vapi"
+    },
+    "transcriptionEndpointingPlan": {
+      "onPunctuationSeconds": 0.1,
+      "onNoPunctuationSeconds": 1.5,
+      "onNumberSeconds": 0.5
+    }
+  }
+}
+```
+
+**When to use:**
+
+- Non-English conversations where LiveKit isn't available
+- Scenarios requiring predictable, rule-based endpointing behavior
+- Fallback option when other smart endpointing providers aren't suitable
 
 ### Krisp threshold configuration
 
@@ -587,6 +664,35 @@ User Interrupts → Assistant Audio Stopped → backoffSeconds Blocks All Output
 ```
 
 **Optimized for:** English conversations with integrated transcriber and sophisticated end-of-turn detection.
+
+### Audio-text based endpointing (Deepgram Flux example)
+
+```json
+{
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "flux-general-en",
+    "language": "en",
+    "eotThreshold": 0.7,
+    "eotTimeoutMs": 5000
+  },
+  "stopSpeakingPlan": {
+    "numWords": 2,
+    "voiceSeconds": 0.2,
+    "backoffSeconds": 1.0,
+    "acknowledgementPhrases": [
+      "okay",
+      "right",
+      "uh-huh",
+      "yeah",
+      "mm-hmm",
+      "got it"
+    ]
+  }
+}
+```
+
+**Optimized for:** English conversations where Deepgram is set as transcriber.
 
 ### Education and training
 

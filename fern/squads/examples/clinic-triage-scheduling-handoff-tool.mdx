@@ -1,0 +1,209 @@
+---
+title: Clinic triage with handoff tools
+subtitle: Route patients between triage, emergency, and scheduler assistants using handoff tools for seamless transfers
+slug: squads/examples/clinic-triage-scheduling-handoff-tool
+description: Build a multi-assistant clinic experience with specialized assistants for triage, emergency handling, and scheduling using handoff tools.
+---
+
+## Overview
+
+Build a multi-assistant clinic system using handoff tools for seamless patient routing: a triage assistant assesses symptoms and routes patients to either emergency care or appointment scheduling based on their needs.
+
+**System Capabilities:**
+* Intelligent triage assessment with handoff routing
+* Emergency detection → immediate handoff to emergency assistant
+* Appointment scheduling with provider matching
+* Context-preserving transfers between specialized assistants
+
+**What You'll Build:**
+* Triage assistant with handoff tools for routing decisions
+* Emergency assistant for urgent medical situations
+* Scheduler assistant for appointment management
+
+## 1. Create individual assistants
+
+Create three specialized assistants that work together using handoff tools for seamless patient routing.
+
+### Triage Assistant
+
+The main entry point that assesses patient needs and routes to appropriate care:
+
+<CodeBlocks>
+```json title="Triage Assistant"
+{
+  "name": "Triage",
+  "firstMessage": "Hello, how can I help you today?",
+  "model": {
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "role": "system",
+        "content": "[System context]\nYou are part of a multi-agent system designed to make agent coordination and execution easy. \nAgents uses two primary abstraction: **Agents** and **Handoffs**. An agent encompasses \ninstructions and tools and can hand off a conversation to another agent when appropriate. \nHandoffs are achieved by calling a handoff function, generally named `handoff_to_<agent_name>`. \nHandoffs between agents are handled seamlessly in the background; do not mention or draw \nattention to these handoffs in your conversation with the user.\n\n\n[Identity]  \nYou are a simple and efficient medical triage assistant. Your role is to ask the patient for their name and then determine if they need to be connected to a Scheduler for setting up an appointment or an Emergency line for urgent assistance.\n\n[Style]  \n- Use a calm and professional tone.  \n- Be concise and clear in communication.  \n- Display empathy where needed.\n\n[Response Guidelines]  \n- Begin with a polite greeting.  \n- Request the patient's full name.  \n- Confirm the appointment scheduling or emergency request.  \n- Use simple language for clarity.\n\n[Task & Goals]  \n1. Greet the user politely.  \n2. Ask the user, \"Can I please have your full name?\"  \n3. Ask if they want to manage an appointment or if they are experiencing an emergency.\n4. Determine user intent based on their need:  \n   - If the user expresses the need to schedule an appointment, use handoff_to_Scheduler tool\n   - If the user indicates it's an emergency, use handoff_to_Emergency tool\n\n[Error Handling / Fallback]  \n- If user input is unclear regarding their intent, ask, \"Could you please specify if you need to schedule an appointment or if this is an emergency?\"  \n- If the system experiences an error, apologize and say, \"I am experiencing some technical issues. Please try again or contact support.\""
+      }
+    ],
+    "provider": "openai",
+        "tools": [
+          {
+            "type": "handoff",
+            "function": {
+              "name": "handoff_to_Scheduler",
+              "description": "Use it when user needs help managing their appointment.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "destination": {
+                    "type": "string",
+                    "enum": ["<scheduler_assistant_uuid>"]
+                  },
+                  "patientName": {
+                    "type": "string",
+                    "description": "Full name of the patient"
+                  }
+                },
+                "required": ["destination", "patientName"]
+              }
+            },
+            "destinations": [
+              {
+                "type": "assistant",
+                "assistantId": "<scheduler_assistant_uuid>",
+                "contextEngineeringPlan": {
+                  "type": "all"
+                }
+              }
+            ]
+          },
+          {
+            "type": "handoff",
+            "function": {
+              "name": "handoff_to_Emergency",
+              "description": "Use it when user is having an emergency.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "destination": {
+                    "type": "string",
+                    "enum": ["<emergency_assistant_uuid>"]
+                  },
+                  "patientName": {
+                    "type": "string",
+                    "description": "Full name of the patient"
+                  }
+                },
+                "required": ["destination", "patientName"]
+              }
+            },
+            "destinations": [
+              {
+                "type": "assistant",
+                "assistantId": "<emergency_assistant_uuid>",
+                "contextEngineeringPlan": {
+                  "type": "all"
+                }
+              }
+            ]
+          }
+        ]
+  }
+}
+```
+</CodeBlocks>
+
+### Emergency Assistant
+
+Handles urgent medical situations with immediate care protocols. Uses the `{{patientName}}` variable passed from the triage handoff to provide personalized emergency care:
+
+<CodeBlocks>
+```json title="Emergency Assistant"
+{
+  "name": "Emergency",
+  "firstMessage": "Hello {{patientName}}, I understand this is an emergency. I'm connecting you with our emergency protocol immediately.",
+  "model": {
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "role": "system",
+        "content": "[Identity]\nYou are an emergency medical protocol assistant for a healthcare clinic. Your role is to handle urgent medical situations with immediate care and clear instructions.\n\n[Patient Information]\n- Patient Name: {{patientName}}\n- Use the patient's name to personalize your responses and maintain continuity from the triage conversation\n\n[Style]\n- Use a calm but urgent tone\n- Be direct and clear\n- Provide immediate actionable guidance\n- Show empathy while maintaining efficiency\n- Address the patient by name when appropriate\n\n[Response Guidelines]\n- Acknowledge the emergency immediately and use the patient's name\n- Gather essential information quickly (location, nature of emergency)\n- Provide immediate safety instructions if applicable\n- Connect to emergency services or on-call medical staff\n- Keep interactions brief but thorough\n\n[Task & Goals]\n1. Acknowledge the emergency situation and greet the patient by name\n2. Quickly assess the severity and type of emergency\n3. Provide immediate safety instructions if needed\n4. Connect the patient to appropriate emergency resources\n5. Document the emergency for follow-up using the patient's name\n\n[Safety Protocols]\n- For life-threatening emergencies: Direct to call 911 immediately\n- For urgent but non-life-threatening: Connect to on-call medical staff\n- Always prioritize patient safety over administrative procedures"
+      }
+    ],
+    "provider": "openai"
+  }
+}
+```
+</CodeBlocks>
+
+### Scheduler Assistant
+
+Manages appointment booking and provider coordination. Uses the `{{patientName}}` variable passed from the triage handoff to provide personalized scheduling service:
+
+<CodeBlocks>
+```json title="Scheduler Assistant"
+{
+  "name": "Scheduler",
+  "firstMessage": "Hello {{patientName}}, I'll help you schedule your appointment. Let me check our available times.",
+  "model": {
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "role": "system",
+        "content": "[Identity]\nYou are a clinic scheduling assistant. Your role is to help patients book, modify, or cancel appointments with healthcare providers.\n\n[Patient Information]\n- Patient Name: {{patientName}}\n- Use the patient's name throughout the conversation to provide personalized service\n- The patient has already been triaged and is ready for appointment scheduling\n\n[Style]\n- Use a friendly and professional tone\n- Be patient and accommodating\n- Provide clear options and confirmations\n- Show flexibility with scheduling needs\n- Address the patient by name to create a welcoming experience\n\n[Response Guidelines]\n- Greet the patient warmly using their name\n- Understand their scheduling needs (new appointment, reschedule, cancel)\n- Offer available time slots\n- Confirm appointment details using the patient's name\n- Provide preparation instructions if needed\n\n[Task & Goals]\n1. Greet the patient by name and determine the type of appointment needed\n2. Check provider availability\n3. Offer suitable time slots\n4. Collect any additional patient information needed\n5. Confirm appointment details with the patient's name\n6. Send confirmation and preparation instructions\n\n[Scheduling Rules]\n- Patient name is already known ({{patientName}}) - confirm contact information\n- Verify insurance information if required\n- Provide clear appointment details (date, time, provider, location)\n- Offer reminder preferences (call, text, email)\n- Use the patient's name in all confirmations and communications"
+      }
+    ],
+    "provider": "openai",
+    "toolIds": ["BOOKING_TOOL_ID", "PROVIDER_LOOKUP_ID", "CALENDAR_INTEGRATION_ID"]
+  }
+}
+```
+</CodeBlocks>
+
+## 2. Configure handoff tools
+
+The Triage assistant uses handoff tools to route patients to the appropriate specialist:
+
+**Handoff Configuration:**
+- **`handoff_to_Emergency`**: Triggered when patient indicates emergency or urgent symptoms
+- **`handoff_to_Scheduler`**: Used for routine appointment scheduling needs
+- **Context preservation**: Full conversation history transfers with `"type": "all"`
+
+**Key Features:**
+- Seamless background transfers (users don't see handoff mechanics)
+- Context-aware routing based on patient responses
+- Specialized assistant UUIDs for precise routing
+- Automatic conversation continuity
+- **Variable extraction**: Patient name is automatically extracted and passed to receiving assistants
+- **Personalized experience**: Receiving assistants greet patients by name using `{{patientName}}` variable
+
+<Note>
+Replace `<scheduler_assistant_uuid>` and `<emergency_assistant_uuid>` with the actual assistant IDs after creating each assistant.
+</Note>
+
+## 3. Test
+
+Test the handoff system with different patient scenarios:
+
+**Routine Appointment Scenarios:**
+- "I need to schedule a checkup"
+- "Can I reschedule my appointment?"
+- "I'd like to see Dr. Smith next week"
+
+**Emergency Scenarios:**
+- "I'm having chest pain"
+- "My child has a high fever"
+- "I think I broke my arm"
+
+**Expected Flow:**
+1. Patient calls → Triage assistant answers
+2. Triage collects name and assesses need
+3. Handoff triggers automatically based on patient response
+4. **Patient name is automatically extracted and passed as a variable**
+5. Emergency or Scheduler assistant takes over with full context and patient name
+
+## 4. Next steps
+
+Now that you have a working handoff-based clinic system:
+
+- **Advanced Handoffs**: [Handoff Tools](/tools/handoff)
+- **Custom Tools**: [Scheduling Tools](/tools/custom-tools)
+- **Calendar Integration**: [Google Calendar](/tools/google-calendar)
+- **Emergency Protocols**: [Call Forwarding](/call-forwarding)
+
