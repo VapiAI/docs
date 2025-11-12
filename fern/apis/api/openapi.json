@@ -4386,6 +4386,50 @@
         ]
       }
     },
+    "/structured-output/suggest": {
+      "post": {
+        "operationId": "StructuredOutputController_suggest",
+        "summary": "Generate AI-Powered Structured Output Suggestions",
+        "description": "Analyzes assistant configuration and generates contextual structured output recommendations",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateStructuredOutputSuggestionsDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Array of suggested structured outputs with relevance scores"
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Structured Outputs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/reporting/insight": {
       "post": {
         "operationId": "InsightController_create",
@@ -7908,6 +7952,17 @@
             "maximum": 50,
             "default": 2
           },
+          "speakerLabels": {
+            "description": "Provides friendly speaker labels that map to diarization indices (Speaker 1 -> labels[0]).",
+            "example": [
+              "Agent",
+              "Customer"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "enablePartials": {
             "type": "boolean",
             "description": "This enables partial transcripts during speech recognition. When false, only final transcripts are returned.\n\n@default true",
@@ -9704,6 +9759,17 @@
             "minimum": 2,
             "maximum": 50,
             "default": 2
+          },
+          "speakerLabels": {
+            "description": "Provides friendly speaker labels that map to diarization indices (Speaker 1 -> labels[0]).",
+            "example": [
+              "Agent",
+              "Customer"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "enablePartials": {
             "type": "boolean",
@@ -30705,6 +30771,14 @@
             "type": "number",
             "description": "This is the average latency for complete turns."
           },
+          "fromTransportLatencyAverage": {
+            "type": "number",
+            "description": "This is the average latency for packets received from the transport provider in milliseconds."
+          },
+          "toTransportLatencyAverage": {
+            "type": "number",
+            "description": "This is the average latency for packets sent to the transport provider in milliseconds."
+          },
           "numUserInterrupted": {
             "type": "number",
             "description": "This is the number of times the user was interrupted by the assistant during the call."
@@ -31749,6 +31823,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-500-server-error",
               "call.in-progress.error-providerfault-eleven-labs-503-server-error",
               "pipeline-error-playht-request-timed-out",
@@ -39708,6 +39783,16 @@
           "providerId"
         ]
       },
+      "ComplianceOverride": {
+        "type": "object",
+        "properties": {
+          "forceStoreOnHipaaEnabled": {
+            "type": "boolean",
+            "description": "Force storage for this output under HIPAA. Only enable if output contains no sensitive data.",
+            "example": false
+          }
+        }
+      },
       "StructuredOutput": {
         "type": "object",
         "properties": {
@@ -39729,6 +39814,17 @@
               {
                 "$ref": "#/components/schemas/WorkflowCustomModel",
                 "title": "WorkflowCustomModel"
+              }
+            ]
+          },
+          "compliancePlan": {
+            "description": "Compliance configuration for this output. Only enable overrides if no sensitive data will be stored.",
+            "example": {
+              "forceStoreOnHipaaEnabled": false
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComplianceOverride"
               }
             ]
           },
@@ -39834,6 +39930,17 @@
               }
             ]
           },
+          "compliancePlan": {
+            "description": "Compliance configuration for this output. Only enable overrides if no sensitive data will be stored.",
+            "example": {
+              "forceStoreOnHipaaEnabled": false
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComplianceOverride"
+              }
+            ]
+          },
           "name": {
             "type": "string",
             "description": "This is the name of the structured output.",
@@ -39893,6 +40000,17 @@
               {
                 "$ref": "#/components/schemas/WorkflowCustomModel",
                 "title": "WorkflowCustomModel"
+              }
+            ]
+          },
+          "compliancePlan": {
+            "description": "Compliance configuration for this output. Only enable overrides if no sensitive data will be stored.",
+            "example": {
+              "forceStoreOnHipaaEnabled": false
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComplianceOverride"
               }
             ]
           },
@@ -39960,6 +40078,40 @@
         },
         "required": [
           "callIds"
+        ]
+      },
+      "GenerateStructuredOutputSuggestionsDTO": {
+        "type": "object",
+        "properties": {
+          "assistantId": {
+            "type": "string",
+            "description": "The assistant ID to analyze and generate suggestions for",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of suggestions to generate",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 6
+          },
+          "excludeIds": {
+            "description": "Existing structured output IDs to exclude from suggestions",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "seed": {
+            "type": "number",
+            "description": "Iteration/seed for generating diverse suggestions (0 = first generation, 1+ = regenerations with increasing specificity)",
+            "minimum": 0,
+            "maximum": 10,
+            "default": 0
+          }
+        },
+        "required": [
+          "assistantId"
         ]
       },
       "TesterPlan": {
@@ -53034,6 +53186,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-500-server-error",
               "call.in-progress.error-providerfault-eleven-labs-503-server-error",
               "pipeline-error-playht-request-timed-out",
@@ -54330,6 +54483,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-500-server-error",
               "call.in-progress.error-providerfault-eleven-labs-503-server-error",
               "pipeline-error-playht-request-timed-out",
