@@ -1,9 +1,9 @@
 ---
-title: Silent Transfers
-slug: squads/silent-transfers
+title: Silent Handoffs
+slug: squads/silent-handoffs
 ---
-- **The Problem**: In traditional AI call flows, when transferring from one agent to another, announcing the transfer verbally can confuse or annoy callers and disrupt the conversation's flow.
-- **The Solution**: Silent transfers keep the call experience _uninterrupted_, so the user doesn’t know multiple assistants are involved. The conversation flows more naturally, boosting customer satisfaction.
+- **The Problem**: In traditional AI call flows, when handing off from one agent to another, announcing the handoff verbally can confuse or annoy callers and disrupt the conversation's flow.
+- **The Solution**: Silent handoffs keep the call experience _uninterrupted_, so the user doesn’t know multiple assistants are involved. The conversation flows more naturally, boosting customer satisfaction.
 
 If you want to allow your call flow to move seamlessly from one assistant to another _without_ the caller hearing `Please hold while we transfer you` here’s what to do:
 
@@ -11,15 +11,15 @@ If you want to allow your call flow to move seamlessly from one assistant to ano
    - Set the assistant's `firstMessage` to an _empty string_.
    - Set the assistant's `firstMessageMode` to `assistant-speaks-first-with-model-generated-message`.
 
-2. **Update the Squad's assistant destinations messages**
-   - For every `members[*].assistantDestinations[*]`, set the `message` property to an _empty string_.
+2. **Update the Squad's handoff messages**
+   - For every `members[*].model.tools/toolIds`, unset the `messages` property.
 
 3. **Trigger the Transfer from the Source Assistant**
 
-   - In that assistant’s prompt, include a line instructing it to transfer to the desired assistant:
+   - In that assistant’s prompt, include a line instructing it to hand off to the desired assistant:
 
    ```json
-   trigger the transferCall tool with 'assistantName' Assistant.
+   trigger the 'handoff' tool with 'assistantName' Assistant.
    ```
 
    - Replace `'assistantName'` with the exact name of the next assistant.
@@ -32,49 +32,65 @@ If you want to allow your call flow to move seamlessly from one assistant to ano
 
 - **HPMA (Main Assistant)** is talking to the customer. They confirm the order details and then quietly passes the conversation to **HPPA (Payment Assistant)**.
 - **HPPA** collects payment details without the customer ever hearing, `We’re now transferring you to the Payment Assistant.` It feels like one continuous conversation.
-- Once payment is done, **HPPA** transfers the call again—this time to **HPMA-SA (Main Sub Assistant)**—which takes over final shipping arrangements.
+- Once payment is done, **HPPA** hands off the call again—this time to **HPMA-SA (Main Sub Assistant)**—which takes over final shipping arrangements.
 
 Everything happens smoothly behind the scenes!
 
 ## **Squad and Assistant Configurations**
 
-Below are the key JSON examples you’ll need. These show how to structure your assistants and squads so they work together for silent transfers.
+Below are the key JSON examples you’ll need. These show how to structure your assistants and squads so they work together for silent handoffs.
 
 ### **HP Payment Squad With SubAgent**
 
 <Warning>
-  Make sure the `members[*].assistantDestinations[*].message` properties are set to an _empty string_.
+  Make sure the `members[*].model.tools.messages` properties are set to null or empty array.
 </Warning>
 
 ```json
 {
   "members": [
     {
-      "assistantId": "2d8e0d13-1b3c-4358-aa72-cf6204d6244e",
-      "assistantDestinations": [
-        {
-          "message": " ",
-          "description": "Transfer call to the payment agent",
-          "type": "assistant",
-          "assistantName": "HPPA"
-        }
-      ]
+      "name": "HPMA (Main Assistant)",
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "tools": [
+          {
+            "type": "handoff",
+            "destinations": [
+              {
+                "type": "assistant",
+                "assistantName": "HPPA"
+              }
+            ],
+            "messages": [],
+          }
+        ]
+      },
+      ...
     },
     {
-      "assistantId": "ad1c5347-bc32-4b31-8bb7-6ff5fcb131f4",
-      "assistantDestinations": [
-        {
-          "message": " ",
-          "description": "Transfer call to the main sub agent",
-          "type": "assistant",
-          "assistantName": "HPMA-SA"
-        }
-      ]
+      "name": "HPPA",
+      "model": {
+        "tools": [
+          {
+            "type": "handoff",
+            "destinations": [
+              {
+                "type": "assistant",
+                "assistantName": "HPMA-SA"
+              }
+            ],
+            "messages": null,
+          }
+        ]
+      },
+      ...
     },
     {
-      "assistantId": "f1c258bc-4c8b-4c51-9b44-883ab5e40b2f",
-      "assistantDestinations": []
-    }
+      "name": "HPMA-SA",
+      ...
+    },
   ],
   "name": "HP Payment Squad With SubAgent"
 }
@@ -160,7 +176,7 @@ Answer only questions related to the context.
 3.Ask how many widgets the customer would like to purchase.
    - Wait for the customer's response.
 4.Confirm the order details with the customer.
-   - trigger the transferCall tool with Payment `HPPA` Assistant.
+   - trigger the handoff tool with Payment `HPPA` Assistant.
 ```
 
 ### **HPPA (Payment Assistant Prompt)**
@@ -200,7 +216,7 @@ any greetings or small talk.
 3. Ask for the CVV number.
    - Wait for the customer's response.
 4. Confirm that the payment has been processed successfully.
-   - trigger the transferCall tool with Payment `HPMA-SA` Assistant.
+   - trigger the handoff tool with Payment `HPMA-SA` Assistant.
 ```
 
 ### **HPMA-SA (Main Sub Assistant Prompt)**
@@ -245,6 +261,6 @@ or small talk.
 
 ## **Conclusion**
 
-By following these steps and examples, you can configure your call system to conduct **silent transfers** ensuring that callers experience a single, uninterrupted conversation. Each assistant does its job smoothly, whether it’s capturing payment, finalizing a shipping address, or collecting basic info.
+By following these steps and examples, you can configure your call system to conduct **silent handoffs** ensuring that callers experience a single, uninterrupted conversation. Each assistant does its job smoothly, whether it’s capturing payment, finalizing a shipping address, or collecting basic info.
 
-Enjoy setting up your silent transfers!
+Enjoy setting up your silent handoffs!
