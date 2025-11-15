@@ -633,6 +633,60 @@ Automate outbound calls and handle inbound call processing with server-side SDKs
     }
     ```
   </Tab>
+
+  <Tab title="PHP">
+    Install the PHP Server SDK:
+
+    ```bash
+    composer require vapi-ai/server-sdk
+    ```
+
+    ```php
+    <?php
+
+    require_once 'vendor/autoload.php';
+
+    use Vapi\VapiClient;
+
+    $vapi = new VapiClient(getenv('VAPI_API_KEY'));
+
+    // Create an outbound call
+    $call = $vapi->calls->create([
+        'phoneNumberId' => 'YOUR_PHONE_NUMBER_ID',
+        'customer' => ['number' => '+1234567890'],
+        'assistantId' => 'YOUR_ASSISTANT_ID'
+    ]);
+
+    echo "Call created: " . $call->id . "\n";
+    ```
+  </Tab>
+
+  <Tab title="Swift">
+    Install the Swift Server SDK:
+
+    ```swift
+    // Package.swift
+    dependencies: [
+        .package(url: "https://github.com/VapiAI/server-sdk-swift", from: "1.0.0")
+    ]
+    ```
+
+    ```swift
+    import VapiServerSDK
+    import Foundation
+
+    let vapi = VapiClient(apiKey: ProcessInfo.processInfo.environment["VAPI_API_KEY"]!)
+
+    // Create an outbound call
+    let call = try await vapi.calls.create(
+        phoneNumberId: "YOUR_PHONE_NUMBER_ID",
+        customer: Customer(number: "+1234567890"),
+        assistantId: "YOUR_ASSISTANT_ID"
+    )
+
+    print("Call created: \(call.id)")
+    ```
+  </Tab>
 </Tabs>
 
 ### Creating assistants
@@ -776,6 +830,52 @@ Automate outbound calls and handle inbound call processing with server-side SDKs
             VoiceID:  "21m00Tcm4TlvDq8ikWAM",
         },
     })
+    ```
+  </Tab>
+
+  <Tab title="PHP">
+    ```php
+    $assistant = $vapi->assistants->create([
+        'name' => 'Sales Assistant',
+        'firstMessage' => "Hi! I'm calling about your interest in our software solutions.",
+        'model' => [
+            'provider' => 'openai',
+            'model' => 'gpt-4o',
+            'temperature' => 0.7,
+            'messages' => [[
+                'role' => 'system',
+                'content' => 'You are a friendly sales representative. Keep responses under 30 words.'
+            ]]
+        ],
+        'voice' => [
+            'provider' => '11labs',
+            'voiceId' => '21m00Tcm4TlvDq8ikWAM'
+        ]
+    ]);
+    ```
+  </Tab>
+
+  <Tab title="Swift">
+    ```swift
+    let assistant = try await vapi.assistants.create(
+        name: "Sales Assistant",
+        firstMessage: "Hi! I'm calling about your interest in our software solutions.",
+        model: Model(
+            provider: "openai",
+            model: "gpt-4o",
+            temperature: 0.7,
+            messages: [
+                Message(
+                    role: "system",
+                    content: "You are a friendly sales representative. Keep responses under 30 words."
+                )
+            ]
+        ),
+        voice: Voice(
+            provider: "11labs",
+            voiceId: "21m00Tcm4TlvDq8ikWAM"
+        )
+    )
     ```
   </Tab>
 </Tabs>
@@ -956,6 +1056,66 @@ Run automated call campaigns for sales, surveys, or notifications:
         }
 
         return calls, nil
+    }
+    ```
+  </Tab>
+
+  <Tab title="PHP">
+    ```php
+    function runBulkCallCampaign($vapi, $assistantId, $phoneNumberId) {
+        $prospects = [
+            ['number' => '+1234567890', 'name' => 'John Smith'],
+            ['number' => '+1234567891', 'name' => 'Jane Doe'],
+            // ... more prospects
+        ];
+
+        $calls = [];
+        foreach ($prospects as $prospect) {
+            $call = $vapi->calls->create([
+                'assistantId' => $assistantId,
+                'phoneNumberId' => $phoneNumberId,
+                'customer' => $prospect,
+                'metadata' => ['campaign' => 'Q1_Sales']
+            ]);
+            $calls[] = $call;
+
+            // Rate limiting
+            sleep(2);
+        }
+
+        return $calls;
+    }
+    ```
+  </Tab>
+
+  <Tab title="Swift">
+    ```swift
+    func runBulkCallCampaign(
+        client: VapiClient,
+        assistantId: String,
+        phoneNumberId: String
+    ) async throws -> [Call] {
+        let prospects = [
+            Customer(number: "+1234567890", name: "John Smith"),
+            Customer(number: "+1234567891", name: "Jane Doe"),
+            // ... more prospects
+        ]
+
+        var calls: [Call] = []
+        for prospect in prospects {
+            let call = try await client.calls.create(
+                assistantId: assistantId,
+                phoneNumberId: phoneNumberId,
+                customer: prospect,
+                metadata: ["campaign": "Q1_Sales"]
+            )
+            calls.append(call)
+
+            // Rate limiting
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+
+        return calls
     }
     ```
   </Tab>
@@ -1251,6 +1411,110 @@ Handle real-time events for both client and server applications:
     }
     ```
   </Tab>
+
+  <Tab title="PHP">
+    ```php
+    <?php
+
+    header('Content-Type: application/json');
+
+    $payload = json_decode(file_get_contents('php://input'), true);
+    $message = $payload['message'] ?? [];
+
+    switch ($message['type'] ?? '') {
+        case 'status-update':
+            $call = $message['call'] ?? [];
+            error_log("Call {$call['id']}: {$call['status']}");
+            break;
+
+        case 'transcript':
+            error_log("{$message['role']}: {$message['transcript']}");
+            break;
+
+        case 'function-call':
+            handleFunctionCall($message);
+            exit;
+    }
+
+    echo json_encode(['received' => true]);
+
+    function handleFunctionCall($message) {
+        $functionCall = $message['functionCall'] ?? [];
+        $functionName = $functionCall['name'] ?? '';
+
+        switch ($functionName) {
+            case 'lookup_order':
+                $orderData = [
+                    'orderId' => $functionCall['parameters']['orderId'] ?? '',
+                    'status' => 'shipped'
+                ];
+                echo json_encode(['result' => $orderData]);
+                break;
+
+            default:
+                http_response_code(400);
+                echo json_encode(['error' => 'Unknown function']);
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Swift">
+    ```swift
+    import Vapor
+
+    func routes(_ app: Application) throws {
+        app.post("webhook", "vapi") { req async throws -> Response in
+            let payload = try req.content.decode(WebhookPayload.self)
+            let message = payload.message
+
+            switch message.type {
+            case "status-update":
+                if let call = message.call {
+                    print("Call \(call.id): \(call.status)")
+                }
+            case "transcript":
+                print("\(message.role ?? ""): \(message.transcript ?? "")")
+            case "function-call":
+                return try await handleFunctionCall(message)
+            default:
+                break
+            }
+
+            return try await ["received": true].encodeResponse(for: req)
+        }
+    }
+
+    func handleFunctionCall(_ message: WebhookMessage) async throws -> Response {
+        guard let functionCall = message.functionCall else {
+            throw Abort(.badRequest, reason: "No function call")
+        }
+
+        switch functionCall.name {
+        case "lookup_order":
+            let orderData = [
+                "orderId": functionCall.parameters?["orderId"] ?? "",
+                "status": "shipped"
+            ]
+            return try await ["result": orderData].encodeResponse(status: .ok)
+        default:
+            throw Abort(.badRequest, reason: "Unknown function")
+        }
+    }
+
+    struct WebhookPayload: Codable {
+        let message: WebhookMessage
+    }
+
+    struct WebhookMessage: Codable {
+        let type: String
+        let call: Call?
+        let role: String?
+        let transcript: String?
+        let functionCall: FunctionCall?
+    }
+    ```
+  </Tab>
 </Tabs>
 
 ## Next steps
@@ -1278,6 +1542,8 @@ Now that you understand both client and server SDK capabilities:
 - [Ruby SDK GitHub](https://github.com/VapiAI/server-sdk-ruby)
 - [C# SDK GitHub](https://github.com/VapiAI/server-sdk-csharp)
 - [Go SDK GitHub](https://github.com/VapiAI/server-sdk-go)
+- [PHP SDK GitHub](https://github.com/VapiAI/server-sdk-php)
+- [Swift SDK GitHub](https://github.com/VapiAI/server-sdk-swift)
 
 **Documentation:**
 - [API Reference](/api-reference)
