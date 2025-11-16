@@ -7066,6 +7066,11 @@
             "description": "The credential ID for server authentication",
             "example": "550e8400-e29b-41d4-a716-446655440000"
           },
+          "staticIpAddressesEnabled": {
+            "type": "boolean",
+            "description": "If enabled, requests will originate from a static set of IPs owned and managed by Vapi.\n\n@default false",
+            "example": false
+          },
           "url": {
             "type": "string",
             "description": "This is where the request will be sent."
@@ -14584,6 +14589,8 @@
             "type": "string",
             "description": "This is the OpenAI model that will be used.\n\nWhen using Vapi OpenAI or your own Azure Credentials, you have the option to specify the region for the selected model. This shouldn't be specified unless you have a specific reason to do so. Vapi will automatically find the fastest region that make sense.\nThis is helpful when you are required to comply with Data Residency rules. Learn more about Azure regions here https://azure.microsoft.com/en-us/explore/global-infrastructure/data-residency/.\n\n@default undefined",
             "enum": [
+              "gpt-5.1",
+              "gpt-5.1-chat-latest",
               "gpt-5",
               "gpt-5-mini",
               "gpt-5-nano",
@@ -14687,6 +14694,8 @@
             "type": "array",
             "description": "These are the fallback models that will be used if the primary model fails. This shouldn't be specified unless you have a specific reason to do so. Vapi will automatically find the fastest fallbacks that make sense.",
             "enum": [
+              "gpt-5.1",
+              "gpt-5.1-chat-latest",
               "gpt-5",
               "gpt-5-mini",
               "gpt-5-nano",
@@ -14792,6 +14801,8 @@
             "items": {
               "type": "string",
               "enum": [
+                "gpt-5.1",
+                "gpt-5.1-chat-latest",
                 "gpt-5",
                 "gpt-5-mini",
                 "gpt-5-nano",
@@ -15422,6 +15433,8 @@
             "description": "This is the OpenAI model that will be used.\n\nWhen using Vapi OpenAI or your own Azure Credentials, you have the option to specify the region for the selected model. This shouldn't be specified unless you have a specific reason to do so. Vapi will automatically find the fastest region that make sense.\nThis is helpful when you are required to comply with Data Residency rules. Learn more about Azure regions here https://azure.microsoft.com/en-us/explore/global-infrastructure/data-residency/.",
             "maxLength": 100,
             "enum": [
+              "gpt-5.1",
+              "gpt-5.1-chat-latest",
               "gpt-5",
               "gpt-5-mini",
               "gpt-5-nano",
@@ -21253,7 +21266,9 @@
               "Cole",
               "Harry",
               "Paige",
-              "Spencer"
+              "Spencer",
+              "Leah",
+              "Tara"
             ]
           },
           "speed": {
@@ -23251,7 +23266,9 @@
               "Cole",
               "Harry",
               "Paige",
-              "Spencer"
+              "Spencer",
+              "Leah",
+              "Tara"
             ]
           },
           "speed": {
@@ -30734,6 +30751,24 @@
           }
         }
       },
+      "SubscriptionLimits": {
+        "type": "object",
+        "properties": {
+          "concurrencyBlocked": {
+            "type": "boolean",
+            "description": "True if this call was blocked by the Call Concurrency limit",
+            "default": false
+          },
+          "concurrencyLimit": {
+            "type": "number",
+            "description": "Account Call Concurrency limit"
+          },
+          "remainingConcurrentCalls": {
+            "type": "number",
+            "description": "Incremental number of concurrent calls that will be allowed, including this call"
+          }
+        }
+      },
       "AnalysisCostBreakdown": {
         "type": "object",
         "properties": {
@@ -31667,6 +31702,7 @@
               "pipeline-error-azure-voice-failed",
               "pipeline-error-rime-ai-voice-failed",
               "pipeline-error-smallest-ai-voice-failed",
+              "pipeline-error-vapi-voice-failed",
               "pipeline-error-neuphonic-voice-failed",
               "pipeline-error-hume-voice-failed",
               "pipeline-error-sesame-voice-failed",
@@ -31682,6 +31718,7 @@
               "call.in-progress.error-vapifault-azure-voice-failed",
               "call.in-progress.error-vapifault-rime-ai-voice-failed",
               "call.in-progress.error-vapifault-smallest-ai-voice-failed",
+              "call.in-progress.error-vapifault-vapi-voice-failed",
               "call.in-progress.error-vapifault-neuphonic-voice-failed",
               "call.in-progress.error-vapifault-hume-voice-failed",
               "call.in-progress.error-vapifault-sesame-voice-failed",
@@ -32012,6 +32049,7 @@
               "call.in-progress.error-vapifault-custom-llm-429-exceeded-quota",
               "call.in-progress.error-providerfault-custom-llm-500-server-error",
               "call.in-progress.error-providerfault-custom-llm-503-server-overloaded-error",
+              "call.in-progress.error-pipeline-ws-model-connection-failed",
               "pipeline-error-custom-voice-failed",
               "pipeline-error-cartesia-socket-hang-up",
               "pipeline-error-cartesia-requested-payment",
@@ -32388,6 +32426,14 @@
       "CallBatchResponse": {
         "type": "object",
         "properties": {
+          "subscriptionLimits": {
+            "description": "Subscription limits at the end of this batch",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SubscriptionLimits"
+              }
+            ]
+          },
           "results": {
             "description": "This is the list of calls that were created.",
             "type": "array",
@@ -33237,13 +33283,6 @@
       "TwilioSMSChatTransport": {
         "type": "object",
         "properties": {
-          "conversationType": {
-            "type": "string",
-            "description": "This is the conversation type of the call (ie, voice or chat).",
-            "enum": [
-              "chat"
-            ]
-          },
           "phoneNumberId": {
             "type": "string",
             "description": "This is the phone number that will be used to send the SMS.\nIf provided, will create a new session. If not provided, uses existing session's phoneNumberId.\nThe phone number must have SMS enabled and belong to your organization."
@@ -33270,7 +33309,6 @@
           }
         },
         "required": [
-          "conversationType",
           "type"
         ]
       },
@@ -43461,6 +43499,8 @@
             "description": "This is the OpenAI model that will be used.\n\nWhen using Vapi OpenAI or your own Azure Credentials, you have the option to specify the region for the selected model. This shouldn't be specified unless you have a specific reason to do so. Vapi will automatically find the fastest region that make sense.\nThis is helpful when you are required to comply with Data Residency rules. Learn more about Azure regions here https://azure.microsoft.com/en-us/explore/global-infrastructure/data-residency/.",
             "maxLength": 100,
             "enum": [
+              "gpt-5.1",
+              "gpt-5.1-chat-latest",
               "gpt-5",
               "gpt-5-mini",
               "gpt-5-nano",
@@ -44795,6 +44835,10 @@
           "hipaaEnabled": {
             "type": "boolean",
             "description": "This is the HIPAA enabled flag for the subscription. It determines whether orgs under this\nsubscription have the option to enable HIPAA compliance."
+          },
+          "dataRetentionEnabled": {
+            "type": "boolean",
+            "description": "This is the data retention enabled flag for the subscription. It determines whether orgs under this\nsubscription have the option to enable data retention."
           },
           "hipaaCommonPaperAgreementId": {
             "type": "string",
@@ -50452,7 +50496,8 @@
               "tavus",
               "sesame",
               "inworld",
-              "minimax"
+              "minimax",
+              "orpheus"
             ]
           },
           "providerId": {
@@ -50566,7 +50611,8 @@
               "tavus",
               "sesame",
               "inworld",
-              "minimax"
+              "minimax",
+              "orpheus"
             ],
             "items": {
               "type": "string",
@@ -50587,7 +50633,8 @@
                 "tavus",
                 "sesame",
                 "inworld",
-                "minimax"
+                "minimax",
+                "orpheus"
               ]
             }
           }
@@ -53097,6 +53144,7 @@
               "pipeline-error-azure-voice-failed",
               "pipeline-error-rime-ai-voice-failed",
               "pipeline-error-smallest-ai-voice-failed",
+              "pipeline-error-vapi-voice-failed",
               "pipeline-error-neuphonic-voice-failed",
               "pipeline-error-hume-voice-failed",
               "pipeline-error-sesame-voice-failed",
@@ -53112,6 +53160,7 @@
               "call.in-progress.error-vapifault-azure-voice-failed",
               "call.in-progress.error-vapifault-rime-ai-voice-failed",
               "call.in-progress.error-vapifault-smallest-ai-voice-failed",
+              "call.in-progress.error-vapifault-vapi-voice-failed",
               "call.in-progress.error-vapifault-neuphonic-voice-failed",
               "call.in-progress.error-vapifault-hume-voice-failed",
               "call.in-progress.error-vapifault-sesame-voice-failed",
@@ -53442,6 +53491,7 @@
               "call.in-progress.error-vapifault-custom-llm-429-exceeded-quota",
               "call.in-progress.error-providerfault-custom-llm-500-server-error",
               "call.in-progress.error-providerfault-custom-llm-503-server-overloaded-error",
+              "call.in-progress.error-pipeline-ws-model-connection-failed",
               "pipeline-error-custom-voice-failed",
               "pipeline-error-cartesia-socket-hang-up",
               "pipeline-error-cartesia-requested-payment",
@@ -54394,6 +54444,7 @@
               "pipeline-error-azure-voice-failed",
               "pipeline-error-rime-ai-voice-failed",
               "pipeline-error-smallest-ai-voice-failed",
+              "pipeline-error-vapi-voice-failed",
               "pipeline-error-neuphonic-voice-failed",
               "pipeline-error-hume-voice-failed",
               "pipeline-error-sesame-voice-failed",
@@ -54409,6 +54460,7 @@
               "call.in-progress.error-vapifault-azure-voice-failed",
               "call.in-progress.error-vapifault-rime-ai-voice-failed",
               "call.in-progress.error-vapifault-smallest-ai-voice-failed",
+              "call.in-progress.error-vapifault-vapi-voice-failed",
               "call.in-progress.error-vapifault-neuphonic-voice-failed",
               "call.in-progress.error-vapifault-hume-voice-failed",
               "call.in-progress.error-vapifault-sesame-voice-failed",
@@ -54739,6 +54791,7 @@
               "call.in-progress.error-vapifault-custom-llm-429-exceeded-quota",
               "call.in-progress.error-providerfault-custom-llm-500-server-error",
               "call.in-progress.error-providerfault-custom-llm-503-server-overloaded-error",
+              "call.in-progress.error-pipeline-ws-model-connection-failed",
               "pipeline-error-custom-voice-failed",
               "pipeline-error-cartesia-socket-hang-up",
               "pipeline-error-cartesia-requested-payment",
