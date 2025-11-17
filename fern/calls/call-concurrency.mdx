@@ -1,0 +1,153 @@
+---
+title: Understanding Call Concurrency
+subtitle: Plan, monitor, and scale simultaneous Vapi calls
+slug: calls/call-concurrency
+description: Learn how concurrency slots work, how to stay within the default limit, and how to raise capacity for larger campaigns.
+---
+
+## Overview
+
+Call concurrency represents how many Vapi calls can be active at the same time. Each call occupies one slot, similar to using a finite set of phone lines.
+
+**In this guide, you'll learn to:**
+- Understand the default concurrency allocation and when it is usually sufficient
+- Keep outbound and inbound workloads within plan limits
+- Increase reserved capacity directly from the Vapi Dashboard
+- Inspect concurrency data through API responses and analytics queries
+
+## What is concurrency?
+
+Every Vapi account includes **10 concurrent call slots** by default. When all slots are busy, new outbound dials or inbound connections wait until a slot becomes free.
+
+<CardGroup cols={2}>
+  <Card title="Inbound agents" icon="phone" iconType="solid">
+    Rarely hit concurrency caps unless traffic surges (launches, seasonal spikes).
+  </Card>
+  <Card title="Outbound agents" icon="phone-outgoing" iconType="solid">
+    More likely to reach limits when running large calling batches.
+  </Card>
+</CardGroup>
+
+These limits ensure the underlying compute stays reliable for every customer. Higher concurrency requires reserving additional capacity, which Vapi provides through custom or add-on plans.
+
+## Managing concurrency
+
+### Outbound campaigns
+
+Batch long lead lists into smaller chunks (for example, 50–100 numbers) and run those batches sequentially. This keeps your peak concurrent calls near the default limit while still working through large sets quickly.
+
+### High-volume operations
+
+If you regularly exceed **50,000 minutes per month**, talk with Vapi about:
+
+- **Custom plans** that include higher baked-in concurrency
+- **Add-on bundles** that let you purchase extra call lines only when you need them
+
+<Tip>
+Use billing reports to pair minute usage with concurrency spikes so you can upgrade before calls are blocked.
+</Tip>
+
+## Increase your concurrency limit
+
+You can raise or reserve more call lines without contacting support:
+
+1. Open the [Vapi Dashboard](https://dashboard.vapi.ai/settings/billing).
+2. Navigate to **Settings → Billing**.
+3. Find **Reserved Concurrency (Call Lines)**.
+4. Increase the limit or purchase add-on concurrency lines.
+
+Changes apply immediately, so you can scale ahead of known traffic surges.
+
+## View concurrency in call responses
+
+When you create a call with `POST /call`, the response includes a `subscriptionLimits` object that shows the current state of your account.
+
+### Example request
+
+```bash
+curl 'https://api.vapi.ai/call' \
+  -H 'authorization: Bearer {VAPI-PRIVATE-TOKEN}' \
+  -H 'content-type: application/json' \
+  --data-raw '{
+    "assistantId": "4a170597-a0c2-4657-8c32-cb93f080cead",
+    "customer": {"number": "+918936850777"},
+    "phoneNumberId": "c6ea6cb0-0dfb-4a65-918f-6a33abb54b64"
+  }'
+```
+
+### Example response snippet
+
+```json
+{
+  "subscriptionLimits": {
+    "concurrencyBlocked": false,
+    "concurrencyLimit": 10,
+    "remainingConcurrentCalls": 9
+  },
+  "id": "019a9046-121e-766d-bd1f-84f3ccc309c1",
+  "status": "queued"
+}
+```
+
+### Field reference
+
+- **`concurrencyBlocked`** — `true` if the call could not start because all slots were full.
+- **`concurrencyLimit`** — Total concurrent call slots currently available to your org.
+- **`remainingConcurrentCalls`** — How many slots were open at the time you created the call.
+
+Build monitoring around these values to alert when you approach the cap.
+
+## Track concurrency with the Analytics API
+
+Use the `/analytics` endpoint to review historical concurrency usage and spot patterns that justify more capacity.
+
+### Example request
+
+```bash
+curl 'https://api.vapi.ai/analytics' \
+  -H 'authorization: Bearer {VAPI-PRIVATE-TOKEN}' \
+  -H 'content-type: application/json' \
+  --data-raw '{
+    "queries": [{
+      "name": "Number of Concurrent Calls",
+      "table": "subscription",
+      "timeRange": {
+        "start": "2025-10-16T18:30:00.000Z",
+        "end": "2025-11-17T05:31:10.184Z",
+        "step": "day"
+      },
+      "operations": [{
+        "operation": "max",
+        "column": "concurrency",
+        "alias": "concurrency"
+      }]
+    }]
+  }'
+```
+
+### Example response
+
+```json
+[{
+  "name": "Number of Concurrent Calls",
+  "timeRange": {
+    "start": "2025-10-16T18:30:00.000Z",
+    "end": "2025-11-17T05:31:10.184Z",
+    "step": "day",
+    "timezone": "UTC"
+  },
+  "result": [
+    { "date": "2025-11-05T00:00:00.000Z", "concurrency": 0 },
+    { "date": "2025-11-10T00:00:00.000Z", "concurrency": 1 },
+    { "date": "2025-11-17T00:00:00.000Z", "concurrency": 1 }
+  ]
+}]
+```
+
+Adjust the `timeRange.step` to inspect usage by hour, day, or week. Peaks that align with campaign launches, seasonality, or support events highlight when you should reserve additional call lines.
+
+## Next steps
+
+- **[Call queue management](mdc:docs/calls/call-queue-management):** Build a Twilio queue to buffer calls when you hit concurrency caps.
+- **[Outbound campaign planning](mdc:docs/outbound-campaigns/overview):** Design outbound strategies that pair batching with analytics.
+- **[Enterprise plans](mdc:docs/enterprise/plans):** Review larger plans that include higher default concurrency.
