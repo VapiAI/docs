@@ -70,9 +70,33 @@ function initializeReo() {
   document.head.appendChild(reoScript);
 }
 
+function configurePostHog() {
+  if (isLocalhost) {
+    console.log('[custom.js] Skipping PostHog configuration on localhost');
+    return;
+  }
+
+  // Wait for PostHog to be initialized by Fern
+  const checkPostHog = setInterval(() => {
+    if (typeof window.posthog !== 'undefined') {
+      clearInterval(checkPostHog);
+      
+      // Configure cross-domain tracking
+      window.posthog.set_config({
+        cross_subdomain_cookie: true,
+        cross_domain: '.vapi.ai',
+        persistence: 'localStorage+cookie'
+      });
+      
+    }
+  }, 100);
+  
+}
+
 function initializeAll() {
   initializeHockeyStack();
   initializeReo();
+  configurePostHog();
   if (ENABLE_VOICE_WIDGET) {
     injectVapiWidget();
   }
