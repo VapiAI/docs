@@ -93,9 +93,26 @@ function configurePostHog() {
   
 }
 
+function initializeHubSpot() {
+
+  if (isLocalhost) {
+    console.log('[custom.js] Skipping HubSpot configuration on localhost');
+    return;
+  }
+
+  var hubSpotScript = document.createElement("script");
+  hubSpotScript.type = "text/javascript";
+  hubSpotScript.id = "hs-script-loader";
+  hubSpotScript.src = "https://js-na2.hs-scripts.com/244349038.js";
+  hubSpotScript.async = true;
+  hubSpotScript.defer = true;
+  document.getElementsByTagName('head')[0].appendChild(hubSpotScript);
+}
+
 function initializeAll() {
   initializeHockeyStack();
   initializeReo();
+  initializeHubSpot();
   configurePostHog();
   if (ENABLE_VOICE_WIDGET) {
     injectVapiWidget();
