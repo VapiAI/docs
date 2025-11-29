@@ -1,0 +1,298 @@
+---
+title: Code Tool
+subtitle: Execute custom TypeScript code directly within your assistant without setting up a server.
+slug: tools/code-tool
+---
+
+The Code Tool allows you to write and execute custom TypeScript code that runs when your assistant needs to perform a specific action. Unlike custom function tools that require you to host a server, code tools run directly on Vapi's infrastructure.
+
+## When to Use Code Tools
+
+Code tools are ideal when you need to:
+- Transform or process data during a conversation
+- Make HTTP requests to external APIs
+- Perform calculations or business logic
+- Avoid the overhead of setting up and maintaining a webhook server
+
+## Creating a Code Tool
+
+### Step 1: Navigate to the Tools Section
+
+1. Open your [Vapi Dashboard](https://dashboard.vapi.ai)
+2. Click **Tools** in the left sidebar
+3. Click **Create Tool** and select **Code**
+
+### Step 2: Configure Your Code Tool
+
+The dashboard provides a visual interface to configure your code tool:
+
+1. **Tool Name**: A descriptive identifier (e.g., `get_customer_data`)
+2. **Description**: Explain what your tool does - this helps the AI understand when to use it
+3. **TypeScript Code**: Write the code that will execute when the tool is called
+4. **Parameters**: Define the input parameters your code expects
+5. **Environment Variables**: Store sensitive values like API keys securely
+
+### Step 3: Write Your Code
+
+Your code has access to two objects:
+- **`args`**: Contains the parameters passed by the assistant
+- **`env`**: Contains your environment variables
+
+```typescript
+// Access parameters from the assistant
+const { customerId, orderType } = args;
+
+// Access secure environment variables
+const { API_KEY, API_URL } = env;
+
+// Make HTTP requests to external services
+const response = await fetch(`${API_URL}/customers/${customerId}`, {
+  headers: {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+});
+
+const customer = await response.json();
+
+// Return data to the assistant
+return {
+  name: customer.name,
+  email: customer.email,
+  memberSince: customer.createdAt
+};
+```
+
+<Note>
+Your code runs in an isolated environment with a configurable timeout (default: 10 seconds, max: 60 seconds).
+</Note>
+
+## Example: Customer Lookup Tool
+
+Let's create a tool that looks up customer information:
+
+### Configuration
+
+| Field | Value |
+|-------|-------|
+| Tool Name | `get_customer` |
+| Description | Retrieves customer information by their ID |
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| customerId | string | Yes | The unique customer identifier |
+
+### Environment Variables
+
+| Name | Value |
+|------|-------|
+| API_KEY | Your API key |
+| API_BASE_URL | https://api.yourservice.com |
+
+### Code
+
+```typescript
+const { customerId } = args;
+const { API_KEY, API_BASE_URL } = env;
+
+const response = await fetch(`${API_BASE_URL}/customers/${customerId}`, {
+  headers: {
+    'Authorization': `Bearer ${API_KEY}`
+  }
+});
+
+if (!response.ok) {
+  return { error: 'Customer not found' };
+}
+
+const customer = await response.json();
+
+return {
+  name: customer.name,
+  email: customer.email,
+  plan: customer.subscription.plan,
+  status: customer.status
+};
+```
+
+## Example: Order Processing Tool
+
+A more complex example that processes an order:
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| items | array | Yes | Array of item objects with id and quantity |
+| customerId | string | Yes | The customer placing the order |
+| shippingAddress | string | No | Delivery address |
+
+### Code
+
+```typescript
+const { items, customerId, shippingAddress } = args;
+const { ORDER_API_KEY, ORDER_API_URL } = env;
+
+// Calculate total
+let total = 0;
+const itemDetails = [];
+
+for (const item of items) {
+  const priceResponse = await fetch(`${ORDER_API_URL}/products/${item.id}`);
+  const product = await priceResponse.json();
+  
+  const itemTotal = product.price * item.quantity;
+  total += itemTotal;
+  
+  itemDetails.push({
+    name: product.name,
+    quantity: item.quantity,
+    price: product.price,
+    subtotal: itemTotal
+  });
+}
+
+// Create the order
+const orderResponse = await fetch(`${ORDER_API_URL}/orders`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${ORDER_API_KEY}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    customerId,
+    items: itemDetails,
+    total,
+    shippingAddress
+  })
+});
+
+const order = await orderResponse.json();
+
+return {
+  orderId: order.id,
+  total: `$${total.toFixed(2)}`,
+  estimatedDelivery: order.estimatedDelivery,
+  items: itemDetails.map(i => `${i.quantity}x ${i.name}`)
+};
+```
+
+## Using Code Tools in Assistants
+
+Once created, add your code tool to any assistant:
+
+### In the Dashboard
+
+1. Go to **Assistants** → Select your assistant
+2. Navigate to the **Tools** tab
+3. Click **Add Tool** and select your code tool
+4. Save your assistant configuration
+
+### Via API
+
+```bash
+curl --location --request PATCH 'https://api.vapi.ai/assistant/ASSISTANT_ID' \
+--header 'Authorization: Bearer <YOUR_API_KEY>' \
+--header 'Content-Type: application/json' \
+--data '{
+    "model": {
+        "toolIds": ["your-code-tool-id"]
+    }
+}'
+```
+
+## Creating Code Tools via API
+
+You can also create code tools programmatically:
+
+```bash
+curl --location 'https://api.vapi.ai/tool' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer <YOUR_API_KEY>' \
+--data '{
+    "type": "code",
+    "name": "get_customer",
+    "description": "Retrieves customer information by their ID",
+    "code": "const { customerId } = args;\nconst { API_KEY } = env;\n\nconst response = await fetch(`https://api.example.com/customers/${customerId}`, {\n  headers: { \"Authorization\": `Bearer ${API_KEY}` }\n});\n\nreturn await response.json();",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "customerId": {
+                "type": "string",
+                "description": "The unique customer identifier"
+            }
+        },
+        "required": ["customerId"]
+    },
+    "environmentVariables": [
+        {
+            "name": "API_KEY",
+            "value": "your-api-key-here"
+        }
+    ]
+}'
+```
+
+## Best Practices
+
+### Security
+- Store sensitive values (API keys, secrets) in **Environment Variables**, not in your code
+- Environment variable values support Liquid templates to reference call variables
+
+### Performance
+- Keep code execution under the timeout limit
+- Use efficient API calls and avoid unnecessary loops
+- Consider caching strategies for repeated lookups
+
+### Error Handling
+- Always handle potential errors from API calls
+- Return meaningful error messages that help the assistant respond appropriately
+
+```typescript
+const { customerId } = args;
+
+try {
+  const response = await fetch(`${env.API_URL}/customers/${customerId}`);
+  
+  if (!response.ok) {
+    return { 
+      error: true, 
+      message: `Customer ${customerId} not found` 
+    };
+  }
+  
+  return await response.json();
+} catch (error) {
+  return { 
+    error: true, 
+    message: 'Unable to reach customer service' 
+  };
+}
+```
+
+### Return Values
+- Return structured data that the assistant can easily interpret
+- Include relevant information the assistant needs to continue the conversation
+
+## Limitations
+
+- **Timeout**: Maximum execution time is 60 seconds (default: 10 seconds)
+- **No file system access**: Code runs in an isolated environment without file access
+- **Memory**: Code runs with limited memory allocation
+- **Network**: Only outbound HTTP/HTTPS requests are supported
+
+## Code Tool vs Custom Function Tool
+
+| Feature | Code Tool | Custom Function Tool |
+|---------|-----------|---------------------|
+| Server Required | No | Yes |
+| Language | TypeScript | Any |
+| Setup Complexity | Low | Higher |
+| Customization | Moderate | Full control |
+| Secrets Management | Environment Variables | Your server |
+| Best For | Quick integrations, API calls | Complex logic, existing infrastructure |
+
+Choose **Code Tools** when you want to quickly add functionality without managing infrastructure. Choose **Custom Function Tools** when you need full control over the execution environment or have existing server infrastructure.
+
