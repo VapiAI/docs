@@ -4478,50 +4478,6 @@
         ]
       }
     },
-    "/structured-output/suggest": {
-      "post": {
-        "operationId": "StructuredOutputController_suggest",
-        "summary": "Generate AI-Powered Structured Output Suggestions",
-        "description": "Analyzes assistant configuration and generates contextual structured output recommendations",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenerateStructuredOutputSuggestionsDTO"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Array of suggested structured outputs with relevance scores"
-          },
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Structured Outputs"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
     "/reporting/insight": {
       "post": {
         "operationId": "InsightController_create",
@@ -6553,6 +6509,11 @@
             "minimum": 0,
             "example": 400
           },
+          "vadAssistedEndpointingEnabled": {
+            "type": "boolean",
+            "description": "Use VAD to assist with endpointing decisions from the transcriber.\nWhen enabled, transcriber endpointing will be buffered if VAD detects the user is still speaking, preventing premature turn-taking.\nWhen disabled, transcriber endpointing will be used immediately regardless of VAD state, allowing for quicker but more aggressive turn-taking.\nNote: Only used if startSpeakingPlan.smartEndpointingPlan is not set.\n\n@default true",
+            "example": true
+          },
           "realtimeUrl": {
             "type": "string",
             "description": "The WebSocket URL that the transcriber connects to."
@@ -8524,6 +8485,11 @@
             "description": "This is the maximum turn silence time in milliseconds.\nNote: Only used if startSpeakingPlan.smartEndpointingPlan is not set.\n@default 400",
             "minimum": 0,
             "example": 400
+          },
+          "vadAssistedEndpointingEnabled": {
+            "type": "boolean",
+            "description": "Use VAD to assist with endpointing decisions from the transcriber.\nWhen enabled, transcriber endpointing will be buffered if VAD detects the user is still speaking, preventing premature turn-taking.\nWhen disabled, transcriber endpointing will be used immediately regardless of VAD state, allowing for quicker but more aggressive turn-taking.\nNote: Only used if startSpeakingPlan.smartEndpointingPlan is not set.\n\n@default true",
+            "example": true
           },
           "realtimeUrl": {
             "type": "string",
@@ -11470,6 +11436,310 @@
           "model"
         ]
       },
+      "RegexOption": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of the regex option. Options are:\n- `ignore-case`: Ignores the case of the text being matched. Add\n- `whole-word`: Matches whole words only.\n- `multi-line`: Matches across multiple lines.",
+            "enum": [
+              "ignore-case",
+              "whole-word",
+              "multi-line"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "This is whether to enable the option.\n\n@default false"
+          }
+        },
+        "required": [
+          "type",
+          "enabled"
+        ]
+      },
+      "AssistantCustomEndpointingRule": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This endpointing rule is based on the last assistant message before customer started speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the last assistant message\n- If a match is found based on `regex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you have yes/no questions in your use case like \"are you interested in a loan?\", you can set a shorter timeout.\n- If you have questions where the customer may pause to look up information like \"what's my account number?\", you can set a longer timeout.",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "regex": {
+            "type": "string",
+            "description": "This is the regex pattern to match.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
+          },
+          "regexOptions": {
+            "description": "These are the options for the regex match. Defaults to all disabled.\n\n@default []",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegexOption"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
+            "minimum": 0,
+            "maximum": 15
+          }
+        },
+        "required": [
+          "type",
+          "regex",
+          "timeoutSeconds"
+        ]
+      },
+      "CustomerCustomEndpointingRule": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This endpointing rule is based on current customer message as they are speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the current customer transcription\n- If a match is found based on `regex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you want to wait longer while customer is speaking numbers, you can set a longer timeout.",
+            "enum": [
+              "customer"
+            ]
+          },
+          "regex": {
+            "type": "string",
+            "description": "This is the regex pattern to match.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
+          },
+          "regexOptions": {
+            "description": "These are the options for the regex match. Defaults to all disabled.\n\n@default []",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegexOption"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
+            "minimum": 0,
+            "maximum": 15
+          }
+        },
+        "required": [
+          "type",
+          "regex",
+          "timeoutSeconds"
+        ]
+      },
+      "BothCustomEndpointingRule": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This endpointing rule is based on both the last assistant message and the current customer message as they are speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the last assistant message and the current customer transcription\n- If assistant message matches `assistantRegex` AND customer message matches `customerRegex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you want to wait longer while customer is speaking numbers, you can set a longer timeout.",
+            "enum": [
+              "both"
+            ]
+          },
+          "assistantRegex": {
+            "type": "string",
+            "description": "This is the regex pattern to match the assistant's message.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
+          },
+          "assistantRegexOptions": {
+            "description": "These are the options for the assistant's message regex match. Defaults to all disabled.\n\n@default []",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegexOption"
+            }
+          },
+          "customerRegex": {
+            "type": "string"
+          },
+          "customerRegexOptions": {
+            "description": "These are the options for the customer's message regex match. Defaults to all disabled.\n\n@default []",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegexOption"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
+            "minimum": 0,
+            "maximum": 15
+          }
+        },
+        "required": [
+          "type",
+          "assistantRegex",
+          "customerRegex",
+          "timeoutSeconds"
+        ]
+      },
+      "VapiSmartEndpointingPlan": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "This is the provider for the smart endpointing plan.",
+            "enum": [
+              "vapi",
+              "livekit",
+              "custom-endpointing-model"
+            ],
+            "example": "vapi"
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "LivekitSmartEndpointingPlan": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "This is the provider for the smart endpointing plan.",
+            "enum": [
+              "vapi",
+              "livekit",
+              "custom-endpointing-model"
+            ],
+            "example": "livekit"
+          },
+          "waitFunction": {
+            "type": "string",
+            "description": "This expression describes how long the bot will wait to start speaking based on the likelihood that the user has reached an endpoint.\n\nThis is a millisecond valued function. It maps probabilities (real numbers on [0,1]) to milliseconds that the bot should wait before speaking ([0, \\infty]). Any negative values that are returned are set to zero (the bot can't start talking in the past).\n\nA probability of zero represents very high confidence that the caller has stopped speaking, and would like the bot to speak to them. A probability of one represents very high confidence that the caller is still speaking.\n\nUnder the hood, this is parsed into a mathjs expression. Whatever you use to write your expression needs to be valid with respect to mathjs\n\n@default \"20 + 500 * sqrt(x) + 2500 * x^3\"",
+            "examples": [
+              "70 + 4000 * x",
+              "200 + 8000 * x",
+              "4000 * (1 - cos(pi * x))"
+            ]
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "CustomEndpointingModelSmartEndpointingPlan": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "This is the provider for the smart endpointing plan. Use `custom-endpointing-model` for custom endpointing providers that are not natively supported.",
+            "enum": [
+              "vapi",
+              "livekit",
+              "custom-endpointing-model"
+            ],
+            "example": "custom-endpointing-model"
+          },
+          "server": {
+            "description": "This is where the endpointing request will be sent. If not provided, will be sent to `assistant.server`. If that does not exist either, will be sent to `org.server`.\n\nRequest Example:\n\nPOST https://{server.url}\nContent-Type: application/json\n\n{\n  \"message\": {\n    \"type\": \"call.endpointing.request\",\n    \"messages\": [\n      {\n        \"role\": \"user\",\n        \"message\": \"Hello, how are you?\",\n        \"time\": 1234567890,\n        \"secondsFromStart\": 0\n      }\n    ],\n    ...other metadata about the call...\n  }\n}\n\nResponse Expected:\n{\n  \"timeoutSeconds\": 0.5\n}\n\nThe timeout is the number of seconds to wait before considering the user's speech as finished. The endpointing timeout is automatically reset each time a new transcript is received (and another `call.endpointing.request` is sent).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Server"
+              }
+            ]
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "TranscriptionEndpointingPlan": {
+        "type": "object",
+        "properties": {
+          "onPunctuationSeconds": {
+            "type": "number",
+            "description": "The minimum number of seconds to wait after transcription ending with punctuation before sending a request to the model. Defaults to 0.1.\n\nThis setting exists because the transcriber punctuates the transcription when it's more confident that customer has completed a thought.\n\n@default 0.1",
+            "minimum": 0,
+            "maximum": 3,
+            "example": 0.1
+          },
+          "onNoPunctuationSeconds": {
+            "type": "number",
+            "description": "The minimum number of seconds to wait after transcription ending without punctuation before sending a request to the model. Defaults to 1.5.\n\nThis setting exists to catch the cases where the transcriber was not confident enough to punctuate the transcription, but the customer is done and has been silent for a long time.\n\n@default 1.5",
+            "minimum": 0,
+            "maximum": 3,
+            "example": 1.5
+          },
+          "onNumberSeconds": {
+            "type": "number",
+            "description": "The minimum number of seconds to wait after transcription ending with a number before sending a request to the model. Defaults to 0.4.\n\nThis setting exists because the transcriber will sometimes punctuate the transcription ending with a number, even though the customer hasn't uttered the full number. This happens commonly for long numbers when the customer reads the number in chunks.\n\n@default 0.5",
+            "minimum": 0,
+            "maximum": 3,
+            "example": 0.5
+          }
+        }
+      },
+      "StartSpeakingPlan": {
+        "type": "object",
+        "properties": {
+          "waitSeconds": {
+            "type": "number",
+            "description": "This is how long assistant waits before speaking. Defaults to 0.4.\n\nThis is the minimum it will wait but if there is latency is the pipeline, this minimum will be exceeded. This is intended as a stopgap in case the pipeline is moving too fast.\n\nExample:\n- If model generates tokens and voice generates bytes within 100ms, the pipeline still waits 300ms before outputting speech.\n\nUsage:\n- If the customer is taking long pauses, set this to a higher value.\n- If the assistant is accidentally jumping in too much, set this to a higher value.\n\n@default 0.4",
+            "minimum": 0,
+            "maximum": 5,
+            "example": 0.4
+          },
+          "smartEndpointingEnabled": {
+            "example": false,
+            "deprecated": true,
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "livekit"
+                ]
+              }
+            ]
+          },
+          "smartEndpointingPlan": {
+            "description": "This is the plan for smart endpointing. Pick between Vapi smart endpointing, LiveKit, or custom endpointing model (or nothing). We strongly recommend using livekit endpointing when working in English. LiveKit endpointing is not supported in other languages, yet.\n\nIf this is set, it will override and take precedence over `transcriptionEndpointingPlan`.\nThis plan will still be overridden by any matching `customEndpointingRules`.\n\nIf this is not set, the system will automatically use the transcriber's built-in endpointing capabilities if available.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VapiSmartEndpointingPlan",
+                "title": "Vapi"
+              },
+              {
+                "$ref": "#/components/schemas/LivekitSmartEndpointingPlan",
+                "title": "Livekit"
+              },
+              {
+                "$ref": "#/components/schemas/CustomEndpointingModelSmartEndpointingPlan",
+                "title": "Custom Endpointing Model"
+              }
+            ]
+          },
+          "customEndpointingRules": {
+            "type": "array",
+            "description": "These are the custom endpointing rules to set an endpointing timeout based on a regex on the customer's speech or the assistant's last message.\n\nUsage:\n- If you have yes/no questions like \"are you interested in a loan?\", you can set a shorter timeout.\n- If you have questions where the customer may pause to look up information like \"what's my account number?\", you can set a longer timeout.\n- If you want to wait longer while customer is enumerating a list of numbers, you can set a longer timeout.\n\nThese rules have the highest precedence and will override both `smartEndpointingPlan` and `transcriptionEndpointingPlan` when a rule is matched.\n\nThe rules are evaluated in order and the first one that matches will be used.\n\nOrder of precedence for endpointing:\n1. customEndpointingRules (if any match)\n2. smartEndpointingPlan (if set)\n3. transcriptionEndpointingPlan\n\n@default []",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AssistantCustomEndpointingRule",
+                  "title": "Assistant"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomerCustomEndpointingRule",
+                  "title": "Customer"
+                },
+                {
+                  "$ref": "#/components/schemas/BothCustomEndpointingRule",
+                  "title": "Both"
+                }
+              ]
+            }
+          },
+          "transcriptionEndpointingPlan": {
+            "description": "This determines how a customer speech is considered done (endpointing) using the transcription of customer's speech.\n\nOnce an endpoint is triggered, the request is sent to `assistant.model`.\n\nNote: This plan is only used if `smartEndpointingPlan` is not set and transcriber does not have built-in endpointing capabilities. If both are provided, `smartEndpointingPlan` takes precedence.\nThis plan will also be overridden by any matching `customEndpointingRules`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TranscriptionEndpointingPlan"
+              }
+            ]
+          }
+        }
+      },
       "TransferAssistant": {
         "type": "object",
         "properties": {
@@ -11630,6 +11900,14 @@
                 "type": "string",
                 "format": "uri",
                 "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+              }
+            ]
+          },
+          "startSpeakingPlan": {
+            "description": "This is the plan for when the transfer assistant should start talking.\n\nYou should configure this if the transfer assistant needs different endpointing behavior than the base assistant.\n\nIf this is not set, the transfer assistant will inherit the start speaking plan from the base assistant.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StartSpeakingPlan"
               }
             ]
           },
@@ -17485,310 +17763,6 @@
           "loggingPath": {
             "type": "string",
             "description": "This is the path where the call logs will be uploaded. This is only used if you have provided S3 or GCP credentials on the Provider Credentials page in the Dashboard.\n\nIf credential.s3PathPrefix or credential.bucketPlan.path is set, this will append to it.\n\nUsage:\n- If you want to upload the call logs to a specific path, set this to the path. Example: `/my-assistant-logs`.\n- If you want to upload the call logs to the root of the bucket, set this to `/`.\n\n@default '/'"
-          }
-        }
-      },
-      "RegexOption": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of the regex option. Options are:\n- `ignore-case`: Ignores the case of the text being matched. Add\n- `whole-word`: Matches whole words only.\n- `multi-line`: Matches across multiple lines.",
-            "enum": [
-              "ignore-case",
-              "whole-word",
-              "multi-line"
-            ]
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "This is whether to enable the option.\n\n@default false"
-          }
-        },
-        "required": [
-          "type",
-          "enabled"
-        ]
-      },
-      "AssistantCustomEndpointingRule": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This endpointing rule is based on the last assistant message before customer started speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the last assistant message\n- If a match is found based on `regex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you have yes/no questions in your use case like \"are you interested in a loan?\", you can set a shorter timeout.\n- If you have questions where the customer may pause to look up information like \"what's my account number?\", you can set a longer timeout.",
-            "enum": [
-              "assistant"
-            ]
-          },
-          "regex": {
-            "type": "string",
-            "description": "This is the regex pattern to match.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
-          },
-          "regexOptions": {
-            "description": "These are the options for the regex match. Defaults to all disabled.\n\n@default []",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RegexOption"
-            }
-          },
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
-            "minimum": 0,
-            "maximum": 15
-          }
-        },
-        "required": [
-          "type",
-          "regex",
-          "timeoutSeconds"
-        ]
-      },
-      "CustomerCustomEndpointingRule": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This endpointing rule is based on current customer message as they are speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the current customer transcription\n- If a match is found based on `regex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you want to wait longer while customer is speaking numbers, you can set a longer timeout.",
-            "enum": [
-              "customer"
-            ]
-          },
-          "regex": {
-            "type": "string",
-            "description": "This is the regex pattern to match.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
-          },
-          "regexOptions": {
-            "description": "These are the options for the regex match. Defaults to all disabled.\n\n@default []",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RegexOption"
-            }
-          },
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
-            "minimum": 0,
-            "maximum": 15
-          }
-        },
-        "required": [
-          "type",
-          "regex",
-          "timeoutSeconds"
-        ]
-      },
-      "BothCustomEndpointingRule": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This endpointing rule is based on both the last assistant message and the current customer message as they are speaking.\n\nFlow:\n- Assistant speaks\n- Customer starts speaking\n- Customer transcription comes in\n- This rule is evaluated on the last assistant message and the current customer transcription\n- If assistant message matches `assistantRegex` AND customer message matches `customerRegex`, the endpointing timeout is set to `timeoutSeconds`\n\nUsage:\n- If you want to wait longer while customer is speaking numbers, you can set a longer timeout.",
-            "enum": [
-              "both"
-            ]
-          },
-          "assistantRegex": {
-            "type": "string",
-            "description": "This is the regex pattern to match the assistant's message.\n\nNote:\n- This works by using the `RegExp.test` method in Node.JS. Eg. `/hello/.test(\"hello there\")` will return `true`.\n\nHot tip:\n- In JavaScript, escape `\\` when sending the regex pattern. Eg. `\"hello\\sthere\"` will be sent over the wire as `\"hellosthere\"`. Send `\"hello\\\\sthere\"` instead.\n- `RegExp.test` does substring matching, so `/cat/.test(\"I love cats\")` will return `true`. To do full string matching, send \"^cat$\"."
-          },
-          "assistantRegexOptions": {
-            "description": "These are the options for the assistant's message regex match. Defaults to all disabled.\n\n@default []",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RegexOption"
-            }
-          },
-          "customerRegex": {
-            "type": "string"
-          },
-          "customerRegexOptions": {
-            "description": "These are the options for the customer's message regex match. Defaults to all disabled.\n\n@default []",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RegexOption"
-            }
-          },
-          "timeoutSeconds": {
-            "type": "number",
-            "description": "This is the endpointing timeout in seconds, if the rule is matched.",
-            "minimum": 0,
-            "maximum": 15
-          }
-        },
-        "required": [
-          "type",
-          "assistantRegex",
-          "customerRegex",
-          "timeoutSeconds"
-        ]
-      },
-      "VapiSmartEndpointingPlan": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "description": "This is the provider for the smart endpointing plan.",
-            "enum": [
-              "vapi",
-              "livekit",
-              "custom-endpointing-model"
-            ],
-            "example": "vapi"
-          }
-        },
-        "required": [
-          "provider"
-        ]
-      },
-      "LivekitSmartEndpointingPlan": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "description": "This is the provider for the smart endpointing plan.",
-            "enum": [
-              "vapi",
-              "livekit",
-              "custom-endpointing-model"
-            ],
-            "example": "livekit"
-          },
-          "waitFunction": {
-            "type": "string",
-            "description": "This expression describes how long the bot will wait to start speaking based on the likelihood that the user has reached an endpoint.\n\nThis is a millisecond valued function. It maps probabilities (real numbers on [0,1]) to milliseconds that the bot should wait before speaking ([0, \\infty]). Any negative values that are returned are set to zero (the bot can't start talking in the past).\n\nA probability of zero represents very high confidence that the caller has stopped speaking, and would like the bot to speak to them. A probability of one represents very high confidence that the caller is still speaking.\n\nUnder the hood, this is parsed into a mathjs expression. Whatever you use to write your expression needs to be valid with respect to mathjs\n\n@default \"20 + 500 * sqrt(x) + 2500 * x^3\"",
-            "examples": [
-              "70 + 4000 * x",
-              "200 + 8000 * x",
-              "4000 * (1 - cos(pi * x))"
-            ]
-          }
-        },
-        "required": [
-          "provider"
-        ]
-      },
-      "CustomEndpointingModelSmartEndpointingPlan": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "description": "This is the provider for the smart endpointing plan. Use `custom-endpointing-model` for custom endpointing providers that are not natively supported.",
-            "enum": [
-              "vapi",
-              "livekit",
-              "custom-endpointing-model"
-            ],
-            "example": "custom-endpointing-model"
-          },
-          "server": {
-            "description": "This is where the endpointing request will be sent. If not provided, will be sent to `assistant.server`. If that does not exist either, will be sent to `org.server`.\n\nRequest Example:\n\nPOST https://{server.url}\nContent-Type: application/json\n\n{\n  \"message\": {\n    \"type\": \"call.endpointing.request\",\n    \"messages\": [\n      {\n        \"role\": \"user\",\n        \"message\": \"Hello, how are you?\",\n        \"time\": 1234567890,\n        \"secondsFromStart\": 0\n      }\n    ],\n    ...other metadata about the call...\n  }\n}\n\nResponse Expected:\n{\n  \"timeoutSeconds\": 0.5\n}\n\nThe timeout is the number of seconds to wait before considering the user's speech as finished. The endpointing timeout is automatically reset each time a new transcript is received (and another `call.endpointing.request` is sent).",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Server"
-              }
-            ]
-          }
-        },
-        "required": [
-          "provider"
-        ]
-      },
-      "TranscriptionEndpointingPlan": {
-        "type": "object",
-        "properties": {
-          "onPunctuationSeconds": {
-            "type": "number",
-            "description": "The minimum number of seconds to wait after transcription ending with punctuation before sending a request to the model. Defaults to 0.1.\n\nThis setting exists because the transcriber punctuates the transcription when it's more confident that customer has completed a thought.\n\n@default 0.1",
-            "minimum": 0,
-            "maximum": 3,
-            "example": 0.1
-          },
-          "onNoPunctuationSeconds": {
-            "type": "number",
-            "description": "The minimum number of seconds to wait after transcription ending without punctuation before sending a request to the model. Defaults to 1.5.\n\nThis setting exists to catch the cases where the transcriber was not confident enough to punctuate the transcription, but the customer is done and has been silent for a long time.\n\n@default 1.5",
-            "minimum": 0,
-            "maximum": 3,
-            "example": 1.5
-          },
-          "onNumberSeconds": {
-            "type": "number",
-            "description": "The minimum number of seconds to wait after transcription ending with a number before sending a request to the model. Defaults to 0.4.\n\nThis setting exists because the transcriber will sometimes punctuate the transcription ending with a number, even though the customer hasn't uttered the full number. This happens commonly for long numbers when the customer reads the number in chunks.\n\n@default 0.5",
-            "minimum": 0,
-            "maximum": 3,
-            "example": 0.5
-          }
-        }
-      },
-      "StartSpeakingPlan": {
-        "type": "object",
-        "properties": {
-          "waitSeconds": {
-            "type": "number",
-            "description": "This is how long assistant waits before speaking. Defaults to 0.4.\n\nThis is the minimum it will wait but if there is latency is the pipeline, this minimum will be exceeded. This is intended as a stopgap in case the pipeline is moving too fast.\n\nExample:\n- If model generates tokens and voice generates bytes within 100ms, the pipeline still waits 300ms before outputting speech.\n\nUsage:\n- If the customer is taking long pauses, set this to a higher value.\n- If the assistant is accidentally jumping in too much, set this to a higher value.\n\n@default 0.4",
-            "minimum": 0,
-            "maximum": 5,
-            "example": 0.4
-          },
-          "smartEndpointingEnabled": {
-            "example": false,
-            "deprecated": true,
-            "oneOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "string",
-                "enum": [
-                  "livekit"
-                ]
-              }
-            ]
-          },
-          "smartEndpointingPlan": {
-            "description": "This is the plan for smart endpointing. Pick between Vapi smart endpointing, LiveKit, or custom endpointing model (or nothing). We strongly recommend using livekit endpointing when working in English. LiveKit endpointing is not supported in other languages, yet.\n\nIf this is set, it will override and take precedence over `transcriptionEndpointingPlan`.\nThis plan will still be overridden by any matching `customEndpointingRules`.\n\nIf this is not set, the system will automatically use the transcriber's built-in endpointing capabilities if available.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/VapiSmartEndpointingPlan",
-                "title": "Vapi"
-              },
-              {
-                "$ref": "#/components/schemas/LivekitSmartEndpointingPlan",
-                "title": "Livekit"
-              },
-              {
-                "$ref": "#/components/schemas/CustomEndpointingModelSmartEndpointingPlan",
-                "title": "Custom Endpointing Model"
-              }
-            ]
-          },
-          "customEndpointingRules": {
-            "type": "array",
-            "description": "These are the custom endpointing rules to set an endpointing timeout based on a regex on the customer's speech or the assistant's last message.\n\nUsage:\n- If you have yes/no questions like \"are you interested in a loan?\", you can set a shorter timeout.\n- If you have questions where the customer may pause to look up information like \"what's my account number?\", you can set a longer timeout.\n- If you want to wait longer while customer is enumerating a list of numbers, you can set a longer timeout.\n\nThese rules have the highest precedence and will override both `smartEndpointingPlan` and `transcriptionEndpointingPlan` when a rule is matched.\n\nThe rules are evaluated in order and the first one that matches will be used.\n\nOrder of precedence for endpointing:\n1. customEndpointingRules (if any match)\n2. smartEndpointingPlan (if set)\n3. transcriptionEndpointingPlan\n\n@default []",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/AssistantCustomEndpointingRule",
-                  "title": "Assistant"
-                },
-                {
-                  "$ref": "#/components/schemas/CustomerCustomEndpointingRule",
-                  "title": "Customer"
-                },
-                {
-                  "$ref": "#/components/schemas/BothCustomEndpointingRule",
-                  "title": "Both"
-                }
-              ]
-            }
-          },
-          "transcriptionEndpointingPlan": {
-            "description": "This determines how a customer speech is considered done (endpointing) using the transcription of customer's speech.\n\nOnce an endpoint is triggered, the request is sent to `assistant.model`.\n\nNote: This plan is only used if `smartEndpointingPlan` is not set and transcriber does not have built-in endpointing capabilities. If both are provided, `smartEndpointingPlan` takes precedence.\nThis plan will also be overridden by any matching `customEndpointingRules`.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/TranscriptionEndpointingPlan"
-              }
-            ]
           }
         }
       },
@@ -40397,40 +40371,6 @@
           "callIds"
         ]
       },
-      "GenerateStructuredOutputSuggestionsDTO": {
-        "type": "object",
-        "properties": {
-          "assistantId": {
-            "type": "string",
-            "description": "The assistant ID to analyze and generate suggestions for",
-            "example": "550e8400-e29b-41d4-a716-446655440000"
-          },
-          "count": {
-            "type": "number",
-            "description": "Number of suggestions to generate",
-            "minimum": 1,
-            "maximum": 10,
-            "default": 6
-          },
-          "excludeIds": {
-            "description": "Existing structured output IDs to exclude from suggestions",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "seed": {
-            "type": "number",
-            "description": "Iteration/seed for generating diverse suggestions (0 = first generation, 1+ = regenerations with increasing specificity)",
-            "minimum": 0,
-            "maximum": 10,
-            "default": 0
-          }
-        },
-        "required": [
-          "assistantId"
-        ]
-      },
       "TesterPlan": {
         "type": "object",
         "properties": {
@@ -45342,8 +45282,7 @@
           "id",
           "orgId",
           "createdAt",
-          "updatedAt",
-          "value"
+          "updatedAt"
         ]
       },
       "UpdateTokenDTO": {
