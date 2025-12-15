@@ -1,35 +1,56 @@
 ---
-title: Voice Fallback Plan
+title: Voice fallback configuration
 subtitle: Configure fallback voices that activate automatically if your primary voice fails.
 slug: voice-fallback-plan
 ---
 
-<Note>
-  Voice fallback plans can currently only be configured through the API. We are working on making this available through our dashboard.
-</Note>
+## Overview
 
-## Introduction
-
-Voice fallback plans give you the ability to continue your call in the event that your primary voice fails. Your assistant will sequentially fallback to only the voices you configure within your plan, in the exact order you specify. 
+Voice fallback configuration gives you the ability to continue your call in the event that your primary voice fails. Your assistant will sequentially fallback to only the voices you configure within your plan, in the exact order you specify.
 
 <Note>
   Without a fallback plan configured, your call will end with an error in the event that your chosen voice provider fails.
 </Note>
 
-## How It Works
+## How it works
 
 When a voice failure occurs, Vapi will:
 1. Detect the failure of the primary voice
 2. If a custom fallback plan exists:
-  - Switch to the first fallback voice in your plan
-  - Continue through your specified list if subsequent failures occur
-  - Terminate only if all voices in your plan have failed
+   - Switch to the first fallback voice in your plan
+   - Continue through your specified list if subsequent failures occur
+   - Terminate only if all voices in your plan have failed
 
-## Configuration
+## Configure via Dashboard
+
+<Steps>
+  <Step title="Open Voice tab">
+    Navigate to your assistant and select the **Voice** tab.
+  </Step>
+  <Step title="Expand Fallback Voices section">
+    Scroll down to find the **Fallback Voices** collapsible section. A warning indicator appears if no fallback voices are configured.
+  </Step>
+  <Step title="Add a fallback voice">
+    Click **Add Fallback Voice** to configure your first fallback:
+    - Select a **provider** from the dropdown (supports 20+ voice providers)
+    - Choose a **voice** from the searchable popover (shows gender, language, and deprecated status)
+    - The **model** is automatically selected based on your voice choice
+  </Step>
+  <Step title="Configure provider-specific settings (optional)">
+    Expand **Additional Configuration** to access provider-specific settings like stability, speed, and emotion controls.
+  </Step>
+  <Step title="Add more fallbacks">
+    Repeat to add additional fallback voices. Order matters—the first fallback in your list is tried first.
+  </Step>
+</Steps>
+
+## Configure via API
 
 Add the `fallbackPlan` property to your assistant's voice configuration, and specify the fallback voices within the `voices` property.
-- Please note that fallback voices must be valid JSON configurations, and not strings.
-- The order matters. Vapi will choose fallback voices starting from the beginning of the list.
+
+<Note>
+  Fallback voices must be valid JSON configurations, not strings. The order matters—Vapi will choose fallback voices starting from the beginning of the list.
+</Note>
 
 ```json
 {
@@ -37,26 +58,125 @@ Add the `fallbackPlan` property to your assistant's voice configuration, and spe
     "provider": "openai",
     "voiceId": "shimmer",
     "fallbackPlan": {
-        "voices": [
-            {
-                "provider": "cartesia",
-                "voiceId": "248be419-c632-4f23-adf1-5324ed7dbf1d"
-            },
-            {
-                "provider": "11labs",
-                "voiceId": "cgSgspJ2msm6clMCkdW9"
-            }
-        ]
+      "voices": [
+        {
+          "provider": "cartesia",
+          "voiceId": "248be419-c632-4f23-adf1-5324ed7dbf1d"
+        },
+        {
+          "provider": "11labs",
+          "voiceId": "cgSgspJ2msm6clMCkdW9",
+          "stability": 0.5,
+          "similarityBoost": 0.75
+        }
+      ]
     }
   }
 }
 ```
 
+## Provider-specific settings
+
+Each voice provider supports different configuration options. Expand the accordion below to see available settings for each provider.
+
+<AccordionGroup>
+  <Accordion title="ElevenLabs">
+    - **stability** (0-1): Controls voice consistency. Lower values allow more emotional range; higher values produce more stable output.
+    - **similarityBoost** (0-1): Enhances similarity to the original voice. Higher values make the voice more similar to the reference.
+    - **style** (0-1): Voice style intensity. Higher values amplify the speaker's style.
+    - **useSpeakerBoost** (boolean): Enable to boost similarity to the original speaker.
+    - **speed** (0.7-1.2): Speech speed multiplier. Default is 1.0.
+    - **optimizeStreamingLatency** (0-4): Controls streaming latency optimization. Default is 3.
+    - **enableSsmlParsing** (boolean): Enable SSML pronunciation support.
+    - **model**: Select from `eleven_multilingual_v2`, `eleven_turbo_v2`, `eleven_turbo_v2_5`, `eleven_flash_v2`, `eleven_flash_v2_5`, or `eleven_monolingual_v1`.
+  </Accordion>
+  <Accordion title="Cartesia">
+    - **model**: Model selection (`sonic-english`, `sonic-3`, etc.).
+    - **language**: Language code for the voice.
+    - **experimentalControls.speed**: Speech speed adjustment (-1 to 1). Negative values slow down; positive values speed up.
+    - **experimentalControls.emotion**: Array of emotion configurations (e.g., `["happiness:high", "curiosity:medium"]`).
+    - **generationConfig** (sonic-3 only):
+      - **speed** (0.6-1.5): Fine-grained speed control.
+      - **volume** (0.5-2.0): Volume adjustment.
+      - **experimental.accentLocalization** (0 or 1): Toggle accent localization.
+  </Accordion>
+  <Accordion title="Azure">
+    - **speed** (0.5-2): Speech rate multiplier. Default is 1.0.
+  </Accordion>
+  <Accordion title="OpenAI">
+    - **speed** (0.25-4): Speech speed multiplier. Default is 1.0.
+    - **model**: Select from `tts-1`, `tts-1-hd`, or realtime models.
+    - **instructions**: Voice prompt to control the generated audio style. Does not work with `tts-1` or `tts-1-hd` models.
+  </Accordion>
+  <Accordion title="LMNT">
+    - **speed** (0.25-2): Speech rate multiplier. Default is 1.0.
+    - **language**: Two-letter ISO 639-1 language code, or `auto` for auto-detection.
+  </Accordion>
+  <Accordion title="Rime AI">
+    - **model**: Select from `arcana`, `mistv2`, or `mist`. Defaults to `arcana`.
+    - **speed** (0.1+): Speech speed multiplier.
+    - **pauseBetweenBrackets** (boolean): Enable pause control using angle brackets (e.g., `<200>` for 200ms pause).
+    - **phonemizeBetweenBrackets** (boolean): Enable phonemization using curly brackets (e.g., `{h'El.o}`).
+    - **reduceLatency** (boolean): Optimize for reduced streaming latency.
+    - **inlineSpeedAlpha**: Inline speed control using alpha notation.
+  </Accordion>
+  <Accordion title="PlayHT">
+    - **speed** (0.1-5): Speech rate multiplier.
+    - **temperature** (0.1-2): Controls voice variance. Lower values are more predictable; higher values allow more variation.
+    - **emotion**: Emotion preset (e.g., `female_happy`, `male_sad`, `female_angry`, `male_surprised`).
+    - **voiceGuidance** (1-6): Controls voice uniqueness. Lower values reduce uniqueness.
+    - **styleGuidance** (1-30): Controls emotion intensity. Higher values create more emotional performance.
+    - **textGuidance** (1-2): Controls text adherence. Higher values are more accurate to input text.
+    - **model**: Select from `PlayHT2.0`, `PlayHT2.0-turbo`, `Play3.0-mini`, or `PlayDialog`.
+  </Accordion>
+  <Accordion title="Deepgram">
+    - **model**: Select from `aura` or `aura-2`. Defaults to `aura-2`.
+    - **mipOptOut** (boolean): Opt out of the Deepgram Model Improvement Partnership program.
+  </Accordion>
+  <Accordion title="Hume">
+    - **model**: Model selection (e.g., `octave2`).
+    - **description**: Natural language instructions describing how the speech should sound (tone, intonation, pacing, accent).
+    - **isCustomHumeVoice** (boolean): Indicates whether using a custom Hume voice.
+  </Accordion>
+  <Accordion title="Minimax">
+    - **model**: Select from `speech-02-hd` (high-fidelity) or `speech-02-turbo` (low latency). Defaults to `speech-02-turbo`.
+    - **emotion**: Emotion preset (`happy`, `sad`, `angry`, `fearful`, `surprised`, `disgusted`, `neutral`).
+    - **pitch** (-12 to 12): Voice pitch adjustment in semitones.
+    - **speed** (0.5-2): Speech speed adjustment.
+    - **volume** (0.5-2): Volume adjustment.
+  </Accordion>
+  <Accordion title="WellSaid">
+    - **model**: Model selection.
+    - **enableSsml** (boolean): Enable limited SSML translation for input text.
+    - **libraryIds**: Array of library IDs to use for voice synthesis.
+  </Accordion>
+  <Accordion title="Neuphonic">
+    - **model**: Model selection (e.g., `neu_fast`).
+    - **language**: Language code (required).
+    - **speed** (0.25-2): Speech speed multiplier.
+  </Accordion>
+  <Accordion title="SmallestAI">
+    - **model**: Model selection (e.g., `lightning`).
+    - **speed**: Speech speed multiplier.
+  </Accordion>
+</AccordionGroup>
+
 ## Best practices
 
-- Use <b>different providers</b> for your fallback voices to protect against provider-wide outages.
+- Use **different providers** for your fallback voices to protect against provider-wide outages.
 - Select voices with **similar characteristics** (tone, accent, gender) to maintain consistency in the user experience.
+- Test your fallback configuration to ensure smooth transitions between voices.
 
-## How will pricing work?
+## FAQ
 
-There is no change to the pricing of the voices. Your call will not incur any extra fees while using fallback voices, and you will be able to see the cost for each voice in your end-of-call report.
+<AccordionGroup>
+  <Accordion title="How will pricing work?">
+    There is no change to the pricing of the voices. Your call will not incur any extra fees while using fallback voices, and you will be able to see the cost for each voice in your end-of-call report.
+  </Accordion>
+  <Accordion title="How many fallback voices can I configure?">
+    You can configure as many fallback voices as you need. However, we recommend 2-3 fallbacks from different providers for optimal reliability.
+  </Accordion>
+  <Accordion title="Will users notice when a fallback is activated?">
+    Users may notice a brief pause and a change in voice characteristics when switching to a fallback voice. Selecting voices with similar properties helps minimize this disruption.
+  </Accordion>
+</AccordionGroup>

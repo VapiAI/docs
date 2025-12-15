@@ -1,0 +1,174 @@
+---
+title: Transcriber fallback configuration
+subtitle: Configure fallback transcribers that activate automatically if your primary transcriber fails.
+slug: customization/transcriber-fallback-plan
+---
+
+## Overview
+
+Transcriber fallback configuration ensures your calls continue even if your primary speech-to-text provider experiences issues. Your assistant will sequentially fallback to the transcribers you configure, in the exact order you specify.
+
+**Key benefits:**
+- **Call continuity** during provider outages
+- **Automatic failover** with no user intervention required
+- **Provider diversity** to protect against single points of failure
+
+<Note>
+  Without a fallback plan configured, your call will end with an error if your chosen transcription provider fails.
+</Note>
+
+## How it works
+
+When a transcriber failure occurs, Vapi will:
+1. Detect the failure of the primary transcriber
+2. Switch to the first fallback transcriber in your plan
+3. Continue through your specified list if subsequent failures occur
+4. Terminate only if all transcribers in your plan have failed
+
+## Configure via Dashboard
+
+<Steps>
+  <Step title="Open Transcriber tab">
+    Navigate to your assistant and select the **Transcriber** tab.
+  </Step>
+  <Step title="Expand Fallback Transcribers section">
+    Scroll down to find the **Fallback Transcribers** collapsible section. A warning indicator appears if no fallback transcribers are configured.
+  </Step>
+  <Step title="Add a fallback transcriber">
+    Click **Add Fallback Transcriber** to configure your first fallback:
+    - Select a **provider** from the dropdown
+    - Choose a **model** (if the provider offers multiple models)
+    - Select a **language** for transcription
+  </Step>
+  <Step title="Configure provider-specific settings (optional)">
+    Expand **Additional Configuration** to access provider-specific settings like numerals formatting, VAD settings, and confidence thresholds.
+  </Step>
+  <Step title="Add more fallbacks">
+    Repeat to add additional fallback transcribers. Order matters—the first fallback in your list is tried first.
+  </Step>
+</Steps>
+
+<Note>
+  If HIPAA or PCI compliance is enabled on your account or assistant, only **Deepgram** and **Azure** transcribers will be available as fallback options.
+</Note>
+
+## Configure via API
+
+Add the `fallbackPlan` property to your assistant's transcriber configuration, and specify the fallback transcribers within the `transcribers` property.
+
+```json
+{
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-3",
+    "language": "en",
+    "fallbackPlan": {
+      "transcribers": [
+        {
+          "provider": "assembly-ai",
+          "speechModel": "universal-streaming-multilingual",
+          "language": "en"
+        },
+        {
+          "provider": "azure",
+          "language": "en-US"
+        }
+      ]
+    }
+  }
+}
+```
+
+## Provider-specific settings
+
+Each transcriber provider supports different configuration options. Expand the accordion below to see available settings for each provider.
+
+<AccordionGroup>
+  <Accordion title="Deepgram">
+    - **model**: Model selection (`nova-3`, `nova-3-general`, `nova-3-medical`, `nova-2`, `flux-general-en`, etc.).
+    - **language**: Language code for transcription.
+    - **keywords**: Keywords with optional boost values for improved recognition (e.g., `["companyname", "productname:2"]`).
+    - **keyterm**: Keyterm prompting for up to 90% keyword recall rate improvement.
+    - **smartFormat** (boolean): Enable smart formatting for numbers and dates.
+    - **eotThreshold** (0.5-0.9): End-of-turn confidence threshold. Only available with Flux models.
+    - **eotTimeoutMs** (500-10000): Maximum time to wait after speech before finalizing turn. Only available with Flux models. Default is 5000ms.
+  </Accordion>
+  <Accordion title="AssemblyAI">
+    - **language**: Language code (`multi` for multilingual, `en` for English).
+    - **speechModel**: Streaming speech model (`universal-streaming-english` or `universal-streaming-multilingual`).
+    - **wordBoost**: Custom vocabulary array (up to 2500 characters total).
+    - **keytermsPrompt**: Array of keyterms for improved recognition (up to 100 terms, 50 characters each). Costs additional $0.04/hour.
+    - **endUtteranceSilenceThreshold**: Duration of silence in milliseconds to detect end of utterance.
+    - **disablePartialTranscripts** (boolean): Set to `true` to disable partial transcripts.
+    - **confidenceThreshold** (0-1): Minimum confidence threshold for accepting transcriptions. Default is 0.4.
+    - **vadAssistedEndpointingEnabled** (boolean): Enable VAD-based endpoint detection.
+  </Accordion>
+  <Accordion title="Azure">
+    - **language**: Language code in BCP-47 format (e.g., `en-US`, `es-MX`, `fr-FR`).
+    - **segmentationSilenceTimeoutMs** (100-5000): Duration of silence after which a phrase is finalized. Configure to adjust sensitivity to pauses.
+    - **segmentationMaximumTimeMs** (20000-70000): Maximum duration a segment can reach before being cut off.
+    - **segmentationStrategy**: Controls phrase boundary detection. Options: `Default`, `Time`, or `Semantic`.
+  </Accordion>
+  <Accordion title="Gladia">
+    - **model**: Model selection (`fast`, `accurate`, or `solaria-1`).
+    - **language**: Language code.
+    - **confidenceThreshold** (0-1): Minimum confidence for transcription acceptance. Default is 0.4.
+    - **endpointing** (0.01-10): Time in seconds to wait before considering speech ended.
+    - **speechThreshold** (0-1): Speech detection sensitivity (0.0 to 1.0).
+    - **prosody** (boolean): Enable prosody detection (laugh, giggle, music, etc.).
+    - **audioEnhancer** (boolean): Pre-process audio for improved accuracy (increases latency).
+    - **transcriptionHint**: Hint text to guide transcription.
+    - **customVocabularyEnabled** (boolean): Enable custom vocabulary.
+    - **customVocabularyConfig**: Custom vocabulary configuration with vocabulary array and default intensity.
+    - **region**: Processing region (`us-west` or `eu-west`).
+    - **receivePartialTranscripts** (boolean): Enable partial transcript delivery.
+  </Accordion>
+  <Accordion title="Speechmatics">
+    - **model**: Model selection (currently only `default`).
+    - **language**: Language code.
+    - **operatingPoint**: Accuracy level. `standard` for faster turnaround, `enhanced` for highest accuracy. Default is `enhanced`.
+    - **region**: Processing region (`eu` for Europe, `us` for United States). Default is `eu`.
+    - **enableDiarization** (boolean): Enable speaker identification for multi-speaker conversations.
+    - **maxDelayMs**: Maximum delay in milliseconds for partial transcripts. Balances latency and accuracy.
+  </Accordion>
+  <Accordion title="Google">
+    - **model**: Gemini model selection.
+    - **language**: Language selection (e.g., `Multilingual`, `English`, `Spanish`, `French`).
+  </Accordion>
+  <Accordion title="OpenAI">
+    - **model**: OpenAI Realtime STT model selection (required).
+    - **language**: Language code for transcription.
+  </Accordion>
+  <Accordion title="ElevenLabs">
+    - **model**: Model selection (currently only `scribe_v1`).
+    - **language**: ISO 639-1 language code.
+  </Accordion>
+  <Accordion title="Cartesia">
+    - **model**: Model selection (currently only `ink-whisper`).
+    - **language**: ISO 639-1 language code.
+  </Accordion>
+</AccordionGroup>
+
+## Best practices
+
+- Use **different providers** for fallbacks to protect against provider-wide outages.
+- Consider **language compatibility** when selecting fallbacks—ensure all fallback transcribers support your required languages.
+- Test your fallback configuration to ensure smooth transitions between transcribers.
+- For **HIPAA/PCI compliance**, ensure all fallbacks are compliant providers (Deepgram or Azure).
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Which providers support fallback?">
+    All major transcriber providers are supported: Deepgram, AssemblyAI, Azure, Gladia, Google, Speechmatics, Cartesia, ElevenLabs, and OpenAI.
+  </Accordion>
+  <Accordion title="Does fallback affect pricing?">
+    No additional fees for using fallback transcribers. You are only billed for the transcriber that processes the audio.
+  </Accordion>
+  <Accordion title="How fast is the failover?">
+    Failover typically occurs within milliseconds of detecting a failure, ensuring minimal disruption to the call.
+  </Accordion>
+  <Accordion title="Can I use different languages for fallbacks?">
+    Yes, each fallback transcriber can have its own language configuration. However, for the best user experience, we recommend using the same or similar languages across all fallbacks.
+  </Accordion>
+</AccordionGroup>
