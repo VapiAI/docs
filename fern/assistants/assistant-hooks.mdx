@@ -14,6 +14,7 @@ Supported events include:
 - `assistant.speech.interrupted`: When the assistant's speech is interrupted
 - `customer.speech.interrupted`: When the customer's speech is interrupted
 - `customer.speech.timeout`: When the customer doesn't speak within a specified time
+- `assistant.transcriber.endpointedSpeechLowConfidence`: When a final transcript has low confidence (below threshold but within configurable range)
 
 You can combine actions and add filters to control when hooks trigger. Multiple `customer.speech.timeout` hooks can be attached to an assistant with staggered trigger delay to support different actions at different timing in the conversation.
 
@@ -24,10 +25,11 @@ Hooks are defined in the `hooks` array of your assistant configuration. Each hoo
 - `on`: The event that triggers the hook
 - `do`: The actions to perform (supports `tool` and `say`)
 - `filters`: (Optional) Conditions that must be met for the hook to trigger
-- `options`: (Optional) Configuration options for certain hook types like `customer.speech.timeout`
+- `options`: (Optional) Configuration options for certain hook types like `customer.speech.timeout` and `assistant.transcriber.endpointedSpeechLowConfidence`
 - `name`: (Optional) Custom name to identify the hook
 
 **Action Types:**
+
 - `say`: Speak a message. Use `exact` for predetermined text or `prompt` for AI-generated responses
 - `tool`: Execute a tool like `transferCall`, `function`, `endCall`, etc.
 
@@ -42,25 +44,33 @@ Transfer a call to a fallback number if a pipeline error occurs:
 
 ```json
 {
-  "hooks": [{
-    "on": "call.ending",
-    "filters": [{
-      "type": "oneOf",
-      "key": "call.endedReason",
-      "oneOf": ["pipeline-error"]
-    }],
-    "do": [{
-      "type": "tool",
-      "tool": {
-        "type": "transferCall",
-        "destinations": [{
-          "type": "number",
-          "number": "+1234567890",
-          "callerId": "+1987654321"
-        }]
-      }
-    }]
-  }]
+  "hooks": [
+    {
+      "on": "call.ending",
+      "filters": [
+        {
+          "type": "oneOf",
+          "key": "call.endedReason",
+          "oneOf": ["pipeline-error"]
+        }
+      ],
+      "do": [
+        {
+          "type": "tool",
+          "tool": {
+            "type": "transferCall",
+            "destinations": [
+              {
+                "type": "number",
+                "number": "+1234567890",
+                "callerId": "+1987654321"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -68,24 +78,32 @@ You can also transfer to a SIP destination:
 
 ```json
 {
-  "hooks": [{
-    "on": "call.ending",
-    "filters": [{
-      "type": "oneOf",
-      "key": "call.endedReason",
-      "oneOf": ["pipeline-error"]
-    }],
-    "do": [{
-      "type": "tool",
-      "tool": {
-        "type": "transferCall",
-        "destinations": [{
-          "type": "sip",
-          "sipUri": "sip:user@domain.com"
-        }]
-      }
-    }]
-  }]
+  "hooks": [
+    {
+      "on": "call.ending",
+      "filters": [
+        {
+          "type": "oneOf",
+          "key": "call.endedReason",
+          "oneOf": ["pipeline-error"]
+        }
+      ],
+      "do": [
+        {
+          "type": "tool",
+          "tool": {
+            "type": "transferCall",
+            "destinations": [
+              {
+                "type": "sip",
+                "sipUri": "sip:user@domain.com"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -95,57 +113,63 @@ Perform multiple actions—say a message, call a function, and transfer the call
 
 ```json
 {
-  "hooks": [{
-    "on": "call.ending",
-    "filters": [{
-      "type": "oneOf",
-      "key": "call.endedReason",
-      "oneOf": ["pipeline-error"]
-    }],
-    "do": [
-      {
-        "type": "say",
-        "exact": "I apologize for the technical difficulty. Let me transfer you to our support team."
-      },
-      {
-        "type": "tool",
-        "tool": {
-          "type": "function",
-          "function": {
-            "name": "log_error",
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "error_type": {
-                  "type": "string",
-                  "value": "pipeline_error"
+  "hooks": [
+    {
+      "on": "call.ending",
+      "filters": [
+        {
+          "type": "oneOf",
+          "key": "call.endedReason",
+          "oneOf": ["pipeline-error"]
+        }
+      ],
+      "do": [
+        {
+          "type": "say",
+          "exact": "I apologize for the technical difficulty. Let me transfer you to our support team."
+        },
+        {
+          "type": "tool",
+          "tool": {
+            "type": "function",
+            "function": {
+              "name": "log_error",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "error_type": {
+                    "type": "string",
+                    "value": "pipeline_error"
+                  }
                 }
-              }
+              },
+              "description": "Logs the error details for monitoring"
             },
-            "description": "Logs the error details for monitoring"
-          },
-          "async": true,
-          "server": {
-            "url": "https://your-server.com/api"
+            "async": true,
+            "server": {
+              "url": "https://your-server.com/api"
+            }
+          }
+        },
+        {
+          "type": "tool",
+          "tool": {
+            "type": "transferCall",
+            "destinations": [
+              {
+                "type": "number",
+                "number": "+1234567890",
+                "callerId": "+1987654321"
+              }
+            ]
           }
         }
-      },
-      {
-        "type": "tool",
-        "tool": {
-          "type": "transferCall",
-          "destinations": [{
-            "type": "number",
-            "number": "+1234567890",
-            "callerId": "+1987654321"
-          }]
-        }
-      }
-    ]
-  }]
+      ]
+    }
+  ]
 }
 ```
- 
+
 <Note>
 Use `"oneOf": ["pipeline-error"]` as a catch-all filter for any pipeline-related error reason.
 </Note>
@@ -156,13 +180,17 @@ Respond when the assistant's speech is interrupted by the customer:
 
 ```json
 {
-  "hooks": [{
-    "on": "assistant.speech.interrupted",
-    "do": [{
-      "type": "say",
-      "exact": ["Sorry about that", "Go ahead", "Please continue"]
-    }]
-  }]
+  "hooks": [
+    {
+      "on": "assistant.speech.interrupted",
+      "do": [
+        {
+          "type": "say",
+          "exact": ["Sorry about that", "Go ahead", "Please continue"]
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -170,13 +198,17 @@ Handle customer speech interruptions in a similar way:
 
 ```json
 {
-  "hooks": [{
-    "on": "customer.speech.interrupted",
-    "do": [{
-      "type": "say",
-      "exact": "I apologize for interrupting. Please continue."
-    }]
-  }]
+  "hooks": [
+    {
+      "on": "customer.speech.interrupted",
+      "do": [
+        {
+          "type": "say",
+          "exact": "I apologize for interrupting. Please continue."
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -186,19 +218,23 @@ Respond when the customer doesn't speak within a specified time:
 
 ```json
 {
-  "hooks": [{
-    "on": "customer.speech.timeout",
-    "options": {
-      "timeoutSeconds": 10,
-      "triggerMaxCount": 2,
-      "triggerResetMode": "onUserSpeech"
-    },
-    "do": [{
-      "type": "say",
-      "prompt": "Are you still there? Please let me know how I can help you."
-    }],
-    "name": "customer_timeout_check"
-  }]
+  "hooks": [
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 10,
+        "triggerMaxCount": 2,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [
+        {
+          "type": "say",
+          "prompt": "Are you still there? Please let me know how I can help you."
+        }
+      ],
+      "name": "customer_timeout_check"
+    }
+  ]
 }
 ```
 
@@ -209,9 +245,169 @@ The `customer.speech.timeout` hook supports special options:
 - `triggerResetMode`: Whether to reset the trigger count when user speaks (default: "never")
 </Note>
 
+## Example: Handle low confidence transcripts
+
+When a transcriber produces a final transcript with low confidence (below the set confidence threshold or default of 0.4), it's normally discarded. The `assistant.transcriber.endpointedSpeechLowConfidence` hook allows you to handle these borderline cases by triggering actions like asking the user to repeat or logging the event.
+
+This hook only triggers for **final/endpointed transcripts** that fall within a configurable confidence range. Transcripts with confidence at or above the threshold are processed normally, while those below the minimum range are still discarded.
+
+### Basic usage
+
+Ask the user to repeat when a transcript has low confidence:
+
+```json
+{
+  "hooks": [
+    {
+      "on": "assistant.transcriber.endpointedSpeechLowConfidence",
+      "do": [
+        {
+          "type": "say",
+          "exact": "I'm sorry, I didn't quite catch that. Could you please repeat?"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Using confidence options
+
+Configure a specific confidence range for when the hook should trigger:
+
+```json
+{
+  "hooks": [
+    {
+      "on": "assistant.transcriber.endpointedSpeechLowConfidence",
+      "options": {
+        "confidenceMin": 0.2,
+        "confidenceMax": 0.4
+      },
+      "do": [
+        {
+          "type": "say",
+          "prompt": "You are having trouble understanding or properly hearing what the user is saying. Based on the conversation in {{transcript}}, ask the user to repeat what they just said."
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Shorthand syntax
+
+You can use shorthand syntax similar to `customer.speech.timeout` hooks. The shorthand format is `[confidence=min:max]` where both min and max are optional:
+
+**Set both min and max:**
+
+```json
+{
+  "hooks": [
+    {
+      "on": "assistant.transcriber.endpointedSpeechLowConfidence[confidence=0.2:0.4]",
+      "do": [
+        {
+          "type": "say",
+          "exact": "Could you please repeat that?"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Set only minimum (max defaults to transcriber's confidence threshold):**
+
+```json
+{
+  "hooks": [
+    {
+      "on": "assistant.transcriber.endpointedSpeechLowConfidence[confidence=0.2:]",
+      "do": [
+        {
+          "type": "say",
+          "exact": "I didn't catch that clearly. Could you repeat?"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Set only maximum (min defaults to max - 0.2):**
+
+```json
+{
+  "hooks": [
+    {
+      "on": "assistant.transcriber.endpointedSpeechLowConfidence[confidence=:0.4]",
+      "do": [
+        {
+          "type": "say",
+          "exact": "Could you please speak a bit more clearly?"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Default behavior
+
+When no options are specified, the hook uses these defaults:
+
+- `confidenceMax`: Uses the transcriber's `confidenceThreshold` (typically 0.4)
+- `confidenceMin`: `confidenceMax - 0.2` (minimum 0)
+
+For example, if your transcriber has a `confidenceThreshold` of 0.4:
+
+- Transcripts with confidence ≥ 0.4: Processed normally
+- Transcripts with confidence 0.2-0.4: Hook triggers
+- Transcripts with confidence < 0.2: Discarded
+
+````
+
+### Multiple hooks for different ranges
+
+You can configure multiple hooks to handle different confidence ranges with different actions:
+
+```json
+{
+  "hooks": [
+    {
+      "on": "assistant.transcriber.endpointedSpeechLowConfidence[confidence=0.3:0.4]",
+      "do": [
+        {
+          "type": "say",
+          "exact": "I'm having a bit of trouble hearing you. Could you speak a bit louder?"
+        }
+      ]
+    },
+    {
+      "on": "assistant.transcriber.endpointedSpeechLowConfidence[confidence=0.2:0.3]",
+      "do": [
+        {
+          "type": "say",
+          "exact": "I'm sorry, I really couldn't understand that. Could you please repeat what you said?"
+        }
+      ]
+    }
+  ]
+}
+````
+
+<Note>
+The `assistant.transcriber.endpointedSpeechLowConfidence` hook supports these options:
+- `confidenceMin`: Minimum confidence threshold (0-1, default: confidenceMax - 0.2)
+- `confidenceMax`: Maximum confidence threshold (0-1, default: transcriber's confidenceThreshold)
+
+This hook is supported for transcribers that have `confidenceThreshold` configuration: Deepgram, Gladia, and AssemblyAI.
+</Note>
+
 ## Example: End call if user hasn't spoken for 30s
 
-Assistant checks with the user at the 10 and 20s mark from when the user is silent, and ends the call after 30s of silence. 
+Assistant checks with the user at the 10 and 20s mark from when the user is silent, and ends the call after 30s of silence.
 
 ```json
 {
@@ -259,8 +455,8 @@ Assistant checks with the user at the 10 and 20s mark from when the user is sile
           },
           "do": [
             {
-              "type" : "say",
-              "exact" : "I'll be ending the call now, please feel free to call back at any time."
+              "type": "say",
+              "exact": "I'll be ending the call now, please feel free to call back at any time."
             },
             {
               "type": "tool",
@@ -276,16 +472,16 @@ Assistant checks with the user at the 10 and 20s mark from when the user is sile
 }
 ```
 
-
 ## Common use cases
 
 - Transfer to a human agent on errors
 - Route to a fallback system if the assistant fails
 - Handle customer or assistant interruptions gracefully
 - Prompt customers who become unresponsive during a call
+- Handle low confidence transcripts by asking users to repeat or speak more clearly
 - Log errors or events for monitoring
 
-## Slack Webhook on Call Failure 
+## Slack Webhook on Call Failure
 
 You can set up automatic Slack notifications when calls fail by combining assistant hooks with Slack webhooks. This is useful for monitoring call quality and getting immediate alerts when issues occur.
 
@@ -307,10 +503,10 @@ export default async function(req: Request): Promise<Response> {
   try {
     const json = await req.json();
     console.log(json);
-    
+
     const callId = json.message.call.id;
     const reason = json.message.toolCalls[0].function.arguments.properties.callEndedReason.value;
-    
+
     fetch("<your-slack-webhook-url>", {
       "method": "POST",
       "headers": {
@@ -320,11 +516,11 @@ export default async function(req: Request): Promise<Response> {
         text: `🚨 Call Failed\nCall ID: ${callId}\nReason: ${reason}`
       }),
     });
-    
+
     return Response.json({
-      results: [{ 
-        "result": "success", 
-        "toolCallId": "hook-function-call" 
+      results: [{
+        "result": "success",
+        "toolCallId": "hook-function-call"
       }],
     });
   } catch (err) {
@@ -340,37 +536,43 @@ Add this hook configuration to your assistant to trigger Slack notifications on 
 
 ```json
 {
-  "hooks": [{
-    "on": "call.ending",
-    "filters": [{
-      "type": "oneOf",
-      "key": "call.endedReason",
-      "oneOf": ["pipeline-error"]
-    }],
-    "do": [{
-      "type": "tool",
-      "tool": {
-        "type": "function",
-        "function": {
-          "name": "report_error",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string",
-                "value": "A call error occurred."
-              }
-            }
-          },
-          "description": "Reports a call error to Slack."
-        },
-        "async": false,
-        "server": {
-          "url": "<your-serverless-function-url>"
+  "hooks": [
+    {
+      "on": "call.ending",
+      "filters": [
+        {
+          "type": "oneOf",
+          "key": "call.endedReason",
+          "oneOf": ["pipeline-error"]
         }
-      }
-    }]
-  }]
+      ],
+      "do": [
+        {
+          "type": "tool",
+          "tool": {
+            "type": "function",
+            "function": {
+              "name": "report_error",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "value": "A call error occurred."
+                  }
+                }
+              },
+              "description": "Reports a call error to Slack."
+            },
+            "async": false,
+            "server": {
+              "url": "<your-serverless-function-url>"
+            }
+          }
+        }
+      ]
+    }
+  ]
 }
 ```
 
