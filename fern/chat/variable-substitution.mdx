@@ -1,0 +1,343 @@
+---
+title: Variable substitution in sessions
+subtitle: Learn how template variables behave with sessions and chats
+slug: chat/variable-substitution
+---
+
+## Overview
+
+When using sessions with the Chat API, understanding how variable substitution works is essential for building dynamic, personalized conversations.
+
+**Key concept:** Variables are substituted at session creation time and "baked into" the stored assistant configuration. Template placeholders like `{{name}}` are replaced with actual values and no longer exist in the session.
+
+---
+
+## How variable substitution works
+
+### At session creation
+
+When you create a session with `assistantOverrides.variableValues`, the system:
+
+1. Takes your assistant's template variables (e.g., `"Hello {{name}} from {{company}}"`)
+2. Substitutes all `{{}}` placeholders with provided values
+3. Stores the **pre-substituted assistant** in the session
+4. Saves the original variable values in `session.metadata.variableValues` for reference
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST https://api.vapi.ai/session \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "assistantId": "your-assistant-id",
+    "assistantOverrides": {
+      "variableValues": {
+        "name": "John",
+        "company": "Acme Corp"
+      }
+    }
+  }'
+```
+```typescript title="TypeScript"
+const session = await vapi.sessions.create({
+  assistantId: "your-assistant-id",
+  assistantOverrides: {
+    variableValues: {
+      name: "John",
+      company: "Acme Corp"
+    }
+  }
+});
+```
+```python title="Python"
+session = vapi.sessions.create(
+    assistant_id="your-assistant-id",
+    assistant_overrides={
+        "variableValues": {
+            "name": "John",
+            "company": "Acme Corp"
+        }
+    }
+)
+```
+</CodeBlocks>
+
+If your assistant's system prompt was `"You are a helpful assistant for {{name}} at {{company}}"`, the session stores: `"You are a helpful assistant for John at Acme Corp"`.
+
+### At chat creation
+
+When you send a chat request with a `sessionId`:
+
+1. The system loads the session's pre-substituted assistant
+2. Any `variableValues` in the chat request are processed, but **there are no `{{}}` placeholders left** to substitute
+3. New variable values have **no effect** on already-substituted text
+
+---
+
+## Behavior examples
+
+### Variables persist across chats
+
+Once you set variables at session creation, they persist for all chats in that session:
+
+<CodeBlocks>
+```bash title="cURL"
+# Chat using the session - variables already applied
+curl -X POST https://api.vapi.ai/chat \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "session_xyz789",
+    "input": "What is my name and company?"
+  }'
+```
+```typescript title="TypeScript"
+const chat = await vapi.chat.create({
+  sessionId: "session_xyz789",
+  input: "What is my name and company?"
+});
+// Response will reference "John" and "Acme Corp"
+```
+```python title="Python"
+chat = vapi.chat.create(
+    session_id="session_xyz789",
+    input="What is my name and company?"
+)
+# Response will reference "John" and "Acme Corp"
+```
+</CodeBlocks>
+
+The assistant will respond with the values set at session creation (John, Acme Corp).
+
+### New variableValues don't override session values
+
+<Warning>
+Passing new `variableValues` in a chat request **will not** change the session's pre-substituted assistant. The template placeholders no longer exist.
+</Warning>
+
+<CodeBlocks>
+```bash title="cURL"
+# This will NOT change the assistant's context
+curl -X POST https://api.vapi.ai/chat \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "session_xyz789",
+    "input": "What is my name and company?",
+    "assistantOverrides": {
+      "variableValues": {
+        "name": "Jane",
+        "company": "Wayne Enterprises"
+      }
+    }
+  }'
+```
+```typescript title="TypeScript"
+// This will NOT change the assistant's context
+const chat = await vapi.chat.create({
+  sessionId: "session_xyz789",
+  input: "What is my name and company?",
+  assistantOverrides: {
+    variableValues: {
+      name: "Jane",
+      company: "Wayne Enterprises"
+    }
+  }
+});
+// Response will STILL reference "John" and "Acme Corp"
+```
+```python title="Python"
+# This will NOT change the assistant's context
+chat = vapi.chat.create(
+    session_id="session_xyz789",
+    input="What is my name and company?",
+    assistant_overrides={
+        "variableValues": {
+            "name": "Jane",
+            "company": "Wayne Enterprises"
+        }
+    }
+)
+# Response will STILL reference "John" and "Acme Corp"
+```
+</CodeBlocks>
+
+The assistant still responds with "John" and "Acme Corp" because the original templates were already replaced.
+
+### Provide fresh templates to use new values
+
+To use different variable values mid-session, provide a new template with `{{}}` placeholders along with the new values:
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST https://api.vapi.ai/chat \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "session_xyz789",
+    "input": "What is my name and company?",
+    "assistantOverrides": {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "systemPrompt": "You are a helpful assistant for {{name}} at {{company}}. Be very formal."
+      },
+      "variableValues": {
+        "name": "Jane",
+        "company": "Wayne Enterprises"
+      }
+    }
+  }'
+```
+```typescript title="TypeScript"
+const chat = await vapi.chat.create({
+  sessionId: "session_xyz789",
+  input: "What is my name and company?",
+  assistantOverrides: {
+    model: {
+      provider: "openai",
+      model: "gpt-4o-mini",
+      systemPrompt: "You are a helpful assistant for {{name}} at {{company}}. Be very formal."
+    },
+    variableValues: {
+      name: "Jane",
+      company: "Wayne Enterprises"
+    }
+  }
+});
+// Response will now reference "Jane" and "Wayne Enterprises"
+```
+```python title="Python"
+chat = vapi.chat.create(
+    session_id="session_xyz789",
+    input="What is my name and company?",
+    assistant_overrides={
+        "model": {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "systemPrompt": "You are a helpful assistant for {{name}} at {{company}}. Be very formal."
+        },
+        "variableValues": {
+            "name": "Jane",
+            "company": "Wayne Enterprises"
+        }
+    }
+)
+# Response will now reference "Jane" and "Wayne Enterprises"
+```
+</CodeBlocks>
+
+Now the assistant responds with "Jane" and "Wayne Enterprises" because fresh template placeholders were provided.
+
+---
+
+## Quick reference
+
+| Scenario | Variables applied? | Why |
+|----------|-------------------|-----|
+| Session creation with `variableValues` | ✅ Yes | Templates exist, substitution happens |
+| Chat with just `sessionId` | ✅ Session values persist | Pre-substituted assistant is used |
+| Chat with `sessionId` + new `variableValues` | ❌ No effect | No `{{}}` placeholders left to substitute |
+| Chat with `sessionId` + new template with `{{}}` + new `variableValues` | ✅ New values applied | Fresh templates provided |
+
+---
+
+## Best practices
+
+### For consistent variables across a session
+
+Pass `assistantOverrides.variableValues` once when creating the session. Subsequent chat requests only need the `sessionId` and `input`:
+
+```typescript title="Recommended pattern"
+// 1. Create session with variables
+const session = await vapi.sessions.create({
+  assistantId: "your-assistant-id",
+  assistantOverrides: {
+    variableValues: {
+      customerName: "Sarah",
+      accountType: "Premium"
+    }
+  }
+});
+
+// 2. All chats use the session - variables persist
+await vapi.chat.create({ sessionId: session.id, input: "Hello!" });
+await vapi.chat.create({ sessionId: session.id, input: "What's my account type?" });
+```
+
+### For different variables per conversation
+
+Choose one of these approaches:
+
+<AccordionGroup>
+  <Accordion title="Option A: Don't use sessions">
+    Pass the full assistant configuration in each chat request. This gives you complete control over variables per request.
+    
+    ```typescript
+    const chat = await vapi.chat.create({
+      assistantId: "your-assistant-id",
+      assistantOverrides: {
+        variableValues: {
+          customerName: "Different Customer",
+          accountType: "Basic"
+        }
+      },
+      input: "Hello!"
+    });
+    ```
+  </Accordion>
+  <Accordion title="Option B: Override with fresh templates">
+    Include a new system prompt (or other text field) with `{{}}` placeholders plus new `variableValues` in your chat request.
+    
+    ```typescript
+    const chat = await vapi.chat.create({
+      sessionId: "existing-session-id",
+      assistantOverrides: {
+        model: {
+          provider: "openai",
+          model: "gpt-4o-mini",
+          systemPrompt: "You assist {{customerName}} with their {{accountType}} account."
+        },
+        variableValues: {
+          customerName: "New Customer",
+          accountType: "Enterprise"
+        }
+      },
+      input: "Hello!"
+    });
+    ```
+  </Accordion>
+  <Accordion title="Option C: Create separate sessions">
+    Create a new session for each unique variable context. This keeps conversations cleanly separated.
+    
+    ```typescript
+    // Session for Customer A
+    const sessionA = await vapi.sessions.create({
+      assistantId: "your-assistant-id",
+      assistantOverrides: {
+        variableValues: { customerName: "Customer A" }
+      }
+    });
+    
+    // Session for Customer B
+    const sessionB = await vapi.sessions.create({
+      assistantId: "your-assistant-id",
+      assistantOverrides: {
+        variableValues: { customerName: "Customer B" }
+      }
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next steps
+
+- **[Session management](/chat/session-management)** - Learn about `previousChatId` vs `sessionId` approaches
+- **[Variables](/assistants/dynamic-variables)** - Configure dynamic variables in your assistant
+- **[Streaming responses](/chat/streaming)** - Add real-time responses to your chats
+
+<Callout>
+Need help? Chat with the team on our [Discord](https://discord.com/invite/pUFNcf2WmH) or mention us on [X/Twitter](https://x.com/Vapi_AI).
+</Callout>
