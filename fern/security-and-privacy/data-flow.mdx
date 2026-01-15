@@ -25,67 +25,50 @@ Vapi orchestrates a sophisticated voice pipeline with multiple modular component
 ```mermaid
 flowchart TB
     subgraph Transport["Transport Layer"]
-        T1[SIP/Telephony]
-        T2[WebSocket]
-        T3[WebRTC]
+        T1[SIP / Telephony / WebSocket / WebRTC]
     end
 
-    subgraph AudioPreprocess["Audio Preprocessing"]
-        AP1[Background Noise Filtering]
-        AP2[Background Voice Filtering]
-    end
-
-    subgraph STT["Speech-to-Text"]
-        STT1[Transcriber]
-        STT2[VAD - Voice Activity Detection]
+    subgraph Transcriber["Speech-to-Text"]
+        STT[Transcriber]
     end
 
     subgraph Orchestration["Orchestration Layer"]
-        O1[Endpointing Model]
+        O1[Endpointing]
         O2[Interruption Detection]
         O3[Emotion Detection]
         O4[Backchanneling]
     end
 
-    subgraph LLM["Language Model"]
-        LLM1[LLM Processing]
-        LLM2[Tool Execution]
+    subgraph Model["Language Model"]
+        LLM[LLM]
     end
 
-    subgraph PostProcess["Post-Processing"]
-        PP1[Filler Injection]
+    subgraph Voice["Text-to-Speech"]
+        TTS[Voice]
     end
 
-    subgraph TTS["Text-to-Speech"]
-        TTS1[Voice Synthesis]
-    end
-
-    subgraph Artifacts["Artifacts & Storage"]
+    subgraph Artifacts["Artifacts"]
         A1[(Call Recordings)]
         A2[(Transcripts)]
         A3[(Call Logs)]
         A4[(Usage Metrics)]
-        A5[(PCAP Files)]
     end
 
-    Transport --> AudioPreprocess
-    AudioPreprocess --> STT
-    STT --> Orchestration
-    Orchestration --> LLM
-    LLM --> PostProcess
-    PostProcess --> TTS
-    TTS --> Transport
+    Transport --> Transcriber
+    Transcriber --> Orchestration
+    Orchestration --> Model
+    Model --> Voice
+    Voice --> Transport
 
-    STT -.-> A2
+    Transcriber -.-> A2
     Orchestration -.-> A3
-    LLM -.-> A3
-    TTS -.-> A1
-    Transport -.-> A5
+    Model -.-> A3
+    Voice -.-> A1
 ```
 
 ---
 
-## Pipeline Components Explained
+## Pipeline Components
 
 ### 1. Transport Layer
 
@@ -93,7 +76,7 @@ The transport layer handles real-time audio streaming between users and Vapi.
 
 | Transport Type | Description | Use Case |
 |---------------|-------------|----------|
-| **SIP** | Session Initiation Protocol for telephony | Traditional phone systems, PBX integration |
+| **SIP** | Session Initiation Protocol | Traditional phone systems, PBX integration |
 | **Telephony** | Twilio, Telnyx, Plivo integrations | PSTN calls, phone numbers |
 | **WebSocket** | Direct bidirectional audio streaming | Web applications, custom integrations |
 | **WebRTC** | Browser-based real-time communication | Web and mobile apps via LiveKit/Daily |
@@ -106,74 +89,84 @@ The transport layer handles real-time audio streaming between users and Vapi.
 
 Converts user audio into text in real-time using streaming recognition.
 
-| Provider | Custom API Keys | Custom Server | HIPAA/PCI |
-|----------|----------------|---------------|-----------|
-| Deepgram | ✅ Yes | ✅ Yes | ✅ Yes |
-| Google | ❌ No | ✅ Yes | ❌ Limited |
-| Gladia | ❌ No | ✅ Yes | Verify |
-| AssemblyAI | ❌ No | ✅ Yes | Verify |
-| Azure | ❌ No | ✅ Yes | ✅ Yes |
-| Speechmatics | ❌ No | ✅ Yes | Verify |
-| Talkscriber | ❌ No | ✅ Yes | Verify |
-
 <Note>
-**Custom Transcriber:** You can bring your own STT server via WebSocket. Vapi streams audio to your endpoint and expects JSON transcription responses. See [Custom Transcriber](/customization/custom-transcriber).
+**Custom Transcriber:** Vapi supports custom transcriber integration via WebSocket. See [Custom Transcriber](/customization/custom-transcriber).
 </Note>
+
+| Provider | Bring Your Own API Key |
+|----------|----------------------|
+| Deepgram | ✅ Yes |
+| Gladia | ✅ Yes |
+| AssemblyAI | ✅ Yes |
+| Speechmatics | ✅ Yes |
+| Google | ✅ Yes |
+| Azure | ✅ Yes |
+| Talkscriber | ❌ No |
 
 ### 3. Orchestration Layer (Vapi Proprietary)
 
 Vapi runs proprietary real-time models that make conversations feel natural. These models are **not customizable** and run on Vapi's infrastructure.
 
-| Model | Purpose | Data Processed |
-|-------|---------|---------------|
-| **Endpointing** | Detects when user finishes speaking | Audio + transcript (ephemeral) |
-| **Interruption Detection** | Distinguishes interruptions from affirmations | Audio patterns (ephemeral) |
-| **Background Noise Filtering** | Removes ambient sounds | Raw audio (ephemeral) |
-| **Background Voice Filtering** | Isolates primary speaker | Raw audio (ephemeral) |
-| **Backchanneling** | Adds natural affirmations ("uh-huh", "yeah") | Audio + transcript (ephemeral) |
-| **Emotion Detection** | Analyzes emotional tone | Audio features (ephemeral) |
-| **Filler Injection** | Adds natural speech patterns | LLM output text (ephemeral) |
+| Model | Purpose |
+|-------|---------|
+| **Endpointing** | Detects when user finishes speaking using audio-text fusion |
+| **Interruption Detection** | Distinguishes barge-in from affirmations like "uh-huh" |
+| **Background Noise Filtering** | Removes ambient sounds in real-time |
+| **Background Voice Filtering** | Isolates primary speaker from TVs, echoes, others |
+| **Backchanneling** | Adds natural affirmations ("uh-huh", "yeah", "got it") |
+| **Emotion Detection** | Analyzes emotional tone and passes to LLM |
+| **Filler Injection** | Adds natural speech patterns ("um", "like", "so") |
 
 <Warning>
-Orchestration models process data in real-time but do **not persist** the audio or intermediate results. Only final transcripts and logs are stored (unless HIPAA mode is enabled).
+Orchestration models process data in real-time but do **not persist** the audio or intermediate results. All processing is **ephemeral**. Only final transcripts and logs are stored (unless HIPAA mode is enabled).
 </Warning>
 
 ### 4. Language Model (LLM)
 
 Generates conversational responses based on transcribed user input.
 
-| Provider | Custom API Keys | Custom Server | HIPAA Compliant |
-|----------|----------------|---------------|-----------------|
-| OpenAI | ✅ Yes | ✅ Yes | ✅ Yes |
-| Anthropic | ✅ Yes | ✅ Yes | ✅ Yes |
-| Azure OpenAI | ✅ Yes | ✅ Yes | ✅ Yes |
-| Google Gemini | ✅ Yes | ✅ Yes | Verify |
-| Groq | ✅ Yes | ✅ Yes | Verify |
-| OpenRouter | ✅ Yes | ✅ Yes | Varies |
-| Together AI | ✅ Yes | ✅ Yes | Verify |
-
 <Note>
-**Custom LLM Server:** Implement an OpenAI-compatible `/chat/completions` endpoint. Vapi sends conversation history and expects SSE streaming responses. See [Bring Your Own Server](/customization/custom-llm/using-your-server).
+**Custom LLM:** Vapi supports custom LLM integration via OpenAI-compatible endpoints. See [Custom LLM](/customization/custom-llm/using-your-server).
 </Note>
+
+| Provider | Bring Your Own API Key |
+|----------|----------------------|
+| OpenAI | ✅ Yes |
+| Anthropic | ✅ Yes |
+| Azure OpenAI | ✅ Yes |
+| Google Gemini | ✅ Yes |
+| Groq | ✅ Yes |
+| DeepSeek | ✅ Yes |
+| OpenRouter | ✅ Yes |
+| Together AI | ✅ Yes |
+| Cerebras | ✅ Yes |
+| DeepInfra | ✅ Yes |
+| Perplexity | ✅ Yes |
+| Anyscale | ✅ Yes |
+| xAI | ✅ Yes |
 
 ### 5. Text-to-Speech (Voice)
 
 Converts LLM responses into spoken audio.
 
-| Provider | Custom API Keys | Custom Server | Notes |
-|----------|----------------|---------------|-------|
-| ElevenLabs | ✅ Yes | ✅ Yes | 1000+ voices |
-| PlayHT | ✅ Yes | ✅ Yes | 142+ languages |
-| Cartesia | ✅ Yes | ✅ Yes | 40ms latency |
-| Deepgram | ✅ Yes | ✅ Yes | Fast synthesis |
-| OpenAI TTS | ✅ Yes | ✅ Yes | Built-in voices |
-| Azure | ✅ Yes | ✅ Yes | Enterprise |
-| LMNT | ✅ Yes | ✅ Yes | Low latency |
-| Rime AI | ✅ Yes | ✅ Yes | High quality |
-
 <Note>
-**Custom TTS Server:** Implement an endpoint that accepts text and returns raw PCM audio (16-bit, mono, little-endian). See [Custom TTS Integration](/customization/custom-tts).
+**Custom Voice:** Vapi supports custom TTS integration via audio streaming endpoints. See [Custom TTS](/customization/custom-tts).
 </Note>
+
+| Provider | Bring Your Own API Key |
+|----------|----------------------|
+| ElevenLabs | ✅ Yes |
+| PlayHT | ✅ Yes |
+| Cartesia | ✅ Yes |
+| Deepgram | ✅ Yes |
+| OpenAI TTS | ✅ Yes |
+| Azure | ✅ Yes |
+| LMNT | ✅ Yes |
+| Rime AI | ✅ Yes |
+| Smallest AI | ✅ Yes |
+| Neuphonic | ✅ Yes |
+| WellSaid | ✅ Yes |
+| Hume | ✅ Yes |
 
 ---
 
@@ -184,32 +177,34 @@ In the default configuration, Vapi handles all pipeline components and stores ar
 ```mermaid
 flowchart LR
     subgraph User["User"]
-        A[Voice Input]
+        A[Voice]
     end
     
     subgraph Vapi["Vapi Infrastructure"]
-        direction TB
         T[Transport]
-        B[Speech-to-Text]
-        C[Orchestration Layer]
-        D[LLM Processing]
-        E[Text-to-Speech]
+        STT[Transcriber]
+        O[Orchestration]
+        LLM[LLM]
+        TTS[Voice]
     end
     
     subgraph Storage["Vapi Storage"]
-        F[(Recordings)]
-        G[(Transcripts)]
-        H[(Call Logs)]
-        I[(Analytics)]
+        R[(Recordings)]
+        TR[(Transcripts)]
+        L[(Call Logs)]
+        M[(Metrics)]
     end
     
-    A --> T --> B --> C --> D --> E --> T --> A
-    B & C & D & E -.-> Storage
+    A --> T --> STT --> O --> LLM --> TTS --> T --> A
+    STT -.-> TR
+    O -.-> L
+    LLM -.-> L
+    TTS -.-> R
 ```
 
 **Default storage on Vapi:**
-- Call recordings (14-30 day retention)
-- Full transcripts with timing
+- Call recordings (configurable retention)
+- Full transcripts with timestamps
 - Call logs with component-level detail
 - Usage metrics and analytics
 - Structured outputs from call analysis
@@ -218,35 +213,36 @@ flowchart LR
 
 ## Custom Storage Data Flow
 
-When you configure custom bucket storage, recordings and logs are uploaded to your infrastructure.
+When you configure custom bucket storage, recordings and artifacts are uploaded to your infrastructure.
 
 ```mermaid
 flowchart LR
     subgraph User["User"]
-        A[Voice Input]
+        A[Voice]
     end
     
     subgraph Vapi["Vapi Infrastructure"]
         T[Transport]
-        B[STT]
-        C[Orchestration]
-        D[LLM]
-        E[TTS]
+        STT[Transcriber]
+        O[Orchestration]
+        LLM[LLM]
+        TTS[Voice]
     end
     
     subgraph Customer["Your Cloud Storage"]
-        F[(Recordings)]
-        G[(Transcripts)]
-        H[(Logs)]
+        R[(Recordings)]
+        TR[(Transcripts)]
+        L[(Logs)]
     end
     
     subgraph VapiMin["Vapi Metadata"]
-        I[Call IDs]
-        J[Timestamps]
+        M[Call IDs & Timestamps]
     end
     
-    A --> T --> B --> C --> D --> E --> T --> A
-    B & C & D & E -.->|Upload| Customer
+    A --> T --> STT --> O --> LLM --> TTS --> T --> A
+    STT -.-> TR
+    TTS -.-> R
+    O -.-> L
     Vapi -.-> VapiMin
 ```
 
@@ -255,12 +251,13 @@ flowchart LR
 - GCP Cloud Storage
 - Cloudflare R2
 - Supabase Storage
+- Azure Blob Storage
 
 ---
 
 ## Custom Models Data Flow
 
-When using custom STT, LLM, or TTS servers, data flows to your infrastructure for processing.
+When using custom transcriber, LLM, or voice servers, data flows to your infrastructure for processing.
 
 ```mermaid
 flowchart TB
@@ -268,52 +265,53 @@ flowchart TB
         A[Voice]
     end
     
-    subgraph Vapi["Vapi Orchestration"]
+    subgraph Vapi["Vapi Infrastructure"]
         T[Transport]
-        C[Orchestration Layer]
+        O[Orchestration]
     end
     
-    subgraph CustomSTT["Your STT Server"]
-        B[Transcription]
+    subgraph YourSTT["Your Transcriber Server"]
+        STT[Transcriber]
     end
     
-    subgraph CustomLLM["Your LLM Server"]
-        D[Response Generation]
+    subgraph YourLLM["Your LLM Server"]
+        LLM[LLM]
     end
     
-    subgraph CustomTTS["Your TTS Server"]
-        E[Voice Synthesis]
+    subgraph YourTTS["Your Voice Server"]
+        TTS[Voice]
     end
     
-    subgraph CustomerStorage["Your Storage"]
-        F[(All Artifacts)]
+    subgraph YourStorage["Your Storage"]
+        S[(All Artifacts)]
     end
     
-    A --> T --> C
-    C <-->|Audio Stream| CustomSTT
-    C <-->|Conversation Context| CustomLLM
-    C <-->|Text| CustomTTS
-    CustomTTS --> T --> A
-    C -.-> CustomerStorage
+    A --> T
+    T --> O
+    O <--> STT
+    O <--> LLM
+    O <--> TTS
+    TTS --> T --> A
+    O -.-> S
 ```
 
 **With full custom configuration:**
 - **Your servers process:** Audio transcription, LLM inference, speech synthesis
-- **Vapi handles:** Orchestration (endpointing, interruptions, etc.), transport
+- **Vapi handles:** Orchestration (endpointing, interruptions, etc.), transport routing
 - **Your storage receives:** Recordings, transcripts, logs
 
 ---
 
 ## Bring Your Own Infrastructure Summary
 
-| Component | Provider Keys | Custom Server | Vapi-Only |
-|-----------|--------------|---------------|-----------|
-| **Transport** | N/A | ✅ WebSocket/SIP | ❌ |
-| **Speech-to-Text** | ✅ Deepgram only | ✅ Any via WebSocket | ❌ |
-| **Orchestration Models** | ❌ | ❌ | ✅ Proprietary |
-| **LLM** | ✅ All providers | ✅ OpenAI-compatible | ❌ |
-| **Text-to-Speech** | ✅ All providers | ✅ PCM audio endpoint | ❌ |
-| **Storage** | N/A | ✅ S3/GCP/R2 | ❌ |
+| Component | Bring Your Own API Key | Custom Server |
+|-----------|----------------------|---------------|
+| **Transport** | N/A | ✅ WebSocket/SIP |
+| **Transcriber** | ✅ Most providers | ✅ [Custom Transcriber](/customization/custom-transcriber) |
+| **Orchestration** | ❌ Vapi only | ❌ Vapi only |
+| **LLM** | ✅ All providers | ✅ [Custom LLM](/customization/custom-llm/using-your-server) |
+| **Voice** | ✅ All providers | ✅ [Custom TTS](/customization/custom-tts) |
+| **Storage** | N/A | ✅ S3/GCP/R2/Azure |
 
 <Note>
 The **Orchestration Layer** (endpointing, interruption detection, emotion detection, backchanneling, filler injection) is Vapi's core value proposition and runs exclusively on Vapi infrastructure. Audio processed by these models is **ephemeral** and not stored.
@@ -325,10 +323,9 @@ The **Orchestration Layer** (endpointing, interruption detection, emotion detect
 
 | Artifact | Default Location | Custom Storage | HIPAA Mode |
 |----------|-----------------|----------------|------------|
-| **Call Recordings** | Vapi (14-30 days) | Your S3/GCP bucket | Not stored |
+| **Call Recordings** | Vapi | Your bucket | Not stored |
 | **Transcripts** | Vapi | Your bucket | Not stored |
-| **Call Logs** | Vapi (30 days) | S3 export available | Not stored |
-| **PCAP Files** | Vapi | Your S3 bucket | Not stored |
+| **Call Logs** | Vapi | Your bucket | Not stored |
 | **Usage Metrics** | Vapi | Analytics API | Vapi only |
 | **Structured Outputs** | Vapi | Webhook delivery | Configurable |
 
@@ -340,9 +337,9 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
 
 | Data Type | Processing | Retention |
 |-----------|-----------|-----------|
-| Raw audio streams | Real-time STT/TTS routing | **Ephemeral** (not stored) |
+| Raw audio streams | Real-time routing to Transcriber/Voice | **Ephemeral** (not stored) |
 | Transcribed text | Orchestration analysis, LLM routing | Logged (unless HIPAA) |
-| LLM responses | Filler injection, TTS routing | Logged (unless HIPAA) |
+| LLM responses | Filler injection, Voice routing | Logged (unless HIPAA) |
 | Emotion metadata | Passed to LLM context | **Ephemeral** |
 | Call signaling | SIP/WebSocket management | Metadata only |
 
@@ -353,9 +350,9 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
 <AccordionGroup>
   <Accordion title="Maximum data control (enterprise/regulated)">
     Configure:
-    - **Custom STT** via WebSocket endpoint
+    - **Custom Transcriber** via WebSocket endpoint
     - **Custom LLM** via OpenAI-compatible server
-    - **Custom TTS** via PCM audio endpoint
+    - **Custom Voice** via audio streaming endpoint
     - **Custom bucket storage** for all artifacts
     - **HIPAA mode** to prevent any Vapi storage
     
@@ -365,13 +362,13 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
   <Accordion title="Data residency compliance">
     - Use **custom bucket storage** in your required region
     - Use **custom LLM** hosted in-region OR provider with regional endpoints
-    - Use **custom TTS** hosted in-region if needed
+    - Use **custom Voice** hosted in-region if needed
     
     Note: Orchestration models run on Vapi's US/EU infrastructure (data is ephemeral).
   </Accordion>
   
   <Accordion title="Cost optimization with own API keys">
-    - Enable **Provider Keys** for STT (Deepgram), LLM, and TTS
+    - Enable **Provider Keys** for Transcriber, LLM, and Voice
     - Vapi uses your API keys, you're billed directly by providers
     - No custom server setup required
   </Accordion>
@@ -389,9 +386,9 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
 ## Next Steps
 
 ### Custom Integration Guides
-- [Custom Transcriber](/customization/custom-transcriber) - Bring your own STT
-- [Custom LLM Server](/customization/custom-llm/using-your-server) - Bring your own LLM
-- [Custom TTS Integration](/customization/custom-tts) - Bring your own voice
+- [Custom Transcriber](/customization/custom-transcriber) - Bring your own speech-to-text
+- [Custom LLM](/customization/custom-llm/using-your-server) - Bring your own language model
+- [Custom TTS](/customization/custom-tts) - Bring your own voice synthesis
 
 ### Storage Configuration
 - [AWS S3](/providers/cloud/s3) - S3 bucket setup
