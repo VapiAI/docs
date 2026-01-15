@@ -16,6 +16,21 @@ When using Vapi, data flows through multiple components during a voice conversat
 
 ---
 
+## Understanding Log Types
+
+Vapi generates two distinct types of logs during calls:
+
+| Log Type | Description | Visibility | Custom Storage |
+|----------|-------------|------------|----------------|
+| **System Logs** | Internal operational logs used by Vapi for debugging, monitoring, and system health | Vapi internal only | ❌ Never uploaded to custom bucket |
+| **Call Logs** | Conversation data including transcripts, recordings, and call metadata | Available to customers via API/Dashboard | ✅ Can be uploaded to custom bucket |
+
+<Warning>
+**System Logs** are strictly internal to Vapi and are never shared with customers or uploaded to custom storage buckets. They contain infrastructure-level data used for Vapi's operational purposes only.
+</Warning>
+
+---
+
 ## Voice Pipeline Architecture
 
 Vapi orchestrates a sophisticated voice pipeline with multiple modular components. Each component can be configured to use Vapi's default providers, your own API keys, or your own custom servers.
@@ -112,7 +127,7 @@ Vapi runs proprietary real-time models that make conversations feel natural. The
 | **Filler Injection** | Adds natural speech patterns ("um", "like", "so") |
 
 <Warning>
-Orchestration models process data in real-time but do **not persist** the audio or intermediate results. All processing is **ephemeral**. Only final transcripts and logs are stored (unless HIPAA mode is enabled).
+Orchestration models process data in real-time but do **not persist** the audio or intermediate results. All processing is **ephemeral**. Only final transcripts and call logs are stored (unless HIPAA mode is enabled).
 </Warning>
 
 ### 4. Language Model (LLM)
@@ -131,7 +146,7 @@ Generates conversational responses based on transcribed user input.
 Converts LLM responses into spoken audio.
 
 <Note>
-**Custom Voice:** Vapi supports custom TTS integration via audio streaming endpoints. See [Custom TTS](/customization/custom-tts).
+**Custom Voice:** Vapi supports custom TTS integration via audio streaming endpoints. See [Custom TTS](/customization/custom-voices/custom-tts).
 </Note>
 
 **Bring Your Own API Key:**
@@ -157,11 +172,16 @@ flowchart LR
         TTS[Voice]
     end
     
-    subgraph Storage["Vapi Storage"]
-        R[(Recordings)]
-        TR[(Transcripts)]
-        L[(Call Logs)]
-        M[(Metrics)]
+    subgraph VapiStorage["Vapi Storage"]
+        subgraph CallData["Call Logs (Customer-Accessible)"]
+            R[(Recordings)]
+            TR[(Transcripts)]
+            L[(Call Logs)]
+        end
+        subgraph InternalData["Internal (Vapi Only)"]
+            M[(Product Usage Metrics)]
+            SL[(System Logs)]
+        end
     end
     
     A --> T --> STT --> O --> LLM --> TTS --> T --> A
@@ -169,20 +189,24 @@ flowchart LR
     O -.-> L
     LLM -.-> L
     TTS -.-> R
+    Vapi -.-> InternalData
 ```
 
 **Default storage on Vapi:**
-- Call recordings (configurable retention)
-- Full transcripts with timestamps
-- Call logs with component-level detail
-- Usage metrics and analytics
-- Structured outputs from call analysis
+- **Call Logs (Customer-Accessible):**
+  - Call recordings (configurable retention)
+  - Full transcripts with timestamps
+  - Call logs with component-level detail
+  - Structured outputs from call analysis
+- **Internal (Vapi Only):**
+  - Product usage metrics and analytics
+  - System logs for operational monitoring
 
 ---
 
 ## Custom Storage Data Flow
 
-When you configure custom bucket storage, recordings and artifacts are uploaded to your infrastructure.
+When you configure custom bucket storage, call recordings and call logs are uploaded to your infrastructure. System logs and product usage metrics remain on Vapi's infrastructure.
 
 ```mermaid
 flowchart LR
@@ -199,20 +223,25 @@ flowchart LR
     end
     
     subgraph Customer["Your Cloud Storage"]
-        R[(Recordings)]
-        TR[(Transcripts)]
-        L[(Logs)]
+        subgraph CustomerCallData["Call Logs (Customer Data)"]
+            R[(Recordings)]
+            TR[(Transcripts)]
+            L[(Call Logs)]
+        end
     end
     
-    subgraph VapiMin["Vapi Metadata"]
-        M[Call IDs & Timestamps]
+    subgraph VapiStorage["Vapi Storage"]
+        subgraph InternalData["Internal (Vapi Only)"]
+            M[(Product Usage Metrics)]
+            SL[(System Logs)]
+        end
     end
     
     A --> T --> STT --> O --> LLM --> TTS --> T --> A
     STT -.-> TR
     TTS -.-> R
     O -.-> L
-    Vapi -.-> VapiMin
+    Vapi -.-> InternalData
 ```
 
 **Supported storage providers:**
@@ -221,6 +250,10 @@ flowchart LR
 - Cloudflare R2
 - Supabase Storage
 - Azure Blob Storage
+
+<Note>
+**System Logs** and **Product Usage Metrics** are always stored on Vapi's infrastructure and are never uploaded to custom storage buckets. These are internal operational data used by Vapi only.
+</Note>
 
 ---
 
@@ -251,8 +284,19 @@ flowchart TB
         TTS[Voice]
     end
     
-    subgraph YourStorage["Your Storage"]
-        S[(All Artifacts)]
+    subgraph YourStorage["Your Cloud Storage"]
+        subgraph CustomerCallData["Call Logs (Customer Data)"]
+            S[(Recordings)]
+            S2[(Transcripts)]
+            S3[(Call Logs)]
+        end
+    end
+
+    subgraph VapiStorage["Vapi Storage"]
+        subgraph InternalData["Internal (Vapi Only)"]
+            M[(Product Usage Metrics)]
+            SL[(System Logs)]
+        end
     end
     
     A --> T
@@ -261,26 +305,28 @@ flowchart TB
     O <--> LLM
     O <--> TTS
     TTS --> T --> A
-    O -.-> S
+    O -.-> CustomerCallData
+    Vapi -.-> InternalData
 ```
 
 **With full custom configuration:**
 - **Your servers process:** Audio transcription, LLM inference, speech synthesis
 - **Vapi handles:** Orchestration (endpointing, interruptions, etc.), transport routing
-- **Your storage receives:** Recordings, transcripts, logs
+- **Your storage receives:** Recordings, transcripts, call logs
+- **Vapi storage retains:** Product usage metrics, system logs (internal only)
 
 ---
 
 ## Bring Your Own Infrastructure Summary
 
-| Component | Bring Your Own API Key | Custom Server |
-|-----------|----------------------|---------------|
-| **Transport** | N/A | ✅ WebSocket/SIP |
+| Component | Bring Your Own Key (BYOK) | Custom Server |
+|-----------|---------------------------|---------------|
+| **Transport** | ✅ Twilio, Telnyx, Vonage, etc. | ✅ WebSocket/SIP |
 | **Transcriber** | ✅ Most providers | ✅ [Custom Transcriber](/customization/custom-transcriber) |
 | **Orchestration** | ❌ Vapi only | ❌ Vapi only |
 | **LLM** | ✅ All providers | ✅ [Custom LLM](/customization/custom-llm/using-your-server) |
-| **Voice** | ✅ All providers | ✅ [Custom TTS](/customization/custom-tts) |
-| **Storage** | N/A | ✅ S3/GCP/R2/Azure |
+| **Voice** | ✅ All providers | ✅ [Custom TTS](/customization/custom-voices/custom-tts) |
+| **Storage** | ✅ S3/GCP/R2/Azure | ✅ S3/GCP/R2/Azure |
 
 <Note>
 The **Orchestration Layer** (endpointing, interruption detection, emotion detection, backchanneling, filler injection) is Vapi's core value proposition and runs exclusively on Vapi infrastructure. Audio processed by these models is **ephemeral** and not stored.
@@ -290,13 +336,18 @@ The **Orchestration Layer** (endpointing, interruption detection, emotion detect
 
 ## Artifacts Storage Summary
 
-| Artifact | Default Location | Custom Storage | HIPAA Mode |
-|----------|-----------------|----------------|------------|
-| **Call Recordings** | Vapi | Your bucket | Not stored |
-| **Transcripts** | Vapi | Your bucket | Not stored |
-| **Call Logs** | Vapi | Your bucket | Not stored |
-| **Usage Metrics** | Vapi | Analytics API | Vapi only |
-| **Structured Outputs** | Vapi | Webhook delivery | Configurable |
+| Artifact | Default Location | Custom Storage Supported | HIPAA Mode |
+|----------|-----------------|--------------------------|------------|
+| **Call Recordings** | Vapi | ✅ Yes | Not stored on Vapi |
+| **Transcripts** | Vapi | ✅ Yes | Not stored on Vapi |
+| **Call Logs** | Vapi | ✅ Yes | Not stored on Vapi |
+| **Product Usage Metrics** | Vapi | ❌ No | Vapi only |
+| **System Logs** | Vapi | ❌ No | Vapi only |
+| **Structured Outputs** | Vapi | ✅ Yes (via webhook) | Configurable |
+
+<Warning>
+**HIPAA Mode Important Notice:** When HIPAA mode is enabled (`hipaaEnabled: true`) and no custom storage is configured, Vapi will **not store** call recordings or transcripts. This data will be lost after the call ends. To retain call data in HIPAA mode, you **must** configure a custom storage bucket.
+</Warning>
 
 ---
 
@@ -307,8 +358,8 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
 | Data Type | Processing | Retention |
 |-----------|-----------|-----------|
 | Raw audio streams | Real-time routing to Transcriber/Voice | **Ephemeral** (not stored) |
-| Transcribed text | Orchestration analysis, LLM routing | Logged (unless HIPAA) |
-| LLM responses | Filler injection, Voice routing | Logged (unless HIPAA) |
+| Transcribed text | Orchestration analysis, LLM routing | Call logs (unless HIPAA) |
+| LLM responses | Filler injection, Voice routing | Call logs (unless HIPAA) |
 | Emotion metadata | Passed to LLM context | **Ephemeral** |
 | Call signaling | SIP/WebSocket management | Metadata only |
 
@@ -322,10 +373,10 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
     - **Custom Transcriber** via WebSocket endpoint
     - **Custom LLM** via OpenAI-compatible server
     - **Custom Voice** via audio streaming endpoint
-    - **Custom bucket storage** for all artifacts
-    - **HIPAA mode** to prevent any Vapi storage
+    - **Custom bucket storage** for all call logs
+    - **HIPAA mode** to prevent Vapi call log storage
     
-    Result: Only orchestration signals (ephemeral) pass through Vapi.
+    Result: Only orchestration signals (ephemeral) pass through Vapi. System logs remain on Vapi infrastructure (never shared).
   </Accordion>
   
   <Accordion title="Data residency compliance">
@@ -333,7 +384,7 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
     - Use **custom LLM** hosted in-region OR provider with regional endpoints
     - Use **custom Voice** hosted in-region if needed
     
-    Note: Orchestration models run on Vapi's US/EU infrastructure (data is ephemeral).
+    Note: Orchestration models run on Vapi's US/EU infrastructure (data is ephemeral). System logs remain on Vapi infrastructure.
   </Accordion>
   
   <Accordion title="Cost optimization with own API keys">
@@ -344,9 +395,13 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
   
   <Accordion title="HIPAA compliance">
     - Enable `hipaaEnabled: true`
+    - **Important:** Configure custom storage to retain call recordings and transcripts
     - Use only HIPAA-compliant providers (Deepgram, Azure, OpenAI, Anthropic, ElevenLabs)
-    - Optional: Custom storage for additional PHI control
     - See [HIPAA Compliance](/security-and-privacy/hipaa)
+    
+    <Warning>
+    Without custom storage configured, HIPAA mode will result in **no call recordings or transcripts being stored**. Data will be lost after call completion.
+    </Warning>
   </Accordion>
 </AccordionGroup>
 
@@ -357,7 +412,7 @@ Even with maximum custom configuration, certain data passes through Vapi's orche
 ### Custom Integration Guides
 - [Custom Transcriber](/customization/custom-transcriber) - Bring your own speech-to-text
 - [Custom LLM](/customization/custom-llm/using-your-server) - Bring your own language model
-- [Custom TTS](/customization/custom-tts) - Bring your own voice synthesis
+- [Custom TTS](/customization/custom-voices/custom-tts) - Bring your own voice synthesis
 
 ### Storage Configuration
 - [AWS S3](/providers/cloud/s3) - S3 bucket setup
