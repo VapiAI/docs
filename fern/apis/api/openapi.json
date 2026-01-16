@@ -7769,6 +7769,7 @@
               {
                 "enum": [
                   "scribe_v1",
+                  "scribe_v2",
                   "scribe_v2_realtime"
                 ]
               }
@@ -9627,6 +9628,7 @@
               {
                 "enum": [
                   "scribe_v1",
+                  "scribe_v2",
                   "scribe_v2_realtime"
                 ]
               }
@@ -10672,6 +10674,15 @@
             "enum": [
               "langfuse"
             ]
+          },
+          "promptName": {
+            "type": "string",
+            "description": "The name of a Langfuse prompt to link generations to. This enables tracking which prompt version was used for each generation. https://langfuse.com/docs/prompt-management/features/link-to-traces"
+          },
+          "promptVersion": {
+            "type": "number",
+            "description": "The version number of the Langfuse prompt to link generations to. Used together with promptName to identify the exact prompt version. https://langfuse.com/docs/prompt-management/features/link-to-traces",
+            "minimum": 1
           },
           "tags": {
             "description": "This is an array of tags to be added to the Langfuse trace. Tags allow you to categorize and filter traces. https://langfuse.com/docs/tracing-features/tags",
@@ -18124,6 +18135,89 @@
           }
         }
       },
+      "ComplianceOverride": {
+        "type": "object",
+        "properties": {
+          "forceStoreOnHipaaEnabled": {
+            "type": "boolean",
+            "description": "Force storage for this output under HIPAA. Only enable if output contains no sensitive data.",
+            "example": false
+          }
+        }
+      },
+      "CreateStructuredOutputDTO": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nBetween the system or user messages, you must reference either 'transcript' or 'messages' with the '{{}}' syntax to access the conversation history.\nBetween the system or user messages, you must reference a variation of the structured output with the '{{}}' syntax to access the structured output definition.\ni.e.:\n{{structuredOutput}}\n{{structuredOutput.name}}\n{{structuredOutput.description}}\n{{structuredOutput.schema}}\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowOpenAIModel",
+                "title": "WorkflowOpenAIModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAnthropicModel",
+                "title": "WorkflowAnthropicModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowGoogleModel",
+                "title": "WorkflowGoogleModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowCustomModel",
+                "title": "WorkflowCustomModel"
+              }
+            ]
+          },
+          "compliancePlan": {
+            "description": "Compliance configuration for this output. Only enable overrides if no sensitive data will be stored.",
+            "example": {
+              "forceStoreOnHipaaEnabled": false
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComplianceOverride"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the structured output.",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "schema": {
+            "description": "This is the JSON Schema definition for the structured output.\n\nThis is required when creating a structured output. Defines the structure and validation rules for the data that will be extracted. Supports all JSON Schema features including:\n- Objects and nested properties\n- Arrays and array validation\n- String, number, boolean, and null types\n- Enums and const values\n- Validation constraints (min/max, patterns, etc.)\n- Composition with allOf, anyOf, oneOf",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JsonSchema"
+              }
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "This is the description of what the structured output extracts.\n\nUse this to provide context about what data will be extracted and how it will be used."
+          },
+          "assistantIds": {
+            "description": "These are the assistant IDs that this structured output is linked to.\n\nWhen linked to assistants, this structured output will be available for extraction during those assistant's calls.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "workflowIds": {
+            "description": "These are the workflow IDs that this structured output is linked to.\n\nWhen linked to workflows, this structured output will be available for extraction during those workflow's execution.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "schema"
+        ]
+      },
       "ScorecardMetric": {
         "type": "object",
         "properties": {
@@ -18249,6 +18343,13 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "structuredOutputs": {
+            "description": "This is an array of transient structured outputs to be calculated during the call.\nThe outputs will be extracted and stored in `call.artifact.structuredOutputs` after the call is ended.\nUse this to provide inline structured output configurations instead of referencing existing ones via structuredOutputIds.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateStructuredOutputDTO"
             }
           },
           "scorecardIds": {
@@ -35627,6 +35728,14 @@
               }
             ]
           },
+          "assistantOverrides": {
+            "description": "These are the overrides for the assistant configuration.\nUse this to provide variable values and other overrides when using assistantId.\nVariable substitution will be applied to the assistant's messages and other text-based fields.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
+          },
           "squadId": {
             "type": "string",
             "description": "This is the squad ID associated with this session. Use this when referencing an existing squad."
@@ -35735,6 +35844,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/CreateAssistantDTO"
+              }
+            ]
+          },
+          "assistantOverrides": {
+            "description": "These are the overrides for the assistant configuration.\nUse this to provide variable values and other overrides when using assistantId.\nVariable substitution will be applied to the assistant's messages and other text-based fields.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
               }
             ]
           },
@@ -41753,16 +41870,6 @@
           "providerId"
         ]
       },
-      "ComplianceOverride": {
-        "type": "object",
-        "properties": {
-          "forceStoreOnHipaaEnabled": {
-            "type": "boolean",
-            "description": "Force storage for this output under HIPAA. Only enable if output contains no sensitive data.",
-            "example": false
-          }
-        }
-      },
       "StructuredOutput": {
         "type": "object",
         "properties": {
@@ -41874,79 +41981,6 @@
         "required": [
           "results",
           "metadata"
-        ]
-      },
-      "CreateStructuredOutputDTO": {
-        "type": "object",
-        "properties": {
-          "model": {
-            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nBetween the system or user messages, you must reference either 'transcript' or 'messages' with the '{{}}' syntax to access the conversation history.\nBetween the system or user messages, you must reference a variation of the structured output with the '{{}}' syntax to access the structured output definition.\ni.e.:\n{{structuredOutput}}\n{{structuredOutput.name}}\n{{structuredOutput.description}}\n{{structuredOutput.schema}}\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/WorkflowOpenAIModel",
-                "title": "WorkflowOpenAIModel"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowAnthropicModel",
-                "title": "WorkflowAnthropicModel"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowGoogleModel",
-                "title": "WorkflowGoogleModel"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowCustomModel",
-                "title": "WorkflowCustomModel"
-              }
-            ]
-          },
-          "compliancePlan": {
-            "description": "Compliance configuration for this output. Only enable overrides if no sensitive data will be stored.",
-            "example": {
-              "forceStoreOnHipaaEnabled": false
-            },
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ComplianceOverride"
-              }
-            ]
-          },
-          "name": {
-            "type": "string",
-            "description": "This is the name of the structured output.",
-            "minLength": 1,
-            "maxLength": 40
-          },
-          "schema": {
-            "description": "This is the JSON Schema definition for the structured output.\n\nThis is required when creating a structured output. Defines the structure and validation rules for the data that will be extracted. Supports all JSON Schema features including:\n- Objects and nested properties\n- Arrays and array validation\n- String, number, boolean, and null types\n- Enums and const values\n- Validation constraints (min/max, patterns, etc.)\n- Composition with allOf, anyOf, oneOf",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/JsonSchema"
-              }
-            ]
-          },
-          "description": {
-            "type": "string",
-            "description": "This is the description of what the structured output extracts.\n\nUse this to provide context about what data will be extracted and how it will be used."
-          },
-          "assistantIds": {
-            "description": "These are the assistant IDs that this structured output is linked to.\n\nWhen linked to assistants, this structured output will be available for extraction during those assistant's calls.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "workflowIds": {
-            "description": "These are the workflow IDs that this structured output is linked to.\n\nWhen linked to workflows, this structured output will be available for extraction during those workflow's execution.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "name",
-          "schema"
         ]
       },
       "UpdateStructuredOutputDTO": {
@@ -44239,7 +44273,9 @@
               "in",
               "not_in",
               "contains",
-              "not_contains"
+              "not_contains",
+              "is_empty",
+              "is_not_empty"
             ]
           },
           "value": {
@@ -44279,7 +44315,9 @@
             "example": "\"in\" or \"not_in\"",
             "enum": [
               "in",
-              "not_in"
+              "not_in",
+              "is_empty",
+              "is_not_empty"
             ]
           },
           "value": {
@@ -44319,7 +44357,9 @@
             "example": "\"in\" or \"not_in\"",
             "enum": [
               "in",
-              "not_in"
+              "not_in",
+              "is_empty",
+              "is_not_empty"
             ]
           },
           "value": {
@@ -46383,6 +46423,10 @@
             "type": "number",
             "description": "This is the total number of calls made since evaluationStartAt to determine percentage of calls affected."
           },
+          "callsCount": {
+            "type": "number",
+            "description": "This is the count of calls that triggered this issue.\nThis is populated in list responses as a summary count."
+          },
           "evaluationStartAt": {
             "format": "date-time",
             "type": "string",
@@ -46394,6 +46438,11 @@
             "items": {
               "$ref": "#/components/schemas/IssueCall"
             }
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the issue was last seen (most recent failed call).\nThis is populated in list responses from the MAX(failed_at) in issue_call table."
           },
           "status": {
             "type": "string",
@@ -46409,23 +46458,15 @@
             "description": "This is the email/name of the user who acknowledged the issue.",
             "maxLength": 255
           },
-          "resolvedBy": {
-            "type": "string",
-            "description": "This is the email/name of the user who resolved the issue.",
-            "maxLength": 255
-          },
-          "id": {
-            "type": "string",
-            "description": "This is the unique identifier for the issue."
-          },
-          "orgId": {
-            "type": "string",
-            "description": "This is the unique identifier for the org that this issue belongs to."
-          },
           "acknowledgedAt": {
             "format": "date-time",
             "type": "string",
             "description": "This is the ISO 8601 date-time string of when the issue was acknowledged."
+          },
+          "resolvedBy": {
+            "type": "string",
+            "description": "This is the email/name of the user who resolved the issue.",
+            "maxLength": 255
           },
           "resolvedAt": {
             "format": "date-time",
@@ -46441,6 +46482,14 @@
             "format": "date-time",
             "type": "string",
             "description": "This is the ISO 8601 date-time string of when the issue was last updated."
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the issue."
+          },
+          "orgId": {
+            "type": "string",
+            "description": "This is the unique identifier for the org that this issue belongs to."
           }
         },
         "required": [
@@ -46449,10 +46498,10 @@
           "totalCalls",
           "evaluationStartAt",
           "status",
-          "id",
-          "orgId",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "id",
+          "orgId"
         ]
       },
       "UpdateIssueDTO": {
