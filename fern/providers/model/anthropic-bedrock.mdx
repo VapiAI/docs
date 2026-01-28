@@ -37,35 +37,57 @@ Before configuring Anthropic Bedrock with Vapi, ensure you have:
   </Step>
 
   <Step title="Attach the Trust Policy">
-    Configure the trust policy to allow Vapi's AWS account to assume this role. Use the following trust policy:
+    Configure the trust policy to allow Vapi's AWS account to assume this role.
 
-    ```json title="Trust Policy"
-    {
-      "Version": "2012-10-17",
-      "Statement": [
+    <Tabs>
+      <Tab title="Without External ID">
+        Use this simpler policy if you don't need the additional security of an External ID:
+
+        ```json title="Trust Policy (Basic)"
         {
-          "Effect": "Allow",
-          "Principal": {
-            "AWS": "arn:aws:iam::533267069243:root"
-          },
-          "Action": "sts:AssumeRole",
-          "Condition": {
-            "StringEquals": {
-              "sts:ExternalId": "YOUR_EXTERNAL_ID"
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::533267069243:root"
+              },
+              "Action": "sts:AssumeRole"
             }
-          }
+          ]
         }
-      ]
-    }
-    ```
+        ```
+      </Tab>
+      <Tab title="With External ID">
+        Use this policy if you want the additional security of an External ID:
 
-    <Warning>
-    **About External ID**: The External ID provides an additional layer of security for cross-account access. You can either:
-    - Provide your own External ID when creating the Vapi credential
-    - Let Vapi generate one for you (returned in `authenticationArtifact.externalId`)
+        ```json title="Trust Policy (With External ID)"
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::533267069243:root"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "sts:ExternalId": "YOUR_EXTERNAL_ID"
+                }
+              }
+            }
+          ]
+        }
+        ```
 
-    If Vapi generates the External ID, you must update this trust policy with the generated value after creating the credential.
-    </Warning>
+        Replace `YOUR_EXTERNAL_ID` with your chosen value. You'll use the same value when creating the Vapi credential.
+      </Tab>
+    </Tabs>
+
+    <Note>
+    **About External ID**: The External ID is an optional security feature that provides an additional layer of protection for cross-account access. If you choose to use one, specify the same value in both your IAM trust policy and the Vapi credential configuration.
+    </Note>
   </Step>
 
   <Step title="Attach the Permissions Policy">
@@ -155,43 +177,11 @@ Before configuring Anthropic Bedrock with Vapi, ensure you have:
     | `region` | AWS region where Bedrock is enabled (e.g., `us-east-1`) |
     | `authenticationPlan.type` | Must be `aws-sts` for role assumption |
     | `authenticationPlan.roleArn` | The ARN of the IAM role you created |
-    | `authenticationPlan.externalId` | Optional: Your chosen External ID. If omitted, Vapi generates one |
+    | `authenticationPlan.externalId` | Optional: Your chosen External ID for additional security |
 
-    <Note>
-    If you omit `externalId`, Vapi will generate one and return it in the response under `authenticationArtifact.externalId`. You must then update your IAM trust policy with this value.
-    </Note>
-  </Step>
-
-  <Step title="Update Trust Policy with Generated External ID (if applicable)">
-    If Vapi generated an External ID for you, update your IAM role's trust policy:
-
-    1. Go to the **IAM Console** and select your role
-    2. Click the **Trust relationships** tab
-    3. Click **Edit trust policy**
-    4. Replace `YOUR_EXTERNAL_ID` with the value from `authenticationArtifact.externalId`
-    5. Save the changes
-
-    Your trust policy should now look like this:
-
-    ```json title="Updated Trust Policy" {10}
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Effect": "Allow",
-          "Principal": {
-            "AWS": "arn:aws:iam::533267069243:root"
-          },
-          "Action": "sts:AssumeRole",
-          "Condition": {
-            "StringEquals": {
-              "sts:ExternalId": "vapi-generated-external-id-here"
-            }
-          }
-        }
-      ]
-    }
-    ```
+    <Tip>
+    If you don't need an External ID, you can remove the `Condition` block from your trust policy entirely.
+    </Tip>
   </Step>
 </Steps>
 
@@ -235,8 +225,8 @@ Here is a complete example of a Vapi credential configuration for Anthropic Bedr
 - **Solution**: Verify the trust policy includes Vapi's AWS account ID (`533267069243`) and the correct External ID
 
 ### Common error: "Invalid External ID"
-- **Cause**: The External ID in your trust policy doesn't match the one used by Vapi
-- **Solution**: Check the `authenticationArtifact.externalId` in your credential and update your trust policy accordingly
+- **Cause**: The External ID in your trust policy doesn't match the one in your Vapi credential
+- **Solution**: Ensure the `externalId` value in your Vapi credential exactly matches the `sts:ExternalId` in your IAM trust policy. If you're not using an External ID, remove the `Condition` block from your trust policy
 
 ### Common error: "Model access denied"
 - **Cause**: The IAM permissions policy doesn't grant access to the requested model, or model access isn't enabled in Bedrock
