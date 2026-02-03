@@ -6,17 +6,17 @@ slug: observability/simulations-quickstart
 
 ## Overview
 
-This quickstart guide will help you test your AI assistants and squads using realistic, AI-powered callers. In just a few minutes, you'll create test scenarios, define success criteria, and validate your agents work correctly under different conditions.
+This quickstart guide will help you test your AI assistants and squads using realistic, AI-powered callers. In just a few minutes, you'll create test scenarios, define evaluation criteria, and validate your agents work correctly under different conditions.
 
 ### What are Simulations?
 
-Simulations is Vapi's voice agent testing framework that enables you to systematically test assistants and squads using AI-powered callers that follow defined goals and evaluate outcomes. Instead of relying on manual testing or rigid scripts, Simulations recreate real conversations and measure whether your assistant behaves correctly. Test your agents by:
+Simulations is Vapi's voice agent testing framework that enables you to systematically test assistants and squads using AI-powered callers that follow defined instructions and evaluate outcomes using structured outputs. Instead of relying on manual testing or rigid scripts, Simulations recreate real conversations and measure whether your assistant behaves correctly. Test your agents by:
 
-1. **Creating personalities** - Define how the AI caller behaves (e.g., decisive, indecisive, impatient)
-2. **Defining scenarios** - Specify the caller's goal, constraints, and success criteria
-3. **Running simulations** - Pair scenarios with personalities to test your assistant
-4. **Monitoring results** - Watch tests in real time and review pass/fail outcomes
-5. **Tracking performance** - Analyze historical results to identify trends
+1. **Creating personalities** - Define a full assistant configuration for the AI tester (voice, model, system prompt)
+2. **Defining scenarios** - Specify instructions for the tester and evaluations using structured outputs
+3. **Creating simulations** - Pair scenarios with personalities
+4. **Running simulations** - Execute tests against your assistant or squad in voice or chat mode
+5. **Reviewing results** - Analyze pass/fail outcomes based on structured output evaluations
 
 ### When are Simulations useful?
 
@@ -29,14 +29,39 @@ Simulations help you maintain quality and catch issues early:
 - **Squad handoff testing** - Ensure smooth transitions between squad members
 - **Performance monitoring** - Track success rates over time and identify regressions
 
+### Voice vs Chat mode
+
+Simulations support two transport modes:
+
+<CardGroup cols={2}>
+  <Card title="Voice mode" icon="phone">
+    **`vapi.websocket`** - Full voice simulation with audio
+
+    - Realistic end-to-end testing
+    - Tests speech recognition and synthesis
+    - Produces call recordings
+  </Card>
+  <Card title="Chat mode" icon="message">
+    **`vapi.webchat`** - Text-based chat simulation
+
+    - Faster execution
+    - Lower cost (no audio processing)
+    - Ideal for rapid iteration
+  </Card>
+</CardGroup>
+
+<Tip>
+  Use **chat mode** during development for quick iteration, then switch to **voice mode** for final validation before deployment.
+</Tip>
+
 ### What you'll build
 
 A simulation suite for an appointment booking assistant that tests:
 
-- Different caller personalities (decisive vs. indecisive)
-- Goal completion and success criteria validation
-- Real-time monitoring of test calls
-- Historical performance tracking
+- Different caller personalities (confused user, impatient customer)
+- Evaluation criteria using structured outputs with comparators
+- Real-time monitoring of test runs
+- Both voice and chat mode execution
 
 ## Prerequisites
 
@@ -54,9 +79,9 @@ A simulation suite for an appointment booking assistant that tests:
   the Dashboard or use the API.
 </Note>
 
-## Step 1: Create a personality (optional)
+## Step 1: Create a personality
 
-Personalities define how the AI caller behaves during a test call. You can use built-in default personalities or create custom ones.
+Personalities define how the AI tester behaves during a simulation. A personality is a full assistant configuration that controls the tester's voice, model, and behavior via system prompt.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -70,12 +95,16 @@ Personalities define how the AI caller behaves during a test call. You can use b
       <Step title="Create a personality">
         1. Click **Create Personality**
         2. **Name**: Enter "Impatient Customer"
-        3. **Description**: Add "A busy customer who wants quick answers and may interrupt"
-        4. **Behavior**: Define the personality traits:
-           - Speaks quickly and directly
-           - May interrupt if responses are too long
-           - Expects immediate solutions
-        5. Click **Save**
+        3. **Assistant Configuration**: Configure the tester assistant:
+           - **Model**: Select your preferred LLM (e.g., GPT-4o)
+           - **System Prompt**: Define the personality behavior:
+             ```
+             You are an impatient customer who wants quick answers.
+             Speak directly and may interrupt if responses are too long.
+             You expect immediate solutions to your problems.
+             ```
+           - **Voice**: Select a voice for the tester (optional for chat mode)
+        4. Click **Save**
       </Step>
     </Steps>
 
@@ -86,13 +115,27 @@ Personalities define how the AI caller behaves during a test call. You can use b
 
   <Tab title="cURL">
 ```bash
-curl -X POST "https://api.vapi.ai/simulation/personality" \
+curl -X POST "https://api.vapi.ai/eval/simulation/personality" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Impatient Customer",
-    "description": "A busy customer who wants quick answers and may interrupt",
-    "behavior": "Speaks quickly and directly. May interrupt if responses are too long. Expects immediate solutions."
+    "assistant": {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an impatient customer who wants quick answers. Speak directly and may interrupt if responses are too long. You expect immediate solutions to your problems."
+          }
+        ]
+      },
+      "voice": {
+        "provider": "cartesia",
+        "voiceId": "sonic-english"
+      }
+    }
   }'
 ```
 
@@ -100,11 +143,20 @@ curl -X POST "https://api.vapi.ai/simulation/personality" \
 
 ```json
 {
-  "id": "personality-123",
+  "id": "550e8400-e29b-41d4-a716-446655440001",
   "orgId": "org-456",
   "name": "Impatient Customer",
-  "description": "A busy customer who wants quick answers and may interrupt",
-  "behavior": "Speaks quickly and directly. May interrupt if responses are too long. Expects immediate solutions.",
+  "assistant": {
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "messages": [...]
+    },
+    "voice": {
+      "provider": "cartesia",
+      "voiceId": "sonic-english"
+    }
+  },
   "createdAt": "2024-01-15T09:30:00Z",
   "updatedAt": "2024-01-15T09:30:00Z"
 }
@@ -115,12 +167,14 @@ Save the returned `id` - you'll need it when creating simulations.
 </Tabs>
 
 <Note>
-  **Personality types:** Consider creating personalities for different customer types you encounter: decisive buyers, hesitant customers, detail-oriented users, or frustrated callers.
+  **Personality types:** Consider creating personalities for different customer types you encounter: decisive buyers, confused users, detail-oriented customers, or frustrated callers.
 </Note>
 
 ## Step 2: Create a scenario
 
-Scenarios define what the test call is trying to accomplish, including the goal and success criteria.
+Scenarios define what the test is evaluating. A scenario contains:
+- **Instructions**: What the tester should do during the call
+- **Evaluations**: Structured outputs with expected values to validate outcomes
 
 <Tabs>
   <Tab title="Dashboard">
@@ -132,40 +186,67 @@ Scenarios define what the test call is trying to accomplish, including the goal 
 
       <Step title="Configure the scenario">
         1. **Name**: Enter "Book Appointment"
-        2. **Description**: Add "Test that the assistant can successfully book an appointment"
-        3. **Goal**: Define what the caller is trying to accomplish:
-           - "Schedule an appointment for next Monday at 2pm"
-        4. **Constraints** (optional): Add any limitations:
-           - "Only available on weekdays"
-           - "Preferred morning appointments"
+        2. **Instructions**: Define what the tester should do:
+           ```
+           You are calling to book an appointment for next Monday at 2pm.
+           Confirm your identity when asked and provide any required information.
+           End the call once you receive a confirmation number.
+           ```
       </Step>
 
-      <Step title="Add success criteria">
-        1. Click **Add Success Criterion**
-        2. Define what must happen for the test to pass:
-           - "Appointment is confirmed with a specific date and time"
-           - "Confirmation number is provided"
-        3. Click **Save Scenario**
+      <Step title="Add evaluations">
+        Evaluations use structured outputs to extract data from the conversation and compare against expected values.
+
+        1. Click **Add Evaluation**
+        2. Create or select a structured output:
+           - **Name**: "appointment_booked"
+           - **Schema Type**: boolean
+        3. Set the **Comparator**: `=`
+        4. Set the **Expected Value**: `true`
+        5. Mark as **Required**: Yes
+        6. Add another evaluation for confirmation number:
+           - **Name**: "confirmation_provided"
+           - **Schema Type**: boolean
+           - **Comparator**: `=`
+           - **Expected Value**: `true`
+        7. Click **Save Scenario**
       </Step>
     </Steps>
   </Tab>
 
   <Tab title="cURL">
 ```bash
-curl -X POST "https://api.vapi.ai/simulation/scenario" \
+curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Book Appointment",
-    "description": "Test that the assistant can successfully book an appointment",
-    "goal": "Schedule an appointment for next Monday at 2pm",
-    "constraints": [
-      "Only available on weekdays",
-      "Preferred morning appointments"
-    ],
-    "successCriteria": [
-      "Appointment is confirmed with a specific date and time",
-      "Confirmation number is provided"
+    "instructions": "You are calling to book an appointment for next Monday at 2pm. Confirm your identity when asked and provide any required information. End the call once you receive a confirmation number.",
+    "evaluations": [
+      {
+        "structuredOutput": {
+          "name": "appointment_booked",
+          "schema": {
+            "type": "boolean",
+            "description": "Whether an appointment was successfully booked"
+          }
+        },
+        "comparator": "=",
+        "value": true,
+        "required": true
+      },
+      {
+        "structuredOutput": {
+          "name": "confirmation_provided",
+          "schema": {
+            "type": "boolean",
+            "description": "Whether a confirmation number was provided"
+          }
+        },
+        "comparator": "=",
+        "value": true,
+        "required": true
+      }
     ]
   }'
 ```
@@ -174,18 +255,29 @@ curl -X POST "https://api.vapi.ai/simulation/scenario" \
 
 ```json
 {
-  "id": "scenario-789",
+  "id": "550e8400-e29b-41d4-a716-446655440002",
   "orgId": "org-456",
   "name": "Book Appointment",
-  "description": "Test that the assistant can successfully book an appointment",
-  "goal": "Schedule an appointment for next Monday at 2pm",
-  "constraints": [
-    "Only available on weekdays",
-    "Preferred morning appointments"
-  ],
-  "successCriteria": [
-    "Appointment is confirmed with a specific date and time",
-    "Confirmation number is provided"
+  "instructions": "You are calling to book an appointment for next Monday at 2pm...",
+  "evaluations": [
+    {
+      "structuredOutput": {
+        "name": "appointment_booked",
+        "schema": { "type": "boolean", "description": "..." }
+      },
+      "comparator": "=",
+      "value": true,
+      "required": true
+    },
+    {
+      "structuredOutput": {
+        "name": "confirmation_provided",
+        "schema": { "type": "boolean", "description": "..." }
+      },
+      "comparator": "=",
+      "value": true,
+      "required": true
+    }
   ],
   "createdAt": "2024-01-15T09:35:00Z",
   "updatedAt": "2024-01-15T09:35:00Z"
@@ -196,13 +288,40 @@ Save the returned `id` - you'll need it when creating simulations.
   </Tab>
 </Tabs>
 
+### Evaluation structure
+
+Each evaluation consists of:
+
+| Field | Description |
+| --- | --- |
+| `structuredOutputId` | Reference to an existing structured output (mutually exclusive with `structuredOutput`) |
+| `structuredOutput` | Inline structured output definition (mutually exclusive with `structuredOutputId`) |
+| `comparator` | Comparison operator: `=`, `!=`, `>`, `<`, `>=`, `<=` |
+| `value` | Expected value (string, number, or boolean) |
+| `required` | Whether this evaluation must pass for the simulation to pass (default: `true`) |
+
+<Note>
+  **Schema type restrictions:** Evaluations only support primitive schema types: `string`, `number`, `integer`, `boolean`. Objects and arrays are not supported.
+</Note>
+
+### Comparator options
+
+| Comparator | Description | Supported Types |
+| --- | --- | --- |
+| `=` | Equals | string, number, integer, boolean |
+| `!=` | Not equals | string, number, integer, boolean |
+| `>` | Greater than | number, integer |
+| `<` | Less than | number, integer |
+| `>=` | Greater than or equal | number, integer |
+| `<=` | Less than or equal | number, integer |
+
 <Tip>
-  **Success criteria tips:** Be specific about what constitutes success. Include both the action (appointment booked) and the verification (confirmation provided).
+  **Evaluation tips:** Use boolean structured outputs for pass/fail checks like "appointment_booked" or "issue_resolved". Use numeric outputs with comparators for metrics like "satisfaction_score >= 4".
 </Tip>
 
 ## Step 3: Create a simulation
 
-Simulations pair a scenario with a personality and select the assistant or squad you want to test.
+Simulations pair a scenario with a personality. The target assistant or squad is specified when you run the simulation.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -213,29 +332,23 @@ Simulations pair a scenario with a personality and select the assistant or squad
       </Step>
 
       <Step title="Configure the simulation">
-        1. **Name**: Enter "Appointment Booking - Impatient Customer"
+        1. **Name**: Enter "Appointment Booking - Impatient Customer" (optional)
         2. **Scenario**: Select "Book Appointment" from the dropdown
-        3. **Personality**: Select "Impatient Customer" (or use a default)
-        4. **Target**: Choose **Assistant** or **Squad**
-        5. Select your assistant/squad from the dropdown
-        6. Click **Save Simulation**
+        3. **Personality**: Select "Impatient Customer" from the dropdown
+        4. Click **Save Simulation**
       </Step>
     </Steps>
   </Tab>
 
   <Tab title="cURL">
 ```bash
-curl -X POST "https://api.vapi.ai/simulation" \
+curl -X POST "https://api.vapi.ai/eval/simulation" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Appointment Booking - Impatient Customer",
-    "scenarioId": "scenario-789",
-    "personalityId": "personality-123",
-    "target": {
-      "type": "assistant",
-      "assistantId": "your-assistant-id"
-    }
+    "scenarioId": "550e8400-e29b-41d4-a716-446655440002",
+    "personalityId": "550e8400-e29b-41d4-a716-446655440001"
   }'
 ```
 
@@ -243,21 +356,17 @@ curl -X POST "https://api.vapi.ai/simulation" \
 
 ```json
 {
-  "id": "simulation-abc",
+  "id": "550e8400-e29b-41d4-a716-446655440003",
   "orgId": "org-456",
   "name": "Appointment Booking - Impatient Customer",
-  "scenarioId": "scenario-789",
-  "personalityId": "personality-123",
-  "target": {
-    "type": "assistant",
-    "assistantId": "your-assistant-id"
-  },
+  "scenarioId": "550e8400-e29b-41d4-a716-446655440002",
+  "personalityId": "550e8400-e29b-41d4-a716-446655440001",
   "createdAt": "2024-01-15T09:40:00Z",
   "updatedAt": "2024-01-15T09:40:00Z"
 }
 ```
 
-Save the returned `id` - you'll need it when creating simulation suites.
+Save the returned `id` - you'll need it when running simulations.
   </Tab>
 </Tabs>
 
@@ -265,7 +374,7 @@ Save the returned `id` - you'll need it when creating simulation suites.
   **Multiple simulations:** Create several simulations with different personality and scenario combinations to thoroughly test your assistant across various conditions.
 </Note>
 
-## Step 4: Create a simulation suite
+## Step 4: Create a simulation suite (optional)
 
 Simulation suites group multiple simulations into a single batch that runs together.
 
@@ -279,29 +388,27 @@ Simulation suites group multiple simulations into a single batch that runs toget
 
       <Step title="Configure the suite">
         1. **Name**: Enter "Appointment Booking Regression Suite"
-        2. **Description**: Add "Tests appointment booking across different customer types"
-        3. Click **Add Simulations**
-        4. Select the simulations you want to include:
+        2. Click **Add Simulations**
+        3. Select the simulations you want to include:
            - "Appointment Booking - Impatient Customer"
+           - "Appointment Booking - Confused User"
            - "Appointment Booking - Decisive Customer"
-           - "Appointment Booking - Indecisive Customer"
-        5. Click **Save Suite**
+        4. Click **Save Suite**
       </Step>
     </Steps>
   </Tab>
 
   <Tab title="cURL">
 ```bash
-curl -X POST "https://api.vapi.ai/simulation/suite" \
+curl -X POST "https://api.vapi.ai/eval/simulation/suite" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Appointment Booking Regression Suite",
-    "description": "Tests appointment booking across different customer types",
     "simulationIds": [
-      "simulation-abc",
-      "simulation-def",
-      "simulation-ghi"
+      "550e8400-e29b-41d4-a716-446655440003",
+      "550e8400-e29b-41d4-a716-446655440004",
+      "550e8400-e29b-41d4-a716-446655440005"
     ]
   }'
 ```
@@ -310,14 +417,13 @@ curl -X POST "https://api.vapi.ai/simulation/suite" \
 
 ```json
 {
-  "id": "suite-xyz",
+  "id": "550e8400-e29b-41d4-a716-446655440006",
   "orgId": "org-456",
   "name": "Appointment Booking Regression Suite",
-  "description": "Tests appointment booking across different customer types",
   "simulationIds": [
-    "simulation-abc",
-    "simulation-def",
-    "simulation-ghi"
+    "550e8400-e29b-41d4-a716-446655440003",
+    "550e8400-e29b-41d4-a716-446655440004",
+    "550e8400-e29b-41d4-a716-446655440005"
   ],
   "createdAt": "2024-01-15T09:45:00Z",
   "updatedAt": "2024-01-15T09:45:00Z"
@@ -332,74 +438,149 @@ Save the returned `id` - you'll need it to run the suite.
   **Suite organization:** Group related simulations together. For example, create separate suites for "Booking Tests", "Cancellation Tests", and "Rescheduling Tests".
 </Tip>
 
-## Step 5: Run the suite
+## Step 5: Run a simulation
 
-Execute all simulations in your suite and monitor them in real time.
+Execute simulations against your assistant or squad. You can run individual simulations or entire suites.
 
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="Run the suite">
-        1. Navigate to your suite in the **Suites** tab
-        2. Click **Run Suite**
-        3. All simulations in the suite will be queued and executed
+      <Step title="Start a run">
+        1. Navigate to your simulation or suite
+        2. Click **Run**
+        3. Select the **Target**:
+           - Choose **Assistant** or **Squad**
+           - Select from the dropdown
+        4. Configure **Transport** (optional):
+           - **Voice**: `vapi.websocket` (default)
+           - **Chat**: `vapi.webchat` (faster, no audio)
+        5. Set **Iterations** (optional): Number of times to run each simulation
+        6. Click **Start Run**
       </Step>
 
-      <Step title="Monitor in real time">
+      <Step title="Monitor progress">
         1. Click the **Runs** tab to see live status updates
         2. Watch as each simulation progresses:
            - **Queued** - Waiting to start
-           - **Running** - Call in progress
-           - **Completed** - Test finished
-        3. Click **Listen** on any running test to hear the call live
+           - **Running** - Test in progress
+           - **Ended** - Test finished
+        3. For voice mode, click **Listen** on any running test to hear the call live
       </Step>
     </Steps>
   </Tab>
 
   <Tab title="cURL">
-**Run the suite:**
+**Run a single simulation in voice mode:**
 
 ```bash
-curl -X POST "https://api.vapi.ai/simulation/suite/suite-xyz/run" \
-  -H "Authorization: Bearer $VAPI_API_KEY"
+curl -X POST "https://api.vapi.ai/eval/simulation/run" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "simulations": [
+      {
+        "type": "simulation",
+        "simulationId": "550e8400-e29b-41d4-a716-446655440003"
+      }
+    ],
+    "target": {
+      "type": "assistant",
+      "assistantId": "your-assistant-id"
+    },
+    "transport": {
+      "provider": "vapi.websocket"
+    }
+  }'
+```
+
+**Run a simulation in chat mode (faster, no audio):**
+
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/run" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "simulations": [
+      {
+        "type": "simulation",
+        "simulationId": "550e8400-e29b-41d4-a716-446655440003"
+      }
+    ],
+    "target": {
+      "type": "assistant",
+      "assistantId": "your-assistant-id"
+    },
+    "transport": {
+      "provider": "vapi.webchat"
+    }
+  }'
+```
+
+**Run a suite with multiple iterations:**
+
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/run" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "simulations": [
+      {
+        "type": "simulationSuite",
+        "simulationSuiteId": "550e8400-e29b-41d4-a716-446655440006"
+      }
+    ],
+    "target": {
+      "type": "assistant",
+      "assistantId": "your-assistant-id"
+    },
+    "iterations": 3
+  }'
 ```
 
 **Response:**
 
 ```json
 {
-  "id": "run-123",
-  "suiteId": "suite-xyz",
-  "status": "running",
+  "id": "550e8400-e29b-41d4-a716-446655440007",
+  "orgId": "org-456",
+  "status": "queued",
   "simulations": [
     {
-      "simulationId": "simulation-abc",
-      "status": "queued"
-    },
-    {
-      "simulationId": "simulation-def",
-      "status": "queued"
-    },
-    {
-      "simulationId": "simulation-ghi",
-      "status": "queued"
+      "type": "simulation",
+      "simulationId": "550e8400-e29b-41d4-a716-446655440003"
     }
   ],
-  "createdAt": "2024-01-15T09:50:00Z"
+  "target": {
+    "type": "assistant",
+    "assistantId": "your-assistant-id"
+  },
+  "transport": {
+    "provider": "vapi.websocket"
+  },
+  "queuedAt": "2024-01-15T09:50:00Z",
+  "createdAt": "2024-01-15T09:50:00Z",
+  "updatedAt": "2024-01-15T09:50:00Z"
 }
 ```
 
 **Check run status:**
 
 ```bash
-curl -X GET "https://api.vapi.ai/simulation/run/run-123" \
+curl -X GET "https://api.vapi.ai/eval/simulation/run/550e8400-e29b-41d4-a716-446655440007" \
   -H "Authorization: Bearer $VAPI_API_KEY"
 ```
   </Tab>
 </Tabs>
 
+### Transport options
+
+| Provider | Description | Use Case |
+| --- | --- | --- |
+| `vapi.websocket` | Full voice simulation with audio bridge | Production validation, end-to-end testing |
+| `vapi.webchat` | Text-based chat simulation | Rapid iteration, development testing |
+
 <Warning>
-  Running a suite will execute actual voice calls to your assistant. Ensure your assistant is properly configured before running tests.
+  **Hooks are only supported in voice mode.** If your scenario uses hooks (like `call.started` or `call.ended`), you must use `vapi.websocket` transport.
 </Warning>
 
 ## Step 6: Review results
@@ -408,83 +589,54 @@ Analyze the results of your simulation runs to understand how your assistant per
 
 ### Successful run
 
-When all simulations pass, you'll see:
+When all evaluations pass, you'll see:
 
 ```json
 {
-  "id": "run-123",
-  "suiteId": "suite-xyz",
-  "status": "completed",
-  "results": [
-    {
-      "simulationId": "simulation-abc",
-      "status": "pass",
-      "successCriteria": [
-        {
-          "criterion": "Appointment is confirmed with a specific date and time",
-          "passed": true
-        },
-        {
-          "criterion": "Confirmation number is provided",
-          "passed": true
-        }
-      ],
-      "duration": "45s"
-    }
-  ],
-  "summary": {
+  "id": "550e8400-e29b-41d4-a716-446655440007",
+  "status": "ended",
+  "itemCounts": {
     "total": 3,
     "passed": 3,
-    "failed": 0
-  }
+    "failed": 0,
+    "running": 0,
+    "queued": 0,
+    "canceled": 0
+  },
+  "startedAt": "2024-01-15T09:50:05Z",
+  "endedAt": "2024-01-15T09:52:30Z"
 }
 ```
 
 **Pass criteria:**
 
-- `status` is "completed"
-- `results[].status` is "pass" for all simulations
-- All `successCriteria` items show `passed: true`
+- `status` is "ended"
+- `itemCounts.passed` equals `itemCounts.total`
+- All required evaluations show `passed: true`
 
 ### Failed run
 
-When validation fails, you'll see details about what went wrong:
+When evaluation fails, you'll see details about what went wrong:
 
 ```json
 {
-  "id": "run-124",
-  "suiteId": "suite-xyz",
-  "status": "completed",
-  "results": [
-    {
-      "simulationId": "simulation-abc",
-      "status": "fail",
-      "successCriteria": [
-        {
-          "criterion": "Appointment is confirmed with a specific date and time",
-          "passed": true
-        },
-        {
-          "criterion": "Confirmation number is provided",
-          "passed": false,
-          "reason": "No confirmation number was mentioned in the conversation"
-        }
-      ],
-      "duration": "52s"
-    }
-  ],
-  "summary": {
+  "id": "550e8400-e29b-41d4-a716-446655440008",
+  "status": "ended",
+  "itemCounts": {
     "total": 3,
     "passed": 2,
-    "failed": 1
+    "failed": 1,
+    "running": 0,
+    "queued": 0,
+    "canceled": 0
   }
 }
 ```
 
 **Failure indicators:**
 
-- `results[].status` is "fail"
-- `successCriteria[].passed` is `false` with a `reason` explaining the failure
+- `itemCounts.failed` > 0
+- Individual run items show which evaluations failed and why
 
 <Tabs>
   <Tab title="Dashboard">
@@ -497,16 +649,15 @@ When validation fails, you'll see details about what went wrong:
 
       <Step title="Investigate failures">
         1. Click on any failed simulation
-        2. Review the **Timeline** to see the conversation flow
-        3. Check which success criteria failed and why
-        4. Click **Listen to Recording** to hear the full call
+        2. Review the **Conversation** to see the full transcript
+        3. Check which evaluations failed and their actual vs expected values
+        4. For voice mode, click **Listen to Recording** to hear the full call
       </Step>
 
       <Step title="Track performance over time">
         1. Go to the main **Simulations** page
-        2. Filter by **Suites** to see historical runs
-        3. Monitor pass rates and identify trends
-        4. Compare performance across different suite versions
+        2. View historical runs and their pass rates
+        3. Monitor trends to identify regressions
       </Step>
     </Steps>
   </Tab>
@@ -515,40 +666,40 @@ When validation fails, you'll see details about what went wrong:
 **List all runs:**
 
 ```bash
-curl -X GET "https://api.vapi.ai/simulation/run" \
+curl -X GET "https://api.vapi.ai/eval/simulation/run" \
   -H "Authorization: Bearer $VAPI_API_KEY"
 ```
 
 **Get detailed results for a specific run:**
 
 ```bash
-curl -X GET "https://api.vapi.ai/simulation/run/run-123" \
+curl -X GET "https://api.vapi.ai/eval/simulation/run/550e8400-e29b-41d4-a716-446655440007" \
   -H "Authorization: Bearer $VAPI_API_KEY"
 ```
 
-**Filter runs by suite:**
+**Filter runs by status:**
 
 ```bash
-curl -X GET "https://api.vapi.ai/simulation/run?suiteId=suite-xyz" \
+curl -X GET "https://api.vapi.ai/eval/simulation/run?status=ended" \
   -H "Authorization: Bearer $VAPI_API_KEY"
 ```
   </Tab>
 </Tabs>
 
 <Note>
-  Full conversation recordings are available for all simulation runs, making it easy to understand exactly what happened during each test.
+  Full conversation transcripts are available for all simulation runs, making it easy to understand exactly what happened during each test.
 </Note>
 
 ## Troubleshooting
 
 | Issue | Solution |
 | --- | --- |
-| Simulation always fails | Check that success criteria are achievable with your assistant's current capabilities |
-| Run stuck in "running" | Verify your assistant is properly configured and responding to calls |
-| Personality not applied | Ensure the personality ID is correctly linked to the simulation |
-| Success criteria unclear | Make criteria specific and measurable (e.g., "mentions confirmation number" vs "completes task") |
-| No audio in recording | Check that your assistant has voice configuration enabled |
-| Suite won't start | Verify all simulations in the suite are valid and have targets assigned |
+| Simulation always fails | Check that evaluations are achievable with your assistant's current capabilities |
+| Run stuck in "running" | Verify your assistant is properly configured and responding |
+| Evaluations not extracting data | Ensure structured output schemas match what your assistant can provide |
+| No audio in recording | Check that you're using `vapi.websocket` transport, not `vapi.webchat` |
+| Hooks not triggering | Hooks only work with `vapi.websocket` transport |
+| Suite won't start | Verify all simulations in the suite exist and have valid scenarios/personalities |
 
 ### Common errors
 
@@ -558,33 +709,61 @@ curl -X GET "https://api.vapi.ai/simulation/run?suiteId=suite-xyz" \
 - Verify API keys are valid
 - Test the assistant manually before running simulations
 
-**Success criteria failures:**
+**Evaluation failures:**
 
-- Review the conversation recording to understand what happened
-- Adjust criteria to be more specific or more flexible as needed
+- Review the conversation transcript to understand what happened
+- Adjust structured output schemas to better match expected responses
 - Consider whether the personality is making the test unrealistically difficult
 
 <Warning>
   If simulations consistently fail, test your assistant manually first to ensure it's working correctly before debugging the simulation configuration.
 </Warning>
 
+## API reference
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/eval/simulation/personality` | POST | Create a personality |
+| `/eval/simulation/personality` | GET | List personalities |
+| `/eval/simulation/personality/:id` | GET | Get a personality |
+| `/eval/simulation/personality/:id` | PATCH | Update a personality |
+| `/eval/simulation/personality/:id` | DELETE | Delete a personality |
+| `/eval/simulation/scenario` | POST | Create a scenario |
+| `/eval/simulation/scenario` | GET | List scenarios |
+| `/eval/simulation/scenario/:id` | GET | Get a scenario |
+| `/eval/simulation/scenario/:id` | PATCH | Update a scenario |
+| `/eval/simulation/scenario/:id` | DELETE | Delete a scenario |
+| `/eval/simulation` | POST | Create a simulation |
+| `/eval/simulation` | GET | List simulations |
+| `/eval/simulation/:id` | GET | Get a simulation |
+| `/eval/simulation/:id` | PATCH | Update a simulation |
+| `/eval/simulation/:id` | DELETE | Delete a simulation |
+| `/eval/simulation/suite` | POST | Create a suite |
+| `/eval/simulation/suite` | GET | List suites |
+| `/eval/simulation/suite/:id` | GET | Get a suite |
+| `/eval/simulation/suite/:id` | PATCH | Update a suite |
+| `/eval/simulation/suite/:id` | DELETE | Delete a suite |
+| `/eval/simulation/run` | POST | Start a simulation run |
+| `/eval/simulation/run` | GET | List runs |
+| `/eval/simulation/run/:id` | GET | Get run details |
+
 ## Next steps
 
 <CardGroup cols={2}>
+  <Card
+    title="Advanced simulation testing"
+    icon="flask"
+    href="/observability/simulations-advanced"
+  >
+    Learn about tool mocks, hooks, CI/CD integration, and testing strategies
+  </Card>
+
   <Card
     title="Assistants guide"
     icon="robot"
     href="/assistants/quickstart"
   >
     Create and configure assistants to test
-  </Card>
-
-  <Card
-    title="Squads documentation"
-    icon="users"
-    href="/squads"
-  >
-    Build multi-agent squads and test handoffs
   </Card>
 
   <Card
@@ -596,11 +775,11 @@ curl -X GET "https://api.vapi.ai/simulation/run?suiteId=suite-xyz" \
   </Card>
 
   <Card
-    title="Prompting guide"
-    icon="pen-to-square"
-    href="/prompting-guide"
+    title="Structured outputs"
+    icon="table"
+    href="/assistants/structured-outputs"
   >
-    Improve your assistant's responses with better prompts
+    Learn how to define structured outputs for evaluations
   </Card>
 </CardGroup>
 
@@ -609,15 +788,35 @@ curl -X GET "https://api.vapi.ai/simulation/run?suiteId=suite-xyz" \
 <Tip>
   **Best practices for effective simulation testing:**
 
-  - **Start simple** - Begin with straightforward scenarios before testing edge cases
+  - **Start with chat mode** - Use `vapi.webchat` for rapid iteration, then validate with voice
   - **Use realistic personalities** - Model your test callers after actual customer types
-  - **Define clear success criteria** - Specific, measurable criteria lead to reliable tests
+  - **Define clear evaluations** - Use specific, measurable structured outputs
   - **Group related tests** - Organize suites by feature or user flow
   - **Monitor trends** - Track pass rates over time to catch regressions early
   - **Test after changes** - Run your simulation suites after updating prompts or tools
   - **Listen to recordings** - Audio recordings reveal issues that metrics alone miss
   - **Iterate on failures** - Use failed tests to improve both your assistant and test design
 </Tip>
+
+## Frequently asked questions
+
+<AccordionGroup>
+  <Accordion title="Is running simulations free?" icon="dollar-sign">
+    No, simulations cost the same as regular calls. Both the tester and target assistants are charged normally for LLM, TTS, and STT usage. Chat mode (`vapi.webchat`) is typically cheaper since it doesn't use voice processing.
+  </Accordion>
+
+  <Accordion title="What's the difference between Simulations and Evals?" icon="scale-balanced">
+    **Simulations** use AI-powered testers that have actual conversations with your assistant, producing real call recordings and transcripts. **Evals** use mock conversations with predefined messages and judge the responses. Use Simulations for realistic end-to-end testing; use Evals for faster, more controlled validation.
+  </Accordion>
+
+  <Accordion title="Can I use my own structured outputs?" icon="table">
+    Yes! You can either define inline structured outputs in your scenario evaluations, or reference existing structured outputs by ID using the `structuredOutputId` field.
+  </Accordion>
+
+  <Accordion title="How do I test squad handoffs?" icon="users">
+    Create a simulation that targets a squad instead of an assistant. Use the `target.type: "squad"` and `target.squadId` fields when creating a run.
+  </Accordion>
+</AccordionGroup>
 
 ## Get help
 
