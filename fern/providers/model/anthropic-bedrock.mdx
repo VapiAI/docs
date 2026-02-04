@@ -1,0 +1,239 @@
+---
+title: Anthropic Bedrock
+subtitle: Use Anthropic Claude models via AWS Bedrock with your own AWS resources
+slug: providers/model/anthropic-bedrock
+---
+
+**What is Anthropic Bedrock?**
+
+Amazon Bedrock is a fully managed service that provides access to foundation models from leading AI companies, including Anthropic's Claude models. With Bedrock, you can use Claude models through AWS infrastructure, benefiting from enterprise-grade security, regional data residency, and seamless integration with your existing AWS environment.
+
+**Custom Anthropic Bedrock Integration with Vapi:**
+
+Vapi's Anthropic Bedrock integration allows you to connect your own AWS Bedrock resources to power voice assistants with Claude models. This enables you to maintain full control over your AWS billing, use your own rate limits, and ensure data stays within your AWS environment.
+
+## Prerequisites
+
+Before configuring Anthropic Bedrock with Vapi, ensure you have:
+
+- An active AWS account with Bedrock access enabled
+- Model access granted for Anthropic Claude models in your Bedrock console
+- IAM permissions to create roles and policies
+
+## Configuration steps
+
+<Steps>
+  <Step title="Create an IAM Role in AWS">
+    Create a new IAM role that Vapi will assume to access your Bedrock resources.
+
+    1. Go to the **IAM Console** in AWS
+    2. Navigate to **Roles** and click **Create role**
+    3. Select **Custom trust policy** as the trusted entity type
+    4. Add the trust policy from the next step
+
+    <Note>
+    Choose a descriptive name for your role, such as `VapiBedrockRole`, so you can easily identify its purpose.
+    </Note>
+  </Step>
+
+  <Step title="Attach the Trust Policy">
+    Configure the trust policy to allow Vapi's AWS account to assume this role.
+
+    <Tabs>
+      <Tab title="Without External ID">
+        Use this simpler policy if you don't need the additional security of an External ID:
+
+        ```json title="Trust Policy (Basic)"
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::533267069243:root"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+        ```
+      </Tab>
+      <Tab title="With External ID">
+        Use this policy if you want the additional security of an External ID:
+
+        ```json title="Trust Policy (With External ID)"
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::533267069243:root"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "sts:ExternalId": "YOUR_EXTERNAL_ID"
+                }
+              }
+            }
+          ]
+        }
+        ```
+
+        Replace `YOUR_EXTERNAL_ID` with your chosen value. You'll use the same value when creating the Vapi credential.
+      </Tab>
+    </Tabs>
+
+    <Note>
+    **About External ID**: The External ID is an optional security feature that provides an additional layer of protection for cross-account access. If you choose to use one, specify the same value in both your IAM trust policy and the Vapi credential configuration.
+    </Note>
+  </Step>
+
+  <Step title="Attach the Permissions Policy">
+    Create and attach a permissions policy that grants access to Bedrock model invocation.
+
+    <Tabs>
+      <Tab title="Broad Access">
+        Use this policy to grant access to all Anthropic models across all regions:
+
+        ```json title="Permissions Policy (All Models)"
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream"
+              ],
+              "Resource": [
+                "arn:aws:bedrock:*::foundation-model/anthropic.*",
+                "arn:aws:bedrock:*:*:inference-profile/us.anthropic.*"
+              ]
+            }
+          ]
+        }
+        ```
+      </Tab>
+      <Tab title="Restrictive Access">
+        Use this policy to limit access to specific models and regions:
+
+        ```json title="Permissions Policy (Specific Models)"
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream"
+              ],
+              "Resource": [
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-*",
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-7-sonnet-*",
+                "arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-3-5-sonnet-*",
+                "arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-3-7-sonnet-*"
+              ]
+            }
+          ]
+        }
+        ```
+
+        <Tip>
+        Replace `us-east-1` with your preferred AWS region. You can also add or remove specific model versions based on your needs.
+        </Tip>
+      </Tab>
+    </Tabs>
+
+    To attach the policy:
+    1. In the IAM Console, go to **Policies** and click **Create policy**
+    2. Select **JSON** and paste your chosen policy
+    3. Name the policy (e.g., `VapiBedrockInvokePolicy`)
+    4. Attach the policy to your IAM role
+  </Step>
+
+  <Step title="Create the Vapi Credential">
+    Use the Vapi API to create a credential with your AWS role information:
+
+    ```bash title="Create Credential via API"
+    curl -X POST "https://api.vapi.ai/credential" \
+      -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "provider": "anthropic-bedrock",
+        "region": "us-east-1",
+        "authenticationPlan": {
+          "type": "aws-sts",
+          "roleArn": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/VapiBedrockRole",
+          "externalId": "your-optional-external-id"
+        }
+      }'
+    ```
+
+    | Field | Description |
+    |-------|-------------|
+    | `provider` | Must be `anthropic-bedrock` |
+    | `region` | AWS region where Bedrock is enabled (e.g., `us-east-1`) |
+    | `authenticationPlan.type` | Must be `aws-sts` for role assumption |
+    | `authenticationPlan.roleArn` | The ARN of the IAM role you created |
+    | `authenticationPlan.externalId` | Optional: Your chosen External ID for additional security |
+
+    <Tip>
+    If you don't need an External ID, you can remove the `Condition` block from your trust policy entirely.
+    </Tip>
+  </Step>
+</Steps>
+
+## Example credential configuration
+
+Here is a complete example of a Vapi credential configuration for Anthropic Bedrock:
+
+```json title="Credential Configuration"
+{
+  "provider": "anthropic-bedrock",
+  "region": "us-east-1",
+  "authenticationPlan": {
+    "type": "aws-sts",
+    "roleArn": "arn:aws:iam::123456789012:role/VapiBedrockRole",
+    "externalId": "my-secure-external-id"
+  }
+}
+```
+
+## Benefits of using Anthropic Bedrock
+
+**Enterprise security:**
+- Data residency control with regional deployments
+- Enterprise-grade security and compliance (SOC 2, HIPAA eligible, etc.)
+- Private VPC connectivity options through AWS
+
+**Custom rate limits:**
+- Use your own AWS Bedrock quotas and rate limits
+- Avoid shared resource constraints
+- Predictable costs and billing through AWS
+
+**AWS ecosystem integration:**
+- Seamless integration with existing AWS infrastructure
+- Use AWS CloudWatch for monitoring and logging
+- Leverage AWS IAM for fine-grained access control
+
+## Troubleshooting
+
+### Common error: "Access Denied"
+- **Cause**: The IAM role trust policy doesn't allow Vapi to assume the role
+- **Solution**: Verify the trust policy includes Vapi's AWS account ID (`533267069243`) and the correct External ID
+
+### Common error: "Invalid External ID"
+- **Cause**: The External ID in your trust policy doesn't match the one in your Vapi credential
+- **Solution**: Ensure the `externalId` value in your Vapi credential exactly matches the `sts:ExternalId` in your IAM trust policy. If you're not using an External ID, remove the `Condition` block from your trust policy
+
+### Common error: "Model access denied"
+- **Cause**: The IAM permissions policy doesn't grant access to the requested model, or model access isn't enabled in Bedrock
+- **Solution**:
+  1. Verify the permissions policy includes the correct model ARNs
+  2. Ensure you've enabled access to the model in the AWS Bedrock console
+
+### Common error: "Region not supported"
+- **Cause**: The specified region doesn't have Bedrock or the requested model available
+- **Solution**: Use a supported region such as `us-east-1`, `us-west-2`, or `eu-west-1`
