@@ -1,0 +1,822 @@
+---
+title: Simulations advanced
+subtitle: Master testing strategies and best practices for AI voice agent simulations
+slug: observability/simulations-advanced
+availability: pre-release
+---
+
+## Overview
+
+This guide covers advanced simulation strategies, testing patterns, and best practices for building robust test suites that ensure your AI voice agents work reliably in production.
+
+**You'll learn:**
+
+- Advanced scenario configuration (tool mocks, hooks)
+- Strategic testing approaches (smoke, regression, edge cases)
+- Performance optimization techniques
+- CI/CD integration strategies
+- Maintenance and troubleshooting methods
+
+## Advanced scenario configuration
+
+### Tool mocks
+
+Mock tool call responses at the scenario level to test specific paths without calling real APIs. This is useful for:
+
+- Testing error handling paths
+- Simulating unavailable services
+- Deterministic test results
+- Faster test execution (no real API calls)
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to scenario">
+        1. Go to **Simulations** → **Scenarios**
+        2. Open the scenario you want to configure
+      </Step>
+
+      <Step title="Add tool mocks">
+        1. Scroll to **Tool Mocks** section
+        2. Click **Add Tool Mock**
+        3. **Tool Name**: Enter the exact function name (e.g., `bookAppointment`)
+        4. **Result**: Enter the JSON response to return:
+           ```json
+           {"status": "success", "confirmationId": "MOCK-12345"}
+           ```
+        5. **Enabled**: Toggle on/off to control when mock is active
+        6. Click **Save**
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Book Appointment - API Error Path",
+    "instructions": "Try to book an appointment and handle the error gracefully when the system is unavailable.",
+    "evaluations": [
+      {
+        "structuredOutput": {
+          "name": "handled_error_gracefully",
+          "schema": {
+            "type": "boolean",
+            "description": "Whether the assistant apologized and offered alternatives"
+          }
+        },
+        "comparator": "=",
+        "value": true
+      }
+    ],
+    "toolMocks": [
+      {
+        "toolName": "bookAppointment",
+        "result": "{\"error\": \"Service temporarily unavailable\", \"code\": \"503\"}",
+        "enabled": true
+      }
+    ]
+  }'
+```
+  </Tab>
+</Tabs>
+
+**Common tool mock patterns:**
+
+<AccordionGroup>
+  <Accordion title="Success response">
+    ```json
+    {
+      "toolName": "bookAppointment",
+      "result": "{\"status\": \"success\", \"confirmationId\": \"APT-12345\", \"datetime\": \"2024-01-20T14:00:00Z\"}",
+      "enabled": true
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Error response">
+    ```json
+    {
+      "toolName": "bookAppointment",
+      "result": "{\"error\": \"Time slot no longer available\", \"availableSlots\": [\"14:30\", \"15:00\", \"15:30\"]}",
+      "enabled": true
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Timeout/unavailable">
+    ```json
+    {
+      "toolName": "checkInventory",
+      "result": "{\"error\": \"Request timeout\", \"code\": \"ETIMEDOUT\"}",
+      "enabled": true
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Partial success">
+    ```json
+    {
+      "toolName": "processOrder",
+      "result": "{\"status\": \"partial\", \"itemsProcessed\": 2, \"itemsFailed\": 1, \"failedReason\": \"Item out of stock\"}",
+      "enabled": true
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  **Tool mock tips:**
+  - Mock tool names must exactly match the function name configured in your assistant's tools
+  - Use realistic error responses that match your actual API error formats
+  - Create separate scenarios for success paths and error paths
+  - Disable mocks (`enabled: false`) to test against real APIs
+</Tip>
+
+### Simulation hooks
+
+Trigger actions on simulation lifecycle events. Hooks are useful for:
+
+- Notifying external systems when tests start/end
+- Logging test execution to your own systems
+- Triggering follow-up workflows
+- Custom analytics and reporting
+
+<Warning>
+  **Hooks are only supported in voice mode.** Hooks require `vapi.websocket` transport and will not trigger with `vapi.webchat` (chat mode).
+</Warning>
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Add hooks to scenario">
+        1. Go to **Simulations** → **Scenarios**
+        2. Open your scenario
+        3. Scroll to **Hooks** section
+        4. Click **Add Hook**
+      </Step>
+
+      <Step title="Configure hook">
+        1. **Event**: Select when to trigger:
+           - `simulation.run.started` - When simulation run begins
+           - `simulation.run.ended` - When simulation run ends
+        2. **Action Type**: Select `webhook`
+        3. **Server URL**: Enter your webhook endpoint
+        4. Click **Save**
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test with Lifecycle Hooks",
+    "instructions": "Complete the booking flow as a standard customer.",
+    "evaluations": [
+      {
+        "structuredOutput": {
+          "name": "booking_completed",
+          "schema": { "type": "boolean" }
+        },
+        "comparator": "=",
+        "value": true
+      }
+    ],
+    "hooks": [
+      {
+        "on": "simulation.run.started",
+        "do": [
+          {
+            "type": "webhook",
+            "server": {
+              "url": "https://your-server.com/webhooks/simulation-started"
+            }
+          }
+        ]
+      },
+      {
+        "on": "simulation.run.ended",
+        "do": [
+          {
+            "type": "webhook",
+            "server": {
+              "url": "https://your-server.com/webhooks/simulation-ended"
+            },
+            "include": {
+              "transcript": true,
+              "messages": true,
+              "recordingUrl": true
+            }
+          }
+        ]
+      }
+    ]
+  }'
+```
+  </Tab>
+</Tabs>
+
+**Webhook payload examples:**
+
+```json
+// simulation.run.started webhook payload
+{
+  "event": "simulation.run.started",
+  "simulationId": "550e8400-e29b-41d4-a716-446655440003",
+  "runId": "550e8400-e29b-41d4-a716-446655440007",
+  "timestamp": "2024-01-15T09:50:05Z"
+}
+
+// simulation.run.ended webhook payload
+{
+  "event": "simulation.run.ended",
+  "simulationId": "550e8400-e29b-41d4-a716-446655440003",
+  "runId": "550e8400-e29b-41d4-a716-446655440007",
+  "timestamp": "2024-01-15T09:52:30Z",
+  "duration": 145,
+  "status": "passed",
+  "transcript": "...",          // if include.transcript = true
+  "messages": [...],            // if include.messages = true
+  "recordingUrl": "https://..." // if include.recordingUrl = true
+}
+```
+
+### Using existing structured outputs
+
+Instead of defining inline structured outputs in each scenario, you can reference structured outputs you've already created. This provides:
+
+- Reusability across multiple scenarios
+- Centralized management of evaluation criteria
+- Consistency in how data is extracted
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Structured Outputs** in the sidebar
+    2. Create a new structured output or find an existing one
+    3. Copy the **ID**
+    4. In your scenario, select **Use Existing** when adding an evaluation
+    5. Paste the structured output ID
+  </Tab>
+
+  <Tab title="cURL">
+```bash
+# First, create a reusable structured output
+curl -X POST "https://api.vapi.ai/structured-output" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "appointment_booked",
+    "schema": {
+      "type": "boolean",
+      "description": "Whether an appointment was successfully booked during the call"
+    }
+  }'
+
+# Response includes the ID
+# { "id": "so-abc123", ... }
+
+# Then reference it in your scenario
+curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Book Appointment",
+    "instructions": "Call to book an appointment for next Monday.",
+    "evaluations": [
+      {
+        "structuredOutputId": "so-abc123",
+        "comparator": "=",
+        "value": true
+      }
+    ]
+  }'
+```
+  </Tab>
+</Tabs>
+
+<Note>
+  **When to use existing vs inline:**
+  - **Existing (by ID)**: When the same evaluation criteria is used across multiple scenarios
+  - **Inline**: For scenario-specific evaluations that won't be reused
+</Note>
+
+## Testing strategies
+
+### Smoke tests
+
+Quick validation that core functionality works. Run these first to catch obvious issues.
+
+**Purpose:** Verify your assistant responds and basic conversation flow works before running comprehensive tests.
+
+```json
+{
+  "name": "Smoke Test - Basic Response",
+  "instructions": "Say hello and ask if the assistant can hear you.",
+  "evaluations": [
+    {
+      "structuredOutput": {
+        "name": "assistant_responded",
+        "schema": {
+          "type": "boolean",
+          "description": "Whether the assistant provided any response"
+        }
+      },
+      "comparator": "=",
+      "value": true
+    }
+  ]
+}
+```
+
+**Characteristics:**
+- Minimal evaluation criteria (just check for any response)
+- Fast execution (simple instructions)
+- Run before detailed tests
+- Use chat mode for speed
+
+**When to use:**
+- Before running expensive voice test suites
+- After deploying configuration changes
+- As health checks in monitoring
+- Quick validation during development
+
+### Regression tests
+
+Ensure fixes and updates don't break existing functionality.
+
+**Purpose:** Validate that known issues stay fixed and features keep working.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Name scenarios with "Regression: " prefix
+    2. Include issue ticket number in the name
+    3. Add the exact scenario that previously failed
+    4. Document what was fixed
+
+    Example:
+    - Name: "Regression: Appointment Parsing Bug #1234"
+    - Instructions: Scenario that triggered the bug
+  </Tab>
+
+  <Tab title="cURL">
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Regression: Date Parsing Bug #1234",
+    "instructions": "Request an appointment for 3/15. The assistant should correctly parse this as March 15th, not fail or misinterpret the date.",
+    "evaluations": [
+      {
+        "structuredOutput": {
+          "name": "date_parsed_correctly",
+          "schema": {
+            "type": "boolean",
+            "description": "Whether the date 3/15 was correctly understood as March 15th"
+          }
+        },
+        "comparator": "=",
+        "value": true
+      }
+    ]
+  }'
+```
+  </Tab>
+</Tabs>
+
+**Best practices:**
+- Name tests after bugs they prevent
+- Include ticket/issue numbers
+- Add regression tests when fixing bugs
+- Run full regression suite before major releases
+
+### Edge case testing
+
+Test boundary conditions and unusual inputs your assistant might encounter.
+
+**Common edge cases to test:**
+
+<AccordionGroup>
+  <Accordion title="Confused or unclear requests">
+    ```json
+    {
+      "name": "Edge Case - Ambiguous Request",
+      "instructions": "Make a vague, unclear request like 'I need something done' without specifying what you want.",
+      "evaluations": [
+        {
+          "structuredOutput": {
+            "name": "asked_for_clarification",
+            "schema": {
+              "type": "boolean",
+              "description": "Whether the assistant asked for more details"
+            }
+          },
+          "comparator": "=",
+          "value": true
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Rapid topic changes">
+    ```json
+    {
+      "name": "Edge Case - Topic Switch",
+      "instructions": "Start asking about booking an appointment, then suddenly switch to asking about cancellation policies mid-conversation.",
+      "evaluations": [
+        {
+          "structuredOutput": {
+            "name": "handled_topic_switch",
+            "schema": {
+              "type": "boolean",
+              "description": "Whether the assistant smoothly transitioned to the new topic"
+            }
+          },
+          "comparator": "=",
+          "value": true
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Interruptions">
+    ```json
+    {
+      "name": "Edge Case - Interruption Handling",
+      "instructions": "Interrupt the assistant mid-sentence with a new question. See if it handles the interruption gracefully.",
+      "evaluations": [
+        {
+          "structuredOutput": {
+            "name": "handled_interruption",
+            "schema": {
+              "type": "boolean",
+              "description": "Whether the assistant stopped and addressed the interruption"
+            }
+          },
+          "comparator": "=",
+          "value": true
+        }
+      ]
+    }
+    ```
+
+    <Note>This edge case requires voice mode (`vapi.websocket`) to test actual audio interruptions.</Note>
+  </Accordion>
+
+  <Accordion title="Invalid data input">
+    ```json
+    {
+      "name": "Edge Case - Invalid Date",
+      "instructions": "Try to book an appointment for 'the 45th of Octember' - an obviously invalid date.",
+      "evaluations": [
+        {
+          "structuredOutput": {
+            "name": "handled_invalid_date",
+            "schema": {
+              "type": "boolean",
+              "description": "Whether the assistant politely asked for a valid date"
+            }
+          },
+          "comparator": "=",
+          "value": true
+        }
+      ]
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+**Edge case categories to cover:**
+- **Input boundaries:** Empty, maximum length, special characters
+- **Data formats:** Invalid dates, malformed phone numbers, unusual names
+- **Conversation patterns:** Interruptions, topic changes, contradictions
+- **Emotional scenarios:** Frustrated caller, confused caller, impatient caller
+
+## Best practices
+
+### Evaluation design principles
+
+<CardGroup cols={2}>
+  <Card title="Single responsibility" icon="bullseye">
+    Each evaluation should test one specific outcome.
+
+    ✅ **Good:** "Was the appointment booked?"
+
+    ❌ **Bad:** "Was the appointment booked, confirmed, and email sent?"
+  </Card>
+
+  <Card title="Clear naming" icon="tag">
+    Use descriptive names that explain what's being tested.
+
+    ✅ **Good:** "Booking - Handles Unavailable Slot"
+
+    ❌ **Bad:** "Test 1" or "Scenario ABC"
+  </Card>
+
+  <Card title="Realistic personalities" icon="user">
+    Model test personalities after actual customer types.
+
+    Consider: decisive, confused, impatient, detail-oriented, non-native speakers
+  </Card>
+
+  <Card title="Measurable criteria" icon="chart-bar">
+    Use boolean or numeric structured outputs that produce clear pass/fail results.
+
+    Avoid subjective criteria that are hard to evaluate consistently.
+  </Card>
+</CardGroup>
+
+### Choosing voice vs chat mode
+
+| Scenario | Recommended Mode | Reason |
+| --- | --- | --- |
+| Rapid iteration during development | Chat (`vapi.webchat`) | Faster, cheaper |
+| Testing speech recognition accuracy | Voice (`vapi.websocket`) | Tests actual STT |
+| Testing voice/TTS quality | Voice (`vapi.websocket`) | Tests actual TTS |
+| Testing interruption handling | Voice (`vapi.websocket`) | Requires audio |
+| CI/CD pipeline tests | Chat (`vapi.webchat`) | Speed and cost |
+| Pre-production validation | Voice (`vapi.websocket`) | Full end-to-end |
+| Testing hooks/webhooks | Voice (`vapi.websocket`) | Hooks require voice |
+
+## CI/CD integration
+
+Automate simulation runs in your deployment pipeline.
+
+### Basic workflow
+
+```yaml
+# .github/workflows/test-assistant.yml
+name: Test Assistant Changes
+
+on:
+  pull_request:
+    paths:
+      - 'assistants/**'
+      - 'prompts/**'
+
+jobs:
+  run-simulations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run smoke tests (chat mode)
+        run: |
+          # Create a simulation run
+          RUN_ID=$(curl -s -X POST "https://api.vapi.ai/eval/simulation/run" \
+            -H "Authorization: Bearer ${{ secrets.VAPI_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "simulations": [{"type": "simulationSuite", "simulationSuiteId": "${{ vars.SMOKE_TEST_SUITE_ID }}"}],
+              "target": {"type": "assistant", "assistantId": "${{ vars.STAGING_ASSISTANT_ID }}"},
+              "transport": {"provider": "vapi.webchat"}
+            }' | jq -r '.id')
+
+          echo "Run ID: $RUN_ID"
+
+          # Poll for completion
+          while true; do
+            STATUS=$(curl -s "https://api.vapi.ai/eval/simulation/run/$RUN_ID" \
+              -H "Authorization: Bearer ${{ secrets.VAPI_API_KEY }}" | jq -r '.status')
+
+            if [ "$STATUS" = "ended" ]; then
+              break
+            fi
+
+            sleep 10
+          done
+
+          # Check results
+          RESULT=$(curl -s "https://api.vapi.ai/eval/simulation/run/$RUN_ID" \
+            -H "Authorization: Bearer ${{ secrets.VAPI_API_KEY }}")
+
+          PASSED=$(echo $RESULT | jq '.itemCounts.passed')
+          FAILED=$(echo $RESULT | jq '.itemCounts.failed')
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "Simulations failed: $FAILED"
+            exit 1
+          fi
+
+          echo "All simulations passed: $PASSED"
+```
+
+### Advanced patterns
+
+<AccordionGroup>
+  <Accordion title="Staging validation before production">
+    Run full simulation suite against staging before promoting to production:
+
+    ```bash
+    # Run comprehensive tests against staging
+    ./scripts/run-simulation-suite.sh \
+      --suite-id "$REGRESSION_SUITE_ID" \
+      --target-assistant "$STAGING_ASSISTANT_ID" \
+      --transport "vapi.websocket" \
+      --iterations 3
+
+    # Only deploy to production if all pass
+    if [ $? -eq 0 ]; then
+      ./scripts/deploy-to-production.sh
+    fi
+    ```
+  </Accordion>
+
+  <Accordion title="Scheduled nightly regression">
+    Run full regression suite nightly:
+
+    ```yaml
+    # .github/workflows/nightly-regression.yml
+    on:
+      schedule:
+        - cron: '0 2 * * *'  # 2 AM daily
+
+    jobs:
+      regression-suite:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Run full regression (voice mode)
+            run: ./scripts/run-simulation-suite.sh --full-regression
+
+          - name: Notify on failures
+            if: failure()
+            run: |
+              # Send Slack notification
+              curl -X POST $SLACK_WEBHOOK_URL \
+                -d '{"text": "Nightly simulation regression failed!"}'
+    ```
+  </Accordion>
+
+  <Accordion title="Quality gates">
+    Block deployment if pass rate falls below threshold:
+
+    ```bash
+    RESULT=$(curl -s "https://api.vapi.ai/eval/simulation/run/$RUN_ID" \
+      -H "Authorization: Bearer $VAPI_API_KEY")
+
+    TOTAL=$(echo $RESULT | jq '.itemCounts.total')
+    PASSED=$(echo $RESULT | jq '.itemCounts.passed')
+
+    PASS_RATE=$((PASSED * 100 / TOTAL))
+
+    if [ $PASS_RATE -lt 95 ]; then
+      echo "Pass rate $PASS_RATE% below threshold 95%"
+      exit 1
+    fi
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Maintenance strategies
+
+### Regular review cycle
+
+<Steps>
+  <Step title="Weekly: Review failed tests">
+    Investigate all failures. Update tests if requirements changed, or fix assistant if behavior regressed.
+  </Step>
+
+  <Step title="Monthly: Audit test coverage">
+    Review simulation suite completeness:
+    - All critical user flows covered?
+    - New features have tests?
+    - Deprecated features removed?
+  </Step>
+
+  <Step title="Quarterly: Refactor and optimize">
+    - Remove duplicate simulations
+    - Update outdated scenarios
+    - Optimize personalities for cost
+    - Document test rationale
+  </Step>
+</Steps>
+
+### When to update simulations
+
+| Trigger | Action |
+| --- | --- |
+| Assistant prompt changes | Review affected simulations |
+| New feature added | Create simulations for new feature |
+| Bug fixed | Add regression test |
+| User feedback reveals edge case | Add edge case simulation |
+| Business requirements change | Update evaluation criteria |
+
+## Troubleshooting
+
+### Common issues
+
+| Issue | Cause | Solution |
+| --- | --- | --- |
+| Simulation always fails | Evaluation criteria too strict | Review structured output schema and expected values |
+| Run stuck in "running" | Assistant not responding | Check assistant configuration, verify credentials |
+| Inconsistent results | Non-deterministic behavior | Increase iterations, use more specific instructions |
+| No audio in recording | Using chat mode | Switch to `vapi.websocket` transport |
+| Hooks not triggering | Using chat mode | Hooks require `vapi.websocket` transport |
+| Tool mocks not working | Wrong tool name | Verify tool name matches exactly |
+
+### Debugging tips
+
+<Steps>
+  <Step title="Check run status">
+    ```bash
+    curl "https://api.vapi.ai/eval/simulation/run/$RUN_ID" \
+      -H "Authorization: Bearer $VAPI_API_KEY" | jq '.status, .endedReason'
+    ```
+  </Step>
+
+  <Step title="Review individual run items">
+    ```bash
+    curl "https://api.vapi.ai/eval/simulation/run/$RUN_ID/item" \
+      -H "Authorization: Bearer $VAPI_API_KEY" | jq '.[].status'
+    ```
+  </Step>
+
+  <Step title="Check conversation transcript">
+    In the Dashboard, click on a failed run item to see the full conversation transcript and evaluation results.
+  </Step>
+
+  <Step title="Test assistant manually">
+    If simulations consistently fail, test your assistant manually in the Dashboard to verify it's working correctly.
+  </Step>
+</Steps>
+
+### Getting help
+
+**Include these details when reporting issues:**
+- Simulation run ID
+- Scenario and personality IDs
+- Transport mode used (voice/chat)
+- Expected vs actual behavior
+- Assistant configuration
+
+**Resources:**
+- [Simulations Quickstart](/observability/simulations-quickstart)
+- [Discord Community](https://discord.gg/pUFNcf2WmH)
+- [Support](mailto:support@vapi.ai)
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Simulations quickstart"
+    icon="rocket"
+    href="/observability/simulations-quickstart"
+  >
+    Return to quickstart guide for basic setup
+  </Card>
+
+  <Card
+    title="Evals quickstart"
+    icon="clipboard-check"
+    href="/observability/evals-quickstart"
+  >
+    Learn about chat-based testing with mock conversations
+  </Card>
+
+  <Card
+    title="Structured outputs"
+    icon="table"
+    href="/assistants/structured-outputs"
+  >
+    Learn how to define structured outputs for evaluations
+  </Card>
+
+  <Card
+    title="Assistants guide"
+    icon="robot"
+    href="/assistants/quickstart"
+  >
+    Create and configure assistants to test
+  </Card>
+</CardGroup>
+
+## Summary
+
+<Tip>
+  **Key takeaways for advanced simulation testing:**
+
+  **Configuration:**
+  - Use tool mocks to test error paths without real API calls
+  - Use hooks for external notifications (voice mode only)
+  - Reference existing structured outputs for consistency
+
+  **Testing strategy:**
+  - Start with smoke tests, then regression, then edge cases
+  - Use chat mode for speed, voice mode for final validation
+  - Create personalities based on real customer types
+
+  **CI/CD:**
+  - Automate smoke tests in PR pipelines
+  - Run full regression before production deploys
+  - Set quality gate thresholds
+
+  **Maintenance:**
+  - Review failures weekly
+  - Audit coverage monthly
+  - Add regression tests when fixing bugs
+</Tip>
