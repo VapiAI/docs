@@ -1,43 +1,50 @@
 ---
-title: Handoff Tool
-subtitle: 'Transfer the call to another assistant.'
+title: Handoff tool
+subtitle: 'Transfer the call to another assistant, squad, or dynamically determined destination.'
 slug: squads/handoff
 ---
 
-The handoff tool enables seamless call transfers between assistants in a multi-agent system. This guide covers all configuration patterns and use cases.
+The handoff tool enables seamless call transfers between assistants in a multi-agent system. This guide covers all configuration patterns, destination types, context management, and advanced features.
 
-## Table of Contents
+## Table of contents
+
 - [Overview](#overview)
-- [System Prompt Best Practices](#system-prompt-best-practices)
-- [Basic Configuration](#basic-configuration)
-- [Multiple Destinations](#multiple-destinations)
-- [Dynamic Handoffs](#dynamic-handoffs)
-- [Context Engineering](#context-engineering)
-- [Variable Extraction](#variable-extraction)
-- [Custom Function Definitions](#custom-function-definitions)
+- [System prompt best practices](#system-prompt-best-practices)
+- [Basic configuration](#basic-configuration)
+- [Multiple destinations](#multiple-destinations)
+- [Dynamic handoffs](#dynamic-handoffs)
+- [Squad destinations](#squad-destinations)
+- [Context engineering](#context-engineering)
+- [Variable extraction](#variable-extraction)
+- [Tool messages](#tool-messages)
+- [Rejection plan](#rejection-plan)
+- [Custom function definitions](#custom-function-definitions)
 
 ## Overview
 
-The handoff tool allows assistants to transfer calls to other assistants. Key features:
-- Transfer to specific assistants by ID or name (in a Squad)
-- Support for multiple destination options
-- Dynamic destination determination via webhook
-- Context manipulation during handoff
-- Variable extraction from conversations for subsequent assistants to use
+The handoff tool transfers calls between assistants during a conversation. You can:
 
-## System Prompt Best Practices
+- Transfer to a specific assistant by ID or by name (within a squad)
+- Transfer to an entire squad with a designated entry assistant
+- Support multiple destination options for the AI to choose from
+- Determine the destination dynamically at runtime via a webhook
+- Control what conversation history the next assistant receives
+- Extract structured variables from the conversation for downstream use
+- Configure spoken messages for each phase of the handoff
+- Reject handoff attempts based on conversation state
 
-When using the handoff tool, add this to your system prompt for optimal agent coordination:
-https://openai.github.io/openai-agents-python/ref/extensions/handoff_prompt/
+## System prompt best practices
+
+When using the handoff tool, add this to your system prompt for optimal agent coordination (adapted from the [OpenAI Agents Handoff Prompt](https://openai.github.io/openai-agents-python/ref/extensions/handoff_prompt/)):
 
 ```markdown
 # System context
 
-You are part of a multi-agent system designed to make agent coordination and execution easy. 
-Agents uses two primary abstraction: **Agents** and **Handoffs**. An agent encompasses 
-instructions and tools and can hand off a conversation to another agent when appropriate. 
-Handoffs are achieved by calling a handoff function, generally named `handoff_to_<agent_name>`. 
-Handoffs between agents are handled seamlessly in the background; do not mention or draw 
+You are part of a multi-agent system designed to make agent coordination and execution easy.
+Agents uses two primary abstraction: **Agents** and **Handoffs**. An agent encompasses
+instructions and tools and can hand off a conversation to another agent when appropriate.
+Handoffs are achieved by calling a handoff function, generally named `handoff_to_<agent_name>`.
+Handoffs between agents are handled seamlessly in the background; do not mention or draw
 attention to these handoffs in your conversation with the user.
 
 # Agent context
@@ -45,11 +52,12 @@ attention to these handoffs in your conversation with the user.
 {put your agent system prompt here}
 ```
 
-## Basic Configuration
+## Basic configuration
 
-### 1. Single Destination Handoff
+### Single destination handoff
 
-#### Using Assistant ID
+#### Using assistant ID
+
 ```json
 {
   "tools": [
@@ -70,7 +78,8 @@ attention to these handoffs in your conversation with the user.
 }
 ```
 
-#### Using Assistant Name (for Squad Members)
+#### Using assistant name (for squad members)
+
 ```json
 {
   "tools": [
@@ -91,11 +100,15 @@ attention to these handoffs in your conversation with the user.
 }
 ```
 
-## Multiple Destinations
+<Note>
+Each assistant destination also supports **assistantOverrides** to override settings on the destination assistant, and an inline **assistant** property to create a transient assistant without saving it first. See the [API reference](/api-reference/tools/create#request.body.HandoffTool.destinations.HandoffDestinationAssistant) for all available properties.
+</Note>
 
-### 2.1 Multiple Tools Pattern (OpenAI Recommended)
+## Multiple destinations
 
-Best for OpenAI models - creates separate tool definitions for each destination:
+### Multiple tools pattern (OpenAI recommended)
+
+Best for OpenAI models -- creates separate tool definitions for each destination:
 
 ```json
 {
@@ -135,7 +148,7 @@ Best for OpenAI models - creates separate tool definitions for each destination:
           "description": "customer has questions about invoices, payments, or refunds",
           "contextEngineeringPlan": {
             "type": "lastNMessages",
-            "maxMessages": 5 // Only keeps the last 5 messages
+            "maxMessages": 5
           }
         }
       ]
@@ -144,9 +157,9 @@ Best for OpenAI models - creates separate tool definitions for each destination:
 }
 ```
 
-### 2.2 Single Tool Pattern (Anthropic Recommended)
+### Single tool pattern (Anthropic recommended)
 
-Best for Anthropic models - single tool with multiple destination options:
+Best for Anthropic models -- single tool with multiple destination options:
 
 ```json
 {
@@ -175,11 +188,11 @@ Best for Anthropic models - single tool with multiple destination options:
 }
 ```
 
-## Dynamic Handoffs
+## Dynamic handoffs
 
-### 3.1 Basic Dynamic Handoff
+### Basic dynamic handoff
 
-The destination is determined at runtime via `handoff-destination-request` webhook:
+The destination is determined at runtime via the `handoff-destination-request` webhook:
 
 ```json
 {
@@ -202,38 +215,41 @@ The destination is determined at runtime via `handoff-destination-request` webho
 }
 ```
 
-Your server must respond to this request with a single destination. You may pass `assistantId`, `assistantName` (if using squads), or a transient `assistant`. For example:
+Your server must respond with a single destination. You can return an `assistantId`, `assistantName` (if using squads), or a transient `assistant`. For example:
 
 ```json
-destination: {
-  "type": "assistant",
-  "assistantId": "assistant-id",
-  "variableExtractionPlan": {
+{
+  "destination": {
+    "type": "assistant",
+    "assistantId": "assistant-id",
+    "variableExtractionPlan": {
       "schema": {
         "type": "object",
         "properties": {
-            "name": {
-              "type": "string",
-              "description": "Name of the customer",
-            },
+          "name": {
+            "type": "string",
+            "description": "Name of the customer"
+          }
         },
-        "required": ["name"],
-      },
-  },
-  "contextEngineeringPlan": {
-      "type": "none",
-  },
-},
+        "required": ["name"]
+      }
+    },
+    "contextEngineeringPlan": {
+      "type": "none"
+    }
+  }
+}
 ```
 
-If the handoff should not executed, either respond with an empty destination, or provide a custom error. The custom error will be added to the message history.
+If the handoff should not execute, either respond with an empty destination, or provide a custom error. The custom error is added to the message history.
+
 ```json
 {
-  error: "Example custom error message"
+  "error": "Example custom error message"
 }
-````
+```
 
-### 3.2 Dynamic Handoff with Custom Parameters
+### Dynamic handoff with custom parameters
 
 Pass additional context to your webhook for intelligent routing:
 
@@ -294,11 +310,96 @@ Pass additional context to your webhook for intelligent routing:
 }
 ```
 
-## Context Engineering
+## Squad destinations
 
-Control what conversation history is passed to the next assistant:
+In addition to assistant and dynamic destinations, you can hand off a call to an entire squad. This transfers the caller into a new multi-agent system where the squad's own routing logic takes over.
 
-### All Messages (Default)
+### Using squad ID
+
+Reference a saved squad by its ID:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "squad",
+          "squadId": "your-squad-id",
+          "description": "customer needs specialized support from the enterprise team",
+          "entryAssistantName": "EnterpriseGreeter",
+          "contextEngineeringPlan": {
+            "type": "userAndAssistantMessages"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Using a transient squad
+
+Define the squad inline without saving it first:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "squad",
+          "squad": {
+            "members": [
+              {
+                "assistantId": "greeter-assistant-id",
+                "assistantDestinations": [
+                  {
+                    "type": "assistant",
+                    "assistantName": "SalesSpecialist",
+                    "description": "customer is interested in purchasing"
+                  }
+                ]
+              },
+              {
+                "assistantId": "sales-assistant-id"
+              }
+            ]
+          },
+          "entryAssistantName": "GreeterAssistant",
+          "description": "route customer to the sales squad"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Squad destination properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| **type** | `"squad"` | Required. Identifies this as a squad destination. |
+| **squadId** | string | The ID of a saved squad. Provide either `squadId` or `squad`. |
+| **squad** | object | A transient squad definition. Provide either `squadId` or `squad`. |
+| **entryAssistantName** | string | The name of the assistant to start with. If not provided, the first squad member is used. |
+| **description** | string | Describes when the AI should choose this destination. |
+| **contextEngineeringPlan** | object | Controls what conversation history transfers to the squad. |
+| **variableExtractionPlan** | object | Extracts structured data from the conversation before handoff. |
+| **squadOverrides** | object | Overrides applied to the squad configuration (maps to squad-level `membersOverrides`). |
+
+For the full schema, see the [API reference](/api-reference/tools/create#request.body.HandoffTool.destinations.HandoffDestinationSquad).
+
+## Context engineering
+
+Control what conversation history transfers to the next assistant or squad. Set **contextEngineeringPlan** on any destination.
+
+### All messages (default)
+
+Transfers the entire conversation history:
+
 ```json
 {
   "contextEngineeringPlan": {
@@ -307,7 +408,10 @@ Control what conversation history is passed to the next assistant:
 }
 ```
 
-### Last N Messages
+### Last N messages
+
+Transfers only the most recent N messages. Use this to limit context size for performance:
+
 ```json
 {
   "contextEngineeringPlan": {
@@ -317,7 +421,26 @@ Control what conversation history is passed to the next assistant:
 }
 ```
 
-### No Context
+### User and assistant messages only
+
+Transfers only user and assistant messages, filtering out system messages, tool calls, and tool results. This gives the next assistant a clean view of the conversation without internal implementation details:
+
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "userAndAssistantMessages"
+  }
+}
+```
+
+<Tip>
+Use `userAndAssistantMessages` when the destination assistant does not need to see tool call history or system prompts from the previous assistant. This produces a cleaner context and reduces token usage.
+</Tip>
+
+### No context
+
+Starts the next assistant with a blank conversation:
+
 ```json
 {
   "contextEngineeringPlan": {
@@ -326,13 +449,13 @@ Control what conversation history is passed to the next assistant:
 }
 ```
 
-## Variable Extraction
+## Variable extraction
 
-Extract and pass structured data during handoff. Variables extracted by the handoff tool are available to all subsequent assistants in the conversation chain. 
-When a handoff extracts a variable with the same name as an existing one, the new value replaces the previous value.
+Extract and pass structured data during handoff. Variables extracted by the handoff tool are available to all subsequent assistants in the conversation chain. When a handoff extracts a variable with the same name as an existing one, the new value replaces the previous value.
 
-### 1. `variableExtractionPlan` in destinations
-This extraction method will make an OpenAI structured output request to extract variables. Use this method if you have multiple destinations, each with different variables that need to be extracted. 
+### Extraction via `variableExtractionPlan` in destinations
+
+This extraction method makes an OpenAI structured output request to extract variables. Use this when you have multiple destinations, each with different variables that need to be extracted.
 
 ```json
 {
@@ -384,8 +507,69 @@ This extraction method will make an OpenAI structured output request to extract 
 }
 ```
 
-### 2. `tool.function`
-We will also extract variables in the tool call parameters from the LLM tool call (in addition to sending these parameters to your server in a `handoff-destination-request` in a dynamic handoff). Be sure to include the `destination` parameter with the assistant names or IDs in `enum`, as that is how Vapi determines where to handoff the call to. The `destination` parameter will not be extracted as a variable. Also, remember to add `destination` and all other variables that are required to the JsonSchema's `required` array.
+### Variable access patterns
+
+Once extracted, variables are accessible using Liquid template syntax (`{{variableName}}`). The access pattern depends on the schema structure:
+
+| Schema type | Access pattern | Example |
+|-------------|---------------|---------|
+| Simple property | `{{propertyName}}` | `{{customerName}}` |
+| Nested object | `{{object.property}}` | `{{name.first}}`, `{{name.last}}` |
+| Array item | `{{array[index]}}` | `{{zipCodes[0]}}`, `{{zipCodes[1]}}` |
+| Array of objects | `{{array[index].property}}` | `{{people[0].name}}`, `{{people[0].age}}` |
+| Nested array | `{{array[index].nestedArray[index]}}` | `{{people[0].zipCodes[1]}}` |
+
+<Note>
+Top-level object properties are extracted as direct global variables. For example, a schema with properties `name` and `age` produces `{{name}}` and `{{age}}` -- not `{{root.name}}`.
+</Note>
+
+### Variable aliases
+
+Use **aliases** to create additional variables derived from extracted values. Aliases support Liquid template syntax for transformations and compositions.
+
+```json
+{
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "Customer's first name"
+        },
+        "lastName": {
+          "type": "string",
+          "description": "Customer's last name"
+        },
+        "company": {
+          "type": "string",
+          "description": "Customer's company name"
+        }
+      }
+    },
+    "aliases": [
+      {
+        "key": "fullName",
+        "value": "{{firstName}} {{lastName}}"
+      },
+      {
+        "key": "greeting",
+        "value": "Hello {{firstName}}, welcome to {{company}}!"
+      },
+      {
+        "key": "customerCity",
+        "value": "{{addresses[0].city}}"
+      }
+    ]
+  }
+}
+```
+
+Each alias creates a new variable accessible as `{{key}}` during the call and stored in `call.artifact.variableValues` after the call. Alias keys must start with a letter and contain only letters, numbers, or underscores (max 40 characters).
+
+### Extraction via `tool.function`
+
+You can also extract variables through the LLM tool call parameters (in addition to sending these parameters to your server in a `handoff-destination-request` for dynamic handoffs). Include the **destination** parameter with the assistant names or IDs in `enum` -- Vapi uses this to determine where to hand off the call. The `destination` parameter itself is not extracted as a variable. Add `destination` and all other required variables to the schema's `required` array.
 
 ```json
 {
@@ -396,7 +580,7 @@ We will also extract variables in the tool call parameters from the LLM tool cal
         {
           "type": "assistant",
           "assistantName": "order-processing-assistant",
-          "description": "customer is ready to place an order",
+          "description": "customer is ready to place an order"
         }
       ],
       "function": {
@@ -404,7 +588,7 @@ We will also extract variables in the tool call parameters from the LLM tool cal
         "parameters": {
           "type": "object",
           "properties": {
-            "description": {
+            "destination": {
               "type": "string",
               "description": "The destination to handoff the call to.",
               "enum": ["order-processing-assistant"]
@@ -438,15 +622,186 @@ We will also extract variables in the tool call parameters from the LLM tool cal
           "required": ["destination", "customerName", "email"]
         }
       }
-    },
+    }
   ]
 }
 ```
 
+## Tool messages
 
-## Custom Function Definitions
+Configure what the assistant says during each phase of the handoff. Add a **messages** array to the handoff tool to control the spoken responses.
 
-Override the default function definition for more control. You can overwrite the function name for each tool to put into the system prompt or pass custom parameters in a dynamic handoff request. 
+### Message types
+
+| Type | Trigger | Default behavior |
+|------|---------|-----------------|
+| `request-start` | Handoff begins executing | Says a random filler: "Hold on a sec", "One moment", etc. |
+| `request-complete` | Handoff completes successfully | Model generates a response |
+| `request-failed` | Handoff fails | Model generates a response |
+| `request-response-delayed` | Server is slow or user speaks during processing | Says "Sorry, a few more seconds." |
+
+### Example configuration
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "messages": [
+        {
+          "type": "request-start",
+          "content": "Let me transfer you now. One moment please."
+        },
+        {
+          "type": "request-complete",
+          "content": "You're now connected. How can the next specialist help you?"
+        },
+        {
+          "type": "request-failed",
+          "content": "I'm sorry, I wasn't able to complete the transfer. Let me try to help you directly."
+        },
+        {
+          "type": "request-response-delayed",
+          "content": "Still working on the transfer, thank you for your patience.",
+          "timingMilliseconds": 3000
+        }
+      ],
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "your-assistant-id",
+          "description": "transfer to specialist"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Message properties
+
+**request-start**
+- **content** (string) -- The text the assistant speaks when the handoff begins.
+- **blocking** (boolean, default: `false`) -- When `true`, the tool call waits until the message finishes speaking before executing.
+- **conditions** (array) -- Optional conditions that must match for this message to trigger.
+- **contents** (array) -- Multilingual variants of the content. Overrides `content` when provided.
+
+**request-complete**
+- **content** (string) -- The text the assistant speaks when the handoff completes.
+- **role** (`"assistant"` | `"system"`, default: `"assistant"`) -- When `"assistant"`, the content is spoken aloud. When `"system"`, the content is passed as a system message hint to the model.
+- **endCallAfterSpokenEnabled** (boolean, default: `false`) -- When `true`, the call ends after this message is spoken.
+- **conditions** (array) -- Optional conditions for triggering this message.
+- **contents** (array) -- Multilingual variants.
+
+**request-failed**
+- **content** (string) -- The text the assistant speaks when the handoff fails.
+- **endCallAfterSpokenEnabled** (boolean, default: `false`) -- When `true`, the call ends after this message.
+- **conditions** (array) -- Optional conditions for triggering.
+- **contents** (array) -- Multilingual variants.
+
+**request-response-delayed**
+- **content** (string) -- The text the assistant speaks when the handoff is taking longer than expected.
+- **timingMilliseconds** (number, 100-120000) -- Milliseconds to wait before triggering this message.
+- **conditions** (array) -- Optional conditions for triggering.
+- **contents** (array) -- Multilingual variants.
+
+For the full schema, see the [API reference](/api-reference/tools/create#request.body.HandoffTool.messages).
+
+## Rejection plan
+
+Use **rejectionPlan** to prevent a handoff from executing based on conversation state. When all conditions in the plan match, the tool call is rejected and the rejection message is added to the conversation.
+
+### Regex condition
+
+Match against message content using regular expressions:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "rejectionPlan": {
+        "conditions": [
+          {
+            "type": "regex",
+            "regex": "(?i)\\b(cancel|stop|nevermind)\\b",
+            "target": {
+              "role": "user",
+              "position": -1
+            }
+          }
+        ]
+      },
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "your-assistant-id",
+          "description": "transfer to billing"
+        }
+      ]
+    }
+  ]
+}
+```
+
+This rejects the handoff if the user's most recent message contains "cancel", "stop", or "nevermind" (case-insensitive).
+
+### Liquid condition
+
+Use Liquid templates for more complex logic. The template must return exactly `"true"` or `"false"`:
+
+```json
+{
+  "rejectionPlan": {
+    "conditions": [
+      {
+        "type": "liquid",
+        "liquid": "{% assign userMsgs = messages | where: 'role', 'user' %}{% if userMsgs.size < 3 %}true{% else %}false{% endif %}"
+      }
+    ]
+  }
+}
+```
+
+This rejects the handoff if fewer than 3 user messages exist in the conversation. Available Liquid variables include `messages` (array of recent messages), `now` (current timestamp), and any assistant variable values.
+
+### Group condition
+
+Combine multiple conditions with `AND` or `OR` logic:
+
+```json
+{
+  "rejectionPlan": {
+    "conditions": [
+      {
+        "type": "group",
+        "operator": "OR",
+        "conditions": [
+          {
+            "type": "regex",
+            "regex": "(?i)\\b(cancel|stop)\\b",
+            "target": { "role": "user" }
+          },
+          {
+            "type": "liquid",
+            "liquid": "{% assign userMsgs = messages | where: 'role', 'user' %}{% if userMsgs.size < 2 %}true{% else %}false{% endif %}"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+<Warning>
+By default, all top-level conditions in the `conditions` array use AND logic -- all must match for the rejection to trigger. Use a group condition with `operator: "OR"` to reject when any single condition matches.
+</Warning>
+
+For the full schema, see the [API reference](/api-reference/tools/create#request.body.HandoffTool.rejectionPlan).
+
+## Custom function definitions
+
+Override the default function definition for more control. You can overwrite the function name for each tool to reference in the system prompt, or pass custom parameters in a dynamic handoff request.
 
 ```json
 {
@@ -503,26 +858,22 @@ Override the default function definition for more control. You can overwrite the
 }
 ```
 
-## Best Practices
+## Best practices
 
-1. **Clear Descriptions**: Write specific, actionable descriptions for each destination in your sytem prompt. Use `tool.function.name` to customize the name of the function to put into your prompt.
-2. **Context Management**: Use `lastNMessages` to limit context size for performance
-3. **Model Optimization**: Use multiple tools for OpenAI, single tool for Anthropic
-4. **Variable Extraction**: Extract key data before handoff to maintain context
-5. **Testing**: Test handoff scenarios thoroughly, including edge cases
-6. **Monitoring and Analysis**: Enable [`artifactPlan.fullMessageHistoryEnabled`](api-reference/assistants/create#response.body.artifactPlan.fullMessageHistoryEnabled) to capture the complete message history across all handoffs in your artifacts. See [squad artifact behavior](/assistants/call-recording#squad-and-transfer-behavior) for details.
-
+1. **Clear descriptions**: Write specific, actionable descriptions for each destination in your system prompt. Use `tool.function.name` to customize the name of the function to reference in your prompt.
+2. **Context management**: Use `lastNMessages` or `userAndAssistantMessages` to limit context size for performance.
+3. **Model optimization**: Use multiple tools for OpenAI, single tool for Anthropic.
+4. **Variable extraction**: Extract key data before handoff to maintain context across assistants.
+5. **Tool messages**: Add custom `request-start` messages to set caller expectations during transfers.
+6. **Testing**: Test handoff scenarios thoroughly, including edge cases and rejection conditions.
+7. **Monitoring and analysis**: Enable [`artifactPlan.fullMessageHistoryEnabled`](/api-reference/assistants/create#response.body.artifactPlan.fullMessageHistoryEnabled) to capture the complete message history across all handoffs in your artifacts. See [squad artifact behavior](/assistants/call-recording#squad-and-transfer-behavior) for details.
 
 ## Troubleshooting
 
 - Ensure assistant IDs are valid and accessible
-- Verify webhook server URLs are reachable and return proper format
+- Verify webhook server URLs are reachable and return the proper format
 - Check that required parameters in custom functions match destinations
 - Monitor context size to avoid token limits
 - Test variable extraction schemas with sample data
 - Validate that assistant names exist in the same squad
-
----
-
-*Last updated: August 2025*
-*VAPI Documentation - Handoff Tool*
+- Verify rejection plan conditions use correct regex syntax (remember to double-escape `\\` in JSON)
