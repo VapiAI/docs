@@ -1,0 +1,133 @@
+---
+title: SIP networking and firewall configuration
+subtitle: Learn to configure your network to allow SIP signalling and media traffic with Vapi
+slug: advanced/sip/sip-networking
+---
+
+## Overview
+
+When you integrate a SIP trunk with Vapi, your firewall and network infrastructure must allow SIP signalling and media (RTP) traffic to flow between your environment and Vapi's SIP servers. This page provides the complete set of IP addresses, ports, and protocols you need to configure.
+
+**In this reference, you'll find:**
+
+- All IP addresses and ports used by Vapi for SIP traffic
+- RTP media port ranges and directionality details
+- Recommended firewall rules for inbound and outbound traffic
+
+<Note>
+  These networking details apply to **all** SIP trunk integrations with Vapi, regardless of your SIP provider. For provider-specific setup instructions, see the [SIP trunking](/advanced/sip/sip-trunk) guide.
+</Note>
+
+## Quick reference
+
+The table below summarizes every IP address, port, and protocol you need to allowlist.
+
+| Traffic type | IP addresses | Ports | Protocol | Direction |
+| --- | --- | --- | --- | --- |
+| SIP signalling | `44.229.228.186`, `44.238.177.138` | `5060` | UDP | Bidirectional |
+| SIP signalling (TLS) | `44.229.228.186`, `44.238.177.138` | `5061` | TLS | Bidirectional |
+| RTP media | `44.229.228.186`, `44.238.177.138` | `40000`-`60000` | UDP | Bidirectional |
+
+You can also use the DNS hostname `sip.vapi.ai`, which resolves to both IP addresses listed above.
+
+## SIP signalling
+
+Vapi's SIP infrastructure uses two static IP addresses for all signalling traffic:
+
+- `44.229.228.186/32`
+- `44.238.177.138/32`
+
+These are the public IPs of Vapi's SBC (Session Border Controller) nodes. All SIP `INVITE`, `REGISTER`, `BYE`, and other signalling messages originate from and are received at these addresses.
+
+### Ports
+
+| Port | Protocol | Use case |
+| --- | --- | --- |
+| **5060** | UDP | Default SIP signalling |
+| **5061** | TLS | SIP over TLS (SIPS) for encrypted signalling |
+
+Use port **5060** unless your provider or security requirements mandate encrypted signalling, in which case use port **5061** with TLS.
+
+### DNS resolution
+
+The hostname `sip.vapi.ai` resolves to both signalling IP addresses. You can configure your SIP client or PBX to point to `sip.vapi.ai` instead of using the IP addresses directly.
+
+<Tip>
+  If your firewall rules are IP-based, allowlist both IP addresses explicitly rather than relying on DNS resolution. DNS-based rules may not update immediately if the resolution changes.
+</Tip>
+
+## SIP media (RTP)
+
+RTP media (voice audio) is sourced from the same infrastructure as SIP signalling. The media IP addresses are:
+
+- `44.229.228.186/32`
+- `44.238.177.138/32`
+
+### Port range
+
+Vapi uses **UDP ports 40000 through 60000** for RTP media traffic.
+
+| Setting | Value |
+| --- | --- |
+| Local RTP port range | `40000`-`60000` (UDP) |
+| Direction | Bidirectional |
+
+- **Inbound RTP**: Vapi listens on ports `40000`-`60000` for incoming media packets.
+- **Outbound RTP**: Vapi sends media from ports in the `40000`-`60000` range. The destination IP and port are determined by the remote SDP offer/answer, so Vapi can send to any IP and port your provider advertises.
+
+<Note>
+  Vapi does not restrict the remote RTP port range. Your provider may use any port for its RTP traffic. The `40000`-`60000` range applies only to Vapi's local ports.
+</Note>
+
+## Firewall rules
+
+Configure your firewall to allow the following traffic. Both IP addresses must be allowlisted, as Vapi may use either one for any given call.
+
+### Inbound rules (traffic from Vapi to your network)
+
+Allow these if your SIP provider or PBX needs to receive traffic from Vapi:
+
+| Rule | Source IP | Destination | Port(s) | Protocol |
+| --- | --- | --- | --- | --- |
+| SIP signalling | `44.229.228.186`, `44.238.177.138` | Your SIP server | `5060` | UDP |
+| SIP signalling (TLS) | `44.229.228.186`, `44.238.177.138` | Your SIP server | `5061` | TLS |
+| RTP media | `44.229.228.186`, `44.238.177.138` | Your media server | `40000`-`60000` | UDP |
+
+### Outbound rules (traffic from your network to Vapi)
+
+Allow these if your firewall restricts outbound connections:
+
+| Rule | Source | Destination IP | Port(s) | Protocol |
+| --- | --- | --- | --- | --- |
+| SIP signalling | Your SIP server | `44.229.228.186`, `44.238.177.138` | `5060` | UDP |
+| SIP signalling (TLS) | Your SIP server | `44.229.228.186`, `44.238.177.138` | `5061` | TLS |
+| RTP media | Your media server | `44.229.228.186`, `44.238.177.138` | `40000`-`60000` | UDP |
+
+<Warning>
+  Both IP addresses must be allowed in your firewall rules. Vapi may use either address for signalling or media on any given call. Missing one address can cause intermittent call failures.
+</Warning>
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Can I use DNS instead of IP addresses in my firewall rules?">
+    The hostname `sip.vapi.ai` resolves to both Vapi SIP IP addresses. However, if your firewall supports only IP-based rules, add both `44.229.228.186` and `44.238.177.138` explicitly. DNS-based firewall rules depend on TTL and caching behavior, which can lead to gaps during DNS updates.
+  </Accordion>
+  <Accordion title="Do I need to open the full 40000-60000 port range?">
+    Yes. Vapi's RTP stack dynamically allocates ports within this range for each call. You cannot predict which specific port a given call will use, so the entire range must be open for reliable media flow.
+  </Accordion>
+  <Accordion title="Are the signalling and media IPs the same?">
+    Yes. Vapi's SIP signalling and RTP media are served from the same infrastructure and use the same pair of public IP addresses (`44.229.228.186` and `44.238.177.138`).
+  </Accordion>
+  <Accordion title="Does Vapi support SRTP (encrypted media)?">
+    Vapi supports TLS for SIP signalling on port 5061. For encrypted media (SRTP), configure your SIP trunk gateway with the `tls/srtp` outbound protocol option. See the [gateway configuration reference](/advanced/sip/troubleshoot-sip-trunk-credential-errors#gateway-configuration-reference) for details.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+Now that you have your network configured for Vapi SIP traffic:
+
+- **Set up a SIP trunk:** Follow the [SIP trunking](/advanced/sip/sip-trunk) guide to create your trunk credential and phone number
+- **Configure a provider:** Set up with [Twilio](/advanced/sip/twilio), [Telnyx](/advanced/sip/telnyx), [Plivo](/advanced/sip/plivo), or [Zadarma](/advanced/sip/zadarma)
+- **Troubleshoot errors:** Resolve gateway issues with the [SIP trunk credential troubleshooting](/advanced/sip/troubleshoot-sip-trunk-credential-errors) guide
