@@ -1,0 +1,181 @@
+---
+title: Testing strategies
+subtitle: Validate your assistant works correctly before deploying to production. This is the **TEST phase** of the [observability framework](/observability/framework).
+slug: observability/testing-strategies
+---
+
+<span className="internal-note">This page is in Rough Draft stage</span>
+
+## Voice AI Testing Challenges
+
+**Testing** means validating your assistant works correctly **before deploying to production**. Voice AI testing prevents embarrassing failures, reduces production debugging costs, and builds confidence in your assistant.
+
+Unlike traditional software testing (unit tests, integration tests), voice AI testing must validate:
+
+- **LLM behavior** — Does the assistant prompt produce the right responses and reasoning?
+- **Routing logic** — Do squad handoffs, assistant transfers, and multi-turn flows work correctly?
+- **Tool orchestration** — Do function calls happen at the right time with the right parameters?
+- **Edge cases** — How does the system handle interruptions, unclear requests, or unexpected inputs?
+- **Regression** — Do changes break existing functionality?
+
+Testing assumes you've already instrumented your assistant with Structured Outputs (see [Instrumentation](/observability/instrumentation)).
+
+<span className="vapi-validation">What other specific validation and/or testing uniqueness have clients reported when working with voice AI testing?</span>
+
+---
+
+## Testing tools at a glance
+
+| Tool                          | What it does                                                                            | Best for                                                                         |
+| ----------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Evals**                     | Text-based mock conversations for testing assistant logic. Fast, cheap, deterministic.  | Regression testing, CI/CD integration, rapid iteration during development        |
+| **Simulations (Pre-release)** | AI-powered realistic callers (voice + chat). Slower, more expensive, non-deterministic. | Pre-production validation, voice quality testing, realistic end-to-end scenarios |
+| **Test Suites**               | Legacy testing feature (voice and chat modes).                                          | ⚠️ Deprecated - migrate to Evals/Simulations                                     |
+
+<span className="vapi-validation">Confirm that these are all the current VAPI tools that fit under testing phase of Observability?</span>
+
+---
+
+## Testing pyramid for voice AI
+
+Visual representation of test distribution:
+
+```
+        /\
+       /  \     E2E Tests (Simulations)
+      /----\    1-2 critical journeys
+     /      \   Full workflow + voice quality
+    /--------\
+   /          \ Integration Tests
+  /------------\ 3-5 cross-component flows
+ /              \ Handoffs, transfers, tool chains
+/________________\
+                  Unit Tests (Evals)
+                  20-50+ specific scenarios
+                  Logic, routing, edge cases
+```
+<span className="internal-note">This ascii diagram will be replaced with a real diagram once page edits are approved</span>
+
+**Key principle**: Many fast, cheap unit tests at the base; few expensive, realistic E2E tests at the top.
+
+### Test type hierarchy
+
+**Unit tests** (use Evals):
+
+- Test single-assistant logic in isolation
+- Examples: Qualification flow, data validation, routing decisions
+- Run frequently (every commit)
+
+**Integration tests** (use Evals for logic validation, Simulations for voice quality):
+
+- Test interactions between components
+- Examples: Assistant handoffs, context passing, tool call chains
+- Use Evals for component interaction logic; use Simulations when voice quality matters
+- Run before deployment
+
+**End-to-end tests** (use Simulations):
+
+- Test complete user journeys with voice quality
+- Examples: Full conversation from greeting to confirmation
+- Run before major releases
+
+---
+
+## Evals vs Simulations: When to use which?
+
+**The key question**: Do you need realistic conversation variability, or do you need fast, deterministic validation?
+
+| Dimension                | Evals                                                  | Simulations                                                                        |
+| ------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| **Realism**              | Scripted conversations - you write exact user messages | AI-driven variability - you define a caller persona that adapts like a real person |
+| **Speed**                | ⚡ Fast - text-only, no TTS/STT overhead               | 🐌 Slower - specially if using full voice pipeline (more performant in chat mode)                                     |
+| **Test duration**        | 3-10 seconds per test                                  | 30-120 seconds per test                                                            |
+| **Feedback loop**        | Immediate (results in seconds)                         | Delayed (setup + execution + processing takes minutes)                             |
+| **Cost**                 | 💰 Low - fewer LLM tokens (no simulated caller)        | 💰💰 Higher - 2x LLM usage (caller + assistant)                                    |
+| **Determinism**          | ✅ Deterministic - same input = same test              | ❌ Non-deterministic - AI caller persona varies responses                                  |
+| **CI/CD integration**    | ✅ Great fit - fast, predictable, easy to assert       | ⚠️ Harder - variability makes assertions difficult                                 |
+| **Voice testing**        | ❌ Text-only (no TTS/STT validation)                   | ✅ Full voice pipeline (pronunciation, interruptions, latency)                     |
+| **Coverage granularity** | Specific scenarios (one behavior per test)             | Full user journeys (multiple behaviors)                                            |
+| **Parallelization**      | Unlimited parallel execution                           | Limited by rate limits + cost                                                      |
+| **Setup effort**         | 📝 Manual - write conversation scripts                 | 🤖 AI-assisted - describe scenario, AI generates conversation                      |
+| **Regression testing**   | ✅ Ideal - catch exact breakages                       | ⚠️ Less ideal - variability can mask or false-flag issues                          |
+| **Exploratory testing**  | ❌ Limited - scripted paths only                       | ✅ Excellent - AI explores unexpected paths                                        |
+
+<span className="vapi-validation">Do we keep emojis in the table or remove them?</span>
+
+---
+
+## Recommended testing strategy
+
+Use a **hybrid approach** that leverages both tools:
+
+1. **Develop with Evals** - Fast feedback, cheap to run, great for iteration
+2. **Validate with Simulations** - Before production, run realistic scenarios
+3. **Regression suite** - Maintain Evals that run on every deployment
+4. **Quarterly exploratory testing** - Run Simulations to discover edge cases, add learnings to Evals suite
+
+<span className="vapi-validation">Confirm this strategy aligns with VAPI's recommendations. Are there specific use cases where this breaks down?</span>
+
+---
+
+## What you'll learn in detailed guides
+
+- [Evals quickstart](/observability/evals-quickstart) — Run your first evaluation in 5 minutes
+- [Evals advanced](/observability/evals-advanced) — Advanced testing strategies, CI/CD integration
+- [Simulations quickstart](/observability/simulations-quickstart) — Set up realistic voice/chat testing
+- [Simulations advanced](/observability/simulations-advanced) — Tool mocks, hooks, complex scenarios
+
+<Warning>
+  **Simulations is currently in pre-release**. API stability and feature
+  availability may change. Check with Vapi support for current status and GA
+  timeline.
+</Warning>
+
+<span className="vapi-validation">Legacy Test Suites (voice and chat testing) have been replaced by Evals and Simulations. If you're using Test Suites, migrate to Evals (text-based) or Simulations (voice testing). Confirm deprecation status and migration path.</span>
+
+
+---
+
+## Key takeaway
+
+**Test before production**. Finding bugs in production with real customers is expensive and embarrassing. A systematic testing strategy catches issues early when they're cheap to fix.
+
+Use Evals for fast iteration and regression testing. Use Simulations for realistic pre-production validation.
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Evals quickstart"
+    icon="clipboard-check"
+    href="/observability/evals-quickstart"
+  >
+    Build your first test suite
+  </Card>
+
+<Card
+  title="Simulations quickstart"
+  icon="flask-vial"
+  href="/observability/simulations-quickstart"
+>
+  Run realistic voice testing
+</Card>
+
+<Card
+  title="Extraction patterns"
+  icon="diagram-project"
+  href="/observability/extraction-patterns"
+>
+  Next stage: Choose your data extraction strategy
+</Card>
+
+  <Card
+    title="Back to overview"
+    icon="arrow-left"
+    href="/observability/framework"
+  >
+    Return to observability framework
+  </Card>
+</CardGroup>
