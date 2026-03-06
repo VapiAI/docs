@@ -1,0 +1,366 @@
+---
+title: Choosing your extraction pattern
+subtitle: Understand the three architectural patterns for getting data out of Vapi. This is the **EXTRACT phase** of the [observability framework](/observability/framework).
+slug: observability/extraction-patterns
+---
+
+<span className="internal-note">This page is in Rough Draft stage</span>
+
+## Why extraction is an architectural choice
+
+Unlike traditional observability platforms (DataDog, New Relic) where data flows automatically from instrumentation to monitoring, **Vapi requires you to choose how data gets extracted** for analysis.
+
+This design reflects Vapi's architecture:
+
+- **Scalar Structured Outputs** (strings, numbers, booleans) flow automatically to Boards and Insights API
+- **Object Structured Outputs** (nested data) require webhook extraction
+- **Scorecard results** don't appear in native analytics (webhook-only)
+
+**Your extraction pattern choice determines**:
+
+- What schema types you can use (scalar vs object fields)
+- What tools you can use for monitoring (Boards vs external BI)
+- How much engineering effort is required
+- Whether you can export to existing data infrastructure
+
+<span className="vapi-validation">Confirm this framing is accurate and doesn't oversimplify</span>
+
+---
+
+## The three extraction patterns at a glance
+
+Vapi offers three architectural patterns for extracting observability data from your calls. Each pattern represents a different trade-off between simplicity and flexibility:
+
+| Pattern | Description | Engineering effort | Data richness | Typical users |
+|---------|-------------|-------------------|---------------|---------------|
+| **Dashboard Native** | Use Vapi's built-in Boards with scalar Structured Outputs for real-time dashboards | Minimal (no infrastructure) | Basic (scalar fields only) | Solo founders, non-technical teams, startups |
+| **Webhook-to-External** | Build custom post-call processing that captures data via webhooks and exports to your data warehouse | High (requires backend infrastructure) | Rich (full object schemas, nested data) | Engineering teams, enterprises with existing data platforms |
+| **Hybrid** | Combine both approaches - use Boards for operational metrics, webhooks for deep analysis | Medium (partial infrastructure) | Flexible (mix of scalar and object data) | Growing teams balancing simplicity and power |
+
+**How to choose**: Start with Dashboard Native (fastest setup). Migrate to Hybrid or Webhook-to-External as your analytics needs grow or when you need features like Scorecard visualization or external BI tools.
+
+---
+
+## EXTRACT stage features at a glance
+
+| Feature                         | What it extracts                                               | Extraction method                                                | Pattern compatibility       |
+| ------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------- | --------------------------- |
+| **Structured Outputs (Scalar)** | Business metrics using scalar fields (individual boolean, strings, numbers) | Automatic → Boards + Insights API                                | Dashboard Native, Hybrid    |
+| **Structured Outputs (Object)** | Rich nested data using object/array schemas                    | Webhooks only                                                    | Webhook-to-External, Hybrid |
+| **Scorecards**                  | AI-powered quality evaluation results                          | Webhooks only (not visible in Boards)                            | Webhook-to-External, Hybrid |
+| **Insights API**                | [TBD: What does Insights API extract/provide?]                 | [TBD: Automatic for scalars? Separate feature?]                  | [TBD]                       |
+| **Analytics API**               | [TBD: What does Analytics API extract/provide?]                | [TBD: How does it differ from Insights API?]                     | [TBD]                       |
+| **Langfuse Integration**        | Real-time observability data to external platform              | Direct integration (real-time, no webhooks/post-call processing) | All patterns                |
+
+
+<span className="vapi-validation">Confirm this list is complete and accurate? Need help explaining and contrasting Insights API and Analytics API. Are you ok with having Langfuse be included here in extraction phase or should we only mention in monitoring phase?</span>
+
+---
+
+## The three extraction patterns
+
+### Pattern 1: Dashboard Native
+
+**What it is**: This pattern uses Vapi's built-in Boards platform to automatically visualize scalar Structured Outputs (strings, numbers, booleans) without any external infrastructure. Data flows from your assistant configuration directly to Boards, where you can build real-time dashboards using a drag-and-drop visual builder.
+
+<span className="vapi-validation">Validate that Structured Outputs (scalar) are the only instrumentation that will work with native Vapi Boards</span>
+
+**Architecture**: Structured Outputs (scalar only) → Boards
+
+**Who it's for**:
+
+- Non-technical teams or solo founders
+- Teams without backend engineering resources
+- Startups with simple analytics needs
+- Quick operational dashboards (call volume, cost, success rate)
+
+**How it works**:
+
+1. Configure Structured Outputs using **scalar fields only** (no nested objects)
+2. Data automatically flows to Vapi Boards
+3. Build dashboards using drag-and-drop visual builder
+4. Monitor via Boards web interface
+
+**Capabilities**:
+
+- ✅ Real-time dashboards with no code
+- ✅ Built-in formulas and aggregations (Math.js)
+- ✅ Global filters and time range controls
+- ❌ Can't export to external BI tools (Tableau, PowerBI)
+- ❌ Can't use object-type schemas (limits extraction richness)
+- ❌ Can't visualize Scorecard results
+
+**When to use**:
+
+- You're just starting with observability
+- You don't have engineering resources for webhook infrastructure
+- Your analytics needs are simple (operational metrics, not complex business intelligence)
+- You need visibility fast with minimal setup
+
+**When NOT to use**:
+
+- You need to export to external BI tools (Tableau, PowerBI, Looker) → use **Webhook-to-External**
+- You're using Scorecards for quality monitoring (results not visible in Boards) → use **Webhook-to-External** or **Hybrid**
+- Compliance requires data sovereignty or custom retention → use **Webhook-to-External**
+- You need rich nested data schemas (objects, arrays) → use **Webhook-to-External** or **Hybrid**
+
+**Example use case**: A solopreneur running an AI receptionist for their dental practice. Wants to track: daily call volume, booking rate, missed calls. Uses Boards to see trends and spot issues.
+
+<span className="vapi-validatoin">Pay close attention to this section because a number of assumptions are being made.  Corrections and disambiguation needed.</span>
+
+---
+
+### Pattern 2: Webhook-to-External
+
+**What it is**: This pattern uses Vapi's webhook functionality to send post-call data to a custom endpoint you build and host. You configure a webhook URL at the org, squad, or assistant level, and Vapi sends complete call data (including object-type Structured Outputs and Scorecard results) to your server after each call, where you can process and store it in your data warehouse.
+
+<span className="vapi-validation">Naming consistency question: We've used "webhook", "webhook-to-external", and "Webhook-to-External" throughout the docs. Should we standardize on one name for this pattern? Recommendation: "Webhook-to-External" (capitalized, hyphenated) to parallel "Dashboard Native". Confirm preferred naming.</span>
+
+**Architecture**: Structured Outputs (any type) → Webhooks → Your data warehouse → Your BI tools
+
+**Who it's for**:
+
+- Engineering teams with data infrastructure
+- Enterprises with existing analytics platforms
+- Teams needing custom business intelligence
+- Organizations requiring data sovereignty or compliance
+
+**How it works**:
+
+1. Configure Structured Outputs using **rich object schemas** (nested data, arrays, complex types)
+2. Set up webhook endpoint on your servers to receive call data
+3. Process webhooks and store in your data warehouse (BigQuery, Snowflake, Postgres)
+4. Connect BI tools (Tableau, Looker, Metabase) to your warehouse
+5. Build custom analytics on your infrastructure
+
+**Capabilities**:
+
+- ✅ Full control over data storage and processing
+- ✅ Integration with existing BI and alerting systems
+- ✅ Rich nested data schemas (not limited to scalars)
+- ✅ Can access Scorecard results via webhooks
+- ❌ Requires backend engineering (webhook receiver, database, ETL)
+- ❌ Higher operational complexity (hosting, monitoring webhooks)
+
+**When to use**:
+
+- You have engineering resources to build webhook infrastructure
+- You need to integrate Vapi data with existing business systems (CRM, data warehouse)
+- You require custom analytics beyond Vapi's built-in capabilities
+- Compliance or data sovereignty requires you to control data storage
+
+**When NOT to use**:
+
+- You have no backend engineering team or resources → use **Dashboard Native**
+- Your analytics needs are simple and Boards provides sufficient visibility → use **Dashboard Native**
+- You want to start simple and may add external integration later → use **Dashboard Native** or **Hybrid**
+- You need instant operational dashboards without warehouse ETL delays → consider **Hybrid** instead
+
+**Example use case**: An enterprise healthcare org using Vapi for patient intake. Needs to: sync extracted patient info to Epic EHR, analyze call quality trends in Tableau, alert on-call staff via PagerDuty. Uses webhooks to export all call data to Snowflake, then integrates downstream systems.
+
+---
+
+### Pattern 3: Hybrid
+
+**What it is**: This pattern combines Dashboard Native and Webhook-to-External approaches by maintaining two parallel data flows - scalar Structured Outputs go to Boards for real-time operational dashboards, while rich object schemas and Scorecard results are exported via webhooks to your external data warehouse. This allows operations teams to use Boards while analytics teams get full-fidelity data in external BI tools.
+
+**Architecture**:
+
+- **Operational track**: Scalar Structured Outputs → Boards (real-time dashboards)
+- **Analytics track**: Object Structured Outputs + Scorecards → Webhooks → External warehouse
+
+**Who it's for**:
+
+- Teams with some engineering resources
+- Organizations balancing simplicity and power
+- Teams iterating from simple to complex analytics
+- Use cases needing both real-time ops dashboards AND deep analysis
+
+**How it works**:
+
+1. Configure **two sets of Structured Outputs**:
+   - Scalar fields for operational metrics (cost, volume, basic success metrics)
+   - Object fields for rich analysis (full conversation context, detailed scoring)
+2. Scalar data flows to Boards for real-time visibility
+3. Object data + Scorecards exported via webhooks for deep analysis
+4. Operations team uses Boards, analytics team uses external BI
+
+**Capabilities**:
+
+- ✅ Best of both worlds: simple dashboards + powerful analytics
+- ✅ Incremental complexity (start with Boards, add webhooks later)
+- ✅ Team separation (ops uses Boards, analysts use BI tools)
+- ❌ More complex schema design (must plan for both tracks)
+- ❌ Partial engineering effort (still need webhook infrastructure)
+
+**When to use**:
+
+- You're scaling from simple to complex analytics needs
+- Different teams have different analytics requirements (ops vs analysts)
+- You want real-time operational visibility without waiting for warehouse ETL
+- You're not sure yet whether Boards alone will be sufficient long-term
+
+**When NOT to use**:
+
+- Your needs clearly fit one pattern—all simple (use **Dashboard Native**) or all complex (use **Webhook-to-External**)
+- You want to minimize schema design complexity → use single-pattern approach
+- Small team where everyone uses the same analytics tools → use **Dashboard Native** or **Webhook-to-External** consistently
+- You're confident Boards will never be sufficient → skip straight to **Webhook-to-External**
+
+**Example use case**: A growing SaaS company using Vapi for sales qualification calls. Sales ops team monitors daily metrics in Boards (call volume, booking rate). Data team exports full conversation analysis via webhooks to BigQuery for prompt optimization and quarterly business reviews.
+
+---
+
+{/* ## Decision framework: Choosing your pattern
+
+<Tabs>
+  <Tab title="By team capability">
+    | Capability | Recommended Pattern |
+    |------------|-------------------|
+    | No backend engineering | **Dashboard Native** |
+    | Backend team, no data warehouse | **Dashboard Native** (start here, migrate to Hybrid later) <span className="internal-note assumption"> Assumes backend teams without existing warehouse should start simple. Alternative: Could recommend Webhook-to-External with lightweight warehouse (Postgres) if team has capacity.</span> |
+    | Backend team + data warehouse | **Webhook-to-External** or **Hybrid** |
+    | Enterprise with existing BI stack | **Webhook-to-External** |
+  </Tab>
+
+<Tab title="By analytics needs">
+  | Need | Recommended Pattern | |------|-------------------| | Simple
+  operational metrics (volume, cost, success rate) | **Dashboard Native** | |
+  Need to export to Tableau/PowerBI/Looker | **Webhook-to-External** | |
+  Real-time ops + deep analysis | **Hybrid** | | Compliance requires data
+  control | **Webhook-to-External** | | Using Scorecards for quality monitoring
+  | **Webhook-to-External** or **Hybrid** (Scorecard results not in Boards) |
+</Tab>
+
+  <Tab title="By business context">
+    | Context | Recommended Pattern |
+    |---------|-------------------|
+    | Startup / MVP stage | **Dashboard Native** |
+    | Growing team (10-50 people) | **Hybrid** |
+    | Enterprise (50+ people) | **Webhook-to-External** or **Hybrid** |
+    | Must integrate with CRM/ERP | **Webhook-to-External** |
+    | Need instant visibility, minimal engineering | **Dashboard Native** |
+  </Tab>
+</Tabs>
+
+<span className="vapi-validation">Are these recommendations aligned with how VAPI sees
+  customer segments?</span>
+
+--- */}
+
+---
+
+
+## Common migration paths
+
+<span className="internal-note"> Are reverse migrations possible/recommended?
+  (Webhook-to-External → Hybrid or Hybrid → Dashboard Native)? Do teams ever
+  simplify their extraction approach, or is migration always toward more
+  complexity?</span>
+
+### Dashboard Native → Hybrid
+
+**When to migrate**: You need deeper analysis but want to keep operational dashboards
+
+**What changes**: Add object-type Structured Outputs + webhook infrastructure. Existing scalar outputs continue flowing to Boards.
+
+**Impact**: Minimal disruption—operations team keeps using Boards, analytics team gets external warehouse access.
+
+---
+
+### Hybrid → Webhook-to-External
+
+**When to migrate**: External warehouse becomes single source of truth, Boards no longer provide value
+
+**What changes**: Migrate all data extraction to webhooks, rebuild operational dashboards in external BI tool (Looker, Tableau, Metabase).
+
+**Impact**: Medium effort—requires dashboard migration, but unifies analytics platform.
+
+---
+
+### Dashboard Native → Webhook-to-External
+
+**When to migrate**: Compliance requirement, CRM integration, or sudden need for external data control
+
+**What changes**: Full replacement—redesign schemas for richness, build webhook infrastructure, rebuild all dashboards externally.
+
+**Impact**: High effort—complete platform migration, but necessary for regulatory or integration requirements.
+
+---
+
+## Schema design implications
+
+<span className="internal-note"> This section should probably be in Structured Outputs doc pages; not here.</span>
+
+Your extraction pattern choice **determines how you design Structured Output schemas** in the INSTRUMENT stage.
+
+### Dashboard Native: Scalar fields only
+
+**Constraint**: Only scalar types (boolean, string, number) flow to Boards. Nested objects are invisible to dashboards.
+
+**Design strategy**: Flatten nested data into scalar fields. For example:
+
+- ✅ `appointment_date` (string), `appointment_time` (string), `appointment_service` (string)
+- ❌ `appointment_details` (object with nested date/time/service)
+
+**Tradeoff**: Simpler schemas, but loses data structure richness.
+
+---
+
+### Webhook-to-External: Full schema flexibility
+
+**Freedom**: Use rich nested schemas—objects, arrays, complex types. Your data warehouse can query anything.
+
+**Design strategy**: Structure data naturally. Nested customer objects, conversation analysis arrays, quality metric hierarchies.
+
+**Tradeoff**: More expressive data model, but requires webhook infrastructure.
+
+---
+
+### Hybrid: Two-schema strategy
+
+**Operational track** (Boards): Scalar fields for real-time metrics (success rate, call volume, cost)
+
+**Analytics track** (Webhooks): Rich nested schemas for deep analysis (full conversation context, sentiment timelines, topic extraction)
+
+**Design strategy**: Duplicate key metrics across both schemas. Operational team gets instant visibility; analytics team gets comprehensive data.
+
+**Tradeoff**: Schema design complexity (must maintain two structures), but provides best of both worlds.
+
+→ **[See schema examples and design patterns in Structured Outputs guide](/assistants/structured-outputs-quickstart)**
+
+
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Structured outputs"
+    icon="database"
+    href="/assistants/structured-outputs-quickstart"
+  >
+    Learn how to instrument your assistant with schemas
+  </Card>
+
+<Card
+  title="Boards quickstart"
+  icon="chart-line"
+  href="/observability/boards-quickstart"
+>
+  Build your first dashboard (Dashboard Native pattern)
+</Card>
+
+<Card title="Back to overview" icon="arrow-left" href="/observability/framework">
+  Return to the observability maturity model
+</Card>
+
+  <Card
+    title="Production readiness"
+    icon="check-circle"
+    href="/observability/production-readiness"
+  >
+    Validate you're ready for production
+  </Card>
+</CardGroup>
