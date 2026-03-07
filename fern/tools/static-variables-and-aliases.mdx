@@ -1,0 +1,370 @@
+---
+title: Static variables and aliases
+subtitle: Pass fixed values and extract structured data from tool responses without LLM involvement.
+slug: tools/static-variables-and-aliases
+---
+
+## Overview
+
+Vapi tools support two features that let you move data between tool calls deterministically, without relying on the LLM to interpret or forward values:
+
+- **Static variables (parameters)** inject fixed or template-resolved values into every tool call, regardless of what the LLM generates.
+- **Variable extraction (aliases)** pull specific fields out of a tool's JSON response and store them for use in subsequent tool calls.
+
+Combined, these features enable **deterministic tool chaining** -- Tool A fetches data and extracts variables, Tool B receives those variables automatically. The LLM orchestrates *when* tools run, but the data flow between them is fully controlled by you.
+
+**In this guide, you'll learn to:**
+- Add static parameters to API request and function tools
+- Extract variables from tool responses using aliases
+- Chain tools together so data flows between them without LLM involvement
+
+## Static variables (parameters)
+
+The `parameters` field lets you define key-value pairs that are always merged into the tool's request body or function arguments. These values bypass the LLM entirely -- the model never sees or generates them.
+
+### How it works
+
+- `parameters` is an array of `{ key, value }` objects on the tool definition.
+- `value` can be any JSON type: string, number, boolean, object, or array.
+- String values support **Liquid templates** (for example, `{{ customer.number }}`). Objects and arrays are walked recursively to resolve Liquid templates in nested strings.
+- Static parameters are merged **after** LLM-generated arguments, so they override any LLM-generated key with the same name.
+
+### Supported tool types
+
+| Tool type | Static parameters supported |
+|-----------|---------------------------|
+| `apiRequest` | Yes |
+| `function` | Yes |
+| `code` | No |
+| `handoff` | No |
+
+### API request tool example
+
+Static parameters merge into the HTTP request body alongside any LLM-generated fields:
+
+```json title="API request tool with static parameters"
+{
+  "type": "apiRequest",
+  "method": "POST",
+  "url": "https://api.example.com/leads",
+  "parameters": [
+    { "key": "org_id", "value": "my-org-123" },
+    { "key": "source", "value": "vapi-call" },
+    { "key": "priority", "value": 1 },
+    {
+      "key": "metadata",
+      "value": {
+        "channel": "voice",
+        "callId": "{{ transport.callSid }}",
+        "region": "us-east",
+        "tags": ["inbound", "{{ customer.number }}"],
+        "routing": {
+          "department": "sales",
+          "queue": "priority"
+        }
+      }
+    }
+  ]
+}
+```
+
+In this example, every request to the leads endpoint includes `org_id`, `source`, `priority`, and `metadata` -- even though the LLM never generates these values. Notice that:
+
+- `value` can be a **string** (`"my-org-123"`), **number** (`1`), or a **JSON object/array**.
+- The `metadata` value is a **nested JSON object** with sub-objects (`routing`) and arrays (`tags`).
+- Liquid templates like `{{ transport.callSid }}` and `{{ customer.number }}` are resolved **recursively** inside nested objects and arrays at runtime.
+
+### Function tool example
+
+For function tools, static parameters merge into the function call arguments sent to your server webhook:
+
+```json title="Function tool with static parameters"
+{
+  "type": "function",
+  "function": {
+    "name": "lookup_user",
+    "description": "Look up a user by phone number",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "description": "The phone number to look up"
+        }
+      },
+      "required": ["phone"]
+    }
+  },
+  "server": {
+    "url": "https://my-server.com/webhook"
+  },
+  "parameters": [
+    { "key": "api_version", "value": "v2" },
+    { "key": "caller_number", "value": "{{ customer.number }}" }
+  ]
+}
+```
+
+When the LLM calls `lookup_user` with `{ "phone": "+15551234567" }`, your webhook receives `{ "phone": "+15551234567", "api_version": "v2", "caller_number": "+15559876543" }` -- the static parameters are merged in.
+
+<Note>
+Static parameters override LLM-generated arguments with the same key. If the LLM generates `"source": "chat"` and your static parameters include `"source": "vapi-call"`, the webhook receives `"source": "vapi-call"`.
+</Note>
+
+### Liquid template variables
+
+String values in static parameters can reference any variable available in the call context:
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `customer.number` | `{{ customer.number }}` | The customer's phone number |
+| `transport.callSid` | `{{ transport.callSid }}` | The transport call session ID |
+| `now` | `{{ now }}` | Current timestamp |
+| `date` | `{{ date }}` | Current date |
+| Previously extracted variables | `{{ userId }}` | Variables extracted by earlier tools via aliases |
+
+## Variable extraction plan (aliases)
+
+The `variableExtractionPlan` field lets you extract specific values from a tool's JSON response and store them as named variables. These variables become available to all subsequent tool calls in the same conversation.
+
+### How it works
+
+- `variableExtractionPlan` is an object with an `aliases` array.
+- Each alias has `{ key, value }` where `key` is the variable name to store and `value` is a Liquid template expression.
+- The parsed JSON response body is available as **`$`** (dollar sign). Reference nested fields with dot notation: `{{ $.data.id }}`.
+- Top-level response properties are also spread at the root level, so `{{ name }}` works for a top-level `name` field.
+- Liquid filters are supported: `{{ $.email | downcase }}`, `{{ $.name | upcase }}`.
+- Extracted variables are stored in the call's artifact and are available in subsequent tool calls via Liquid templates.
+
+### Supported tool types
+
+| Tool type | Variable extraction supported |
+|-----------|------------------------------|
+| `apiRequest` | Yes |
+| `function` | Yes |
+| `code` | Yes |
+| `handoff` | Yes |
+
+### Example: extract fields from an API response
+
+Suppose your API returns:
+
+```json title="API response"
+{
+  "data": {
+    "id": "usr_abc123",
+    "name": "Jane Smith",
+    "email": "Jane.Smith@example.com"
+  },
+  "status": "active"
+}
+```
+
+Configure aliases to extract the fields you need:
+
+```json title="API request tool with variable extraction"
+{
+  "type": "apiRequest",
+  "method": "GET",
+  "url": "https://api.example.com/users/{{ customer.number }}",
+  "variableExtractionPlan": {
+    "aliases": [
+      { "key": "userId", "value": "{{ $.data.id }}" },
+      { "key": "userName", "value": "{{ $.data.name }}" },
+      { "key": "userEmail", "value": "{{ $.data.email | downcase }}" },
+      { "key": "accountStatus", "value": "{{ $.status }}" }
+    ]
+  }
+}
+```
+
+After this tool executes, the variables `userId`, `userName`, `userEmail`, and `accountStatus` are available for use in any subsequent tool call.
+
+<Tip>
+Use the `$` reference for clarity when accessing nested fields (`{{ $.data.id }}`). For top-level fields, you can reference them directly (`{{ status }}`), but using `$` is more explicit.
+</Tip>
+
+### Using extracted variables in subsequent tools
+
+Once variables are extracted, reference them by name in any Liquid template context -- URLs, headers, request bodies, or static parameters:
+
+```json title="Subsequent tool using extracted variables in the URL and body"
+{
+  "type": "apiRequest",
+  "method": "POST",
+  "url": "https://api.example.com/orders",
+  "body": {
+    "type": "json",
+    "value": "{ \"user_id\": \"{{ userId }}\", \"user_name\": \"{{ userName }}\" }"
+  }
+}
+```
+
+Or via static parameters on a function tool:
+
+```json title="Function tool using extracted variables in static parameters"
+{
+  "type": "function",
+  "function": {
+    "name": "create_order",
+    "description": "Create an order for a user",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "Items to order"
+        }
+      },
+      "required": ["items"]
+    }
+  },
+  "server": {
+    "url": "https://my-server.com/webhook"
+  },
+  "parameters": [
+    { "key": "user_id", "value": "{{ userId }}" },
+    { "key": "user_email", "value": "{{ userEmail }}" }
+  ]
+}
+```
+
+## Deterministic tool chaining
+
+By combining static parameters and variable extraction, you can build tool chains where data flows from one tool's response to the next tool's request -- all without LLM involvement in the data transfer.
+
+### Example: look up a user, then create an order
+
+**Tool A** calls an external API to look up a user and extracts the user's ID and name:
+
+```json title="Tool A: User lookup with variable extraction"
+{
+  "type": "apiRequest",
+  "method": "GET",
+  "url": "https://api.example.com/users/{{ customer.number }}",
+  "variableExtractionPlan": {
+    "aliases": [
+      { "key": "userId", "value": "{{ $.data.id }}" },
+      { "key": "userName", "value": "{{ $.data.name }}" }
+    ]
+  }
+}
+```
+
+**Tool B** uses the extracted `userId` as a static parameter, ensuring the correct user ID reaches your webhook without the LLM needing to parse or forward it:
+
+```json title="Tool B: Create order with extracted user ID"
+{
+  "type": "function",
+  "function": {
+    "name": "create_order",
+    "description": "Create an order for the current user",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "The items to include in the order"
+        }
+      },
+      "required": ["items"]
+    }
+  },
+  "server": {
+    "url": "https://my-server.com/webhook"
+  },
+  "parameters": [
+    { "key": "user_id", "value": "{{ userId }}" },
+    { "key": "user_name", "value": "{{ userName }}" }
+  ]
+}
+```
+
+The LLM decides *when* to call each tool based on the conversation, but the `user_id` and `user_name` values flow directly from Tool A's response to Tool B's request through the variable system.
+
+<Warning>
+Variable extraction depends on the tool response being valid JSON. If the response cannot be parsed as JSON, no variables are extracted. Make sure the APIs you call return JSON responses.
+</Warning>
+
+## Full API example
+
+Create an assistant with two chained tools using cURL:
+
+```bash title="Create tools and assistant with tool chaining"
+# Step 1: Create the user lookup tool (Tool A)
+curl -X POST "https://api.vapi.ai/tool" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "apiRequest",
+    "name": "User Lookup",
+    "method": "GET",
+    "url": "https://api.example.com/users/{{ customer.number }}",
+    "variableExtractionPlan": {
+      "aliases": [
+        { "key": "userId", "value": "{{ $.data.id }}" },
+        { "key": "userName", "value": "{{ $.data.name }}" },
+        { "key": "userEmail", "value": "{{ $.data.email | downcase }}" }
+      ]
+    }
+  }'
+
+# Step 2: Create the order tool (Tool B)
+curl -X POST "https://api.vapi.ai/tool" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "function",
+    "function": {
+      "name": "create_order",
+      "description": "Create an order for the current user",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "The items to include in the order"
+          }
+        },
+        "required": ["items"]
+      }
+    },
+    "server": {
+      "url": "https://my-server.com/webhook"
+    },
+    "parameters": [
+      { "key": "user_id", "value": "{{ userId }}" },
+      { "key": "user_name", "value": "{{ userName }}" },
+      { "key": "user_email", "value": "{{ userEmail }}" }
+    ]
+  }'
+
+# Step 3: Attach both tools to your assistant
+curl -X PATCH "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "toolIds": ["TOOL_A_ID", "TOOL_B_ID"]
+    }
+  }'
+```
+
+## Tips
+
+- **Static parameters are invisible to the LLM.** The model does not see them in the tool schema and cannot override them (they are merged last).
+- **Aliases extract from JSON only.** The tool response must be parseable as JSON. Non-JSON responses (plain text, HTML) do not support variable extraction.
+- **Variable names are global to the call.** Extracted variables persist for the entire call and can be referenced by any subsequent tool. Choose unique, descriptive key names to avoid collisions.
+- **Liquid templates resolve at execution time.** Template expressions in static parameters and aliases are evaluated when the tool runs, not when the tool is created.
+- **Combine with Liquid filters.** Use Liquid filters in aliases for transformations: `{{ $.name | upcase }}`, `{{ $.price | divided_by: 100 }}`, `{{ $.email | downcase }}`.
+
+## Next steps
+
+Now that you understand static variables and aliases:
+
+- **[Custom tools](/tools/custom-tools):** Learn how to create and configure custom function tools.
+- **[Code tool](/tools/code-tool):** Run TypeScript code directly on Vapi's infrastructure without a server.
+- **[Tool rejection plan](/tools/tool-rejection-plan):** Add conditions to prevent unintended tool calls.
+- **[API reference](/api-reference/tools/create):** See the complete tool creation API reference.
