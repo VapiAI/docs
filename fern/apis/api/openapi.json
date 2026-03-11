@@ -11531,6 +11531,80 @@
           "type"
         ]
       },
+      "VariableExtractionAlias": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "This is the key of the variable.\n\nThis variable will be accessible during the call as `{{key}}` and stored in `call.artifact.variableValues` after the call.\n\nRules:\n- Must start with a letter (a-z, A-Z).\n- Subsequent characters can be letters, numbers, or underscores.\n- Minimum length of 1 and maximum length of 40.",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "/^[a-zA-Z][a-zA-Z0-9_]*$/"
+          },
+          "value": {
+            "type": "string",
+            "description": "This is the value of the variable.\n\nThis can reference existing variables, use filters, and perform transformations.\n\nExamples: \"{{name}}\", \"{{customer.email}}\", \"Hello {{name | upcase}}\"",
+            "maxLength": 10000
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ]
+      },
+      "VariableExtractionPlan": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "description": "This is the schema to extract.\n\nExamples:\n1. To extract object properties, you can use the following schema:\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"string\"\n    },\n    \"age\": {\n      \"type\": \"number\"\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}` and `{{ age }}` respectively. To emphasize, object properties are extracted as direct global variables.\n\n2. To extract nested properties, you can use the following schema:\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"first\": {\n          \"type\": \"string\"\n        },\n        \"last\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}`. And, `{{ name.first }}` and `{{ name.last }}` will be accessible.\n\n3. To extract array items, you can use the following schema:\n```json\n{\n  \"type\": \"array\",\n  \"title\": \"zipCodes\",\n  \"items\": {\n    \"type\": \"string\"\n  }\n}\n```\n\nThis will be extracted as `{{ zipCodes }}`. To access the array items, you can use `{{ zipCodes[0] }}` and `{{ zipCodes[1] }}`.\n\n4. To extract array of objects, you can use the following schema:\n\n```json\n{\n  \"type\": \"array\",\n  \"name\": \"people\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"string\"\n      },\n      \"age\": {\n        \"type\": \"number\"\n      },\n      \"zipCodes\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ people }}`. To access the array items, you can use `{{ people[n].name }}`, `{{ people[n].age }}`, `{{ people[n].zipCodes }}`, `{{ people[n].zipCodes[0] }}` and `{{ people[n].zipCodes[1] }}`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JsonSchema"
+              }
+            ]
+          },
+          "aliases": {
+            "description": "These are additional variables to create.\n\nThese will be accessible during the call as `{{key}}` and stored in `call.artifact.variableValues` after the call.\n\nExample:\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{name}}\"\n    },\n    {\n      \"key\": \"fullName\",\n      \"value\": \"{{firstName}} {{lastName}}\"\n    },\n    {\n      \"key\": \"greeting\",\n      \"value\": \"Hello {{name}}, welcome to {{company}}!\"\n    },\n    {\n      \"key\": \"customerCity\",\n      \"value\": \"{{addresses[0].city}}\"\n    },\n    {\n      \"key\": \"something\",\n      \"value\": \"{{any liquid}}\"\n    }\n  ]\n}\n```\n\nThis will create variables `customerName`, `fullName`, `greeting`, `customerCity`, and `something`. To access these variables, you can reference them as `{{customerName}}`, `{{fullName}}`, `{{greeting}}`, `{{customerCity}}`, and `{{something}}`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariableExtractionAlias"
+            }
+          }
+        }
+      },
+      "ToolParameter": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "This is the key of the parameter."
+          },
+          "value": {
+            "description": "The value of the parameter. Any JSON type. String values support Liquid templates.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ]
+      },
       "OpenAIFunctionParameters": {
         "type": "object",
         "properties": {
@@ -11639,6 +11713,21 @@
               }
             ]
           },
+          "variableExtractionPlan": {
+            "description": "Plan to extract variables from the tool response",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VariableExtractionPlan"
+              }
+            ]
+          },
+          "parameters": {
+            "description": "Static key-value pairs merged into the request body. Values support Liquid templates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolParameter"
+            }
+          },
           "function": {
             "description": "This is the function definition of the tool.",
             "allOf": [
@@ -11654,13 +11743,6 @@
                 "$ref": "#/components/schemas/ToolRejectionPlan"
               }
             ]
-          },
-          "parameters": {
-            "type": "array",
-            "description": "Static key-value pairs merged into the request body or function arguments. Values support Liquid templates.",
-            "items": {
-              "$ref": "#/components/schemas/ToolParameter"
-            }
           }
         },
         "required": [
@@ -12982,47 +13064,6 @@
         "required": [
           "type"
         ]
-      },
-      "VariableExtractionAlias": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "This is the key of the variable.\n\nThis variable will be accessible during the call as `{{key}}` and stored in `call.artifact.variableValues` after the call.\n\nRules:\n- Must start with a letter (a-z, A-Z).\n- Subsequent characters can be letters, numbers, or underscores.\n- Minimum length of 1 and maximum length of 40.",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "/^[a-zA-Z][a-zA-Z0-9_]*$/"
-          },
-          "value": {
-            "type": "string",
-            "description": "This is the value of the variable.\n\nThis can reference existing variables, use filters, and perform transformations.\n\nExamples: \"{{name}}\", \"{{customer.email}}\", \"Hello {{name | upcase}}\"",
-            "maxLength": 10000
-          }
-        },
-        "required": [
-          "key",
-          "value"
-        ]
-      },
-      "VariableExtractionPlan": {
-        "type": "object",
-        "properties": {
-          "schema": {
-            "description": "This is the schema to extract.\n\nExamples:\n1. To extract object properties, you can use the following schema:\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"string\"\n    },\n    \"age\": {\n      \"type\": \"number\"\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}` and `{{ age }}` respectively. To emphasize, object properties are extracted as direct global variables.\n\n2. To extract nested properties, you can use the following schema:\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"first\": {\n          \"type\": \"string\"\n        },\n        \"last\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n```\n\nThese will be extracted as `{{ name }}`. And, `{{ name.first }}` and `{{ name.last }}` will be accessible.\n\n3. To extract array items, you can use the following schema:\n```json\n{\n  \"type\": \"array\",\n  \"title\": \"zipCodes\",\n  \"items\": {\n    \"type\": \"string\"\n  }\n}\n```\n\nThis will be extracted as `{{ zipCodes }}`. To access the array items, you can use `{{ zipCodes[0] }}` and `{{ zipCodes[1] }}`.\n\n4. To extract array of objects, you can use the following schema:\n\n```json\n{\n  \"type\": \"array\",\n  \"name\": \"people\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"name\": {\n        \"type\": \"string\"\n      },\n      \"age\": {\n        \"type\": \"number\"\n      },\n      \"zipCodes\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n```\n\nThis will be extracted as `{{ people }}`. To access the array items, you can use `{{ people[n].name }}`, `{{ people[n].age }}`, `{{ people[n].zipCodes }}`, `{{ people[n].zipCodes[0] }}` and `{{ people[n].zipCodes[1] }}`.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/JsonSchema"
-              }
-            ]
-          },
-          "aliases": {
-            "description": "These are additional variables to create.\n\nThese will be accessible during the call as `{{key}}` and stored in `call.artifact.variableValues` after the call.\n\nExample:\n```json\n{\n  \"aliases\": [\n    {\n      \"key\": \"customerName\",\n      \"value\": \"{{name}}\"\n    },\n    {\n      \"key\": \"fullName\",\n      \"value\": \"{{firstName}} {{lastName}}\"\n    },\n    {\n      \"key\": \"greeting\",\n      \"value\": \"Hello {{name}}, welcome to {{company}}!\"\n    },\n    {\n      \"key\": \"customerCity\",\n      \"value\": \"{{addresses[0].city}}\"\n    },\n    {\n      \"key\": \"something\",\n      \"value\": \"{{any liquid}}\"\n    }\n  ]\n}\n```\n\nThis will create variables `customerName`, `fullName`, `greeting`, `customerCity`, and `something`. To access these variables, you can reference them as `{{customerName}}`, `{{fullName}}`, `{{greeting}}`, `{{customerCity}}`, and `{{something}}`.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/VariableExtractionAlias"
-            }
-          }
-        }
       },
       "HandoffDestinationAssistant": {
         "type": "object",
@@ -17854,6 +17895,21 @@
               }
             ]
           },
+          "variableExtractionPlan": {
+            "description": "Plan to extract variables from the tool response",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VariableExtractionPlan"
+              }
+            ]
+          },
+          "parameters": {
+            "description": "Static key-value pairs merged into the request body. Values support Liquid templates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolParameter"
+            }
+          },
           "rejectionPlan": {
             "description": "This is the plan to reject a tool call based on the conversation state.\n\n// Example 1: Reject endCall if user didn't say goodbye\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '(?i)\\\\b(bye|goodbye|farewell|see you later|take care)\\\\b',\n    target: { position: -1, role: 'user' },\n    negate: true  // Reject if pattern does NOT match\n  }]\n}\n```\n\n// Example 2: Reject transfer if user is actually asking a question\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '\\\\?',\n    target: { position: -1, role: 'user' }\n  }]\n}\n```\n\n// Example 3: Reject transfer if user didn't mention transfer recently\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 5 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' %}\n{% assign mentioned = false %}\n{% for msg in userMessages %}\n  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'speak to' %}\n    {% assign mentioned = true %}\n    {% break %}\n  {% endif %}\n{% endfor %}\n{% if mentioned %}\n  false\n{% else %}\n  true\n{% endif %}`\n  }]\n}\n```\n\n// Example 4: Reject endCall if the bot is looping and trying to exit\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 6 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' | reverse %}\n{% if userMessages.size < 3 %}\n  false\n{% else %}\n  {% assign msg1 = userMessages[0].content | downcase %}\n  {% assign msg2 = userMessages[1].content | downcase %}\n  {% assign msg3 = userMessages[2].content | downcase %}\n  {% comment %} Check for repetitive messages {% endcomment %}\n  {% if msg1 == msg2 or msg1 == msg3 or msg2 == msg3 %}\n    true\n  {% comment %} Check for common loop phrases {% endcomment %}\n  {% elsif msg1 contains 'cool thanks' or msg2 contains 'cool thanks' or msg3 contains 'cool thanks' %}\n    true\n  {% elsif msg1 contains 'okay thanks' or msg2 contains 'okay thanks' or msg3 contains 'okay thanks' %}\n    true\n  {% elsif msg1 contains 'got it' or msg2 contains 'got it' or msg3 contains 'got it' %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{% endif %}`\n  }]\n}\n```",
             "allOf": [
@@ -18655,10 +18711,7 @@
         "properties": {
           "hipaaEnabled": {
             "type": "boolean",
-            "description": "When this is enabled, no logs, recordings, or transcriptions will be stored.\nAt the end of the call, you will still receive an end-of-call-report message to store on your server. Defaults to false.",
-            "example": {
-              "hipaaEnabled": false
-            }
+            "description": "When this is enabled, logs, recordings, and transcriptions will be stored in HIPAA-compliant storage. Defaults to false. Only HIPAA-compliant providers will be available for LLM, Voice, and Transcriber respectively. This setting is only honored if the organization is on an Enterprise subscription or has purchased the HIPAA add-on."
           },
           "pciEnabled": {
             "type": "boolean",
@@ -20916,6 +20969,10 @@
             "enum": [
               "custom-voice"
             ]
+          },
+          "voiceId": {
+            "type": "string",
+            "description": "This is the provider-specific ID that will be used. This is passed in the voice request payload to identify the voice to use."
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -23404,6 +23461,10 @@
             "enum": [
               "custom-voice"
             ]
+          },
+          "voiceId": {
+            "type": "string",
+            "description": "This is the provider-specific ID that will be used. This is passed in the voice request payload to identify the voice to use."
           },
           "server": {
             "description": "This is where the voice request will be sent.\n\nRequest Example:\n\nPOST https://{server.url}\nContent-Type: application/json\n\n{\n  \"message\": {\n    \"type\": \"voice-request\",\n    \"text\": \"Hello, world!\",\n    \"sampleRate\": 24000,\n    ...other metadata about the call...\n  }\n}\n\nResponse Expected: 1-channel 16-bit raw PCM audio at the sample rate specified in the request. Here is how the response will be piped to the transport:\n```\nresponse.on('data', (chunk: Buffer) => {\n  outputStream.write(chunk);\n});\n```",
@@ -34269,6 +34330,7 @@
               "call.in-progress.error-sip-inbound-call-failed-to-connect",
               "call.in-progress.error-providerfault-outbound-sip-403-forbidden",
               "call.in-progress.error-providerfault-outbound-sip-407-proxy-authentication-required",
+              "call.in-progress.error-providerfault-outbound-sip-408-request-timeout",
               "call.in-progress.error-providerfault-outbound-sip-503-service-unavailable",
               "call.in-progress.error-providerfault-outbound-sip-480-temporarily-unavailable",
               "call.in-progress.error-sip-outbound-call-failed-to-connect",
@@ -39120,6 +39182,13 @@
               "type": "string"
             }
           },
+          "parameters": {
+            "description": "Static key-value pairs merged into the request body. Values support Liquid templates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolParameter"
+            }
+          },
           "id": {
             "type": "string",
             "description": "This is the unique identifier for the tool."
@@ -39191,13 +39260,6 @@
                 "$ref": "#/components/schemas/VariableExtractionPlan"
               }
             ]
-          },
-          "parameters": {
-            "type": "array",
-            "description": "Static key-value pairs merged into the request body or function arguments. Values support Liquid templates.",
-            "items": {
-              "$ref": "#/components/schemas/ToolParameter"
-            }
           }
         },
         "required": [
@@ -39545,6 +39607,21 @@
               }
             ]
           },
+          "variableExtractionPlan": {
+            "description": "Plan to extract variables from the tool response",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VariableExtractionPlan"
+              }
+            ]
+          },
+          "parameters": {
+            "description": "Static key-value pairs merged into the request body. Values support Liquid templates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolParameter"
+            }
+          },
           "id": {
             "type": "string",
             "description": "This is the unique identifier for the tool."
@@ -39578,13 +39655,6 @@
                 "$ref": "#/components/schemas/OpenAIFunction"
               }
             ]
-          },
-          "parameters": {
-            "type": "array",
-            "description": "Static key-value pairs merged into the request body or function arguments. Values support Liquid templates.",
-            "items": {
-              "$ref": "#/components/schemas/ToolParameter"
-            }
           }
         },
         "required": [
@@ -41308,6 +41378,13 @@
               "type": "string"
             }
           },
+          "parameters": {
+            "description": "Static key-value pairs merged into the request body. Values support Liquid templates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolParameter"
+            }
+          },
           "name": {
             "type": "string",
             "description": "This is the name of the tool. This will be passed to the model.\n\nMust be a-z, A-Z, 0-9, or contain underscores and dashes, with a maximum length of 40.",
@@ -41361,13 +41438,6 @@
                 "$ref": "#/components/schemas/ToolRejectionPlan"
               }
             ]
-          },
-          "parameters": {
-            "type": "array",
-            "description": "Static key-value pairs merged into the request body or function arguments. Values support Liquid templates.",
-            "items": {
-              "$ref": "#/components/schemas/ToolParameter"
-            }
           }
         },
         "required": [
@@ -41933,6 +42003,13 @@
               "type": "string"
             }
           },
+          "parameters": {
+            "description": "Static key-value pairs merged into the request body. Values support Liquid templates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolParameter"
+            }
+          },
           "rejectionPlan": {
             "description": "This is the plan to reject a tool call based on the conversation state.\n\n// Example 1: Reject endCall if user didn't say goodbye\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '(?i)\\\\b(bye|goodbye|farewell|see you later|take care)\\\\b',\n    target: { position: -1, role: 'user' },\n    negate: true  // Reject if pattern does NOT match\n  }]\n}\n```\n\n// Example 2: Reject transfer if user is actually asking a question\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '\\\\?',\n    target: { position: -1, role: 'user' }\n  }]\n}\n```\n\n// Example 3: Reject transfer if user didn't mention transfer recently\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 5 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' %}\n{% assign mentioned = false %}\n{% for msg in userMessages %}\n  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'speak to' %}\n    {% assign mentioned = true %}\n    {% break %}\n  {% endif %}\n{% endfor %}\n{% if mentioned %}\n  false\n{% else %}\n  true\n{% endif %}`\n  }]\n}\n```\n\n// Example 4: Reject endCall if the bot is looping and trying to exit\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 6 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' | reverse %}\n{% if userMessages.size < 3 %}\n  false\n{% else %}\n  {% assign msg1 = userMessages[0].content | downcase %}\n  {% assign msg2 = userMessages[1].content | downcase %}\n  {% assign msg3 = userMessages[2].content | downcase %}\n  {% comment %} Check for repetitive messages {% endcomment %}\n  {% if msg1 == msg2 or msg1 == msg3 or msg2 == msg3 %}\n    true\n  {% comment %} Check for common loop phrases {% endcomment %}\n  {% elsif msg1 contains 'cool thanks' or msg2 contains 'cool thanks' or msg3 contains 'cool thanks' %}\n    true\n  {% elsif msg1 contains 'okay thanks' or msg2 contains 'okay thanks' or msg3 contains 'okay thanks' %}\n    true\n  {% elsif msg1 contains 'got it' or msg2 contains 'got it' or msg3 contains 'got it' %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{% endif %}`\n  }]\n}\n```",
             "allOf": [
@@ -41986,13 +42063,6 @@
                 "$ref": "#/components/schemas/VariableExtractionPlan"
               }
             ]
-          },
-          "parameters": {
-            "type": "array",
-            "description": "Static key-value pairs merged into the request body or function arguments. Values support Liquid templates.",
-            "items": {
-              "$ref": "#/components/schemas/ToolParameter"
-            }
           }
         }
       },
@@ -42205,6 +42275,21 @@
               }
             ]
           },
+          "variableExtractionPlan": {
+            "description": "Plan to extract variables from the tool response",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VariableExtractionPlan"
+              }
+            ]
+          },
+          "parameters": {
+            "description": "Static key-value pairs merged into the request body. Values support Liquid templates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolParameter"
+            }
+          },
           "rejectionPlan": {
             "description": "This is the plan to reject a tool call based on the conversation state.\n\n// Example 1: Reject endCall if user didn't say goodbye\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '(?i)\\\\b(bye|goodbye|farewell|see you later|take care)\\\\b',\n    target: { position: -1, role: 'user' },\n    negate: true  // Reject if pattern does NOT match\n  }]\n}\n```\n\n// Example 2: Reject transfer if user is actually asking a question\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '\\\\?',\n    target: { position: -1, role: 'user' }\n  }]\n}\n```\n\n// Example 3: Reject transfer if user didn't mention transfer recently\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 5 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' %}\n{% assign mentioned = false %}\n{% for msg in userMessages %}\n  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'speak to' %}\n    {% assign mentioned = true %}\n    {% break %}\n  {% endif %}\n{% endfor %}\n{% if mentioned %}\n  false\n{% else %}\n  true\n{% endif %}`\n  }]\n}\n```\n\n// Example 4: Reject endCall if the bot is looping and trying to exit\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 6 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' | reverse %}\n{% if userMessages.size < 3 %}\n  false\n{% else %}\n  {% assign msg1 = userMessages[0].content | downcase %}\n  {% assign msg2 = userMessages[1].content | downcase %}\n  {% assign msg3 = userMessages[2].content | downcase %}\n  {% comment %} Check for repetitive messages {% endcomment %}\n  {% if msg1 == msg2 or msg1 == msg3 or msg2 == msg3 %}\n    true\n  {% comment %} Check for common loop phrases {% endcomment %}\n  {% elsif msg1 contains 'cool thanks' or msg2 contains 'cool thanks' or msg3 contains 'cool thanks' %}\n    true\n  {% elsif msg1 contains 'okay thanks' or msg2 contains 'okay thanks' or msg3 contains 'okay thanks' %}\n    true\n  {% elsif msg1 contains 'got it' or msg2 contains 'got it' or msg3 contains 'got it' %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{% endif %}`\n  }]\n}\n```",
             "allOf": [
@@ -42220,13 +42305,6 @@
                 "$ref": "#/components/schemas/OpenAIFunction"
               }
             ]
-          },
-          "parameters": {
-            "type": "array",
-            "description": "Static key-value pairs merged into the request body or function arguments. Values support Liquid templates.",
-            "items": {
-              "$ref": "#/components/schemas/ToolParameter"
-            }
           }
         }
       },
@@ -45117,13 +45195,43 @@
           },
           "simulationId": {
             "type": "string",
-            "description": "ID of the simulation to run",
+            "description": "ID of an existing simulation to run. When provided, scenarioId/personalityId/inline fields are ignored.",
             "format": "uuid"
+          },
+          "scenarioId": {
+            "type": "string",
+            "description": "ID of an existing scenario. Cannot be combined with inline scenario.",
+            "format": "uuid"
+          },
+          "scenario": {
+            "description": "Inline scenario configuration. Cannot be combined with scenarioId.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateScenarioDTO"
+              }
+            ]
+          },
+          "personalityId": {
+            "type": "string",
+            "description": "ID of an existing personality. Cannot be combined with inline personality.",
+            "format": "uuid"
+          },
+          "personality": {
+            "description": "Inline personality configuration. Cannot be combined with personalityId.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreatePersonalityDTO"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Optional name for this simulation entry"
           }
         },
         "required": [
-          "type",
-          "simulationId"
+          "type"
         ]
       },
       "SimulationRunSuiteEntry": {
@@ -45162,13 +45270,20 @@
           },
           "assistantId": {
             "type": "string",
-            "description": "ID of the assistant to test against",
+            "description": "ID of an existing assistant to test against. Cannot be combined with inline assistant.",
             "format": "uuid"
+          },
+          "assistant": {
+            "description": "Inline assistant configuration to test against. Cannot be combined with assistantId.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateAssistantDTO"
+              }
+            ]
           }
         },
         "required": [
-          "type",
-          "assistantId"
+          "type"
         ]
       },
       "SimulationRunTargetSquad": {
@@ -45183,13 +45298,20 @@
           },
           "squadId": {
             "type": "string",
-            "description": "ID of the squad to test against",
+            "description": "ID of an existing squad to test against. Cannot be combined with inline squad.",
             "format": "uuid"
+          },
+          "squad": {
+            "description": "Inline squad configuration to test against. Cannot be combined with squadId.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateSquadDTO"
+              }
+            ]
           }
         },
         "required": [
-          "type",
-          "squadId"
+          "type"
         ]
       },
       "SimulationRunTransportConfiguration": {
@@ -49988,7 +50110,7 @@
         "properties": {
           "hipaaEnabled": {
             "type": "boolean",
-            "description": "When this is enabled, no logs, recordings, or transcriptions will be stored. At the end of the call, you will still receive an end-of-call-report message to store on your server. Defaults to false.\nWhen HIPAA is enabled, only OpenAI/Custom LLM or Azure Providers will be available for LLM and Voice respectively.\nThis is due to the compliance requirements of HIPAA. Other providers may not meet these requirements.",
+            "description": "When this is enabled, logs, recordings, and transcriptions will be stored in HIPAA-compliant storage. Defaults to false.\nWhen HIPAA is enabled, only HIPAA-compliant providers will be available for LLM, Voice, and Transcriber respectively.\nThis is due to the compliance requirements of HIPAA. Other providers may not meet these requirements.",
             "example": false
           },
           "subscriptionId": {
@@ -50315,7 +50437,7 @@
         "properties": {
           "hipaaEnabled": {
             "type": "boolean",
-            "description": "When this is enabled, no logs, recordings, or transcriptions will be stored. At the end of the call, you will still receive an end-of-call-report message to store on your server. Defaults to false.\nWhen HIPAA is enabled, only OpenAI/Custom LLM or Azure Providers will be available for LLM and Voice respectively.\nThis is due to the compliance requirements of HIPAA. Other providers may not meet these requirements.",
+            "description": "When this is enabled, logs, recordings, and transcriptions will be stored in HIPAA-compliant storage. Defaults to false.\nWhen HIPAA is enabled, only HIPAA-compliant providers will be available for LLM, Voice, and Transcriber respectively.\nThis is due to the compliance requirements of HIPAA. Other providers may not meet these requirements.",
             "example": false
           },
           "subscription": {
@@ -50420,7 +50542,7 @@
         "properties": {
           "hipaaEnabled": {
             "type": "boolean",
-            "description": "When this is enabled, no logs, recordings, or transcriptions will be stored. At the end of the call, you will still receive an end-of-call-report message to store on your server. Defaults to false.\nWhen HIPAA is enabled, only OpenAI/Custom LLM or Azure Providers will be available for LLM and Voice respectively.\nThis is due to the compliance requirements of HIPAA. Other providers may not meet these requirements.",
+            "description": "When this is enabled, logs, recordings, and transcriptions will be stored in HIPAA-compliant storage. Defaults to false.\nWhen HIPAA is enabled, only HIPAA-compliant providers will be available for LLM, Voice, and Transcriber respectively.\nThis is due to the compliance requirements of HIPAA. Other providers may not meet these requirements.",
             "example": false
           },
           "subscriptionId": {
@@ -59790,6 +59912,7 @@
               "call.in-progress.error-sip-inbound-call-failed-to-connect",
               "call.in-progress.error-providerfault-outbound-sip-403-forbidden",
               "call.in-progress.error-providerfault-outbound-sip-407-proxy-authentication-required",
+              "call.in-progress.error-providerfault-outbound-sip-408-request-timeout",
               "call.in-progress.error-providerfault-outbound-sip-503-service-unavailable",
               "call.in-progress.error-providerfault-outbound-sip-480-temporarily-unavailable",
               "call.in-progress.error-sip-outbound-call-failed-to-connect",
@@ -61130,6 +61253,7 @@
               "call.in-progress.error-sip-inbound-call-failed-to-connect",
               "call.in-progress.error-providerfault-outbound-sip-403-forbidden",
               "call.in-progress.error-providerfault-outbound-sip-407-proxy-authentication-required",
+              "call.in-progress.error-providerfault-outbound-sip-408-request-timeout",
               "call.in-progress.error-providerfault-outbound-sip-503-service-unavailable",
               "call.in-progress.error-providerfault-outbound-sip-480-temporarily-unavailable",
               "call.in-progress.error-sip-outbound-call-failed-to-connect",
@@ -63952,6 +64076,21 @@
               }
             ]
           },
+          "variableExtractionPlan": {
+            "description": "Plan to extract variables from the tool response",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VariableExtractionPlan"
+              }
+            ]
+          },
+          "parameters": {
+            "description": "Static key-value pairs merged into the request body. Values support Liquid templates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolParameter"
+            }
+          },
           "toolCall": {
             "$ref": "#/components/schemas/ToolCall"
           },
@@ -64686,39 +64825,6 @@
         "required": [
           "transport",
           "twiml"
-        ]
-      },
-      "ToolParameter": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "This is the key of the parameter."
-          },
-          "value": {
-            "description": "The value of the parameter. Any JSON type. String values support Liquid templates.",
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "object"
-              },
-              {
-                "type": "array"
-              }
-            ]
-          }
-        },
-        "required": [
-          "key",
-          "value"
         ]
       }
     }
