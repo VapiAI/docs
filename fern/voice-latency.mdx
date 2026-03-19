@@ -1,0 +1,298 @@
+---
+title: Voice latency optimization
+subtitle: Reduce response times across the voice AI pipeline
+slug: voice-latency
+description: Learn how to minimize latency in voice AI agents by optimizing each stage of the audio pipeline, from speech recognition to text-to-speech output.
+---
+
+## Overview
+
+Voice AI latency is the time between when a user finishes speaking and when the assistant begins responding. Vapi targets **sub-500ms response times** for production voice agents. Every stage of the pipeline contributes to total latency, and optimizing each one compounds into noticeably faster conversations.
+
+**In this guide, you'll learn to:**
+- Understand how audio moves through the voice pipeline and where latency accumulates
+- Select and configure LLM, STT, and TTS providers for minimal delay
+- Optimize tool calls, squad handoffs, and network configuration
+- Monitor latency and apply Vapi platform features that reduce response times
+
+## Voice AI pipeline
+
+Each voice interaction passes through a series of processing stages. Latency at any stage delays the entire response.
+
+```
+Microphone → Network → Telephony → STT → LLM → TTS → Network → Playback
+```
+
+<CardGroup cols={2}>
+  <Card title="Audio capture" icon="microphone" iconType="solid">
+    User speech is captured by the microphone, transmitted over the network, and received by the telephony layer.
+  </Card>
+  <Card title="Speech-to-text (STT)" icon="ear-listen" iconType="solid">
+    The transcriber converts audio to text. Model choice and endpointing configuration directly affect speed.
+  </Card>
+  <Card title="LLM processing" icon="brain" iconType="solid">
+    The language model generates a response. Model selection, prompt size, and caching have the largest impact on this stage.
+  </Card>
+  <Card title="Text-to-speech (TTS)" icon="volume-high" iconType="solid">
+    The TTS engine converts the LLM response into audio for playback to the user.
+  </Card>
+</CardGroup>
+
+The total time from end of user speech to start of assistant audio is called **time-to-first-byte (TTFB)**. Reducing TTFB at each stage is the primary goal of latency optimization.
+
+## LLM optimization
+
+The LLM stage typically accounts for the largest portion of response latency. Model selection, prompt design, and caching are the highest-impact optimizations.
+
+### Model selection
+
+Choose models that balance quality with speed for your use case:
+
+| Model | Relative speed | Best for |
+|---|---|---|
+| GPT-4.1 | Fast | General-purpose voice agents with good quality-to-speed ratio |
+| GPT-4.1-mini | Faster | High-volume agents where speed is the priority |
+| GPT-4.1-nano | Fastest | Simple tasks like routing, FAQs, and data collection |
+| Claude 3.5 Sonnet | Fast | Complex reasoning tasks that need high accuracy |
+| Gemini 2.0 Flash | Fast | Multimodal use cases and fast general responses |
+
+<Tip>
+Start with GPT-4.1 for most voice agents. It provides a strong balance of response quality and low latency. Switch to a smaller model only if latency requirements demand it and output quality remains acceptable.
+</Tip>
+
+### Prompt caching
+
+Prompt caching stores your system prompt in the LLM provider's cache so it does not need to be re-processed on every turn. This reduces LLM latency by **40-80%** on cache hits.
+
+Prompt caching activates automatically when:
+- Your system prompt exceeds the provider's minimum token threshold (typically 1,024 tokens for OpenAI)
+- The same prompt is used across multiple turns or calls
+
+<Note>
+Prompt caching is provider-dependent. OpenAI, Anthropic, and Google each have different minimum prompt sizes and caching behavior. Check your provider's documentation for specifics.
+</Note>
+
+### Prompt design for speed
+
+Keep prompts concise to reduce processing time:
+
+- Put critical instructions at the beginning of the system prompt
+- Remove redundant or overly verbose instructions
+- Use structured formats (numbered lists, short sentences) over long paragraphs
+- Avoid including large reference documents inline when a tool call can retrieve them on demand
+
+## STT optimization
+
+The speech-to-text stage converts user audio into text for the LLM. Transcriber choice and endpointing configuration determine how quickly this handoff occurs.
+
+### Transcriber selection
+
+Vapi supports multiple STT providers. Select based on your language and accuracy needs:
+
+| Provider | Strengths | Considerations |
+|---|---|---|
+| Deepgram | Low latency, strong English accuracy | Best default for English-primary agents |
+| Talkscriber | Fast endpointing, good multilingual support | Good for non-English deployments |
+| Gladia | Multilingual, real-time streaming | Useful for agents serving multiple languages |
+| Assembly AI | High accuracy for complex audio | Slightly higher latency for accuracy gains |
+
+### Endpointing configuration
+
+Endpointing determines when the system decides the user has finished speaking. Faster endpointing reduces wait time but risks cutting off mid-sentence.
+
+For English conversations, use smart endpointing:
+
+```json
+{
+  "startSpeakingPlan": {
+    "smartEndpointingPlan": {
+      "provider": "livekit"
+    },
+    "waitSeconds": 0.4
+  }
+}
+```
+
+For non-English languages, use transcription-based endpointing:
+
+```json
+{
+  "startSpeakingPlan": {
+    "transcriptionEndpointingPlan": {
+      "onPunctuationSeconds": 0.1,
+      "onNoPunctuationSeconds": 1.5,
+      "onNumberSeconds": 0.5
+    },
+    "waitSeconds": 0.4
+  }
+}
+```
+
+See **[Voice pipeline configuration](/customization/voice-pipeline-configuration)** for the complete endpointing reference.
+
+### Transcriber fallbacks
+
+Configure fallback transcribers to maintain availability if your primary provider has an outage or degradation:
+
+```json
+{
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-3",
+    "fallbackPlan": {
+      "transcribers": [
+        {
+          "provider": "talkscriber",
+          "model": "whisper"
+        }
+      ]
+    }
+  }
+}
+```
+
+Fallbacks add resilience without affecting latency during normal operation. The fallback provider activates only when the primary fails.
+
+## TTS optimization
+
+The text-to-speech stage converts the LLM response into audio. Voice selection and formatting directly affect both latency and speech quality.
+
+### Voice selection
+
+Choose TTS providers and voices optimized for low latency:
+
+| Provider | Strengths | Considerations |
+|---|---|---|
+| Vapi Voices (Beta) | Optimized for Vapi pipeline, lowest latency | Limited voice selection during beta |
+| ElevenLabs | High quality, natural-sounding voices | Higher latency than streaming-first providers |
+| Deepgram | Fast streaming TTS | Good balance of speed and quality |
+| PlayHT | Low-latency streaming, voice cloning | Good for custom brand voices |
+| OpenAI | Consistent quality | Moderate latency |
+
+<Tip>
+Vapi Voices (Beta) are purpose-built for the Vapi pipeline and deliver the lowest TTS latency. Try them first for latency-sensitive deployments, then fall back to other providers if voice quality requirements differ.
+</Tip>
+
+### Voice formatting and pronunciation
+
+Improve TTS output quality without adding latency:
+
+- **SSML tags:** Use SSML for precise control over pronunciation, pauses, and emphasis where supported by your TTS provider
+- **Pronunciation guides:** Add phonetic spellings for product names, technical terms, and proper nouns in your system prompt
+- **Sentence structure:** Short, declarative sentences render faster and sound more natural than long, complex ones
+
+## Tool call optimization
+
+Tool calls (function calls) add latency because the pipeline pauses while waiting for the external service to respond. Minimize this impact with these strategies:
+
+### Reduce tool response time
+
+- Host tool endpoints geographically close to Vapi's infrastructure
+- Set aggressive timeouts (2-3 seconds) and return fallback responses when tools are slow
+- Cache frequently requested data to avoid redundant API calls
+
+### Minimize unnecessary tool calls
+
+- Preload commonly needed data into the system prompt or conversation context
+- Combine multiple related lookups into a single tool call where possible
+- Use the LLM's context window to avoid re-fetching information already present in the conversation
+
+### Async tool patterns
+
+For tools that do not need to block the conversation (like logging or CRM updates), configure them as async server events instead of blocking tool calls. This lets the assistant continue speaking while background tasks complete.
+
+## Squad design
+
+Squads let you connect multiple assistants that hand off conversations between each other. Each handoff introduces latency, so squad architecture matters for response time.
+
+### Keep squads small
+
+Limit squads to **2-5 members**. Each additional member increases the routing complexity and potential handoff latency.
+
+### Optimize handoff triggers
+
+- Use clear, specific conditions for transfers rather than broad intent matching
+- Pre-warm destination assistants when a transfer is likely
+- Avoid chains of transfers (A to B to C) by routing directly to the correct specialist
+
+### Minimize context transfer size
+
+When transferring a conversation between squad members, only pass the context the receiving assistant needs. Large context payloads increase the handoff duration.
+
+## Network and infrastructure
+
+Network conditions between the caller, Vapi, and your backend services affect end-to-end latency.
+
+### Reduce network hops
+
+- Deploy tool call backends in regions close to Vapi's infrastructure (US East)
+- Use direct connections rather than routing through multiple proxies or API gateways
+- Minimize TLS handshake overhead by using persistent connections where possible
+
+### Jitter buffers
+
+Vapi uses adaptive jitter buffers to smooth out network inconsistencies. These add a small, deliberate delay to prevent audio dropouts caused by packet timing variations. The buffer size adjusts automatically based on network conditions.
+
+For callers on unstable connections (mobile networks, international calls), slightly higher jitter buffering prevents audio quality issues at the cost of a few milliseconds of additional latency.
+
+## Platform features for low latency
+
+Vapi includes several platform-level features that reduce latency without additional configuration.
+
+### Weekly release channel
+
+The Weekly release channel gives you access to the latest platform optimizations and latency improvements before they reach the stable channel. Enable it in your Dashboard settings to receive performance improvements as they ship.
+
+<Note>
+The Weekly channel includes newer features that may have less testing than the stable release. Test thoroughly in a staging environment before enabling for production traffic.
+</Note>
+
+### Background audio prefetch
+
+Vapi begins TTS processing as soon as the first tokens arrive from the LLM, streaming audio generation in parallel with continued LLM output. This pipeline parallelism is automatic and requires no configuration.
+
+### Monitoring latency
+
+Track your agent's latency performance using Vapi's built-in analytics:
+
+- **Call logs:** Review per-call latency breakdowns in the Dashboard call detail view
+- **Analytics API:** Query aggregate latency metrics across calls to identify trends
+- **Webhook events:** Monitor `speech-update` and `conversation-update` events for real-time latency data
+
+## Optimization checklist
+
+Use this checklist to audit your voice agent's latency configuration:
+
+<Steps>
+  <Step title="Select an appropriate LLM">
+    Choose GPT-4.1 or equivalent for general use. Use smaller models for simple tasks.
+  </Step>
+  <Step title="Verify prompt caching">
+    Ensure your system prompt exceeds the provider's minimum token threshold for cache activation.
+  </Step>
+  <Step title="Configure endpointing">
+    Use smart endpointing for English, transcription-based for other languages.
+  </Step>
+  <Step title="Choose a low-latency TTS voice">
+    Try Vapi Voices (Beta) first. Fall back to streaming providers like Deepgram or PlayHT.
+  </Step>
+  <Step title="Optimize tool calls">
+    Set timeouts, cache data, and use async patterns for non-blocking operations.
+  </Step>
+  <Step title="Review squad size">
+    Limit squads to 2-5 members with direct routing to specialists.
+  </Step>
+  <Step title="Check network proximity">
+    Deploy backends near Vapi infrastructure. Minimize proxy layers.
+  </Step>
+  <Step title="Enable Weekly release channel">
+    Opt in to receive the latest latency optimizations.
+  </Step>
+</Steps>
+
+## Additional resources
+
+- **[Voice pipeline configuration](/customization/voice-pipeline-configuration):** Configure endpointing, interruptions, and conversation timing in detail.
+- **[Understanding call concurrency](/calls/call-concurrency):** Scale concurrent call capacity to handle production traffic.
+- **[Vapi engineering blog - Achieving sub-500ms voice AI](https://vapi.ai/blog/achieving-sub-500ms-voice-ai):** Deep dive into Vapi's latency optimization approach.
+- **[Vapi engineering blog - Real-time audio streaming](https://vapi.ai/blog/real-time-audio-streaming-at-scale):** Technical details on audio pipeline architecture.
