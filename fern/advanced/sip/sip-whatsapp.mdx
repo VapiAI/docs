@@ -1,0 +1,270 @@
+---
+title: WhatsApp
+subtitle: Learn to connect WhatsApp with Vapi for voice calls via SIP and text chat via the Chat API
+slug: advanced/sip/sip-whatsapp
+---
+
+## Overview
+
+You can integrate WhatsApp with Vapi to power AI voice calls and text conversations through WhatsApp. This enables your Vapi assistants to interact with users on one of the world's most popular messaging platforms.
+
+There are two approaches to connect WhatsApp with Vapi:
+
+- **Voice calls via SIP**: Route WhatsApp Business Calling API voice calls to Vapi through SIP trunking. This is the primary integration method and is covered in detail below.
+- **Text chat via the Chat API**: Bridge WhatsApp text messages to Vapi's Chat API for text-based AI conversations. This approach is covered briefly with links to the existing [Chat quickstart](/chat/quickstart).
+
+<Warning>
+Outbound WhatsApp calls are **not available in the United States**. This is a limitation of Meta's WhatsApp Business Calling API, not a Vapi restriction.
+</Warning>
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- A [Vapi account](https://dashboard.vapi.ai/) with your API key
+- A [Meta developer account](https://developers.facebook.com/)
+- A WhatsApp Business App created in your Meta developer account
+- A business phone number (or use Meta's test number to start)
+- Basic familiarity with [SIP trunking concepts](/advanced/sip/sip-trunk)
+
+---
+
+## Voice calls via SIP
+
+This approach connects WhatsApp voice calls to Vapi through SIP trunking. You configure your WhatsApp Business phone number as a SIP endpoint, then create a SIP trunk in Vapi to handle inbound and outbound calls.
+
+### Step 1: Configure your WhatsApp Business phone number
+
+Set up your phone number in Meta's WhatsApp Business platform and enable the calling features.
+
+<Steps>
+  <Step title="Add a phone number">
+    In your Meta developer dashboard, navigate to your WhatsApp Business App and add a phone number. You can use Meta's provided test number or bring your own business number.
+
+    For details, see [Meta's phone numbers documentation](https://developers.facebook.com/docs/whatsapp/cloud-api/phone-numbers/).
+  </Step>
+
+  <Step title="Verify the phone number">
+    Request a verification code via SMS and complete the verification process. This confirms you own the number and can use it with the WhatsApp Business API.
+
+    For details, see [Meta's phone number verification reference](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/phone-numbers).
+  </Step>
+
+  <Step title="Enable two-factor authentication">
+    Register a 6-digit PIN for two-factor authentication on the phone number. This is required before you can register the number with the Cloud API.
+
+    ```bash title="Enable 2FA via Meta API"
+    curl -X POST "https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}" \
+      -H "Authorization: Bearer {ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d '{"pin": "123456"}'
+    ```
+
+    For details, see [Meta's two-step verification reference](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/two-step-verification).
+  </Step>
+
+  <Step title="Register the phone number">
+    Register your phone number with the Cloud API. This step finalizes the number for use with WhatsApp Business features including calling.
+
+    ```bash title="Register phone number via Meta API"
+    curl -X POST "https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/register" \
+      -H "Authorization: Bearer {ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d '{"messaging_product": "whatsapp", "pin": "123456"}'
+    ```
+
+    For details, see [Meta's registration reference](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/registration).
+  </Step>
+
+  <Step title="Enable calling features">
+    Turn on voice calling for the phone number through Meta's Call Settings API.
+
+    For details, see [Meta's call settings documentation](https://developers.facebook.com/docs/whatsapp/cloud-api/calling/call-settings).
+
+    <Note>
+    You may need to upgrade to a higher API tier to access calling features. Check your WhatsApp Business App's scale tier in the Meta developer dashboard.
+    </Note>
+  </Step>
+</Steps>
+
+### Step 2: Configure SIP settings on Meta's side
+
+Once calling is enabled, configure the SIP connection details that allow Meta's WhatsApp infrastructure to communicate with Vapi.
+
+<Steps>
+  <Step title="Retrieve your SIP password">
+    Get the SIP password for your WhatsApp Business phone number from Meta's API. You will need this password when creating the SIP trunk credential in Vapi.
+
+    For details, see [Meta's SIP password documentation](https://developers.facebook.com/docs/whatsapp/cloud-api/calling/sip#include-sip-user-password).
+  </Step>
+
+  <Step title="Configure SIP settings on the phone number">
+    Update the SIP settings on your WhatsApp Business phone number to point to Vapi's SIP infrastructure.
+
+    **Key SIP connection details:**
+
+    | Parameter | Value |
+    |-----------|-------|
+    | **Meta SIP server** | `wa.meta.vc` |
+    | **Port** | `5061` |
+    | **Protocol** | TLS/SRTP with pad crypto enabled |
+    | **SIP username** | Your phone number (the number itself, approximately 11 characters) |
+    | **SIP password** | Retrieved from Meta's API in the previous step |
+
+    For details, see [Meta's SIP settings documentation](https://developers.facebook.com/docs/whatsapp/cloud-api/calling/sip#configure-update-sip-settings-on-business-phone-number).
+  </Step>
+</Steps>
+
+### Step 3: Create a SIP trunk in Vapi
+
+With the Meta side configured, create a SIP trunk credential in Vapi that connects to Meta's WhatsApp SIP server.
+
+<Steps>
+  <Step title="Create the SIP trunk credential">
+    Use the Vapi API to create a BYO SIP trunk credential with Meta's WhatsApp SIP server details.
+
+    ```bash title="Create SIP trunk credential"
+    curl -X POST "https://api.vapi.ai/credential" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+      -d '{
+        "provider": "byo-sip-trunk",
+        "name": "WhatsApp SIP Trunk",
+        "gateways": [{
+          "ip": "wa.meta.vc",
+          "port": 5061,
+          "inboundEnabled": true
+        }],
+        "outboundAuthenticationPlan": {
+          "authUsername": "YOUR_PHONE_NUMBER",
+          "authPassword": "YOUR_SIP_PASSWORD"
+        }
+      }'
+    ```
+
+    Replace `YOUR_PHONE_NUMBER` with your WhatsApp Business phone number (used as the SIP username) and `YOUR_SIP_PASSWORD` with the password you retrieved from Meta's API.
+
+    Save the returned **Credential ID** for the next step.
+  </Step>
+
+  <Step title="Associate your phone number with the SIP trunk">
+    Link your WhatsApp Business phone number to the SIP trunk credential in Vapi.
+
+    ```bash title="Create phone number resource"
+    curl -X POST "https://api.vapi.ai/phone-number" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+      -d '{
+        "provider": "byo-phone-number",
+        "name": "WhatsApp Number",
+        "number": "YOUR_PHONE_NUMBER",
+        "numberE164CheckEnabled": false,
+        "credentialId": "YOUR_CREDENTIAL_ID",
+        "assistantId": "YOUR_ASSISTANT_ID"
+      }'
+    ```
+
+    Replace `YOUR_CREDENTIAL_ID` with the ID from the previous step. Optionally, set `assistantId` to the Vapi assistant that should handle inbound calls on this number.
+  </Step>
+
+  <Step title="Test the connection">
+    Place a WhatsApp voice call to your business number from a personal WhatsApp account. The call should route through Meta's SIP infrastructure to Vapi, where your assistant handles the conversation.
+
+    If you have outbound calling enabled (not available in the US), you can also test outbound calls through the [Vapi API](/api-reference/calls/create).
+  </Step>
+</Steps>
+
+---
+
+## Text chat via the Chat API
+
+For text-based WhatsApp conversations, bridge WhatsApp messages to Vapi's Chat API. This approach connects your WhatsApp Business messaging webhook to Vapi's text chat endpoint, letting your assistant handle WhatsApp text messages.
+
+<Steps>
+  <Step title="Set up the WhatsApp messaging webhook">
+    Configure your WhatsApp Business App to send incoming messages to your server via a webhook. See [Meta's webhooks documentation](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components) for setup instructions.
+  </Step>
+
+  <Step title="Forward messages to Vapi's Chat API">
+    When your server receives a WhatsApp text message, forward it to Vapi's Chat API to get an AI response.
+
+    ```bash title="Send message to Vapi Chat API"
+    curl -X POST "https://api.vapi.ai/chat" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+      -d '{
+        "assistantId": "YOUR_ASSISTANT_ID",
+        "messages": [
+          {
+            "role": "user",
+            "content": "The incoming WhatsApp message text"
+          }
+        ]
+      }'
+    ```
+  </Step>
+
+  <Step title="Send the response back to WhatsApp">
+    Take the response from Vapi's Chat API and send it back to the user through the WhatsApp Business API's messaging endpoint.
+  </Step>
+</Steps>
+
+For the full Chat API reference and advanced features like session management and streaming, see the [Chat quickstart](/chat/quickstart).
+
+---
+
+## Limitations
+
+Keep these limitations in mind when planning your WhatsApp integration:
+
+- **No outbound calls in the USA**: Meta's WhatsApp Business Calling API does not support outbound voice calls from US-based numbers. Inbound calls work normally.
+- **Calling API tier requirements**: You may need to upgrade your WhatsApp Business API tier to access calling features. Check your tier status in the Meta developer dashboard.
+- **WhatsApp support roadmap**: WhatsApp integration relies on SIP trunking as the connection method. Vapi does not yet offer a native WhatsApp integration, so setup requires manual SIP configuration as described above.
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Calls fail with authentication errors">
+    Verify that the SIP username and password in your Vapi credential match the values from Meta's API. The SIP username is your phone number (approximately 11 characters), not a longer account identifier. Double-check the SIP password retrieved from Meta's SIP password API endpoint.
+  </Accordion>
+
+  <Accordion title="Inbound calls are not reaching Vapi">
+    Confirm that:
+    - Calling features are enabled on your WhatsApp Business phone number
+    - The SIP settings on Meta's side are correctly configured to route to Vapi
+    - Your SIP trunk credential in Vapi has `inboundEnabled` set to `true` on the gateway
+    - The phone number resource in Vapi is associated with the correct credential ID
+
+    Check the [networking and firewall](/advanced/sip/sip-networking) reference to ensure there are no connectivity issues.
+  </Accordion>
+
+  <Accordion title="Outbound calls are not working">
+    If you are in the United States, outbound WhatsApp voice calls are not supported by Meta's API. For other regions, verify that:
+    - Your WhatsApp Business API tier supports outbound calling
+    - The SIP trunk credential has valid outbound authentication details
+    - The phone number is properly registered and verified in Meta's system
+  </Accordion>
+
+  <Accordion title="Chat messages are not receiving responses">
+    For the Chat API approach, verify that:
+    - Your WhatsApp webhook is correctly forwarding messages to your server
+    - Your server is sending properly formatted requests to Vapi's Chat API
+    - The assistant ID in your requests is valid
+    - Your Vapi API key has the necessary permissions
+
+    See the [Chat quickstart](/chat/quickstart) for detailed API request formats.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next steps
+
+Now that you have WhatsApp connected to Vapi:
+
+- **[SIP trunking overview](/advanced/sip/sip-trunk):** Learn more about SIP trunk configuration options and advanced settings.
+- **[Chat API features](/chat/quickstart):** Explore streaming, session management, and other Chat API capabilities for text-based WhatsApp conversations.
+- **[Call forwarding](/call-forwarding):** Set up call transfers from your WhatsApp assistant to human agents.
+- **[Networking and firewall](/advanced/sip/sip-networking):** Review IP allowlisting and port requirements for SIP traffic.
