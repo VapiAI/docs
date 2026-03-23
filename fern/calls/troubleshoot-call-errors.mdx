@@ -1,0 +1,270 @@
+---
+title: Troubleshoot call errors
+subtitle: Learn to diagnose failed calls based on what the caller experienced.
+slug: calls/troubleshoot-call-errors
+---
+
+## Overview
+
+When a call fails, the fastest path to a fix is identifying **what the caller experienced**. This guide organizes errors by symptom so you can jump to the right section and resolve the issue.
+
+**In this guide, you'll learn to:**
+
+- Match caller-reported symptoms to specific error codes
+- Understand the fault classification system (`vapifault` vs `providerfault`)
+- Take the right corrective action for each error category
+
+<Note>
+This guide explains errors by symptom. For a complete reference of every `endedReason` code, see [Call end reasons](/calls/call-ended-reason).
+</Note>
+
+## Start here: identify the symptom
+
+<CardGroup cols={2}>
+  <Card title="Phone never rang" icon="fa-light fa-phone-slash" href="#phone-never-rang">
+    Call failed immediately — no ring on the customer's end
+  </Card>
+  <Card title="Phone rang, no answer" icon="fa-light fa-phone-missed" href="#phone-rang-but-nobody-answered">
+    Phone rang but was never picked up, or line was busy
+  </Card>
+  <Card title="Call dropped mid-conversation" icon="fa-light fa-plug-circle-xmark" href="#call-dropped-mid-conversation">
+    Caller was talking, then the line went dead abruptly
+  </Card>
+  <Card title="Assistant went silent" icon="fa-light fa-volume-xmark" href="#assistant-went-silent-or-unresponsive">
+    Call connected but the assistant stopped speaking or responding
+  </Card>
+  <Card title="Transfer failed" icon="fa-light fa-arrow-right-arrow-left" href="#transfer-failed">
+    Assistant attempted a transfer but it didn't go through
+  </Card>
+  <Card title="Call ended normally" icon="fa-light fa-phone-hangup" href="#call-ended-normally">
+    Call worked as expected — someone or something decided it should end
+  </Card>
+</CardGroup>
+
+## Phone never rang
+
+**What the caller experiences:** Nothing. The phone never rings. For web calls, the connection fails immediately.
+
+**What you see in the dashboard:** The call object is created with status `ended` almost immediately. Duration is zero or near-zero. No transcript.
+
+<AccordionGroup>
+  <Accordion title="Account and billing errors">
+    These are the most common cause of calls failing before they start.
+
+    | Error code | Meaning | Fix |
+    |---|---|---|
+    | `call.start.error-subscription-frozen` | Payment failed, subscription frozen | Update payment method in [dashboard](https://dashboard.vapi.ai/) |
+    | `call.start.error-subscription-insufficient-credits` | Not enough credits | Add credits or enable auto-reload |
+    | `call.start.error-subscription-concurrency-limit-reached` | Too many simultaneous calls | Upgrade plan or wait for active calls to end |
+    | `call.start.error-fraud-check-failed` | Blocked by fraud detection | Contact [support](/support) |
+    | `call.start.error-subscription-wallet-does-not-exist` | No billing wallet found | Contact [support](/support) |
+  </Accordion>
+
+  <Accordion title="Configuration errors">
+    The call couldn't start because something is missing or misconfigured.
+
+    | Error code | Meaning | Fix |
+    |---|---|---|
+    | `assistant-not-found` | Assistant ID doesn't exist | Verify the assistant ID in your [dashboard](https://dashboard.vapi.ai/) |
+    | `assistant-not-valid` | Assistant configuration is invalid | Check required fields on the assistant |
+    | `call-start-error-neither-assistant-nor-server-set` | No assistant or server URL configured | Set an `assistantId` or `serverUrl` on the call |
+    | `call.start.error-get-assistant` | Error fetching the assistant | Verify the assistant ID exists and your API key is correct |
+    | `call.start.error-get-phone-number` | Error fetching the phone number | Verify the number is imported and active |
+    | `call.start.error-get-resources-validation` | Resources failed validation | Check assistant, tools, and provider configurations |
+    | `call.start.error-vapi-number-international` | International calling not supported | Use a number that supports international calling |
+    | `call.start.error-vapi-number-outbound-daily-limit` | Daily outbound limit reached | Wait until the limit resets or use a different number |
+  </Accordion>
+
+  <Accordion title="Server URL errors">
+    If you use a server URL to dynamically provide an assistant, these errors mean your server didn't respond correctly.
+
+    | Error code | Meaning | Fix |
+    |---|---|---|
+    | `assistant-request-failed` | Request to your server URL failed | Check your server is running and reachable |
+    | `assistant-request-returned-error` | Server returned an error response | Check your server logs for the error |
+    | `assistant-request-returned-invalid-assistant` | Server returned invalid assistant config | Validate the response matches the [assistant schema](/api-reference/assistants/create) |
+    | `assistant-request-returned-no-assistant` | Server returned an empty response | Ensure your server returns an assistant object |
+    | `assistant-request-returned-unspeakable-error` | Server returned a non-speakable error | Return a user-friendly error message |
+  </Accordion>
+
+  <Accordion title="Infrastructure errors">
+    These indicate a problem on Vapi's side. You are typically not charged.
+
+    | Error code | Meaning | Fix |
+    |---|---|---|
+    | `call.in-progress.error-vapifault-transport-never-connected` | Transport never connected | Retry. Contact [support](/support) if persistent. |
+    | `call.in-progress.error-vapifault-worker-not-available` | No call worker available | Retry. This is a transient capacity issue. |
+    | `call.start.error-vapifault-database-error` | Internal database error | Retry. Contact [support](/support) if persistent. |
+    | `call.start.error-get-org` | Error fetching organization | Verify your API key is correct |
+  </Accordion>
+</AccordionGroup>
+
+## Phone rang but nobody answered
+
+**What the caller experiences:** The phone rings but nobody picks up, or they hear a busy signal.
+
+**What you see in the dashboard:** Short duration, no transcript, no messages.
+
+| Error code | Meaning | What to do |
+|---|---|---|
+| `customer-did-not-answer` | Callee didn't pick up (outbound) | Normal behavior. For IVR use cases, check your voicemail detection settings. |
+| `customer-busy` | Line was busy (outbound) | Normal behavior. Retry later. |
+| `customer-did-not-give-microphone-permission` | User denied mic access (web calls) | Ensure your UI requests microphone permissions before starting the call. |
+| `call.ringing.sip-inbound-caller-hungup-before-call-connect` | SIP caller hung up during ringing | Normal behavior — caller abandoned before pickup. |
+
+<Tip>
+For outbound calls where you expect to reach an IVR or automated system, configure your [voicemail detection](/calls/voicemail-detection) settings to prevent the call from ending prematurely.
+</Tip>
+
+## Call dropped mid-conversation
+
+**What the caller experiences:** They're in the middle of a conversation and the call suddenly cuts off with no warning. The assistant stops speaking and the line goes dead.
+
+**What you see in the dashboard:** Partial transcript, `messages` array that ends abruptly, non-zero duration.
+
+<AccordionGroup>
+  <Accordion title="Vapi infrastructure issues (vapifault)">
+    These are on Vapi's side. You are typically not charged. Most are transient.
+
+    | Error code | Meaning |
+    |---|---|
+    | `call.in-progress.error-vapifault-worker-died` | The Vapi process handling the call crashed |
+    | `call.in-progress.error-vapifault-transport-connected-but-call-not-active` | Transport connected but call was no longer active |
+    | `call.in-progress.error-vapifault-call-started-but-connection-to-transport-missing` | Transport connection was lost after call started |
+    | `worker-shutdown` | A Vapi deployment occurred while the call was active |
+
+    **What to do:** These are transient issues. If `worker-died` errors are frequent, contact [support](/support) with the affected `call_id` values.
+  </Accordion>
+
+  <Accordion title="Telephony provider disconnects">
+    The telephony provider (Twilio, Vonage, or your SIP trunk) dropped the connection.
+
+    | Error code | Meaning |
+    |---|---|
+    | `phone-call-provider-closed-websocket` | Audio WebSocket between Vapi and the provider broke |
+    | `call.in-progress.error-providerfault-transport-never-connected` | Provider failed to maintain the connection |
+    | `call.in-progress.twilio-completed-call` | Twilio ended the call from their side |
+    | `call.in-progress.sip-completed-call` | SIP provider ended the call from their side |
+    | `vonage-disconnected` | Vonage disconnected the call |
+
+    **What to do:** Check your telephony provider's dashboard for connection logs. For SIP trunks, verify your network connectivity to Vapi's SBC.
+  </Accordion>
+</AccordionGroup>
+
+## Assistant went silent or unresponsive
+
+**What the caller experiences:** The call is connected and the line is open, but the assistant either doesn't speak, speaks with extreme delay, responds once then stops, or produces garbled audio. The call eventually times out or the caller hangs up in frustration.
+
+**What you see in the dashboard:** Partial messages, the `endedReason` points to a specific pipeline component failure.
+
+<Warning>
+If you've configured **fallback providers**, some transcriber and voice errors will trigger a provider swap instead of ending the call. The caller might hear a brief 1-2 second pause while the fallback initializes, then the conversation continues normally.
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="LLM / model errors">
+    The AI model that generates responses is unreachable or returning errors.
+
+    | Status code pattern | Meaning | Fix |
+    |---|---|---|
+    | `*-401-*` / `*-incorrect-api-key` | Invalid API key | Verify your API key for this provider |
+    | `*-403-*` / `*-model-access-denied` | Model access denied | Check model permissions in your provider account |
+    | `*-429-*` / `*-exceeded-quota` | Rate limit or quota hit | Upgrade your plan with the provider or reduce volume |
+    | `*-500-*` / `*-server-error` | Provider internal error | Retry. Check the provider's [status page](https://status.openai.com/) |
+    | `*-503-*` / `*-server-overloaded` | Provider overloaded | Retry after a brief wait |
+    | `*-llm-failed` | Generic LLM failure | Check call logs for the detailed error message |
+    | `pipeline-no-available-llm-model` | No LLM model available | Check your model configuration |
+  </Accordion>
+
+  <Accordion title="Voice / TTS errors">
+    The text-to-speech service can't produce audio. The assistant "thinks" but can't speak.
+
+    | Pattern | Meaning | Fix |
+    |---|---|---|
+    | `*-voice-failed` | Generic synthesis failure | Check call logs. May be a transient provider issue. |
+    | `*-voice-not-found` / `*-invalid-voice` | Voice ID doesn't exist | Verify the voice ID in your provider account |
+    | `*-quota-exceeded` / `*-out-of-credits` | Voice provider credits exhausted | Add credits to your voice provider account |
+    | `*-unauthorized-access` / `*-invalid-api-key` | Bad voice provider credentials | Verify your API key for this provider |
+    | `*-500-*` / `*-503-*` | Provider infrastructure issue | Retry. Check the provider's status page. |
+  </Accordion>
+
+  <Accordion title="Transcriber / STT errors">
+    The speech-to-text service can't hear the caller. The assistant can speak but can't understand input.
+
+    | Pattern | Meaning | Fix |
+    |---|---|---|
+    | `*-transcriber-failed` | Generic transcriber failure | Check call logs for details |
+    | `*-returning-400-*` | Bad request (invalid model/language) | Check your transcriber model and language configuration |
+    | `*-returning-401-*` | Invalid transcriber credentials | Verify your API key for this provider |
+    | `*-returning-403-*` | Model access denied | Check model permissions in your provider account |
+    | `*-returning-500-*` / `*-returning-502-*` | Provider server error | Retry. Check the provider's status page. |
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+To prevent provider outages from killing your calls, configure fallback providers for your transcriber, voice, and model. Non-fatal errors will trigger a provider swap instead of ending the call.
+</Tip>
+
+## Transfer failed
+
+**What the caller experiences:** The assistant says it's transferring the call, but the transfer doesn't go through. The caller may hear silence, get disconnected, or return to the original assistant (for warm transfers).
+
+**What you see in the dashboard:** Transcript shows the transfer attempt, followed by the error.
+
+<AccordionGroup>
+  <Accordion title="General transfer errors">
+    | Error code | Meaning | Fix |
+    |---|---|---|
+    | `call.in-progress.error-transfer-failed` | Transfer attempt failed | Verify the destination number is correct and reachable |
+    | `call.in-progress.error-warm-transfer-max-duration` | Warm transfer exceeded max duration | Increase the warm transfer timeout or check if the destination is answering |
+    | `call.in-progress.error-warm-transfer-assistant-cancelled` | Transfer assistant cancelled | Check the transfer assistant's configuration |
+    | `call.in-progress.error-warm-transfer-silence-timeout` | Silence during warm transfer | Verify the transfer destination is responding with audio |
+    | `call.in-progress.error-warm-transfer-microphone-timeout` | Mic timeout during warm transfer | Check audio connectivity to the transfer destination |
+  </Accordion>
+
+  <Accordion title="SIP transfer errors">
+    | Error code | Meaning | Fix |
+    |---|---|---|
+    | `*-outbound-sip-403-forbidden` | SIP provider rejected the call | Check your SIP trunk credentials and allowed destinations |
+    | `*-outbound-sip-407-proxy-authentication-required` | SIP auth required | Configure proxy authentication on your SIP trunk |
+    | `*-outbound-sip-408-request-timeout` | SIP request timed out | Check network connectivity to the SIP destination |
+    | `*-outbound-sip-480-temporarily-unavailable` | SIP destination unavailable | Verify the destination is online and accepting calls |
+    | `*-outbound-sip-503-service-unavailable` | SIP service unavailable | Check the SIP provider's service status |
+  </Accordion>
+
+  <Accordion title="Telephony provider transfer errors">
+    | Error code | Meaning | Fix |
+    |---|---|---|
+    | `twilio-failed-to-connect-call` | Twilio couldn't connect the transfer | Check the destination number format and Twilio geo permissions |
+    | `vonage-failed-to-connect-call` | Vonage couldn't connect the transfer | Check the destination number and Vonage configuration |
+    | `vonage-rejected` | Vonage rejected the transfer | Check Vonage configuration and allowed destinations |
+  </Accordion>
+</AccordionGroup>
+
+For a detailed transfer debugging walkthrough, see [Debug forwarding drops](/calls/troubleshoot-call-forwarding-drops).
+
+## Call ended normally
+
+These are not errors — they indicate the call ended as expected.
+
+| Error code | Meaning | Adjust if needed |
+|---|---|---|
+| `assistant-ended-call` | Assistant ended the call via a tool or function | Expected behavior |
+| `assistant-ended-call-after-message-spoken` | Assistant spoke its final message and ended | Expected behavior |
+| `assistant-ended-call-with-hangup-task` | Assistant used a hangup workflow node | Expected behavior |
+| `assistant-said-end-call-phrase` | Assistant said a configured end-call phrase | Check your end-call phrases if calls end too early |
+| `assistant-forwarded-call` | Assistant transferred the call | Expected behavior |
+| `customer-ended-call` | Customer hung up | Expected behavior |
+| `exceeded-max-duration` | Hit `maxDurationSeconds` | Increase `maxDurationSeconds` if calls are being cut short |
+| `silence-timed-out` | Silence timeout | Increase `silenceTimeoutSeconds` if the timeout is too aggressive |
+| `voicemail` | Call went to voicemail | Configure [voicemail detection](/calls/voicemail-detection) settings |
+| `manually-canceled` | Canceled via API or dashboard | Expected behavior |
+| `vonage-completed` | Vonage reported call completed | Expected behavior |
+
+## Next steps
+
+- **[Call end reasons](/calls/call-ended-reason):** Complete reference of every `endedReason` code.
+- **[Debugging voice agents](/debugging):** General debugging workflow using dashboard tools, logs, and test suites.
+- **[Debug forwarding drops](/calls/troubleshoot-call-forwarding-drops):** Deep dive into transfer failures.
+- **[Troubleshoot SIP trunk errors](/advanced/sip/troubleshoot-sip-trunk-credential-errors):** Resolve SIP credential validation failures.
+- **[How to report issues](/issue-reporting):** Include your `call_id` and account email when contacting support.
