@@ -4,88 +4,219 @@ subtitle: All possible call ended reason codes and what they mean.
 slug: calls/call-ended-reason
 ---
 
-This guide will discuss all possible `endedReason` codes for a call.
+Every call in Vapi ends with an `endedReason` code that tells you exactly why it ended. You can find this value in the **"Ended Reason"** column of your [call logs](https://dashboard.vapi.ai/calls), or under the `endedReason` field on the [Call object](/api-reference/calls/get-call).
 
 <Note>
 For the full list of possible `endedReason` values, see the [API reference](/api-reference/calls/list#response.body.endedReason).
 </Note>
 
-You can find these under the **"Ended Reason"** section of your [call logs](https://dashboard.vapi.ai/calls) (or under the `endedReason` field on the [Call Object](/api-reference/calls/get-call)).
+## Quick diagnosis
 
-#### Assistant-Related
+Start here if a call failed and you want to quickly understand what happened:
 
-- `assistant-ended-call`: The assistant intentionally ended the call based on the user's response.
-- `assistant-ended-call-after-message-spoken`: The assistant intentionally ended the call after speaking a pre-defined message.
-- `assistant-ended-call-with-hangup-task`: The assistant ended the call using a hangup task.
-- `assistant-error`: This general error occurs within the assistant's logic or processing due to bugs, misconfigurations, or unexpected inputs.
-- `assistant-forwarded-call`: The assistant successfully transferred the call to another number or service.
-- `assistant-join-timed-out`: The assistant failed to join the call within the expected timeframe.
-- `assistant-not-found`: The specified assistant cannot be located or accessed, possibly due to an incorrect assistant ID or configuration issue.
-- `assistant-not-valid`: The assistant ID provided is not valid or recognized by the system.
-- `assistant-not-provided`: No assistant ID was specified in the request, causing the system to fail.
-- `assistant-request-failed`: The request to the assistant failed to complete successfully.
-- `assistant-request-returned-error`: Communicating with the assistant resulted in an error, possibly due to network issues or problems with the assistant itself.
-- `assistant-request-returned-forwarding-phone-number`: The assistant triggered a call forwarding action, ending the current call.
-- `assistant-request-returned-invalid-assistant`: The assistant returned an invalid response or failed to fulfill the request properly.
-- `assistant-request-returned-no-assistant`: The assistant didn't provide any response or action to the request.
-- `assistant-request-returned-unspeakable-error`: The assistant returned an error that cannot be spoken to the user.
-- `assistant-said-end-call-phrase`: The assistant recognized a phrase or keyword triggering call termination.
+| The caller experienced... | Look for these errors | Likely cause |
+|---|---|---|
+| Phone never rang | `call.start.error-*`, `assistant-not-found`, `*-transport-never-connected` | Account/billing issue, bad configuration, or Vapi infrastructure error |
+| Phone rang but no answer | `customer-did-not-answer`, `customer-busy`, SIP 408/480 | Normal behavior — callee was unavailable |
+| Call dropped mid-conversation | `*-worker-died`, `phone-call-provider-closed-websocket`, `worker-shutdown` | Network issue or Vapi infrastructure error (usually transient) |
+| Assistant went silent or unresponsive | `*-llm-failed`, `*-voice-failed`, `*-transcriber-failed`, `*-429-*`, `*-500-*` | Provider outage or credential/quota issue — configure fallback providers for the 3 core services (TTS, LLM, STT) |
+| Call worked normally, then ended | `assistant-ended-call`, `customer-ended-call`, `silence-timed-out`, `exceeded-max-duration` | Expected behavior — adjust timeout settings if calls end too early |
+| Transfer failed | `*-transfer-failed`, `*-warm-transfer-*`, SIP 403/503 | Bad transfer destination or SIP configuration |
 
-#### Pipeline and LLM
+For a detailed symptom-based walkthrough, see [Troubleshoot call errors](/calls/troubleshoot-call-errors).
 
-These relate to issues within the AI processing pipeline or the Large Language Models (LLMs) used for understanding and generating text:
+## Understanding error prefixes
 
-- `call.in-progress.error-vapifault-*`: Various error codes indicate specific failures within the processing pipeline, such as function execution, LLM responses, or external service integration. Examples include OpenAI, Azure OpenAI, Together AI, and several other LLMs or voice providers.
-- `call.in-progress.error-providerfault-*`: Similar to `call.in-progress.error-vapifault-*`. However, these error codes are surfaced when Vapi receives an error that has occured on the provider's side. Examples include internal server errors, or service unavailability.
-- `pipeline-error-*`: Similar to `call.in-progress.error-vapifault-*`. However, these error codes are surfaced when you are using your own provider keys.
-- `pipeline-no-available-llm-model`: No suitable LLM was available to process the request. Previously `pipeline-no-available-model`.
-- `call.in-progress.error-pipeline-no-available-llm-model`: No suitable LLM was available to process the request during the call.
+Many error codes include a prefix that indicates who is responsible for the failure:
 
-#### Phone Calls and Connectivity
+| Prefix | Meaning | What to do |
+|---|---|---|
+| `call.in-progress.error-vapifault-*` | Vapi infrastructure or platform credential failure. You are typically **not charged** for these calls. | Contact [Vapi support](/support) if persistent. |
+| `call.in-progress.error-providerfault-*` | A third-party provider (OpenAI, Deepgram, etc.) returned a server error. Outside Vapi's control. | Check the provider's status page. Consider configuring a fallback provider. |
+| `pipeline-error-*` | Legacy error format. When using your own provider keys (BYOK), these typically indicate credential or quota issues on your account with that provider. When using Vapi's platform keys, treat as a `vapifault`. | Verify your API key, billing status, and quota with the provider. |
 
-- `customer-busy`: The customer's line was busy.
-- `customer-ended-call`: The customer (end human user) ended the call for both inbound and outbound calls.
-- `customer-did-not-answer`: The customer didn't answer the call. If you're looking to build a use case where you need the bot to talk to automated IVRs, set `assistant.voicemailDetectionEnabled=false`.
-- `customer-did-not-give-microphone-permission`: The user didn't grant the necessary microphone access for the call.
-- `call.in-progress.error-assistant-did-not-receive-customer-audio`: Similar to `customer-did-not-give-microphone-permission`, but more generalized to situations where no customer audio was received.
-- `phone-call-provider-closed-websocket`: The connection with the call provider was unexpectedly closed.
-- `phone-call-provider-bypass-enabled-but-no-call-received`: The phone call provider bypass was enabled but no call was received.
-- `twilio-failed-to-connect-call`: The Twilio service, responsible for managing calls, failed to establish a connection.
-- `twilio-reported-customer-misdialed`: Twilio reported that the customer dialed an invalid or incomplete number.
-- `vonage-disconnected`: The call was disconnected by Vonage, another call management service.
-- `vonage-failed-to-connect-call`: Vonage failed to establish the call connection.
-- `vonage-rejected`: The call was rejected by Vonage due to an issue or configuration problem.
-- `vonage-completed`: The call was completed successfully by Vonage.
-- `call.in-progress.error-sip-telephony-provider-failed-to-connect-call`: The SIP telephony provider failed to establish the call connection.
+## Call start errors
 
-#### Call Start Errors
+These occur before the call connects, during resource setup.
 
-- `call-start-error-neither-assistant-nor-server-set`: Neither an assistant nor server was configured for the call.
-- `call.start.error-get-org`: Error retrieving organization information during call start.
-- `call.start.error-get-subscription`: Error retrieving subscription information during call start.
-- `call.start.error-get-assistant`: Error retrieving assistant information during call start.
-- `call.start.error-get-phone-number`: Error retrieving phone number information during call start.
-- `call.start.error-get-customer`: Error retrieving customer information during call start.
-- `call.start.error-get-resources-validation`: Error validating resources during call start.
-- `call.start.error-vapi-number-international`: Error with international Vapi number during call start.
-- `call.start.error-vapi-number-outbound-daily-limit`: Outbound daily limit reached for Vapi number.
-- `call.start.error-get-transport`: Error retrieving transport information during call start.
+### Account and billing
 
-#### Call Forwarding and Hooks
+- `call.start.error-subscription-frozen` — Your subscription is frozen due to a failed payment. Update your payment method in the [dashboard](https://dashboard.vapi.ai/).
+- `call.start.error-subscription-insufficient-credits` — Not enough credits to start the call. Add credits or enable auto-reload.
+- `call.start.error-subscription-wallet-does-not-exist` — No billing wallet found for the subscription. Contact [support](/support).
+- `call.start.error-subscription-upgrade-failed` — An automatic subscription upgrade attempt failed.
+- `call.start.error-subscription-concurrency-limit-reached` — You've hit the maximum number of simultaneous calls for your plan. Upgrade your plan or wait for an active call to end.
+- `call.start.error-fraud-check-failed` — The call was blocked by Vapi's fraud detection system.
+- `call.start.error-enterprise-feature-not-available-recording-consent` — Recording consent requires an enterprise plan.
 
-- `call.forwarding.operator-busy`: The operator was busy during call forwarding.
-- `call.ringing.hook-executed-say`: A say hook was executed during the ringing phase.
-- `call.ringing.hook-executed-transfer`: A transfer hook was executed during the ringing phase.
+### Resource resolution
 
-#### Other Reasons
+- `call-start-error-neither-assistant-nor-server-set` — Neither an assistant nor a server URL was configured for the call.
+- `call.start.error-get-org` — Error retrieving your organization during call start. Verify your API key.
+- `call.start.error-get-subscription` — Error retrieving subscription information during call start.
+- `call.start.error-get-assistant` — Error retrieving the assistant. Verify the assistant ID exists.
+- `call.start.error-get-phone-number` — Error retrieving the phone number. Verify the number is imported and active.
+- `call.start.error-get-customer` — Error retrieving customer information.
+- `call.start.error-get-resources-validation` — The assistant, tools, or other resources failed validation.
+- `call.start.error-get-transport` — Error setting up the call transport (Twilio, Vonage, etc.).
+- `call.start.error-vapifault-database-error` — Internal database error during call setup. Retry or contact [support](/support).
 
-- `database-error`: A database error occurred during the call.
-- `exceeded-max-duration`: The call reached its maximum allowed duration and was automatically terminated.
-- `manually-canceled`: The call was manually canceled.
-- `silence-timed-out`: The call was ended due to prolonged silence, indicating inactivity.
-- `voicemail`: The call was diverted to voicemail.
-- `worker-shutdown`: The worker handling the call was shut down.
+### Phone number limits
 
-#### Unknown
+- `call.start.error-vapi-number-international` — International calling is not supported on this Vapi number.
+- `call.start.error-vapi-number-outbound-daily-limit` — The daily outbound call limit for this Vapi number has been reached.
 
-- `unknown-error`: An unexpected error occurred, and the cause is unknown. For this, please [contact support](/support) with your `call_id` and account email address, & we will investigate.
+### Assistant resolution (via server URL)
+
+- `assistant-not-found` — The specified assistant ID does not exist.
+- `assistant-not-valid` — The assistant configuration is invalid.
+- `assistant-request-failed` — The request to your server URL to fetch an assistant failed.
+- `assistant-request-returned-error` — Your server URL returned an error response.
+- `assistant-request-returned-unspeakable-error` — Your server URL returned an error that cannot be spoken to the user.
+- `assistant-request-returned-invalid-assistant` — Your server URL returned a response that is not a valid assistant configuration.
+- `assistant-request-returned-no-assistant` — Your server URL returned an empty response with no assistant.
+- `assistant-request-returned-forwarding-phone-number` — Your server URL returned a phone number for forwarding instead of an assistant.
+- `scheduled-call-deleted` — A scheduled call was deleted before it could execute.
+
+## Assistant actions
+
+These indicate the assistant intentionally ended the call — not errors.
+
+- `assistant-ended-call` — The assistant ended the call (via an end-call tool or function).
+- `assistant-ended-call-after-message-spoken` — The assistant ended the call after speaking its final message.
+- `assistant-ended-call-with-hangup-task` — The assistant ended the call using a hangup workflow node.
+- `assistant-said-end-call-phrase` — The assistant said a phrase configured to trigger call termination.
+- `assistant-forwarded-call` — The assistant transferred the call to another number or service.
+- `assistant-join-timed-out` — The assistant failed to join the call within the expected timeframe.
+
+## Customer actions
+
+- `customer-ended-call` — The customer hung up.
+- `customer-busy` — The customer's line was busy (outbound calls).
+- `customer-did-not-answer` — The customer did not answer (outbound calls).
+- `customer-did-not-give-microphone-permission` — The user denied microphone access (web calls).
+- `call.in-progress.error-assistant-did-not-receive-customer-audio` — No audio was received from the customer. This can indicate a network issue, mic problem, or the customer disconnected silently.
+- `customer-ended-call-before-warm-transfer` — The customer hung up before a warm transfer completed.
+- `customer-ended-call-after-warm-transfer-attempt` — The customer hung up after a warm transfer was attempted.
+- `customer-ended-call-during-transfer` — The customer hung up during a transfer.
+
+## Timeouts
+
+- `exceeded-max-duration` — The call reached `maxDurationSeconds` and was automatically terminated.
+- `silence-timed-out` — No speech was detected for the configured silence timeout duration.
+
+## Pipeline errors: LLM
+
+Each LLM provider has error codes that follow a consistent pattern. The status code in the error name tells you what went wrong:
+
+| Status code in error | Meaning | What to do |
+|---|---|---|
+| `400-bad-request-validation-failed` | Invalid request (bad model name, malformed messages, etc.) | Check your assistant's model configuration. |
+| `401-unauthorized` / `401-incorrect-api-key` | Invalid API key. | Verify your API key for this provider. |
+| `403-model-access-denied` | Your API key doesn't have access to the requested model. | Check model permissions in your provider account. |
+| `429-exceeded-quota` / `429-rate-limit-reached` | Rate limit or quota exceeded. | Upgrade your plan with the provider or reduce call volume. |
+| `500-server-error` | Provider internal server error. | Retry. Check the provider's status page. |
+| `503-server-overloaded-error` | Provider temporarily overloaded. | Retry after a brief wait. |
+| `llm-failed` | Generic LLM failure. | Check call logs for details. |
+
+**Supported providers:** OpenAI, Azure OpenAI, Anthropic, Anthropic Bedrock, Anthropic Vertex, Google, Groq, xAI, Mistral, Together AI, Perplexity AI, DeepInfra, DeepSeek, Cerebras, Inflection AI, Anyscale, OpenRouter, Runpod, Baseten, Custom LLM.
+
+Additional model errors:
+
+- `pipeline-no-available-llm-model` / `call.in-progress.error-pipeline-no-available-llm-model` — No suitable LLM model was available. Check your model configuration.
+- `call.in-progress.error-pipeline-ws-model-connection-failed` — Failed to connect to a custom LLM WebSocket endpoint.
+
+## Pipeline errors: voice (TTS)
+
+Each voice provider has specific error codes. Common patterns:
+
+- `*-voice-failed` — Generic voice synthesis failure for that provider.
+- `*-voice-not-found` / `*-invalid-voice` — The configured voice ID does not exist or is invalid.
+- `*-quota-exceeded` / `*-out-of-credits` — Voice provider credits exhausted.
+- `*-unauthorized-access` / `*-invalid-api-key` — Voice provider credential issue.
+- `*-socket-hang-up` / `*-500-server-error` / `*-503-server-error` — Voice provider infrastructure issue.
+
+**Supported providers:** ElevenLabs, Cartesia, Deepgram, PlayHT, Azure, OpenAI, Rime AI, Smallest AI, Neuphonic, Hume, Sesame, Inworld, Minimax, WellSaid, Custom Voice.
+
+## Pipeline errors: transcriber (STT)
+
+Common transcriber error patterns:
+
+- `*-transcriber-failed` — Generic transcriber failure.
+- `*-returning-400-*` — Bad request (invalid model/language combination, invalid config, etc.).
+- `*-returning-401-*` — Invalid transcriber credentials.
+- `*-returning-403-*` — Model access denied on the transcriber.
+- `*-returning-500-*` / `*-returning-502-*` — Transcriber provider server error.
+
+**Supported providers:** Deepgram, AssemblyAI, Gladia, Speechmatics, Talkscriber, Azure Speech, Google, OpenAI, Soniox, ElevenLabs, Custom Transcriber.
+
+## Transfer errors
+
+- `call.in-progress.error-transfer-failed` — A call transfer attempt failed.
+- `call.in-progress.error-warm-transfer-max-duration` — The warm transfer exceeded its maximum duration.
+- `call.in-progress.error-warm-transfer-assistant-cancelled` — The transfer assistant cancelled the warm transfer.
+- `call.in-progress.error-warm-transfer-silence-timeout` — Silence timeout during a warm transfer.
+- `call.in-progress.error-warm-transfer-microphone-timeout` — Microphone timeout during a warm transfer.
+
+For step-by-step transfer debugging, see [Debug forwarding drops](/calls/troubleshoot-call-forwarding-drops).
+
+## Transport and connectivity
+
+- `phone-call-provider-closed-websocket` — The call provider's WebSocket connection closed unexpectedly. The caller experiences an abrupt call drop.
+- `phone-call-provider-bypass-enabled-but-no-call-received` — Phone call provider bypass was enabled but no call arrived.
+- `call.in-progress.error-vapifault-transport-never-connected` — The transport never connected. Vapi infrastructure issue.
+- `call.in-progress.error-providerfault-transport-never-connected` — The transport provider failed to connect. Provider-side issue.
+- `call.in-progress.error-vapifault-transport-connected-but-call-not-active` — Transport connected but the call was no longer active.
+- `call.in-progress.error-vapifault-call-started-but-connection-to-transport-missing` — Call started but the transport connection was lost.
+- `call.in-progress.error-vapifault-worker-not-available` — No call worker was available to process the call.
+- `call.in-progress.error-vapifault-worker-died` — The call worker process crashed during the call.
+- `call.in-progress.error-vapifault-chat-pipeline-failed-to-start` — The chat pipeline failed to initialize.
+
+### Twilio
+
+- `twilio-failed-to-connect-call` — Twilio failed to establish the call.
+- `twilio-reported-customer-misdialed` — Twilio reported the customer dialed an invalid number.
+- `call.in-progress.twilio-completed-call` — Twilio reported the call as completed on their side.
+
+### Vonage
+
+- `vonage-disconnected` — Call disconnected by Vonage.
+- `vonage-failed-to-connect-call` — Vonage failed to connect the call.
+- `vonage-rejected` — Call rejected by Vonage.
+- `vonage-completed` — Call completed by Vonage.
+
+### SIP
+
+- `call.in-progress.error-sip-inbound-call-failed-to-connect` — Inbound SIP call failed to connect.
+- `call.in-progress.error-sip-outbound-call-failed-to-connect` — Outbound SIP call failed to connect.
+- `call.in-progress.error-providerfault-outbound-sip-403-forbidden` — SIP 403: call forbidden by the SIP provider.
+- `call.in-progress.error-providerfault-outbound-sip-407-proxy-authentication-required` — SIP 407: proxy authentication required.
+- `call.in-progress.error-providerfault-outbound-sip-408-request-timeout` — SIP 408: request timed out.
+- `call.in-progress.error-providerfault-outbound-sip-480-temporarily-unavailable` — SIP 480: destination temporarily unavailable.
+- `call.in-progress.error-providerfault-outbound-sip-503-service-unavailable` — SIP 503: service unavailable.
+- `call.ringing.error-sip-inbound-call-failed-to-connect` — SIP inbound call failed during ringing.
+- `call.ringing.sip-inbound-caller-hungup-before-call-connect` — SIP caller hung up before the call connected.
+- `call.in-progress.sip-completed-call` — SIP provider reported the call as completed.
+
+For SIP trunk setup issues, see [Troubleshoot SIP trunk credential errors](/advanced/sip/troubleshoot-sip-trunk-credential-errors).
+
+## Call hooks
+
+- `call.ringing.hook-executed-say` — A say hook executed during ringing ended the call.
+- `call.ringing.hook-executed-transfer` — A transfer hook executed during ringing ended the call.
+- `call.ending.hook-executed-say` — A say hook executed during the ending phase.
+- `call.ending.hook-executed-transfer` — A transfer hook executed during the ending phase.
+- `call.forwarding.operator-busy` — The operator was busy during call forwarding.
+
+## Other reasons
+
+- `manually-canceled` — The call was manually canceled via the API or dashboard.
+- `voicemail` — The call was diverted to or detected as voicemail.
+- `worker-shutdown` — The call worker was shut down (e.g., during a deployment). The call should be retried automatically.
+- `call-deleted` — The call record was deleted.
+
+## Next steps
+
+- **[Troubleshoot call errors](/calls/troubleshoot-call-errors):** Step-by-step diagnosis guide organized by what the caller experienced.
+- **[Debugging voice agents](/debugging):** General debugging workflow using dashboard tools, logs, and test suites.
+- **[How to report issues](/issue-reporting):** Include your `call_id` and account email when contacting support.
