@@ -1,0 +1,408 @@
+---
+title: Production readiness checklist
+subtitle: Validate your voice AI assistant is ready for production deployment
+slug: observability/production-readiness
+---
+
+<span className="internal-note">This page is in Skeleton Draft stage - structure and scope for review, detailed content to be developed in iteration 3</span>
+
+## What is production readiness?
+
+**Production readiness** means your voice assistant has been systematically validated across instrumentation, testing, extraction, and monitoring **before** you deploy it to handle real customer calls.
+
+Deploying without production readiness means:
+- ❌ Finding bugs with real customers (embarrassing, expensive)
+- ❌ No visibility into operational health (flying blind)
+- ❌ Can't measure success or improvement (no data-driven optimization)
+- ❌ Production debugging is reactive, not proactive
+
+**This checklist helps you avoid those problems** by ensuring you've instrumented, tested, and validated before launch.
+
+<span className="vapi-validation"> Does VAPI have internal prod readiness criteria we should align with?</span>
+
+---
+
+## How to use this checklist
+
+### Progressive validation
+
+You don't need to complete ALL stages before deploying. The checklist is **progressive**:
+
+1. **INSTRUMENT + TEST = Minimum viable production** — You must instrument and test before deploying
+2. **EXTRACT + MONITOR = Production-grade** — Add monitoring once you're handling real traffic
+3. **OPTIMIZE = Mature observability** — Continuous improvement based on data
+
+**For your first deployment**: Complete INSTRUMENT + TEST checklist items. Add EXTRACT + MONITOR within 1-2 weeks of production launch.
+
+---
+
+### Checklist format
+
+Each stage has:
+- ✅ **Required** items (must complete before considering this stage "done")
+- 🟡 **Recommended** items (nice-to-have, increases confidence)
+- 📊 **Validation** (how to verify the item is complete)
+
+---
+
+## Stage 1: INSTRUMENT ✓
+
+### Required items
+
+<Steps>
+  <Step title="Define Structured Outputs for key metrics">
+    - [ ] Call success/failure indicated (boolean or enum field)
+    - [ ] Customer information captured (name, contact info, or relevant identifiers)
+    - [ ] Business outcome tracked (booking created, question answered, escalation needed)
+
+    **Validation**: Run a test call, verify structured output populates in Dashboard
+  </Step>
+
+  <Step title="Choose appropriate field types">
+    - [ ] Scalar fields (string, number, boolean) for data you want queryable in Boards
+    - [ ] Object fields for rich data you'll extract via webhooks (if using Webhook or Hybrid pattern)
+    - [ ] Schema matches your chosen extraction pattern (see [Extraction patterns](/observability/extraction-patterns))
+
+    **Validation**: Review schema against extraction pattern requirements
+  </Step>
+
+  <Step title="Test instrumentation with sample calls">
+    - [ ] Make 3-5 test calls covering common scenarios
+    - [ ] Verify structured outputs populate correctly
+    - [ ] Confirm data appears in Dashboard (if using Dashboard Native or Hybrid pattern)
+
+    **Validation**: Check Dashboard > Calls tab, verify structured output values are correct
+  </Step>
+</Steps>
+
+### Recommended items
+
+- 🟡 Define Structured Outputs for edge cases (unclear requests, escalations, errors)
+- 🟡 Add sentiment analysis or CSAT scoring (if applicable)
+- 🟡 Capture metadata useful for debugging (tool calls, LLM reasoning, timestamps)
+
+<span className="internal-note"> Are there other common instrumentation patterns we should recommend?</span>
+
+---
+
+## Stage 2: TEST ✓
+
+### Required items
+
+<Steps>
+  <Step title="Create smoke tests (basic functionality)">
+    - [ ] Test happy path (successful completion of primary use case)
+    - [ ] Test at least 3 common conversation variants
+    - [ ] All smoke tests passing
+
+    **Validation**: Run Evals via Dashboard or API, verify 100% pass rate
+  </Step>
+
+  <Step title="Create regression tests for critical paths">
+    - [ ] Test core conversation flows end-to-end
+    - [ ] Test tool calls execute correctly (if assistant uses tools)
+    - [ ] Test edge cases discovered during development
+
+    **Validation**: Regression suite runs cleanly (all tests pass)
+  </Step>
+
+  <Step title="Validate assistant behavior matches requirements">
+    - [ ] Assistant responds appropriately to expected user inputs
+    - [ ] Tone and voice match brand guidelines
+    - [ ] Error handling works (unclear input, unexpected requests)
+
+    **Validation**: Manual review of test call transcripts
+  </Step>
+</Steps>
+
+### Recommended items
+
+- 🟡 Test interruption handling (user talks over assistant)
+- 🟡 Test multi-language support (if applicable)
+- 🟡 Run Simulations for realistic voice testing (pre-production validation)
+- 🟡 Test squad handoffs (if using multi-assistant architecture)
+
+<span className="internal-note"> Add link to testing strategy guide when available (Evals vs Simulations decision framework)</span>
+
+---
+
+## Stage 3: EXTRACT ✓
+
+### Required items
+
+<Steps>
+  <Step title="Confirm extraction pattern is implemented">
+    - [ ] **Dashboard Native**: Scalar Structured Outputs flowing to Boards ✅
+    - [ ] **Webhook-to-External**: Webhook endpoint receiving call data ✅
+    - [ ] **Hybrid**: Both Boards and webhooks working ✅
+
+    **Validation**: See pattern-specific validation below
+  </Step>
+
+  <Step title="Validate data is flowing correctly">
+    **If Dashboard Native**:
+    - [ ] Structured output fields appear in Boards > Calls view
+    - [ ] Can filter/query by structured output values
+
+    **If Webhook-to-External**:
+    - [ ] Webhook endpoint receives POST requests from Vapi
+    - [ ] Call data stored in your data warehouse
+    - [ ] Can query data in your BI tool
+
+    **If Hybrid**:
+    - [ ] Operational metrics (scalars) appear in Boards
+    - [ ] Rich analytics (objects) received via webhooks
+
+    **Validation**: Make test call, trace data from call → Boards/webhooks → storage
+  </Step>
+
+  <Step title="Scorecard configuration (if using quality scoring)">
+    - [ ] Scorecard rules defined and tested
+    - [ ] Webhook configured to receive Scorecard results (required — not available in Boards)
+    - [ ] Scorecard results validated against expected thresholds
+
+    **Validation**: Run test calls with known outcomes, verify Scorecard scores are correct
+  </Step>
+</Steps>
+
+### Recommended items
+
+- 🟡 Document extraction architecture for your team
+- 🟡 Set up data retention policies (how long to store call data)
+- 🟡 Test webhook failover/retry logic (if using webhooks)
+
+---
+
+## Stage 4: MONITOR ✓
+
+### Required items
+
+<Steps>
+  <Step title="Create operational dashboard (Boards or external BI)">
+    - [ ] Track call volume (calls per day/week)
+    - [ ] Track call success rate (% of calls achieving primary goal)
+    - [ ] Track cost ($/day or $/call)
+    - [ ] Track error rate (% of calls with failures/escalations)
+
+    **Validation**: Dashboard updates with real data after test calls
+  </Step>
+
+  <Step title="Define baseline metrics (what's 'normal'?)">
+    - [ ] Document expected call volume range
+    - [ ] Document expected success rate threshold (e.g., &gt;85% success)
+    - [ ] Document expected cost per call (for budget tracking)
+
+    **Validation**: Run production for 1-2 weeks, establish baseline from real data
+  </Step>
+
+  <Step title="Set up monitoring cadence">
+    - [ ] Assign team member(s) to check dashboards daily
+    - [ ] Define what metrics to watch (volume, success rate, cost)
+    - [ ] Define thresholds for concern (e.g., success rate drops below 80%)
+
+    **Validation**: Team demonstrates they can access and read dashboards
+  </Step>
+</Steps>
+
+### Recommended items
+
+- 🟡 Set up automated alerts (via Insights API or external alerting system)
+- 🟡 Create executive dashboard (high-level summary for leadership)
+- 🟡 Track additional metrics (call duration, abandonment rate, CSAT)
+
+---
+
+## Stage 5: OPTIMIZE ✓
+
+### Required items
+
+<Steps>
+  <Step title="Establish optimization workflow">
+    - [ ] Define how team reviews monitoring data (weekly? monthly?)
+    - [ ] Define how improvement hypotheses are formed (data-driven)
+    - [ ] Define how changes are tested before deployment (use Evals/Simulations)
+
+    **Validation**: Document the optimization workflow (how do we improve?)
+  </Step>
+
+  <Step title="Run first optimization iteration">
+    - [ ] Identify pattern from monitoring (e.g., high escalation rate)
+    - [ ] Extract detailed data (call transcripts, structured outputs)
+    - [ ] Form hypothesis for improvement
+    - [ ] Test improvement with Evals before deploying
+    - [ ] Deploy and verify metric improves
+
+    **Validation**: Complete one full optimization loop (identify → improve → deploy → verify)
+  </Step>
+
+  <Step title="Maintain regression test suite">
+    - [ ] Add new test cases for bugs found in production
+    - [ ] Update tests when assistant behavior changes
+    - [ ] Run regression suite before every deployment
+
+    **Validation**: Regression suite prevents known issues from reoccurring
+  </Step>
+</Steps>
+
+### Recommended items
+
+- 🟡 Track optimization impact over time (are we improving?)
+- 🟡 Document improvement history (what worked, what didn't)
+- 🟡 Share learnings across team (prompt patterns, common pitfalls)
+
+---
+
+## Production readiness gates
+
+Use these **gates** to decide if you're ready to progress:
+
+### Gate 1: Ready for FIRST production deployment?
+
+**Must complete**:
+- ✅ INSTRUMENT Stage (all required items)
+- ✅ TEST Stage (all required items)
+
+**Can deploy**: Yes — you have basic instrumentation and testing
+
+**Next step**: Launch with limited traffic, add EXTRACT + MONITOR within 1-2 weeks
+
+---
+
+### Gate 2: Ready for SCALED production deployment?
+
+**Must complete**:
+- ✅ INSTRUMENT Stage
+- ✅ TEST Stage
+- ✅ EXTRACT Stage (all required items)
+- ✅ MONITOR Stage (all required items)
+
+**Can scale**: Yes — you have visibility and can detect problems
+
+**Next step**: Increase traffic, begin OPTIMIZE Stage (continuous improvement)
+
+---
+
+### Gate 3: Production-grade observability maturity?
+
+**Must complete**:
+- ✅ All stages (INSTRUMENT → TEST → EXTRACT → MONITOR → OPTIMIZE)
+- ✅ At least one optimization iteration completed
+- ✅ Team trained on monitoring and improvement workflow
+
+**Maturity level**: Production-grade — observability is systematic, not ad-hoc
+
+**Next step**: Refine and iterate (observability is continuous)
+
+---
+
+## Common readiness mistakes
+
+### Mistake 1: Deploying without instrumentation
+
+**Symptom**: "We deployed but can't tell if it's working"
+
+**Impact**: No data to debug issues, optimize, or measure success
+
+**Fix**: Go back to INSTRUMENT stage, add Structured Outputs, redeploy
+
+---
+
+### Mistake 2: No regression testing
+
+**Symptom**: "Every change breaks something we fixed before"
+
+**Impact**: Quality degrades over time, user trust erodes
+
+**Fix**: Build regression test suite (Evals), run before every deployment
+
+---
+
+### Mistake 3: Over-engineering extraction before launch
+
+**Symptom**: "We're 3 weeks into building webhook infrastructure, haven't launched yet"
+
+**Impact**: Delayed launch, opportunity cost
+
+**Fix**: Start with Dashboard Native pattern (simple), add webhooks after validating product-market fit
+
+---
+
+### Mistake 4: Monitoring exists but nobody checks it
+
+**Symptom**: "We have dashboards but didn't notice success rate dropped 20% last week"
+
+**Impact**: Problems detected late (via customer complaints, not monitoring)
+
+**Fix**: Assign monitoring owner, set check cadence, define alert thresholds
+
+---
+
+### Mistake 5: No optimization workflow
+
+**Symptom**: "We have data but don't know how to improve"
+
+**Impact**: Assistant quality stagnates, competitors improve faster
+
+**Fix**: Define optimization workflow (weekly review → hypothesis → test → deploy), run first iteration
+
+---
+
+## Deployment workflow with readiness gates
+
+Recommended workflow for production deployment:
+
+```
+Week 1-2: Build assistant + INSTRUMENT + TEST
+  ↓
+Week 2: Gate 1 — Ready for first deployment?
+  ↓
+Week 3: Deploy to limited production traffic (10-20 calls/day)
+  ↓
+Week 3-4: Add EXTRACT + MONITOR (while limited traffic runs)
+  ↓
+Week 4: Gate 2 — Ready for scaled deployment?
+  ↓
+Week 5+: Scale traffic (100+ calls/day), begin OPTIMIZE
+  ↓
+Ongoing: Continuous optimization loop
+```
+
+**Key principle**: Don't over-engineer early. Launch with minimum readiness (Gate 1), add monitoring as you scale.
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Back to overview"
+    icon="arrow-left"
+    href="/observability/framework"
+  >
+    Return to the observability maturity model
+  </Card>
+
+  <Card
+    title="Extraction patterns"
+    icon="diagram-project"
+    href="/observability/extraction-patterns"
+  >
+    Choose your data extraction strategy
+  </Card>
+
+  <Card
+    title="Structured outputs"
+    icon="database"
+    href="/assistants/structured-outputs-quickstart"
+  >
+    Start instrumenting your assistant
+  </Card>
+
+  <Card
+    title="Evals quickstart"
+    icon="clipboard-check"
+    href="/observability/evals-quickstart"
+  >
+    Build your first test suite
+  </Card>
+</CardGroup>
