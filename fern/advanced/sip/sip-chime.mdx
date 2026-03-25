@@ -6,6 +6,12 @@ slug: advanced/sip/amazon-chime
 
 This guide walks you through setting up both outbound and inbound SIP trunking between Amazon Chime SDK and Vapi using a Voice Connector.
 
+This is a **Voice Connector-only** integration — inbound and outbound calls work with no Lambda functions or custom logic required. Vapi handles the AI assistant entirely. This approach is best for straightforward AI assistants on a phone number where no additional integration is needed.
+
+<Note>
+This integration does not support passing custom SIP headers, metadata, or enriched escalation data (e.g., human transfer with SIP header context). For those use cases, use a **SIP Media Application** with **CallAndBridge** instead.
+</Note>
+
 ## Prerequisites
 
 - An AWS account with access to the [Amazon Chime SDK console](https://console.aws.amazon.com/chime-sdk/)
@@ -180,20 +186,16 @@ curl -X POST https://api.vapi.ai/call/phone \
 
 </Steps>
 
-## Inbound calls (Vapi to Chime SDK)
+## Inbound calls (Chime SDK to Vapi)
 
-For inbound calls, a caller dials your Chime SDK phone number. The call flows through a SIP Rule, SIP Media Application, and Lambda function that bridges the call to Vapi via the Voice Connector:
+For inbound calls, a caller dials your Chime SDK phone number. The Voice Connector routes the call to Vapi through its origination settings — no Lambda or SIP Media Application required:
 
 ```mermaid
 graph LR
   A[Caller] --> B[Chime Phone Number]
-  B --> C[SIP Rule]
-  C --> D[SIP Media Application]
-  D --> E[Lambda]
-  E --> F[CallAndBridge]
-  F --> G[Voice Connector]
-  G --> H[sip.vapi.ai]
-  H --> I[Vapi AI Assistant]
+  B --> C[Voice Connector]
+  C --> D[sip.vapi.ai]
+  D --> E[Vapi AI Assistant]
 ```
 
 ### Vapi configuration
@@ -240,7 +242,7 @@ Save the returned `id` — this is your **Credential ID** used in the following 
 
 <Step title="Register a phone number and assign your assistant">
 
-Register a SIP phone number in Vapi, linking it to the credential and your assistant.
+Register your Chime SDK phone number in Vapi, linking it to the credential and your assistant:
 
 ```bash
 curl -X POST https://api.vapi.ai/phone-number \
@@ -249,17 +251,16 @@ curl -X POST https://api.vapi.ai/phone-number \
 -d '{
   "provider": "byo-phone-number",
   "name": "Chime SDK Number",
-  "number": "YOUR_SIP_USERNAME",
-  "numberE164CheckEnabled": false,
+  "number": "YOUR_CHIME_PHONE_NUMBER",
+  "numberE164CheckEnabled": true,
   "credentialId": "YOUR_CREDENTIAL_ID",
   "assistantId": "YOUR_ASSISTANT_ID"
 }'
 ```
 
-<Note>
-The SIP username can be any string — it does not need to be a phone number. This value becomes the user portion of the SIP URI that the Voice Connector sends calls to.
-</Note>
-
+<Warning>
+The `number` field must exactly match the E.164 phone number assigned to your Voice Connector (e.g., `+18312168445`). Inbound calls will fail to route if the numbers don't match.
+</Warning>
 
 </Step>
 
@@ -269,27 +270,13 @@ The SIP username can be any string — it does not need to be a phone number. Th
 
 <Steps>
 
-<Step title="Provision a phone number">
-
-In the AWS Chime SDK console, go to **Phone Number Management** and either provision a new phone number or update an existing one.
-
-Set the **Product type** to **SIP Media Application Dial-In**.
-
-![Update Phone Number](../../static/images/sip/sip-chime-update-phone-number.png)
-
-<Warning>
-If the phone number is already assigned to a Voice Connector, you must first unassign it and save before changing the product type.
-</Warning>
-
-</Step>
-
 <Step title="Configure origination on the Voice Connector">
 
 Navigate to your Voice Connector's **Origination** tab and set **Origination status** to **Enabled**.
 
 ![Enable Origination](../../static/images/sip/sip-chime-enable-origination.png)
 
-Click **New** to add an inbound route pointing to Vapi's SIP server so the Voice Connector knows where to send outbound SIP INVITEs:
+Click **New** to add an inbound route pointing to Vapi's SIP server:
 
 - **Host:** `YOUR_CREDENTIAL_ID.sip.vapi.ai`
 - **Port:** `5061` (for encrypted connections)
@@ -299,118 +286,11 @@ Click **New** to add an inbound route pointing to Vapi's SIP server so the Voice
 
 </Step>
 
-<Step title="Create the Lambda function">
-
-This Lambda handles inbound call events from the SIP Media Application and bridges the call to Vapi via the Voice Connector.
-
-Create a new Lambda function (**Node.js 18.x** or later) in the **same region** as your Chime SDK resources:
-
-```javascript title="index.mjs"
-exports.handler = async (event) => {
-  console.log("Event:", JSON.stringify(event, null, 2));
-
-  const eventType = event.InvocationEventType;
-
-  switch (eventType) {
-    case "NEW_INBOUND_CALL":
-      return handleNewCall(event);
-
-    case "ACTION_SUCCESSFUL":
-      console.log("Action successful:", event.ActionData?.Type);
-      return { SchemaVersion: "1.0", Actions: [] };
-
-    case "ACTION_FAILED":
-      console.log("Action failed:", JSON.stringify(event.ActionData));
-      return {
-        SchemaVersion: "1.0",
-        Actions: [{ Type: "Hangup", Parameters: { SipResponseCode: "503" } }],
-      };
-
-    case "HANGUP":
-      console.log("Call ended");
-      return { SchemaVersion: "1.0", Actions: [] };
-
-    default:
-      console.log("Unhandled event:", eventType);
-      return { SchemaVersion: "1.0", Actions: [] };
-  }
-};
-
-function handleNewCall(event) {
-  const callerNumber = event.CallDetails.Participants[0].From;
-
-  const voiceConnectorArn =
-    "arn:aws:chime:REGION:ACCOUNT_ID:vc/YOUR_VOICE_CONNECTOR_ID";
-
-  const vapiSipUser = "YOUR_UNIQUE_USERNAME";
-
-  return {
-    SchemaVersion: "1.0",
-    Actions: [
-      {
-        Type: "CallAndBridge",
-        Parameters: {
-          CallTimeoutSeconds: 30,
-          CallerIdNumber: callerNumber,
-          Endpoints: [
-            {
-              BridgeEndpointType: "AWS",
-              Arn: voiceConnectorArn,
-              Uri: vapiSipUser,
-            },
-          ],
-        },
-      },
-    ],
-  };
-}
-```
-
-Replace the following placeholders:
-- `REGION` — your AWS region (e.g., `us-west-2`)
-- `ACCOUNT_ID` — your AWS account ID
-- `YOUR_VOICE_CONNECTOR_ID` — your Voice Connector ID
-- `YOUR_UNIQUE_USERNAME` — the SIP username you configured in the Vapi phone number step
-
-The `Uri` field is the user portion of the SIP request. The Voice Connector sends the INVITE to the origination host (`sip.vapi.ai`) with this value as the user, resulting in `sip:YOUR_UNIQUE_USERNAME@YOUR_CREDENTIAL_ID.sip.vapi.ai`.
-
-<Note>
-The Lambda needs no special Chime SDK permissions — the SMA invokes it directly. Ensure the execution role has **AWSLambdaBasicExecutionRole** for CloudWatch logging.
-</Note>
-
-</Step>
-
-<Step title="Create the SIP Media Application">
-
-In the Chime SDK console, go to **SIP media applications** and create a new one. Enter a name and the **Lambda function ARN** from the previous step.
-
-![Create SIP Media Application](../../static/images/sip/sip-chime-create-sip-media-application.png)
-
-Note the returned **SIP Media Application ID**.
-
-</Step>
-
-<Step title="Create the SIP Rule">
-
-The SIP rule connects your provisioned phone number to the SIP Media Application. When a call arrives at your phone number, Chime invokes the SMA, which triggers the Lambda, which bridges the call to Vapi.
-
-In the Chime SDK console, go to **SIP rules** and create a new one:
-
-- **Trigger type:** To phone number
-- **Phone number:** Select your provisioned number
-- **SIP media application:** Select the SMA you created
-
-![Create SIP Rule](../../static/images/sip/sip-chime-create-sip-rule.png)
-
-</Step>
-
 <Step title="Test the integration">
 
-Call your Chime SDK phone number from any phone.
+Call your Chime SDK phone number from any phone. The call routes through the Voice Connector's origination settings to `sip.vapi.ai`, where your Vapi assistant answers.
 
-To debug issues:
-- Check **CloudWatch Logs** for the Lambda function to see event payloads and errors.
-- Enable **SIP logging** on the Voice Connector (under the **Logging** tab) for detailed SIP message traces.
+To debug issues, enable **SIP logging** on the Voice Connector (under the **Logging** tab) for detailed SIP message traces.
 
 </Step>
 
