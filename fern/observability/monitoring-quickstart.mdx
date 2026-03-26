@@ -6,18 +6,18 @@ slug: observability/monitoring-quickstart
 
 ## Overview
 
-Monitoring lets you automatically track call quality and detect issues across your voice AI agents. Instead of manually reviewing calls, you define monitors that continuously evaluate your call data against thresholds and alert you when something goes wrong.
+Monitoring lets you automatically track quality and detect issues across your voice AI agents. Instead of manually reviewing calls, you define monitors that continuously evaluate your call data against thresholds and alert you when something goes wrong.
 
 ### What is monitoring?
 
-Monitoring is Vapi's automated quality assurance system for voice AI. You create monitors that periodically evaluate call data using analytics queries (Insights), compare results against thresholds you define, and generate issues when those thresholds are exceeded. Your team receives alerts through email, Slack, or webhooks so you can investigate and resolve problems quickly.
+Monitoring is Vapi's automated quality and effectiveness system for voice AI. You create monitors that periodically evaluate call data using analytics queries (Insights), compare results against thresholds you define, and generate issues when those thresholds are exceeded. Your team receives alerts through notifiers, which are alert channels such as email, Slack, or webhooks, so you can investigate and resolve problems quickly.
 
 ### Core concepts
 
 - **Monitors** define what to watch, which assistants to target, and when to evaluate
 - **Triggers** run on a schedule and evaluate call data against thresholds
-- **Issues** are created when thresholds are exceeded, tracking the problem from detection to resolution
-- **Alerts** notify you via email, Slack, or webhook when issues arise
+- **Issues** are created when a threshold is exceeded and a trigger fires, tracking the problem from detection to resolution
+- **Notifiers** are alert channels (email, Slack, or webhook) that deliver notifications to your team when issues are created
 
 ### Monitor categories
 
@@ -46,11 +46,11 @@ In this quickstart, you will create a monitor that tracks error rates across you
   </Step>
 
   <Step title="Issues are created">
-    When a threshold is exceeded, an issue is created with details about the affected calls, the trigger that fired, and the evaluation window.
+    When a threshold is exceeded and a trigger fires, an issue is created with details about the affected calls, the trigger that fired, and the evaluation window.
   </Step>
 
-  <Step title="Alerts notify your team">
-    If alerts are enabled on the trigger, your team receives notifications via email, Slack, or webhook with issue details.
+  <Step title="Notifiers alert your team">
+    If notifiers are configured on the trigger, your team receives notifications via email, Slack, or webhook with issue details.
   </Step>
 
   <Step title="Investigate and resolve">
@@ -77,7 +77,7 @@ In this quickstart, you will create a monitor that tracks error rates across you
 
 ## Step 1: Set up notifiers
 
-Notifiers are alert channels that send notifications when issues are detected. You configure them as credentials in the Dashboard.
+Notifiers are alert channels (email, Slack, or webhook) that send notifications when issues are detected. You configure them as credentials in the Dashboard.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -146,8 +146,8 @@ Define a monitor that tracks error rates and alerts you when errors exceed a thr
         4. Set **Check frequency** to every **1 hour**
       </Step>
 
-      <Step title="Enable alerts">
-        1. Toggle **Alerts** to enabled
+      <Step title="Enable notifiers">
+        1. Toggle **Notifiers** to enabled
         2. Select one or more notifiers from the dropdown
         3. Click **Save Monitor**
       </Step>
@@ -234,9 +234,20 @@ Save the returned `id` for referencing this monitor later.
   create the Insight first and reference its ID here.
 </Note>
 
-### Targeting specific assistants
+### Managing monitors
 
-To monitor specific assistants instead of all assistants, use the `targets` array:
+View, edit, and delete all your monitors from the **Monitors** page in the Dashboard sidebar (under Observe).
+
+Via the API:
+- `GET /monitoring/monitor` — list all monitors
+- `PATCH /monitoring/monitor/:id` — update a monitor's targets, triggers, or thresholds
+- `DELETE /monitoring/monitor/:id` — remove a monitor
+
+### Targeting assistants
+
+Setting `"targets": "*"` monitors **all current and future assistants** in your organization. Any assistant created after the monitor is set up is automatically included.
+
+To monitor only specific assistants, pass an array of assistant IDs using the `targets` array. The `id` field is the assistant ID — the UUID you see in the Dashboard or get from `GET /assistant`.
 
 ```json title="Specific assistant targets"
 {
@@ -278,7 +289,7 @@ This trigger evaluates at 9:00 AM and 5:00 PM on weekdays.
 
 ## Step 3: View issues
 
-When a trigger fires and the threshold is exceeded, an issue is created. You can view and manage issues in the Dashboard or via the API.
+When a threshold is exceeded and a trigger fires, an issue is created. You can view and manage issues in the Dashboard or via the API.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -466,9 +477,21 @@ curl -X POST "https://api.vapi.ai/monitoring/issue/e5f6a7b8-c9d0-1234-efab-56789
   return the cached result immediately.
 </Note>
 
+<Tip>
+  Use the `callId` values from the issue's `calls` array to review specific call
+  logs and recordings for deeper investigation. Each call ID links directly to the
+  call details in your Dashboard.
+</Tip>
+
 ## Step 5: Resolve an issue
 
-After investigating and fixing the underlying problem, acknowledge and resolve the issue to track your team's response.
+After investigating and fixing the underlying problem, acknowledge and resolve the issue to track your team's response. Resolve an issue once you've deployed a fix and confirmed the problem no longer recurs — this signals to your team that the root cause has been addressed. Acknowledgment and resolution timestamps help measure your team's incident response times.
+
+<Note>
+  Issues are a single shared resource. Status changes made in the Dashboard are
+  immediately reflected in API responses, and vice versa. Your team can freely use
+  both without conflicts.
+</Note>
 
 <Tabs>
   <Tab title="Dashboard">
@@ -557,15 +580,15 @@ curl -X PATCH "https://api.vapi.ai/monitoring/issue/e5f6a7b8-c9d0-1234-efab-5678
 | Issue | Solution |
 | --- | --- |
 | No issues are being created | Verify monitor status is "active". Check that the trigger interval and threshold are configured correctly. Ensure your assistants have recent call data. |
-| Alerts not received | Confirm alert status is "enabled" on the trigger. Verify credential IDs reference valid notifiers. Check the notifier configuration (email address, webhook URL, Slack webhook). |
+| Alerts not received | Confirm notifiers are enabled on the trigger. Verify credential IDs reference valid notifiers. Check the notifier configuration (email address, webhook URL, Slack webhook). |
 | Analysis returns an error | Ensure the issue has associated calls. Analysis requires call data to identify patterns. |
 | Monitor not evaluating | Check that the `insightId` references a valid Insight. Verify the trigger interval is at least 1 minute. |
 | Wrong calls detected | Review the Insight query that the trigger references. Ensure the monitor targets the correct assistants. |
 | Duplicate issues | Triggers create new issues per evaluation window. This is expected behavior when a problem persists across multiple evaluation periods. |
 
 <Warning>
-  If alerts show a `"failure"` status in the issue's alerts array, the
-  notification delivery failed. Check your notifier credentials and ensure the
+  If an alert shows a `"failure"` status in the issue's alerts array, the
+  notification delivery failed. Check your notifier configuration and ensure the
   destination (email, Slack webhook, URL) is reachable.
 </Warning>
 
