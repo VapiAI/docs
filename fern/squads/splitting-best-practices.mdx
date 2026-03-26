@@ -1,0 +1,374 @@
+---
+title: Squad splitting best practices
+subtitle: Learn when and how to split assistants into squads for better performance, lower costs, and cleaner workflows.
+slug: squads/splitting-best-practices
+description: Best practices for designing multi-assistant squads, choosing architecture patterns, configuring handoffs, and avoiding common pitfalls.
+---
+
+## Overview
+
+As your voice agent grows in complexity, a single assistant with a long prompt becomes harder to maintain, more expensive to run, and more prone to hallucination. Squads solve this by splitting the workflow across focused assistants that hand off to each other during a call.
+
+This guide helps you decide **when** to split, **where** to draw boundaries, and **how** to configure your squad for reliable, low-latency conversations. It covers architecture patterns, handoff configuration, system prompt design, transfer modes, and common pitfalls.
+
+For the basics of creating a squad, see the [Overview](/squads). For handoff tool configuration details, see the [Handoff tool](/squads/handoff) reference.
+
+## When to use squads
+
+Split into a squad when a single assistant becomes a bottleneck. Stay with one assistant when the workflow is simple enough.
+
+**Split when:**
+- The system prompt is large or complex, causing the model to lose focus or hallucinate
+- Token costs are increasing because every request includes a long prompt
+- Latency rises from processing a large context on every turn
+- The workflow has distinct roles or personas (triage, booking, confirmation)
+- You need modular maintainability -- each assistant can be developed, tested, and updated independently
+
+**Stay with a single assistant when:**
+- The workflow is simple and linear with only 1-3 goals
+- The prompt fits comfortably under token limits without quality degradation
+- There is no clear functional boundary between tasks
+
+<Tip>
+A good rule of thumb: if your system prompt tries to handle more than 3 distinct goals, consider splitting into a squad.
+</Tip>
+
+## Identifying functional boundaries
+
+The key question is not *whether* to split, but *where*. Look for natural boundaries in your workflow.
+
+**Split by role or persona.** Each assistant represents a distinct character: a receptionist greets and routes, a specialist handles domain questions, a closer finalizes the outcome.
+
+**Split by workflow stage.** Each assistant owns one phase: triage collects initial information, scheduling books the appointment, confirmation verifies details.
+
+**Split by domain expertise.** Each assistant handles a different knowledge area: sales answers pricing questions, support troubleshoots issues, billing manages invoices.
+
+**Split by language.** A router assistant detects or asks the caller's language, then hands off to a dedicated assistant with a culturally appropriate voice, tone, and prompt.
+
+<Note>
+Each assistant should own 1-3 goals maximum. If you find an assistant accumulating more responsibilities, that is a signal to split further.
+</Note>
+
+## Architecture patterns
+
+### Hub-and-spoke (orchestrator)
+
+A primary assistant acts as a gatekeeper and routes callers based on intent. Secondary assistants handle specific domains and can hand back to the hub when finished.
+
+```
+Caller → Orchestrator → Sales
+                      → Support
+                      → Billing
+```
+
+**Best for:** customer service flows where the initial intent is unclear and multiple departments may be needed in one call.
+
+The orchestrator's system prompt should list the names and roles of all squad members so the model knows its routing options.
+
+### Linear pipeline
+
+Each assistant completes one stage before handing off to the next. The flow is sequential and predictable.
+
+```
+Caller → Triage → Scheduling → Confirmation
+```
+
+**Best for:** structured processes like intake forms, appointment booking, or multi-step verifications where each stage must complete before the next begins.
+
+### Language router
+
+An entry assistant detects or asks the caller's language preference, then routes to a dedicated language-specific assistant with its own voice, tone, and culturally tuned prompt.
+
+```
+Caller → Language Router → EN Assistant
+                         → ES Assistant
+                         → FR Assistant
+```
+
+**Best for:** multilingual support where each language needs its own persona and voice. See the [Multilingual support example](/squads/examples/multilingual-support) for a working implementation.
+
+## Configuring handoffs
+
+Use the `handoff` tool type to define transfer destinations. Write specific descriptions for **when** to transfer -- the LLM uses these descriptions to decide whether to call the tool.
+
+### Handoff tool structure
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantName": "Scheduling",
+          "description": "Transfer when the caller wants to book, reschedule, or cancel an appointment.",
+          "contextEngineeringPlan": {
+            "type": "userAndAssistantMessages"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Warning>
+Vague descriptions like "Transfer when appropriate" do not work. Be specific about the conditions that trigger a handoff. The LLM relies on the description text to decide when to invoke the tool.
+</Warning>
+
+### Model-specific patterns
+
+- **OpenAI models**: Use separate handoff tools for each destination (one destination per tool). This gives the model distinct function names for each route.
+- **Anthropic models**: Consolidate multiple destinations into a single handoff tool. Anthropic models handle multi-option tools more reliably.
+
+For detailed configuration, see [Multiple destinations](/squads/handoff#multiple-destinations).
+
+### Context engineering
+
+Control what conversation history the next assistant receives using `contextEngineeringPlan`:
+
+| Type | Behavior | Use when |
+|------|----------|----------|
+| `all` | Transfers the full conversation history (default) | The next assistant needs complete context |
+| `lastNMessages` | Transfers only the last N messages | You want to limit token usage on long calls |
+| `userAndAssistantMessages` | Filters out system messages, tool calls, and tool results | The next assistant does not need internal implementation details |
+| `none` | Starts the next assistant with a blank conversation | Privacy-sensitive transfers or fully independent stages |
+
+<Tip>
+Use `userAndAssistantMessages` as your default for most squad handoffs. It reduces tokens and prevents context poisoning from tool call artifacts leaking into the next assistant's context.
+</Tip>
+
+### Variable extraction
+
+Use `variableExtractionPlan` to extract structured data during transfers. Extracted variables are accessible to all subsequent assistants via Liquid template syntax (`{{variableName}}`).
+
+```json
+{
+  "destinations": [
+    {
+      "type": "assistant",
+      "assistantName": "Scheduling",
+      "description": "Transfer when the caller wants to book an appointment.",
+      "variableExtractionPlan": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "callerName": {
+              "type": "string",
+              "description": "Full name of the caller"
+            },
+            "reason": {
+              "type": "string",
+              "description": "Reason for the appointment"
+            }
+          },
+          "required": ["callerName"]
+        }
+      }
+    }
+  ]
+}
+```
+
+The scheduling assistant can then reference `{{callerName}}` and `{{reason}}` in its system prompt or first message. For the full variable extraction API, see [Variable extraction](/squads/handoff#variable-extraction).
+
+## System prompt best practices
+
+Each assistant's system prompt should follow these guidelines for reliable squad coordination.
+
+**Mention other departments.** Tell each assistant about the other squad members that exist and what they handle. This gives the model context for routing decisions.
+
+**State handoff conditions clearly.** Include explicit instructions for when to hand off: "If the caller asks about pricing, use the handoff tool to transfer to the Sales assistant."
+
+**Keep handoffs invisible.** Instruct assistants to not mention or draw attention to transfers. Use the [recommended multi-agent prompt](/squads/handoff#system-prompt-best-practices) to establish this behavior.
+
+**Keep prompts focused.** Fewer instructions produce better compliance. Each assistant should have a focused set of responsibilities rather than a broad set of conditional behaviors.
+
+**Remove handoff tools from terminal assistants.** If an assistant is the final step in the pipeline and should never transfer, do not give it a handoff tool. This prevents unintended routing loops.
+
+Example system prompt structure for a squad member:
+
+```markdown
+# System context
+
+You are part of a multi-agent system. Handoffs between agents are handled
+seamlessly in the background; do not mention or draw attention to these
+handoffs in your conversation with the user.
+
+# Agent context
+
+You are the Scheduling Assistant. Your role is to book appointments for
+callers who have been triaged by the Triage Assistant.
+
+Available departments:
+- Triage (handles initial assessment)
+- Confirmation (handles final verification after booking)
+
+# Instructions
+
+1. Greet the caller by name using {{callerName}}.
+2. Ask for their preferred date and time.
+3. Confirm the appointment details.
+4. Transfer to the Confirmation assistant when booking is complete.
+```
+
+## Transfer modes
+
+Transfer modes control how the conversation history is restructured when moving between assistants. Set the transfer mode at the squad level.
+
+<AccordionGroup>
+  <Accordion title="rolling-history (default)">
+    Keeps the full conversation history and appends the new assistant's system message. The incoming assistant sees everything that happened before, including the previous assistant's system prompt.
+
+    **Use when:** You want full transparency across assistants and the incoming assistant benefits from seeing the prior system prompt.
+  </Accordion>
+  <Accordion title="swap-system-message-in-history (recommended)">
+    Keeps the full conversation history but replaces the previous system message with the new assistant's system message. The incoming assistant sees all user and assistant messages but operates under its own instructions.
+
+    **Use when:** You want context continuity without the new assistant being influenced by the old assistant's system prompt. This is the recommended mode for most squads.
+  </Accordion>
+  <Accordion title="delete-history">
+    Clears all conversation history and starts fresh with only the new assistant's system message. The incoming assistant has no knowledge of previous interactions.
+
+    **Use when:** Privacy-sensitive transfers where the next assistant should not see prior conversation content.
+  </Accordion>
+  <Accordion title="swap-system-message-in-history-and-remove-transfer-tool-messages">
+    Replaces the system message and removes all transfer tool call/result messages from the history. Produces the cleanest context for the incoming assistant.
+
+    **Use when:** You want clean context without any artifacts from handoff tool calls showing up in the conversation history.
+  </Accordion>
+</AccordionGroup>
+
+## Configuration tips
+
+### Assistant overrides
+
+Override a saved assistant's settings within a squad context without modifying the original assistant. This is useful when the same assistant is reused across multiple squads with different configurations.
+
+```json
+{
+  "assistantId": "your-saved-assistant-id",
+  "assistantOverrides": {
+    "voice": {
+      "provider": "vapi",
+      "voiceId": "Elliot"
+    },
+    "firstMessage": "Welcome to the enterprise support line."
+  }
+}
+```
+
+### Appending tools via overrides
+
+Add squad-specific handoff tools to a saved assistant using `tools:append`. The assistant keeps its existing tools and gains the additional ones for this squad only.
+
+```json
+{
+  "assistantId": "your-saved-assistant-id",
+  "assistantOverrides": {
+    "tools:append": [
+      {
+        "type": "handoff",
+        "destinations": [
+          {
+            "type": "assistant",
+            "assistantName": "Billing",
+            "description": "Transfer when the caller asks about invoices or payments."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Member overrides
+
+Apply consistent settings to **all** squad members at once using `memberOverrides`. This is the cleanest way to enforce uniform voice and transcriber settings across an entire squad.
+
+```json
+{
+  "squad": {
+    "members": [ ... ],
+    "memberOverrides": {
+      "voice": {
+        "provider": "vapi",
+        "voiceId": "Elliot"
+      },
+      "transcriber": {
+        "provider": "deepgram",
+        "model": "nova-2",
+        "language": "en"
+      }
+    }
+  }
+}
+```
+
+### Silent transfers
+
+Set `message: ""` in handoff tool messages for transfers that should not be announced to the caller. See [Silent handoffs](/squads/silent-handoffs) for a complete walkthrough.
+
+## Common pitfalls
+
+Avoid these anti-patterns when designing squads:
+
+- **Too many squad members.** Keep squads as small as possible. More members means more handoff decision points and more opportunities for mis-routing. There is no hard limit, but complexity grows with each member.
+
+- **Vague handoff descriptions.** "Transfer when appropriate" gives the model no useful signal. Write descriptions like: "Transfer when the caller asks about pricing, plans, or wants to make a purchase."
+
+- **Self-referential transfers.** Never list an assistant as its own handoff destination. This creates an infinite loop where the assistant repeatedly transfers to itself.
+
+- **Context overload.** Do not pass full history when the next assistant does not need it. Use `userAndAssistantMessages` or `lastNMessages` to keep context lean and avoid confusing the next assistant with irrelevant tool call artifacts.
+
+- **Missing handoff mentions in prompts.** If the system prompt does not mention that handoff tools are available or when to use them, the model may never invoke the transfer. Always tell the assistant what its routing options are.
+
+- **Inconsistent voice or transcriber settings.** When squad members use different voices or transcribers, the caller hears jarring changes during transfers. Use `memberOverrides` to apply uniform settings across the entire squad.
+
+- **No terminal assistant.** Every pipeline needs an endpoint. Make sure the final assistant in your flow does not have a handoff tool, or the model may attempt unnecessary transfers at the end of the call.
+
+## Real-world examples
+
+Explore working squad implementations for common use cases:
+
+<CardGroup cols={2}>
+  <Card
+    title="Healthcare: Clinic triage and scheduling"
+    icon="fa-light fa-hospital"
+    href="/squads/examples/clinic-triage-scheduling-handoff-tool"
+  >
+    Triage assistant routes patients to emergency care or appointment scheduling based on symptom assessment.
+  </Card>
+  <Card
+    title="E-commerce: Order management"
+    icon="fa-light fa-cart-shopping"
+    href="/squads/examples/ecommerce-order-management"
+  >
+    Separate assistants for order tracking, returns processing, and VIP concierge support.
+  </Card>
+  <Card
+    title="Multilingual: Language router"
+    icon="fa-light fa-language"
+    href="/squads/examples/multilingual-support"
+  >
+    Language detection routes callers to dedicated EN, ES, or FR assistants with culturally tuned voices.
+  </Card>
+  <Card
+    title="Property management: Routing"
+    icon="fa-light fa-building"
+    href="/squads/examples/property-management"
+  >
+    Route callers between leasing, maintenance, and tenant services with context-preserving transfers.
+  </Card>
+</CardGroup>
+
+**Enterprise patterns.** For high-volume deployments, consider a primary orchestrator assistant paired with specialized domain assistants. Use `swap-system-message-in-history` as the transfer mode for clean context separation between assistants, and use server-side state injection via variable extraction to pass structured data (account number, case ID, caller tier) rather than relying on conversation history alone.
+
+## Next steps
+
+Now that you understand how to design and configure squads:
+
+- **[Handoff tool reference](/squads/handoff):** Detailed configuration for destinations, context engineering, variable extraction, and tool messages.
+- **[Silent handoffs](/squads/silent-handoffs):** Configure transfers that are invisible to the caller.
+- **[Squads API reference](/api-reference/squads/create):** Full API schema for creating and managing squads programmatically.
