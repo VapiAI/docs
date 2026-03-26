@@ -339,18 +339,29 @@ sequenceDiagram
             console.log(`Transfer request: ${department} - ${reason} (${urgency})`);
 
             // Determine destination based on department
+            // Include transferPlan for warm transfers with context
             let destination;
             if (department === 'support') {
               destination = {
                 type: "number",
-                number: "+1234567890"
+                number: "+1234567890",
+                transferPlan: {
+                  mode: "warm-transfer-say-message",
+                  message: `Incoming call about: ${reason}. Priority: ${urgency}.`
+                }
               };
             } else if (department === 'sales') {
               destination = {
                 type: "number",
-                number: "+1987654321"
+                number: "+1987654321",
+                transferPlan: {
+                  mode: "warm-transfer-wait-for-operator-to-speak-first-and-then-say-message",
+                  message: `Hi, I have a customer interested in our products. Reason: ${reason}.`,
+                  timeout: 30
+                }
               };
             } else {
+              // Default to blind transfer for general inquiries
               destination = {
                 type: "number",
                 number: "+1555555555"
@@ -413,22 +424,33 @@ sequenceDiagram
                 print(f"Transfer request: {department} - {reason} ({urgency})")
                 
                 # Determine destination based on department
+                # Include transferPlan for warm transfers with context
                 if department == 'support':
                     destination = {
                         "type": "number",
-                        "number": "+1234567890"
+                        "number": "+1234567890",
+                        "transferPlan": {
+                            "mode": "warm-transfer-say-message",
+                            "message": f"Incoming call about: {reason}. Priority: {urgency}."
+                        }
                     }
                 elif department == 'sales':
                     destination = {
                         "type": "number",
-                        "number": "+1987654321"
+                        "number": "+1987654321",
+                        "transferPlan": {
+                            "mode": "warm-transfer-wait-for-operator-to-speak-first-and-then-say-message",
+                            "message": f"Hi, I have a customer interested in our products. Reason: {reason}.",
+                            "timeout": 30
+                        }
                     }
                 else:
+                    # Default to blind transfer for general inquiries
                     destination = {
                         "type": "number",
                         "number": "+1555555555"
                     }
-                
+
                 # Execute transfer via Live Call Control
                 async with httpx.AsyncClient() as client:
                     await client.post(
@@ -452,7 +474,7 @@ sequenceDiagram
 
     <Note>
     **SIP transfers:** To transfer to a SIP endpoint, use `"type": "sip"` with `"sipUri"` instead:
-    
+
     ```json
     {
       "type": "transfer",
@@ -464,6 +486,19 @@ sequenceDiagram
     }
     ```
     </Note>
+
+    <Tip>
+    **Warm transfer modes:** The examples above show warm transfers using `transferPlan`. Available modes include:
+    - `blind-transfer` - Immediate transfer (default when no `transferPlan` is specified)
+    - `warm-transfer-say-message` - Say a custom message to the operator
+    - `warm-transfer-say-summary` - Say an AI-generated conversation summary
+    - `warm-transfer-wait-for-operator-to-speak-first-and-then-say-message` - Wait for operator response before delivering message
+    - `warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary` - Wait for operator response before delivering summary
+    - `warm-transfer-twiml` - Execute custom TwiML instructions
+    - `warm-transfer-experimental` - Use a transfer assistant for intelligent handoffs
+
+    See [Live Call Control](/calls/call-features#5-transfer-call) and [Assistant-based warm transfer](/calls/assistant-based-warm-transfer) for more details.
+    </Tip>
   </Step>
 
   <Step title="Test your dynamic transfer system">
