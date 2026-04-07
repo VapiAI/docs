@@ -41,7 +41,7 @@ For implementation examples, see **[Configuration examples](#configuration-examp
 
 **What this provides:**
 
-- Smart endpointing detects when users finish speaking (English only)
+- LiveKit smart endpointing detects when users finish speaking (English only)
 - Fast interruption using voice detection (50-100ms response)
 - Natural timing with balanced wait periods
 
@@ -89,7 +89,7 @@ User Audio → VAD → Transcription → Start Speaking Decision → LLM → TTS
     System evaluates completion using this priority order:
     1. **Transcriber EOT detection** (if transcriber has built-in EOT and no smart endpointing plan)
     2. **Custom Rules** (highest priority when configured)
-    3. **Smart Endpointing Plan** (LiveKit for English, Vapi for non-English)
+    3. **Smart Endpointing Plan** (`livekit`, `vapi`, or `custom-endpointing-model`)
   </Step>
   <Step title="Response generation">
     LLM request sent immediately → TTS processes → waitSeconds applied →
@@ -162,7 +162,7 @@ This plan is only used if `smartEndpointingPlan` is not set and transcriber does
 
 ### Smart endpointing
 
-Uses AI models to analyze speech patterns, context, and audio cues to predict when users have finished speaking. Only available for English conversations.
+Uses supported smart endpointing providers to predict when users have finished speaking. Use `livekit` for English, `vapi` when you want Vapi-managed smart endpointing in other cases, or `custom-endpointing-model` to call your own endpointing service.
 
 **Important:** If your transcriber has built-in end-of-turn detection (like Deepgram Flux or Assembly) and you don't configure a smart endpointing plan, the system will automatically use the transcriber's EOT detection instead of smart endpointing.
 
@@ -181,27 +181,23 @@ Uses AI models to analyze speech patterns, context, and audio cues to predict wh
     ```
   </Tab>
   <Tab title="Providers">
-    **Text-based providers:**
-    - **livekit**: Advanced model trained on conversation data (English only)
-    - **vapi**: VAPI-trained model (non-English conversations or LiveKit alternative)
-    
-    **Audio-based providers:**
-    - **krisp**: Audio-based model analyzing prosodic features (intonation, pitch, rhythm)
-    
-    **Audio-text based providers:**
-    - **deepgram-flux**: Deepgram's latest transcriber model with built-in conversational speech recognition. (English only)
-    - **assembly**: Transcriber with built-in end-of-turn detection (English only)
+    **Supported values for `smartEndpointingPlan.provider`:**
+    - **livekit**: Recommended built-in smart endpointing provider for English conversations
+    - **vapi**: Built-in smart endpointing provider when LiveKit is not the right fit, including non-English conversations
+    - **custom-endpointing-model**: Sends endpointing requests to your server and uses the returned timeout
 
+    `krisp`, `deepgram-flux`, and `assembly` are **not** valid values for `smartEndpointingPlan.provider`.
+    Configure Deepgram Flux and Assembly on the transcriber instead.
   </Tab>
 </Tabs>
 
 **When to use:**
 
-- **Deepgram Flux**: English conversations using Deepgram as a transcriber. 
-- **Assembly**: Best used when Assembly is already your transcriber provider for English conversations with integrated end-of-turn detection
-- **LiveKit**: English conversations where Deepgram is not the transcriber of choice.
-- **Vapi**: Non-English conversations with default stop speaking plan settings
-- **Krisp**: Non-English conversations with a robustly configured stop speaking plan
+- **Deepgram Flux**: English conversations using Deepgram as a transcriber. Do not set `smartEndpointingPlan`.
+- **Assembly**: Best used when Assembly is already your transcriber provider for English conversations with integrated end-of-turn detection. Do not set `smartEndpointingPlan`.
+- **LiveKit**: English conversations where you want the recommended built-in smart endpointing provider.
+- **Vapi**: English or non-English conversations where you want built-in smart endpointing without running your own service
+- **Custom endpointing model**: Conversations that require your own endpointing logic or a custom server integration
 
 ### Deepgram Flux configuration
 
@@ -305,15 +301,9 @@ The system continuously analyzes the latest user message and applies the first m
 - Scenarios requiring predictable, rule-based endpointing behavior
 - Fallback option when other smart endpointing providers aren't suitable
 
-### Krisp threshold configuration
+### Custom endpointing model configuration
 
-Krisp's audio-base model returns a probability between 0 and 1, where 1 means the user definitely stopped speaking and 0 means they're still speaking.
-
-**Threshold settings:**
-
-- **0.0-0.3:** Very aggressive detection - responds quickly but may interrupt users mid-sentence
-- **0.4-0.6:** Balanced detection (default: 0.5) - good balance between responsiveness and accuracy
-- **0.7-1.0:** Conservative detection - waits longer to ensure users have finished speaking
+Use your own endpointing service by setting `provider` to `custom-endpointing-model`. Vapi sends a `call.endpointing.request` event to `assistant.startSpeakingPlan.smartEndpointingPlan.server.url` and expects a timeout in response.
 
 **Configuration example:**
 
@@ -321,15 +311,28 @@ Krisp's audio-base model returns a probability between 0 and 1, where 1 means th
 {
   "startSpeakingPlan": {
     "smartEndpointingPlan": {
-      "provider": "krisp",
-      "threshold": 0.5
+      "provider": "custom-endpointing-model",
+      "server": {
+        "url": "https://your-endpointing-server.example.com"
+      }
     }
   }
 }
 ```
 
-**Important considerations:**
-Since Krisp is audio-based, it always notifies when the user is done speaking, even for brief acknowledgments. Configure the stop speaking plan with appropriate `acknowledgementPhrases` and `numWords` settings to handle backchanneling properly.
+**Response format:**
+
+```json
+{
+  "timeoutSeconds": 0.5
+}
+```
+
+**When to use:**
+
+- Language-specific endpointing that is not covered by the built-in providers
+- Custom ML models or proprietary endpointing services
+- Workflows that need endpointing logic outside Vapi's built-in providers
 
 ### Assembly turn detection
 
@@ -613,15 +616,17 @@ User Interrupts → Assistant Audio Stopped → backoffSeconds Blocks All Output
 
 **Optimized for:** Text-based endpointing with longer timeouts for different speech patterns and international support.
 
-### Audio-based endpointing (Krisp example)
+### Custom endpointing model example
 
 ```json
 {
   "startSpeakingPlan": {
     "waitSeconds": 0.4,
     "smartEndpointingPlan": {
-      "provider": "krisp",
-      "threshold": 0.5
+      "provider": "custom-endpointing-model",
+      "server": {
+        "url": "https://your-endpointing-server.example.com"
+      }
     }
   },
   "stopSpeakingPlan": {
@@ -640,7 +645,7 @@ User Interrupts → Assistant Audio Stopped → backoffSeconds Blocks All Output
 }
 ```
 
-**Optimized for:** Non-English conversations with robust backchanneling configuration to handle audio-based detection limitations.
+**Optimized for:** Teams that want custom endpointing behavior while keeping Vapi's standard interruption controls.
 
 ### Audio-text based endpointing (Assembly example)
 
