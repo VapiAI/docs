@@ -27,6 +27,7 @@ You can suggest edits by making a pull request.
 To run a local development server with hot-reloading you can run the following command
 
 ```sh
+npm install -g fern-api
 fern docs dev
 ```
 
