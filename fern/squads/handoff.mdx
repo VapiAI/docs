@@ -571,6 +571,10 @@ Each alias creates a new variable accessible as `{{key}}` during the call and st
 
 You can also extract variables through the LLM tool call parameters (in addition to sending these parameters to your server in a `handoff-destination-request` for dynamic handoffs). Include the **destination** parameter with the assistant names or IDs in `enum` -- Vapi uses this to determine where to hand off the call. The `destination` parameter itself is not extracted as a variable. Add `destination` and all other required variables to the schema's `required` array.
 
+<Warning>
+The LLM may omit the `destination` argument if it considers the value obvious (for example, a single-value enum). When this happens, Vapi treats the handoff as a dynamic destination request and sends a `handoff-destination-request` webhook. If your server is not set up for dynamic routing, this produces false-positive error logs. To prevent this, instruct the LLM in your system prompt to always include the `destination` field. See [Troubleshooting](#false-positive-handoff-destination-request-errors) for details.
+</Warning>
+
 ```json
 {
   "tools": [
@@ -867,6 +871,7 @@ Override the default function definition for more control. You can overwrite the
 5. **Tool messages**: Add custom `request-start` messages to set caller expectations during transfers.
 6. **Testing**: Test handoff scenarios thoroughly, including edge cases and rejection conditions.
 7. **Monitoring and analysis**: Enable [`artifactPlan.fullMessageHistoryEnabled`](/api-reference/assistants/create#response.body.artifactPlan.fullMessageHistoryEnabled) to capture the complete message history across all handoffs in your artifacts. See [squad artifact behavior](/assistants/call-recording#squad-and-transfer-behavior) for details.
+8. **Prompt the LLM to always include `destination`**: When using the `tool.function` extraction pattern with a `destination` parameter, instruct the LLM in the system prompt to always include the `destination` field when calling the handoff tool. If the LLM omits it, Vapi treats the destination as unknown and attempts a dynamic resolution via the `handoff-destination-request` webhook. For static handoffs where no webhook handler returns a destination, this triggers a fallback to the first member in the squad's destination array, logging errors even though the handoff completes successfully.
 
 ## Troubleshooting
 
@@ -877,3 +882,13 @@ Override the default function definition for more control. You can overwrite the
 - Test variable extraction schemas with sample data
 - Validate that assistant names exist in the same squad
 - Verify rejection plan conditions use correct regex syntax (remember to double-escape `\\` in JSON)
+
+### False-positive `handoff-destination-request` errors
+
+If your logs show `"Unknown event type: handoff-destination-request"` errors at a high rate but handoffs still complete successfully, the likely cause is the LLM omitting the `destination` argument when calling the handoff tool.
+
+**What happens:** When the LLM calls a handoff tool without the `destination` parameter, Vapi cannot determine the target assistant statically. It falls back to sending a `handoff-destination-request` webhook to your server. If your server is not configured to handle dynamic routing (because you are using static handoffs), it does not return a valid destination. Vapi then falls back to the first member in the squad's destination array, which is why the handoff still succeeds. However, the failed webhook request is logged as an error.
+
+**Why one tool is affected more than others:** This typically happens when the system prompt for a particular assistant instructs the LLM to pass additional parameters (such as business-specific data) during the handoff. The LLM may interpret the single-value `destination` enum as redundant and omit it, focusing only on the additional parameters it was told to pass.
+
+**How to fix it:** Update your system prompt to explicitly instruct the LLM to always include the `destination` field when calling the handoff tool. For example, add: *"When handing off, you must always include the `destination` field in the tool call arguments."*
