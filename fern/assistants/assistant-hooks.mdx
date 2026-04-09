@@ -11,6 +11,7 @@ Assistant hooks let you automate actions when specific events occur during a cal
 Supported events include:
 
 - `call.ending`: When a call is ending
+- `call.timeElapsed`: When a specified number of seconds has elapsed from call start
 - `assistant.speech.interrupted`: When the assistant's speech is interrupted
 - `customer.speech.interrupted`: When the customer's speech is interrupted
 - `customer.speech.timeout`: When the customer doesn't speak within a specified time
@@ -25,7 +26,7 @@ Hooks are defined in the `hooks` array of your assistant configuration. Each hoo
 - `on`: The event that triggers the hook
 - `do`: The actions to perform (supports `tool` and `say`)
 - `filters`: (Optional) Conditions that must be met for the hook to trigger
-- `options`: (Optional) Configuration options for certain hook types like `customer.speech.timeout` and `assistant.transcriber.endpointedSpeechLowConfidence`
+- `options`: (Optional) Configuration options for certain hook types like `call.timeElapsed`, `customer.speech.timeout`, and `assistant.transcriber.endpointedSpeechLowConfidence`
 - `name`: (Optional) Custom name to identify the hook
 
 **Action Types:**
@@ -244,6 +245,122 @@ The `customer.speech.timeout` hook supports special options:
 - `triggerMaxCount`: Maximum times the hook triggers per call (1-10, default: 3)
 - `triggerResetMode`: Whether to reset the trigger count when user speaks (default: "never")
 </Note>
+
+## Example: Trigger actions at a specific time
+
+The `call.timeElapsed` hook fires once when a specified number of seconds has elapsed from call start. Use it to enforce call duration limits, prompt wrap-up behavior, or trigger time-based actions.
+
+Each `call.timeElapsed` hook fires **once** at the specified time. To trigger actions at multiple time points, add separate hooks with different `seconds` values.
+
+### Basic usage
+
+Speak a message 5 minutes into the call:
+
+```json
+{
+  "hooks": [
+    {
+      "on": "call.timeElapsed",
+      "options": {
+        "seconds": 300
+      },
+      "do": [
+        {
+          "type": "say",
+          "exact": "Just a heads up, we've been on the call for 5 minutes."
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Call discipline (wrap-up and graceful close)
+
+Combine multiple `call.timeElapsed` hooks with `maxDurationSeconds` to enforce structured call discipline. This example begins wrapping up at 8 minutes, warns at 9 minutes, and hard-cuts at 10 minutes:
+
+```json
+{
+  "maxDurationSeconds": 600,
+  "hooks": [
+    {
+      "on": "call.timeElapsed",
+      "options": {
+        "seconds": 480
+      },
+      "do": [
+        {
+          "type": "say",
+          "exact": "We're approaching our time limit. Let's start wrapping up."
+        }
+      ]
+    },
+    {
+      "on": "call.timeElapsed",
+      "options": {
+        "seconds": 540
+      },
+      "do": [
+        {
+          "type": "say",
+          "exact": "We have about one minute left. Let me know if there's anything else urgent."
+        }
+      ]
+    },
+    {
+      "on": "call.timeElapsed",
+      "options": {
+        "seconds": 590
+      },
+      "do": [
+        {
+          "type": "say",
+          "exact": "Thank you for your time. I need to end the call now. Goodbye."
+        },
+        {
+          "type": "tool",
+          "tool": {
+            "type": "endCall"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+The `call.timeElapsed` hook supports one option:
+- `seconds`: Number of seconds from call start when the hook should trigger (1-3600)
+
+The hook fires once at the specified time. `maxDurationSeconds` (default: 600 seconds) acts as a hard cutoff that ends the call immediately. Use `call.timeElapsed` hooks before that limit to allow for a graceful close.
+</Note>
+
+### Inject a system message to guide the LLM
+
+Instead of speaking a fixed message, you can inject a system message into the conversation to change the LLM's behavior for the remainder of the call:
+
+```json
+{
+  "hooks": [
+    {
+      "on": "call.timeElapsed",
+      "options": {
+        "seconds": 480
+      },
+      "do": [
+        {
+          "type": "message.add",
+          "message": {
+            "role": "system",
+            "content": "The call has been going on for 8 minutes. Begin wrapping up the conversation. Summarize any action items and ask if there is anything else before ending the call."
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## Example: Handle low confidence transcripts
 
@@ -478,6 +595,7 @@ Assistant checks with the user at the 10 and 20s mark from when the user is sile
 - Route to a fallback system if the assistant fails
 - Handle customer or assistant interruptions gracefully
 - Prompt customers who become unresponsive during a call
+- Enforce call duration limits with graceful wrap-up behavior
 - Handle low confidence transcripts by asking users to repeat or speak more clearly
 - Log errors or events for monitoring
 
