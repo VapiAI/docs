@@ -6,7 +6,12 @@ slug: customization/transcriber-fallback-plan
 
 ## Overview
 
-Transcriber fallback configuration ensures your calls continue even if your primary speech-to-text provider experiences issues. Your assistant will sequentially fallback to the transcribers you configure, in the exact order you specify.
+Transcriber fallback configuration ensures your calls continue even if your primary speech-to-text provider experiences issues. Vapi supports two approaches:
+
+- **Auto fallback** — Vapi intelligently routes transcription to an alternative provider when your primary fails. No configuration required.
+- **Manual fallback** — You specify exact backup providers in priority order for full control over the failover sequence.
+
+You can use both together. When combined, your manual fallbacks are tried first. If all of them fail, Vapi's auto fallback takes over as a final safety net.
 
 **Key benefits:**
 - **Call continuity** during provider outages
@@ -14,28 +19,57 @@ Transcriber fallback configuration ensures your calls continue even if your prim
 - **Provider diversity** to protect against single points of failure
 
 <Note>
-  Without a fallback plan configured, your call will end with an error if your chosen transcription provider fails.
+  Without any fallback plan configured, your call will end with an error if your chosen transcription provider fails.
 </Note>
 
 ## How it works
 
-When a transcriber failure occurs, Vapi will:
-1. Detect the failure of the primary transcriber
-2. Switch to the first fallback transcriber in your plan
-3. Continue through your specified list if subsequent failures occur
-4. Terminate only if all transcribers in your plan have failed
+When a transcriber failure occurs, Vapi follows this priority order:
 
-## Configure via Dashboard
+1. **Manual fallbacks first** — If you've configured explicit fallback transcribers, Vapi tries each one sequentially in the order you specified.
+2. **Auto fallback as safety net** — If all manual fallbacks fail (or none are configured), and auto fallback is enabled, Vapi intelligently selects an alternative provider and routes your transcription audio to it.
+3. **Call termination** — The call ends only if every fallback option has been exhausted.
+
+## Auto fallback
+
+Auto fallback is the simplest way to add resilience. Toggle it on, and Vapi handles provider selection for you—automatically routing transcription audio to an alternative STT provider when your primary fails.
+
+<Warning>
+  Enabling auto fallback may route audio to other providers. If your organization has strict compliance requirements, review your compliance settings to ensure this aligns with your needs.
+</Warning>
+
+To enable auto fallback via API, set `transcriber.fallbackPlan.autoFallback.enabled` to `true`:
+
+```json
+{
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-3",
+    "language": "en",
+    "fallbackPlan": {
+      "autoFallback": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+## Manual fallbacks
+
+Manual fallbacks give you full control over which providers Vapi tries, and in what order. This is useful when you need specific providers for compliance, language support, or cost reasons.
+
+### Configure via dashboard
 
 <Steps>
   <Step title="Open Transcriber tab">
     Navigate to your assistant and select the **Transcriber** tab.
   </Step>
   <Step title="Expand Fallback Transcribers section">
-    Scroll down to find the **Fallback Transcribers** collapsible section. A warning indicator appears if no fallback transcribers are configured.
+    Scroll down to find the **Transcriber Fallback** section. Under **Manual Fallbacks**, click **Add** to configure your backup providers in priority order.
   </Step>
   <Step title="Add a fallback transcriber">
-    Click **Add Fallback Transcriber** to configure your first fallback:
+    For each fallback, configure:
     - Select a **provider** from the dropdown
     - Choose a **model** (if the provider offers multiple models)
     - Select a **language** for transcription
@@ -52,9 +86,9 @@ When a transcriber failure occurs, Vapi will:
   If HIPAA or PCI compliance is enabled on your account or assistant, only **Deepgram** and **Azure** transcribers will be available as fallback options.
 </Note>
 
-## Configure via API
+### Configure via API
 
-Add the `fallbackPlan` property to your assistant's transcriber configuration, and specify the fallback transcribers within the `transcribers` property.
+Add the `fallbackPlan` property to your assistant's transcriber configuration, and specify the fallback transcribers within the `transcribers` property. You can combine manual fallbacks with auto fallback for maximum resilience.
 
 ```json
 {
@@ -63,6 +97,9 @@ Add the `fallbackPlan` property to your assistant's transcriber configuration, a
     "model": "nova-3",
     "language": "en",
     "fallbackPlan": {
+      "autoFallback": {
+        "enabled": true
+      },
       "transcribers": [
         {
           "provider": "assembly-ai",
@@ -78,6 +115,8 @@ Add the `fallbackPlan` property to your assistant's transcriber configuration, a
   }
 }
 ```
+
+In this example, if Deepgram fails, Vapi tries AssemblyAI first, then Azure. If both manual fallbacks fail, auto fallback intelligently selects another available provider.
 
 ## Provider-specific settings
 
@@ -151,14 +190,19 @@ Each transcriber provider supports different configuration options. Expand the a
 
 ## Best practices
 
-- Use **different providers** for fallbacks to protect against provider-wide outages.
+- **Start with auto fallback** for quick, zero-config resilience—it works well for most use cases.
+- **Add manual fallbacks** when you need control over specific providers for compliance, language, or cost reasons.
+- **Combine both** for maximum reliability—manual fallbacks run first, auto fallback catches anything they miss.
+- Use **different providers** for manual fallbacks to protect against provider-wide outages.
 - Consider **language compatibility** when selecting fallbacks—ensure all fallback transcribers support your required languages.
-- Test your fallback configuration to ensure smooth transitions between transcribers.
-- For **HIPAA/PCI compliance**, ensure all fallbacks are compliant providers (Deepgram or Azure).
+- For **HIPAA/PCI compliance**, ensure all fallbacks are compliant providers (Deepgram or Azure) and review data routing implications before enabling auto fallback.
 
 ## FAQ
 
 <AccordionGroup>
+  <Accordion title="What's the difference between auto fallback and manual fallback?">
+    Auto fallback lets Vapi intelligently select an alternative provider for you—no configuration needed. Manual fallback lets you specify exact providers in a specific priority order. You can use both together: manual fallbacks are tried first, and auto fallback acts as a safety net if they all fail.
+  </Accordion>
   <Accordion title="Which providers support fallback?">
     All major transcriber providers are supported: Deepgram, AssemblyAI, Azure, Gladia, Google, Speechmatics, Cartesia, ElevenLabs, and OpenAI.
   </Accordion>
@@ -167,6 +211,9 @@ Each transcriber provider supports different configuration options. Expand the a
   </Accordion>
   <Accordion title="How fast is the failover?">
     Failover typically occurs within milliseconds of detecting a failure, ensuring minimal disruption to the call.
+  </Accordion>
+  <Accordion title="Will auto fallback route my data to other cloud providers?">
+    Yes. When auto fallback activates, Vapi may route transcription audio to a different cloud provider than your primary. If you have data residency or compliance requirements, we recommend reviewing your organization's policies to ensure this aligns with your needs.
   </Accordion>
   <Accordion title="Can I use different languages for fallbacks?">
     Yes, each fallback transcriber can have its own language configuration. However, for the best user experience, we recommend using the same or similar languages across all fallbacks.
