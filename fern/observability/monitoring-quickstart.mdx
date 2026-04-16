@@ -1,0 +1,636 @@
+---
+title: Monitoring quickstart
+subtitle: Set up automated quality monitoring for your voice AI agents
+slug: observability/monitoring-quickstart
+---
+
+## Overview
+
+Monitoring lets you automatically track quality and detect issues across your voice AI agents. Instead of manually reviewing calls, you define monitors that continuously evaluate your call data against thresholds and alert you when something goes wrong.
+
+### What is monitoring?
+
+Monitoring is Vapi's automated quality and effectiveness system for voice AI. You create monitors that periodically evaluate call data using analytics queries (Insights), compare results against thresholds you define, and generate issues when those thresholds are exceeded. Your team receives alerts through notifiers, which are alert channels such as email, Slack, or webhooks, so you can investigate and resolve problems quickly.
+
+### Core concepts
+
+- **Monitors** define what to watch, which assistants to target, and when to evaluate
+- **Triggers** run on a schedule and evaluate call data against thresholds
+- **Issues** are created when a threshold is exceeded and a trigger fires, tracking the problem from detection to resolution
+- **Notifiers** are alert channels (email, Slack, or webhook) that deliver notifications to your team when issues are created
+
+### Monitor categories
+
+- **Technical** tracks system-level failures like API errors, provider outages, and timeouts
+- **Infrastructure** tracks resource utilization, latency, and capacity issues
+- **Effectiveness** tracks assistant performance metrics like task completion and user satisfaction
+- **Compliance** tracks regulatory and policy adherence across conversations
+
+### What you'll build
+
+In this quickstart, you will create a monitor that tracks error rates across your assistants and alerts you when the number of errors exceeds a threshold. You will then view an issue, analyze its root cause, and resolve it.
+
+## How it works
+
+<Steps>
+  <Step title="Create a monitor">
+    Define a monitor targeting specific assistants or all assistants. Choose a category and set the monitor to active.
+  </Step>
+
+  <Step title="Define triggers">
+    Configure triggers with schedules or intervals, thresholds, and severity levels. Each trigger references an Insight that defines the analytics query to run.
+  </Step>
+
+  <Step title="Triggers evaluate call data">
+    On each scheduled interval, the trigger runs its Insight query against your call data and compares the result to the threshold you defined.
+  </Step>
+
+  <Step title="Issues are created">
+    When a threshold is exceeded and a trigger fires, an issue is created with details about the affected calls, the trigger that fired, and the evaluation window.
+  </Step>
+
+  <Step title="Notifiers alert your team">
+    If notifiers are configured on the trigger, your team receives notifications via email, Slack, or webhook with issue details.
+  </Step>
+
+  <Step title="Investigate and resolve">
+    Review the issue, run AI-powered root cause analysis, acknowledge the issue, fix the underlying problem, and mark it as resolved.
+  </Step>
+</Steps>
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Vapi account" icon="user">
+    Sign up at [dashboard.vapi.ai](https://dashboard.vapi.ai)
+  </Card>
+  <Card title="API key" icon="key">
+    Get your API key from **API Keys** in the sidebar
+  </Card>
+</CardGroup>
+
+<Note>
+  You need existing assistants with call data for monitoring to detect issues.
+  Monitors evaluate historical call data, so triggers will not fire until your
+  assistants have processed calls.
+</Note>
+
+## Step 1: Set up notifiers
+
+Notifiers are alert channels (email, Slack, or webhook) that send notifications when issues are detected. You configure them as credentials in the Dashboard.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to notifiers">
+        1. Log in to [dashboard.vapi.ai](https://dashboard.vapi.ai)
+        2. Click on **Notifiers** in the left sidebar
+        3. Click **New Notifier**
+      </Step>
+
+      <Step title="Configure the notifier">
+        1. Choose a notifier type: **Email**, **Slack**, or **Webhook**
+        2. For email: enter the recipient email address
+        3. For Slack: paste your Slack webhook URL
+        4. For webhook: enter your endpoint URL
+        5. Give the notifier a name (e.g., "Engineering Slack Channel")
+        6. Click **Save**
+      </Step>
+
+      <Step title="Copy the credential ID">
+        After saving, copy the credential ID from the notifier details. You will need this when configuring alerts on your monitor triggers.
+      </Step>
+    </Steps>
+
+    <Tip>
+      You can create multiple notifiers to send alerts to different channels
+      depending on the severity of the issue.
+    </Tip>
+  </Tab>
+
+  <Tab title="cURL">
+Notifiers are managed as credentials in the Dashboard. Navigate to **Notifiers** in the sidebar to create and manage your alert channels.
+
+Once created, each notifier has a credential ID that you reference in your monitor trigger's `alert.credentialIds` array.
+  </Tab>
+</Tabs>
+
+## Step 2: Create a monitor
+
+Define a monitor that tracks error rates and alerts you when errors exceed a threshold.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to monitors">
+        1. Log in to [dashboard.vapi.ai](https://dashboard.vapi.ai)
+        2. Click on **Monitors** in the left sidebar (under Observability)
+        3. Click **New Monitor**
+      </Step>
+
+      <Step title="Configure basic settings">
+        1. **Name**: Enter "Error Rate Monitor"
+        2. **Description**: Add "Tracks API and provider errors across all assistants"
+        3. **Category**: Select **Technical**
+      </Step>
+
+      <Step title="Choose target assistants">
+        1. Select **All Assistants** to monitor every assistant in your organization
+        2. Alternatively, select **Specific Assistants** and choose individual assistants from the dropdown
+      </Step>
+
+      <Step title="Configure escalation thresholds">
+        1. Set **Severity** to **Error**
+        2. Set the **Comparator** to **Greater than**
+        3. Set the **Value** to **5** (triggers when more than 5 errors are detected)
+        4. Set **Check frequency** to every **1 hour**
+      </Step>
+
+      <Step title="Enable notifiers">
+        1. Toggle **Notifiers** to enabled
+        2. Select one or more notifiers from the dropdown
+        3. Click **Save Monitor**
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+```bash title="cURL"
+curl -X POST "https://api.vapi.ai/monitoring/monitor" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Error Rate Monitor",
+    "description": "Tracks API and provider errors across all assistants",
+    "category": "technical",
+    "type": "boolean",
+    "status": "active",
+    "targets": "*",
+    "triggers": [
+      {
+        "insightId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "interval": {
+          "every": 60
+        },
+        "threshold": {
+          "type": "number",
+          "comparator": "gt",
+          "value": 5
+        },
+        "severity": "error",
+        "alert": {
+          "status": "enabled",
+          "credentialIds": ["f47ac10b-58cc-4372-a567-0e02b2c3d479"]
+        }
+      }
+    ]
+  }'
+```
+
+**Response:**
+
+```json title="Response"
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "orgId": "org-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "name": "Error Rate Monitor",
+  "description": "Tracks API and provider errors across all assistants",
+  "category": "technical",
+  "type": "boolean",
+  "status": "active",
+  "targets": "*",
+  "triggers": [
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "insightId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "interval": {
+        "every": 60
+      },
+      "threshold": {
+        "type": "number",
+        "comparator": "gt",
+        "value": 5
+      },
+      "severity": "error",
+      "alert": {
+        "status": "enabled",
+        "credentialIds": ["f47ac10b-58cc-4372-a567-0e02b2c3d479"]
+      }
+    }
+  ],
+  "createdAt": "2025-07-15T10:30:00.000Z",
+  "updatedAt": "2025-07-15T10:30:00.000Z"
+}
+```
+
+Save the returned `id` for referencing this monitor later.
+  </Tab>
+</Tabs>
+
+<Note>
+  The `insightId` references an Insight, which is an analytics query that defines
+  what data to evaluate. When you configure a monitor's escalation thresholds in the
+  Dashboard, the Insight is created automatically. When using the API, you need to
+  create the Insight first and reference its ID here.
+</Note>
+
+### Managing monitors
+
+View, edit, and delete all your monitors from the **Monitors** page in the Dashboard sidebar (under Observe).
+
+Via the API:
+- `GET /monitoring/monitor` — list all monitors
+- `PATCH /monitoring/monitor/:id` — update a monitor's targets, triggers, or thresholds
+- `DELETE /monitoring/monitor/:id` — remove a monitor
+
+### Targeting assistants
+
+Setting `"targets": "*"` monitors **all current and future assistants** in your organization. Any assistant created after the monitor is set up is automatically included.
+
+To monitor only specific assistants, pass an array of assistant IDs using the `targets` array. The `id` field is the assistant ID — the UUID you see in the Dashboard or get from `GET /assistant`.
+
+```json title="Specific assistant targets"
+{
+  "targets": [
+    {
+      "type": "assistant",
+      "id": "c3d4e5f6-a7b8-9012-cdef-234567890abc"
+    },
+    {
+      "type": "assistant",
+      "id": "d4e5f6a7-b8c9-0123-defa-345678901bcd"
+    }
+  ]
+}
+```
+
+### Schedule-based triggers
+
+Instead of an interval, you can use a calendar schedule for more precise control:
+
+```json title="Schedule-based trigger"
+{
+  "insightId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "schedule": {
+    "minute": [0],
+    "hour": [9, 17],
+    "dayOfWeek": [1, 2, 3, 4, 5]
+  },
+  "threshold": {
+    "type": "number",
+    "comparator": "gt",
+    "value": 10
+  },
+  "severity": "warning"
+}
+```
+
+This trigger evaluates at 9:00 AM and 5:00 PM on weekdays.
+
+## Step 3: View issues
+
+When a threshold is exceeded and a trigger fires, an issue is created. You can view and manage issues in the Dashboard or via the API.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Navigate to issues">
+        1. Click on **Issues** in the left sidebar
+        2. View summary cards at the top showing total issues, open issues, and recently resolved issues
+      </Step>
+
+      <Step title="Browse and filter issues">
+        1. Browse the issues table showing monitor name, severity, status, and timestamps
+        2. Filter by status: **New**, **In Progress**, or **Resolved**
+        3. Sort by severity or creation date
+      </Step>
+
+      <Step title="View issue details">
+        1. Click an issue to open the detail panel
+        2. Review the trigger that fired, the threshold that was exceeded, and the evaluation window
+        3. View the list of affected calls
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+**List all open issues:**
+
+```bash title="cURL"
+curl -X GET "https://api.vapi.ai/monitoring/issue?status=created" \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+**Response:**
+
+```json title="Response"
+[
+  {
+    "id": "e5f6a7b8-c9d0-1234-efab-567890123456",
+    "orgId": "org-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "monitorId": "550e8400-e29b-41d4-a716-446655440000",
+    "triggerId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "totalCalls": 150,
+    "callsCount": 12,
+    "evaluationStartAt": "2025-07-15T09:30:00.000Z",
+    "alerts": [
+      {
+        "credentialId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        "timestamp": "2025-07-15T10:30:05.000Z",
+        "status": "success"
+      }
+    ],
+    "lastSeenAt": "2025-07-15T10:30:00.000Z",
+    "status": "created",
+    "createdAt": "2025-07-15T10:30:00.000Z",
+    "updatedAt": "2025-07-15T10:30:00.000Z"
+  }
+]
+```
+
+**Get a single issue with call details:**
+
+```bash title="cURL"
+curl -X GET "https://api.vapi.ai/monitoring/issue/e5f6a7b8-c9d0-1234-efab-567890123456" \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+```json title="Response"
+{
+  "id": "e5f6a7b8-c9d0-1234-efab-567890123456",
+  "orgId": "org-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "monitorId": "550e8400-e29b-41d4-a716-446655440000",
+  "triggerId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "totalCalls": 150,
+  "callsCount": 12,
+  "evaluationStartAt": "2025-07-15T09:30:00.000Z",
+  "calls": [
+    {
+      "callId": "a7b8c9d0-e1f2-3456-abcd-789012345678",
+      "failedAt": "2025-07-15T09:45:12.000Z"
+    },
+    {
+      "callId": "b8c9d0e1-f2a3-4567-bcde-890123456789",
+      "failedAt": "2025-07-15T09:52:30.000Z"
+    }
+  ],
+  "alerts": [
+    {
+      "credentialId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "timestamp": "2025-07-15T10:30:05.000Z",
+      "status": "success"
+    }
+  ],
+  "lastSeenAt": "2025-07-15T10:30:00.000Z",
+  "status": "created",
+  "createdAt": "2025-07-15T10:30:00.000Z",
+  "updatedAt": "2025-07-15T10:30:00.000Z"
+}
+```
+
+The `calls` array is only included when retrieving a single issue by ID.
+  </Tab>
+</Tabs>
+
+## Step 4: Analyze an issue
+
+Use AI-powered root cause analysis to understand why an issue occurred and get actionable suggestions for fixing it.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the issue">
+        1. Navigate to **Issues** in the sidebar
+        2. Click on the issue you want to analyze
+      </Step>
+
+      <Step title="Run analysis">
+        1. Click the **Analyze** button in the issue detail panel
+        2. Wait for the AI-powered analysis to complete
+        3. Review the summary, root cause, impact assessment, and suggestions
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+```bash title="cURL"
+curl -X POST "https://api.vapi.ai/monitoring/issue/e5f6a7b8-c9d0-1234-efab-567890123456/analyze" \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+**Response:**
+
+```json title="Response"
+{
+  "summary": "12 calls failed due to OpenAI API timeouts during peak hours, affecting 8% of total call volume in the evaluation window.",
+  "rootCause": {
+    "category": "timeout",
+    "explanation": "The OpenAI API consistently timed out during the 9:30-10:30 AM window, likely due to increased traffic during peak business hours. The default timeout of 10 seconds was insufficient for the model's response latency during this period.",
+    "confidence": "high"
+  },
+  "impact": {
+    "severity": "high",
+    "description": "Users experienced call drops mid-conversation when the LLM failed to respond within the timeout window.",
+    "affectedCalls": 12,
+    "failureRate": 0.08
+  },
+  "suggestions": [
+    {
+      "title": "Increase LLM timeout",
+      "description": "Raise the OpenAI request timeout from 10 seconds to 20 seconds to accommodate peak-hour latency.",
+      "priority": "high",
+      "configExample": "{ \"model\": { \"provider\": \"openai\", \"timeout\": 20000 } }"
+    },
+    {
+      "title": "Add a fallback model",
+      "description": "Configure a faster fallback model (e.g., gpt-4o-mini) that activates when the primary model times out.",
+      "priority": "medium",
+      "docUrl": "/assistants/model-fallbacks"
+    },
+    {
+      "title": "Enable retry logic",
+      "description": "Add automatic retries with exponential backoff for transient API failures.",
+      "priority": "medium"
+    }
+  ],
+  "errorPatterns": [
+    {
+      "pattern": "OpenAI API request timed out after 10000ms",
+      "count": 10,
+      "firstSeen": "2025-07-15T09:35:00.000Z",
+      "lastSeen": "2025-07-15T10:25:00.000Z"
+    },
+    {
+      "pattern": "OpenAI API rate limit exceeded",
+      "count": 2,
+      "firstSeen": "2025-07-15T09:48:00.000Z",
+      "lastSeen": "2025-07-15T10:02:00.000Z"
+    }
+  ]
+}
+```
+  </Tab>
+</Tabs>
+
+<Note>
+  Analysis results are cached for 1 hour. Subsequent requests within that window
+  return the cached result immediately.
+</Note>
+
+<Tip>
+  Use the `callId` values from the issue's `calls` array to review specific call
+  logs and recordings for deeper investigation. Each call ID links directly to the
+  call details in your Dashboard.
+</Tip>
+
+## Step 5: Resolve an issue
+
+After investigating and fixing the underlying problem, acknowledge and resolve the issue to track your team's response. Resolve an issue once you've deployed a fix and confirmed the problem no longer recurs — this signals to your team that the root cause has been addressed. Acknowledgment and resolution timestamps help measure your team's incident response times.
+
+<Note>
+  Issues are a single shared resource. Status changes made in the Dashboard are
+  immediately reflected in API responses, and vice versa. Your team can freely use
+  both without conflicts.
+</Note>
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Acknowledge the issue">
+        1. Open the issue detail panel
+        2. Click the **Acknowledge** button
+        3. The issue status changes to **Acknowledged** and records who acknowledged it
+      </Step>
+
+      <Step title="Fix the underlying problem">
+        Apply the changes suggested by the analysis (e.g., increase timeout, add fallback model, update configuration).
+      </Step>
+
+      <Step title="Resolve the issue">
+        1. Return to the issue detail panel
+        2. Click the **Resolve** button
+        3. The issue status changes to **Resolved** and records who resolved it and when
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+**Acknowledge the issue:**
+
+```bash title="cURL"
+curl -X PATCH "https://api.vapi.ai/monitoring/issue/e5f6a7b8-c9d0-1234-efab-567890123456" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "acknowledged",
+    "acknowledgedBy": "jane@example.com"
+  }'
+```
+
+**Resolve the issue after fixing the problem:**
+
+```bash title="cURL"
+curl -X PATCH "https://api.vapi.ai/monitoring/issue/e5f6a7b8-c9d0-1234-efab-567890123456" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "resolved",
+    "resolvedBy": "jane@example.com"
+  }'
+```
+
+**Response:**
+
+```json title="Response"
+{
+  "id": "e5f6a7b8-c9d0-1234-efab-567890123456",
+  "orgId": "org-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "monitorId": "550e8400-e29b-41d4-a716-446655440000",
+  "triggerId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "totalCalls": 150,
+  "callsCount": 12,
+  "evaluationStartAt": "2025-07-15T09:30:00.000Z",
+  "alerts": [
+    {
+      "credentialId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "timestamp": "2025-07-15T10:30:05.000Z",
+      "status": "success"
+    }
+  ],
+  "lastSeenAt": "2025-07-15T10:30:00.000Z",
+  "status": "resolved",
+  "acknowledgedBy": "jane@example.com",
+  "acknowledgedAt": "2025-07-15T11:00:00.000Z",
+  "resolvedBy": "jane@example.com",
+  "resolvedAt": "2025-07-15T12:30:00.000Z",
+  "createdAt": "2025-07-15T10:30:00.000Z",
+  "updatedAt": "2025-07-15T12:30:00.000Z"
+}
+```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Track acknowledgment and resolution times to measure your team's incident
+  response performance over time.
+</Tip>
+
+## Troubleshooting
+
+| Issue | Solution |
+| --- | --- |
+| No issues are being created | Verify monitor status is "active". Check that the trigger interval and threshold are configured correctly. Ensure your assistants have recent call data. |
+| Alerts not received | Confirm notifiers are enabled on the trigger. Verify credential IDs reference valid notifiers. Check the notifier configuration (email address, webhook URL, Slack webhook). |
+| Analysis returns an error | Ensure the issue has associated calls. Analysis requires call data to identify patterns. |
+| Monitor not evaluating | Check that the `insightId` references a valid Insight. Verify the trigger interval is at least 1 minute. |
+| Wrong calls detected | Review the Insight query that the trigger references. Ensure the monitor targets the correct assistants. |
+| Duplicate issues | Triggers create new issues per evaluation window. This is expected behavior when a problem persists across multiple evaluation periods. |
+
+<Warning>
+  If an alert shows a `"failure"` status in the issue's alerts array, the
+  notification delivery failed. Check your notifier configuration and ensure the
+  destination (email, Slack webhook, URL) is reachable.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Advanced monitoring"
+    icon="chart-line"
+    href="/observability/monitoring-advanced"
+  >
+    Configure schedule-based triggers, multi-threshold monitors, and compliance monitoring
+  </Card>
+
+  <Card
+    title="Structured outputs"
+    icon="brackets-curly"
+    href="/assistants/structured-outputs"
+  >
+    Use structured outputs with effectiveness and compliance monitors
+  </Card>
+
+  <Card
+    title="Boards"
+    icon="chart-mixed"
+    href="/observability/boards-quickstart"
+  >
+    Visualize monitoring data and call metrics on dashboards
+  </Card>
+
+  <Card
+    title="Evals"
+    icon="flask"
+    href="/observability/evals-quickstart"
+  >
+    Test your assistants before deployment with automated evaluations
+  </Card>
+</CardGroup>
+
+## Get help
+
+Need assistance? We're here to help:
+
+- [Discord Community](https://discord.gg/pUFNcf2WmH)
+- [Support](mailto:support@vapi.ai)
