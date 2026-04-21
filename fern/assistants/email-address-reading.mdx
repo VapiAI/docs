@@ -1,0 +1,267 @@
+---
+title: Email address reading
+subtitle: Get your voice agent to collect, read back, and confirm email addresses clearly
+slug: assistants/email-address-reading
+---
+
+## Overview
+
+Email addresses are one of the trickiest pieces of information for a voice agent to handle. They contain special characters (`@`, `.`, `-`, `_`), mixed-case text, and domain names that text-to-speech (TTS) engines often mispronounce or blur together when spoken aloud.
+
+This guide covers two sides of the problem:
+
+- **Built-in formatting** -- Vapi automatically transforms email characters for TTS so they sound natural.
+- **Prompt engineering** -- You instruct the LLM *how* to collect, read back, and confirm emails in conversation so users feel confident their address was captured correctly.
+
+## How Vapi handles emails automatically
+
+Vapi's [voice formatting plan](/assistants/voice-formatting-plan) includes a built-in `formatEmails` step that runs before text reaches the TTS provider. It replaces `@` with "at" and `.` with "dot" so the spoken output is intelligible without any prompt changes.
+
+| Raw LLM output | What the user hears |
+|---|---|
+| `john.doe@example.com` | "john dot doe at example dot com" |
+| `SALES@company.org` | "SALES at company dot org" |
+
+<Tip>
+The `formatEmails` formatter is enabled by default. You do not need to configure anything for basic email reading to work. The rest of this guide focuses on the **prompt-level techniques** that make the full collection-and-confirmation flow reliable.
+</Tip>
+
+## Why prompt engineering still matters
+
+Even though TTS formatting handles the character-level pronunciation, the LLM still controls *how* the conversation flows. Without explicit instructions, the agent might:
+
+- Read the email once at normal speed and move on, leaving the user unsure.
+- Fail to spell out ambiguous parts (was it "Jon" or "John"?).
+- Mispronounce uncommon domain names.
+- Skip a confirmation step entirely.
+
+Good prompt instructions solve these problems at the conversational level.
+
+## System prompt: collecting an email
+
+When asking a user for their email, instruct the agent to be patient and explicit about what it needs. The following snippet can be added to your system prompt.
+
+```md wordWrap title="System prompt -- collecting email"
+[Email Collection]
+When you need to collect the user's email address:
+1. Ask clearly: "Could you please tell me your email address?"
+2. Listen to the full response before repeating anything back.
+3. Once you have the email, read it back using these pronunciation rules:
+   - Say "@" as "at"
+   - Say "." as "dot"
+   - Say "-" as "dash"
+   - Say "_" as "underscore"
+4. After reading it back, ask "Is that correct?"
+5. If the user says no, ask them to spell it out letter by letter.
+6. Never guess or autocorrect the email. Use exactly what the user provides.
+```
+
+## System prompt: reading back and confirming an email
+
+The confirmation step is where most agents fail. They read the email too fast or only once. This snippet teaches the agent to slow down and spell when needed.
+
+```md wordWrap title="System prompt -- confirming email"
+[Email Confirmation]
+When reading an email address back to the user:
+1. Speak slowly and clearly. Pause briefly between each part of the email
+   (username, "at", domain, "dot", extension).
+2. For the username part, if it contains common words, say the words.
+   If it is ambiguous or uncommon, spell it out letter by letter.
+   For example:
+   - "john.doe" → "john dot doe"
+   - "jdoe42" → "j, d, o, e, four, two"
+   - "msmith" → "m, s, m, i, t, h"
+3. For the domain, use the familiar name if it is a well-known provider:
+   - "gmail.com" → "gmail dot com"
+   - "yahoo.com" → "yahoo dot com"
+   - "outlook.com" → "outlook dot com"
+   - "hotmail.com" → "hotmail dot com"
+   If the domain is uncommon, spell it out letter by letter.
+4. Always end with: "Is that correct?"
+5. If the user corrects any part, repeat the entire email back again
+   after applying the correction.
+```
+
+## Spelling out letter by letter
+
+For ambiguous usernames or unfamiliar domains, letter-by-letter spelling removes all doubt. Add this instruction to your prompt so the agent knows when and how to spell.
+
+```md wordWrap title="System prompt -- letter-by-letter spelling"
+[Letter-by-Letter Spelling]
+When spelling out part of an email:
+- Say each letter individually with a brief pause between letters.
+- For numbers, say the digit name ("one", "two", "three"), not the numeral.
+- For uppercase vs lowercase, only mention case if the email is case-sensitive
+  or the user specifically asks.
+- Use the NATO phonetic alphabet only if the user is having trouble
+  understanding individual letters. For example:
+  "b as in bravo, d as in delta"
+```
+
+<Note>
+Most email providers treat addresses as case-insensitive, so you typically do not need to distinguish uppercase from lowercase. Your prompt can note this to keep the conversation simpler.
+</Note>
+
+## Handling common domains naturally
+
+You can make the agent sound more natural by teaching it to recognize popular email domains and say them as single words rather than spelling them out.
+
+```md wordWrap title="System prompt -- common domains"
+[Common Email Domains]
+When reading these domains, say them as words, not spelled out:
+- gmail.com → "gmail dot com"
+- yahoo.com → "yahoo dot com"
+- outlook.com → "outlook dot com"
+- hotmail.com → "hotmail dot com"
+- icloud.com → "icloud dot com"
+- aol.com → "A O L dot com"
+- protonmail.com → "proton mail dot com"
+For any domain not in this list, spell it out letter by letter to avoid confusion.
+```
+
+## Complete example: appointment booking agent
+
+Below is a full system prompt section you can copy into your assistant configuration. It combines all the techniques above into a single, production-ready block.
+
+```md wordWrap title="Complete system prompt section"
+[Identity]
+You are Sarah, a friendly appointment scheduling assistant for Acme Dental.
+
+[Email Collection and Confirmation]
+When you need the user's email address:
+1. Ask: "What email address should we send the confirmation to?"
+2. Wait for the full response. Do not interrupt.
+3. Read the email back to the user following these rules:
+   - Say "@" as "at"
+   - Say "." as "dot"
+   - Say "-" as "dash"
+   - Say "_" as "underscore"
+   - Speak slowly with a brief pause between each part.
+   - For well-known domains (gmail, yahoo, outlook, hotmail, icloud),
+     say the domain name naturally.
+   - For unfamiliar domains, spell them out letter by letter.
+   - For the username, if it is a recognizable name or word, say it normally.
+     If it looks like an abbreviation or random string, spell it out letter
+     by letter.
+4. After reading the email, ask: "Did I get that right?"
+5. If the user says no:
+   - Ask: "Could you spell it out for me letter by letter?"
+   - Listen carefully, then read the corrected version back.
+   - Ask again: "Is that correct now?"
+6. Do not proceed to the next step until the user confirms the email.
+7. Never modify, autocorrect, or guess any part of the email address.
+
+[Example Conversation]
+Agent: "What email address should we send the confirmation to?"
+User: "It's jsmith42@newcompany.io"
+Agent: "Let me read that back. j, s, m, i, t, h, four, two ...at... new company
+        ...dot... i, o. Did I get that right?"
+User: "Yes, that's correct."
+```
+
+<Tip>
+Including an example conversation in your system prompt helps the LLM understand the exact pacing and format you expect. This is one of the most effective techniques for consistent behavior.
+</Tip>
+
+## Using pronunciation dictionaries for domains
+
+If your agents frequently encounter a specific company or domain name that TTS mispronounces, you can use [pronunciation dictionaries](/assistants/pronunciation-dictionaries) (available with ElevenLabs voices) to set the correct pronunciation at the TTS level.
+
+For example, if the domain "vapi.ai" is being pronounced as "vappy dot ay-eye", you could create an alias rule:
+
+```json title="Pronunciation dictionary rule"
+{
+  "rules": [
+    {
+      "stringToReplace": "vapi",
+      "type": "alias",
+      "alias": "vaahpee"
+    }
+  ]
+}
+```
+
+This approach is complementary to prompt engineering -- pronunciation dictionaries fix TTS-level pronunciation, while prompt instructions control the conversational flow.
+
+## Using custom keywords for transcription accuracy
+
+If the speech-to-text (STT) transcriber is mishearing specific email domains or usernames, [custom keywords](/customization/custom-keywords) can boost transcription accuracy for those terms.
+
+For example, if users frequently mention their company email domain "contoso.com" and the transcriber misinterprets it, you can add "contoso" as a custom keyword to improve recognition.
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Always confirm the full email address">
+    Never assume an email is correct after hearing it once. Always read the
+    complete email back and wait for confirmation before proceeding. This single
+    step prevents the majority of email capture errors.
+  </Accordion>
+
+  <Accordion title="Use a two-pass approach for difficult emails">
+    First, try reading the email back naturally (words and common domains).
+    If the user says it is wrong, switch to letter-by-letter spelling for
+    the entire address. This keeps simple emails fast while still handling
+    complex ones reliably.
+  </Accordion>
+
+  <Accordion title="Do not autocorrect or assume">
+    Instruct the agent to never modify any part of the email address.
+    Common mistakes include changing "jon" to "john" or assuming ".com"
+    when the user said ".co". Treat the email as an exact string.
+  </Accordion>
+
+  <Accordion title="Handle interruptions gracefully">
+    Users sometimes interrupt mid-readback with a correction. Instruct the
+    agent to accept the correction, incorporate it, and then restart the
+    full readback from the beginning so both parties are aligned.
+  </Accordion>
+
+  <Accordion title="Keep voice formatting enabled">
+    Vapi's built-in `formatEmails` transformer handles the TTS-level
+    conversion of "@" and "." automatically. Disabling the voice formatting
+    plan will cause the TTS to receive raw characters, which may produce
+    garbled output. Keep `voice.chunkPlan.formatPlan.enabled` set to `true`
+    (the default).
+  </Accordion>
+</AccordionGroup>
+
+## Common issues
+
+<AccordionGroup>
+  <Accordion title="TTS reads the email as a URL or gibberish">
+    This usually happens when voice formatting is disabled. Verify that
+    `voice.chunkPlan.formatPlan.enabled` is set to `true` (the default).
+    See the [voice formatting plan](/assistants/voice-formatting-plan) for
+    details.
+  </Accordion>
+
+  <Accordion title="Agent skips the confirmation step">
+    Add an explicit instruction like "Do not proceed until the user confirms
+    the email" to your system prompt. Reinforcing this with an example
+    conversation in the prompt helps the LLM follow the flow consistently.
+  </Accordion>
+
+  <Accordion title="Agent modifies or autocorrects the email">
+    LLMs sometimes try to be helpful by fixing perceived typos. Add a clear
+    rule: "Never modify, autocorrect, or guess any part of the email address.
+    Use exactly what the user provides."
+  </Accordion>
+
+  <Accordion title="User says a letter but transcriber hears a different one">
+    Letters like "b" and "d", or "m" and "n", sound similar over phone audio.
+    If this happens frequently, instruct the agent to ask the user to use
+    the NATO phonetic alphabet ("b as in bravo") or use
+    [custom keywords](/customization/custom-keywords) to improve
+    transcription accuracy for commonly confused terms.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+Now that your agent handles email addresses reliably:
+
+- **[Prompting guide](/prompting-guide)** -- General techniques for writing effective voice AI prompts.
+- **[Voice formatting plan](/assistants/voice-formatting-plan)** -- Understand and customize how Vapi formats text for TTS.
+- **[Pronunciation dictionaries](/assistants/pronunciation-dictionaries)** -- Fine-tune pronunciation for specific words and names.
+- **[Custom keywords](/customization/custom-keywords)** -- Improve transcription accuracy for specific terms.
