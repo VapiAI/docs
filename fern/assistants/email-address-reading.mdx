@@ -8,23 +8,190 @@ slug: assistants/email-address-reading
 
 Email addresses are one of the trickiest pieces of information for a voice agent to handle. They contain special characters (`@`, `.`, `-`, `_`), mixed-case text, and domain names that text-to-speech (TTS) engines often mispronounce or blur together when spoken aloud.
 
-This guide covers two sides of the problem:
+This guide covers three layers of the solution:
 
-- **Built-in formatting** -- Vapi automatically transforms email characters for TTS so they sound natural.
+- **Built-in formatting** -- Vapi automatically transforms email characters for TTS so they sound natural, with zero configuration.
+- **API configuration** -- You can fine-tune which formatters run, disable email formatting selectively, or customize the entire formatting pipeline.
 - **Prompt engineering** -- You instruct the LLM *how* to collect, read back, and confirm emails in conversation so users feel confident their address was captured correctly.
 
 ## How Vapi handles emails automatically
 
-Vapi's [voice formatting plan](/assistants/voice-formatting-plan) includes a built-in `formatEmails` step that runs before text reaches the TTS provider. It replaces `@` with "at" and `.` with "dot" so the spoken output is intelligible without any prompt changes.
+Vapi's [voice formatting plan](/assistants/voice-formatting-plan) runs a 14-step pipeline that transforms raw LLM text into natural-sounding speech before it reaches the TTS provider. The `email` formatter is **step 8** in this pipeline. It replaces `@` with "at" and `.` with "dot" so the spoken output is intelligible without any prompt changes.
 
 | Raw LLM output | What the user hears |
 |---|---|
 | `john.doe@example.com` | "john dot doe at example dot com" |
 | `SALES@company.org` | "SALES at company dot org" |
+| `jane_smith-work@my-company.co.uk` | "jane underscore smith dash work at my dash company dot co dot uk" |
 
 <Tip>
-The `formatEmails` formatter is enabled by default. You do not need to configure anything for basic email reading to work. The rest of this guide focuses on the **prompt-level techniques** that make the full collection-and-confirmation flow reliable.
+The `email` formatter is enabled by default. You do not need to configure anything for basic email reading to work.
 </Tip>
+
+### Where email formatting fits in the pipeline
+
+The formatter runs after acronym and dollar-amount formatting, and before date, time, and phone number formatting. Here is the full 14-step pipeline with the email step highlighted:
+
+| Step | Formatter key | What it does | Default |
+|------|--------------|--------------|---------|
+| 1 | `removeAngleBrackets` | Removes `<...>` tags (except `<break>`, `<spell>`, `<< >>`) | On |
+| 2 | `markdown` | Removes markdown symbols (`_`, `` ` ``, `~`) | On |
+| 3 | `asterisk` | Removes text wrapped in `*` or `**` | Off |
+| 4 | `newline` | Converts `\n` to `.` for smoother phrasing | On |
+| 5 | `colon` | Replaces `:` with `.` | On |
+| 6 | `acronym` | Formats acronyms (e.g., `NASA` to `nasa`) | On |
+| 7 | `dollarAmount` | `$42.50` to "forty two dollars and fifty cents" | On |
+| **8** | **`email`** | **`@` to "at", `.` to "dot" in email addresses** | **On** |
+| 9 | `date` | `2023-05-10` to "Wednesday, May 10, 2023" | On |
+| 10 | `time` | `14:00` to "14" | On |
+| 11 | `distance` / `unit` / `percentage` | `5km` to "5 kilometers", `50%` to "50 percent" | On |
+| 12 | `phoneNumber` | `123-456-7890` to "1 2 3 4 5 6 7 8 9 0" | On |
+| 13 | `number` | Formats general numbers, years, decimals | On |
+| 14 | `stripAsterisk` | Removes remaining `*` characters | On |
+
+<Note>
+For full details on every step, see the [voice formatting plan](/assistants/voice-formatting-plan) reference.
+</Note>
+
+## Configuring email formatting via the API
+
+The email formatter runs automatically with no configuration needed. However, you can customize the behavior through the `formatPlan` on your assistant's voice configuration.
+
+### Configuration path
+
+```
+assistant.voice.chunkPlan.formatPlan
+```
+
+The relevant TypeScript type:
+
+```typescript title="FormatPlan type definition"
+interface FormatPlan {
+  enabled?: boolean;                                      // default: true
+  numberToDigitsCutoff?: number;                          // default: 2025
+  replacements?: FormatPlanReplacementsItem[];            // default: []
+  formattersEnabled?: FormatPlanFormattersEnabledItem[];  // default: all formatters
+}
+```
+
+The `formattersEnabled` array accepts any combination of these values: `removeAngleBrackets`, `markdown`, `asterisk`, `newline`, `colon`, `acronym`, `dollarAmount`, `email`, `date`, `time`, `distance`, `unit`, `percentage`, `phoneNumber`, `number`, `stripAsterisk`.
+
+<Note>
+The `formattersEnabled` property was introduced on **2025-02-20**. Before that date, you could only toggle all formatting on or off with the `enabled` flag. If you are using an older API version, use `enabled: false` to disable all formatting.
+</Note>
+
+### Default behavior (no configuration needed)
+
+By default, all formatters -- including `email` -- are enabled. You do not need to set anything for email addresses to be read correctly:
+
+```json title="Default -- email formatting is already on"
+{
+  "voice": {
+    "chunkPlan": {
+      "formatPlan": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+### Enable only specific formatters
+
+If you want tight control over which transformations run, pass only the formatter keys you need. This example enables only the `email` and `phoneNumber` formatters:
+
+<CodeBlocks>
+```json title="JSON (API / Dashboard)"
+{
+  "voice": {
+    "chunkPlan": {
+      "formatPlan": {
+        "formattersEnabled": ["email", "phoneNumber"]
+      }
+    }
+  }
+}
+```
+```typescript title="TypeScript SDK"
+const assistant = await vapi.assistants.create({
+  // ... other configuration
+  voice: {
+    chunkPlan: {
+      formatPlan: {
+        formattersEnabled: ["email", "phoneNumber"]
+      }
+    }
+  }
+});
+```
+```python title="Python SDK"
+assistant = client.assistants.create(
+    # ... other configuration
+    voice={
+        "chunkPlan": {
+            "formatPlan": {
+                "formattersEnabled": ["email", "phoneNumber"]
+            }
+        }
+    }
+)
+```
+</CodeBlocks>
+
+<Warning>
+When you set `formattersEnabled`, **only** the listed formatters run. All others are disabled. Make sure to include every formatter you need.
+</Warning>
+
+### Disable email formatting while keeping all others
+
+Omit `email` from the `formattersEnabled` array. The TTS provider will then receive the raw `@` and `.` characters, and pronunciation depends entirely on the provider and your prompt:
+
+```json title="All formatters except email"
+{
+  "voice": {
+    "chunkPlan": {
+      "formatPlan": {
+        "formattersEnabled": [
+          "removeAngleBrackets",
+          "markdown",
+          "newline",
+          "colon",
+          "acronym",
+          "dollarAmount",
+          "date",
+          "time",
+          "distance",
+          "unit",
+          "percentage",
+          "phoneNumber",
+          "number",
+          "stripAsterisk"
+        ]
+      }
+    }
+  }
+}
+```
+
+### Disable all formatting
+
+To send raw LLM output directly to TTS with no transformations at all:
+
+```json title="Disable all formatting"
+{
+  "voice": {
+    "chunkPlan": {
+      "formatPlan": {
+        "enabled": false
+      }
+    }
+  }
+}
+```
+
+<Warning>
+Disabling all formatting means numbers, currencies, dates, phone numbers, and emails will all be sent raw to the TTS provider. Most providers will produce unnatural or garbled speech for these patterns.
+</Warning>
 
 ## Why prompt engineering still matters
 
@@ -261,7 +428,8 @@ For example, if users frequently mention their company email domain "contoso.com
 
 Now that your agent handles email addresses reliably:
 
+- **[Voice formatting plan](/assistants/voice-formatting-plan)** -- Full reference for all 14 formatting steps and customization options.
 - **[Prompting guide](/prompting-guide)** -- General techniques for writing effective voice AI prompts.
-- **[Voice formatting plan](/assistants/voice-formatting-plan)** -- Understand and customize how Vapi formats text for TTS.
-- **[Pronunciation dictionaries](/assistants/pronunciation-dictionaries)** -- Fine-tune pronunciation for specific words and names.
+- **[Pronunciation dictionaries](/assistants/pronunciation-dictionaries)** -- Fine-tune TTS pronunciation for specific words and names.
 - **[Custom keywords](/customization/custom-keywords)** -- Improve transcription accuracy for specific terms.
+- **[Speech configuration](/customization/speech-configuration)** -- Configure endpointing, silence detection, and other speech settings.
