@@ -1,0 +1,69 @@
+---
+title: Minimax
+subtitle: Configure Minimax TTS voices and word-level subtitle timing
+slug: providers/voice/minimax
+---
+
+Minimax provides streaming TTS over WebSocket with multi-language support including English, Chinese, Japanese, and Korean. Vapi connects to Minimax via the `speech-02-hd` and `speech-02-turbo` model families.
+
+## Basic configuration
+
+Set the voice on your assistant:
+
+```json
+{
+  "voice": {
+    "provider": "minimax",
+    "model": "speech-02-hd",
+    "voiceId": "Wise_Woman"
+  }
+}
+```
+
+## Subtitle timing for live captions (`subtitleType`)
+
+Minimax can return subtitle data alongside synthesized audio, which Vapi forwards through the [`assistant.speechStarted`](/server-url/events#assistant-speech-started) client/server message. This is intended for live caption UIs and karaoke-style word highlighting.
+
+| Value | Behavior |
+|---|---|
+| `"sentence"` *(default)* | No subtitle data. `assistant.speechStarted` fires as a text-only event tied to audio playback. |
+| `"word"` | Per-word timestamps. `assistant.speechStarted` fires with `timing.type: "word-progress"`, including `wordsSpoken`, `totalWords`, the current `segment` text, `segmentDurationMs`, and a `words[]` array with `startMs`/`endMs` per word. |
+
+```json
+{
+  "voice": {
+    "provider": "minimax",
+    "model": "speech-02-hd",
+    "voiceId": "Wise_Woman",
+    "subtitleType": "word"
+  }
+}
+```
+
+You also need to subscribe to the message itself by adding `"assistant.speechStarted"` to your assistant's `clientMessages` and/or `serverMessages` arrays.
+
+### How the timing actually works (and what it can't do)
+
+This is the most important part to understand before building on top of it.
+
+Minimax synthesizes audio incrementally, but it only attaches subtitle metadata to the **final audio chunk of each synthesis segment**. Vapi streams every audio chunk to the call as soon as it arrives, but the `wordsSpoken` cursor only advances when that final chunk is reached. In practice, this means:
+
+- You will receive **one `assistant.speechStarted` event per Minimax synthesis segment**, not one per word.
+- That event fires **near the end of the segment's audio playback**, not at the start. The `wordsSpoken` value jumps forward in segment-sized increments rather than ticking word by word.
+- The `timing.words[]` array in each event carries the per-word start/end timestamps for the segment that just finished. You can use it to animate that segment retroactively, or to extrapolate forward during the next segment — but you cannot use it to drive smooth real-time highlighting *in* the current segment.
+- Per-word timestamps are relative to the segment's start, not the start of the call.
+
+If your use case requires word-by-word highlighting at audio playback cadence with no interpolation, use ElevenLabs — its `word-alignment` timing arrives every 50–200ms with real per-word timestamps from the provider. Minimax word-progress is best suited to:
+
+- Caption blocks that update once per spoken sentence/clause.
+- "How far through the response are we" progress indicators.
+- Post-hoc transcript annotation with word-level timing.
+
+### Other behaviors to be aware of
+
+- **`totalWords === 0` is a valid value** on the first event of a turn, before Minimax has confirmed the word count. Guard against divide-by-zero when computing progress fractions.
+- **`force-say` events** (your `firstMessage`, queued `say` actions) are emitted as text-only events — no `timing` object — even when `subtitleType: "word"` is configured. This is because Minimax does not return subtitle metadata for these utterances.
+- **On user barge-in**, no further events fire for the interrupted turn. The most recent `wordsSpoken` tells you how much of `text` was actually spoken before the interruption.
+- **CJK languages** (Chinese, Japanese, Korean) are word-counted per ideograph/kana/hangul. A 30-character Japanese sentence reports `totalWords: 30`.
+
+For the full event schema and `timing` shapes across all voice providers, see [Server events → Assistant Speech Started](/server-url/events#assistant-speech-started).
