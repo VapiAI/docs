@@ -161,7 +161,7 @@ Here's a complete squad configuration that demonstrates this approach:
                     "assistantName": "Assistant 3",
                     "description": "Transfer the caller to the payment confirmation assistant.",
                     "contextEngineeringPlan": {
-                        "type": "none"
+                        "type": "previousAssistantMessages"
                     },
                     "variableExtractionPlan": {
                         "schema": {
@@ -226,6 +226,108 @@ The key component is the `artifactPlan` in Assistant 2:
 ```
 
 This ensures that sensitive payment information is never recorded, logged, or transcribed, while still allowing you to maintain call quality data for the non-sensitive portions of the conversation.
+
+## Securing Handoffs with Sensitive Data
+
+When using squads or the handoff tool with PCI-mode assistants, it is important to control what conversation context is forwarded to the next assistant. By default, handoffs use `contextEngineeringPlan` type `all`, which transfers the **entire** conversation history -- including tool call results that may contain sensitive data such as card numbers.
+
+### What Vapi has fixed
+
+Vapi has deployed a server-side fix to ensure that sensitive data is no longer stored in internal systems or logs for any assistant that has PCI mode enabled, logging disabled, or zero data retention (ZDR) configured. This fix applies automatically to all qualifying assistants.
+
+### What you need to do
+
+As a defense-in-depth measure, if your flow uses assistant handoffs -- particularly handing off **from** a card-collection (or similarly sensitive) assistant **to** another assistant -- you should configure the `contextEngineeringPlan` on the handoff destination to prevent sensitive tool call data from being forwarded.
+
+<Warning>
+If your sensitive assistant uses the default `contextEngineeringPlan` (type `all`), the full conversation context -- including tool call results containing card numbers or other sensitive data -- will be forwarded to the next assistant. Always set an appropriate context engineering plan on handoff destinations from sensitive assistants.
+</Warning>
+
+#### Step 1: Identify your sensitive assistant handoffs
+
+Review your squad or handoff tool configuration. Look for any assistant that collects sensitive data (card numbers, SSNs, etc.) and has `assistantDestinations` or handoff tool `destinations` pointing to another assistant.
+
+#### Step 2: Set the context engineering plan
+
+On each destination **from** a sensitive assistant, add a `contextEngineeringPlan` that excludes tool call data. The recommended options are:
+
+| Type | Behavior | When to use |
+|------|----------|-------------|
+| `previousAssistantMessages` | Forwards only the conversation history from **before** the current (sensitive) assistant's session. Excludes the sensitive assistant's own messages and tool calls entirely. | **Recommended.** Preserves useful pre-payment context while fully excluding sensitive data. |
+| `userAndAssistantMessages` | Forwards only user and assistant spoken messages, stripping out all tool calls and tool results. | Good alternative when you want the next assistant to see the conversational flow but not internal tool data. |
+| `none` | Starts the next assistant with a blank conversation. No prior context is forwarded. | Maximum isolation. Use when the next assistant does not need any prior context. |
+
+<Note>
+For a full reference on all context engineering plan types, see the [Handoff Tool - Context Engineering](/squads/handoff#context-engineering) documentation.
+</Note>
+
+#### Step 3: Apply the configuration
+
+Set the `contextEngineeringPlan` on the handoff destination from your sensitive assistant. Here is an example using `previousAssistantMessages`:
+
+```json
+"assistantDestinations": [
+    {
+        "type": "assistant",
+        "assistantName": "Confirmation Assistant",
+        "description": "Transfer to the confirmation assistant after payment collection.",
+        "contextEngineeringPlan": {
+            "type": "previousAssistantMessages"
+        }
+    }
+]
+```
+
+Or equivalently, when using the handoff tool:
+
+```json
+{
+    "type": "handoff",
+    "destinations": [
+        {
+            "type": "assistant",
+            "assistantName": "Confirmation Assistant",
+            "description": "Transfer to the confirmation assistant after payment collection.",
+            "contextEngineeringPlan": {
+                "type": "previousAssistantMessages"
+            }
+        }
+    ]
+}
+```
+
+#### Step 4: Use variable extraction for safe data passing
+
+If the next assistant needs specific data from the sensitive session (such as the last four digits of a card number for confirmation), use `variableExtractionPlan` instead of relying on full context forwarding. This extracts only the structured fields you define:
+
+```json
+"assistantDestinations": [
+    {
+        "type": "assistant",
+        "assistantName": "Confirmation Assistant",
+        "contextEngineeringPlan": {
+            "type": "previousAssistantMessages"
+        },
+        "variableExtractionPlan": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "lastFourDigits": {
+                        "type": "string",
+                        "description": "Last four digits of the card number"
+                    }
+                }
+            }
+        }
+    }
+]
+```
+
+The extracted variables are available in the next assistant's system prompt using Liquid template syntax (e.g., `{{lastFourDigits}}`). This is the pattern used in the [Payment Collection Squad Example](#payment-collection-squad-example) above.
+
+<Tip>
+Combining `contextEngineeringPlan` with `variableExtractionPlan` gives you the best of both worlds: sensitive tool call data is excluded from the forwarded context, while the specific data points the next assistant needs are passed through as named variables.
+</Tip>
 
 ## Can PCI be used alongside HIPAA?
 Yes, you can enable both HIPAA and PCI compliance for an assistant. In this case, the restrictions from both compliances will apply, meaning that no recordings or transcripts will be stored or transmitted, even if you have specified cloud storage endpoints or webhooks for storing transcripts.
