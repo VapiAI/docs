@@ -227,33 +227,23 @@ The key component is the `artifactPlan` in Assistant 2:
 
 This ensures that sensitive payment information is never recorded, logged, or transcribed, while still allowing you to maintain call quality data for the non-sensitive portions of the conversation.
 
-## Securing Handoffs with Sensitive Data
+## Handoff Context Configuration
 
-When using squads or the handoff tool with PCI-mode assistants, it is important to control what conversation context is forwarded to the next assistant. By default, handoffs use `contextEngineeringPlan` type `all`, which transfers the **entire** conversation history -- including tool call results that may contain sensitive data such as card numbers.
+When using squads or the handoff tool, you can control what conversation context is forwarded to the next assistant using `contextEngineeringPlan`. This is particularly important for PCI-compliant flows where an assistant handles sensitive data such as payment card numbers.
 
-### What Vapi has fixed
-
-Vapi has deployed a server-side fix to ensure that sensitive data is no longer stored in internal systems or logs for any assistant that has PCI mode enabled, logging disabled, or zero data retention (ZDR) configured. This fix applies automatically to all qualifying assistants.
-
-### What you need to do
-
-As a defense-in-depth measure, if your flow uses assistant handoffs -- particularly handing off **from** a card-collection (or similarly sensitive) assistant **to** another assistant -- you should configure the `contextEngineeringPlan` on the handoff destination to prevent sensitive tool call data from being forwarded.
+By default, handoffs use `contextEngineeringPlan` type `all`, which transfers the entire conversation history -- including tool call results. For assistants that process sensitive data, you should choose a more restrictive context type to ensure that tool call results (which may contain card numbers or other sensitive values) are not forwarded.
 
 <Warning>
-If your sensitive assistant uses the default `contextEngineeringPlan` (type `all`), the full conversation context -- including tool call results containing card numbers or other sensitive data -- will be forwarded to the next assistant. Always set an appropriate context engineering plan on handoff destinations from sensitive assistants.
+If a sensitive assistant uses the default `contextEngineeringPlan` (type `all`), the full conversation context -- including tool call results -- will be forwarded to the next assistant. Always set an appropriate context engineering plan on handoff destinations from assistants that handle sensitive data.
 </Warning>
 
-#### Step 1: Identify your sensitive assistant handoffs
+### Recommended context types
 
-Review your squad or handoff tool configuration. Look for any assistant that collects sensitive data (card numbers, SSNs, etc.) and has `assistantDestinations` or handoff tool `destinations` pointing to another assistant.
-
-#### Step 2: Set the context engineering plan
-
-On each destination **from** a sensitive assistant, add a `contextEngineeringPlan` that excludes tool call data. The recommended options are:
+The following `contextEngineeringPlan` types are well-suited for PCI and other sensitive data flows:
 
 | Type | Behavior | When to use |
 |------|----------|-------------|
-| `previousAssistantMessages` | Forwards only the conversation history from **before** the current (sensitive) assistant's session. Excludes the sensitive assistant's own messages and tool calls entirely. | **Recommended.** Preserves useful pre-payment context while fully excluding sensitive data. |
+| `previousAssistantMessages` | Forwards only the conversation history from **before** the current assistant's session. Excludes the current assistant's own messages and tool calls entirely. | **Recommended.** Preserves useful pre-payment context while fully excluding the sensitive assistant's data. |
 | `userAndAssistantMessages` | Forwards only user and assistant spoken messages, stripping out all tool calls and tool results. | Good alternative when you want the next assistant to see the conversational flow but not internal tool data. |
 | `none` | Starts the next assistant with a blank conversation. No prior context is forwarded. | Maximum isolation. Use when the next assistant does not need any prior context. |
 
@@ -261,7 +251,7 @@ On each destination **from** a sensitive assistant, add a `contextEngineeringPla
 For a full reference on all context engineering plan types, see the [Handoff Tool - Context Engineering](/squads/handoff#context-engineering) documentation.
 </Note>
 
-#### Step 3: Apply the configuration
+### Configuring the context engineering plan
 
 Set the `contextEngineeringPlan` on the handoff destination from your sensitive assistant. Here is an example using `previousAssistantMessages`:
 
@@ -296,7 +286,7 @@ Or equivalently, when using the handoff tool:
 }
 ```
 
-#### Step 4: Use variable extraction for safe data passing
+### Using variable extraction for safe data passing
 
 If the next assistant needs specific data from the sensitive session (such as the last four digits of a card number for confirmation), use `variableExtractionPlan` instead of relying on full context forwarding. This extracts only the structured fields you define:
 
