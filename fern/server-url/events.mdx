@@ -287,6 +287,81 @@ For final-only events, you may receive `type: "transcript[transcriptType=\"final
 }
 ```
 
+### Assistant Speech Started
+
+Sent as the assistant begins speaking each segment of a turn, synchronized to audio playback. Designed for live captions, karaoke-style word highlighting, and any UI that needs to track what's being spoken in real time.
+
+This event is **opt-in**. Add `"assistant.speechStarted"` to your assistant's `serverMessages` and/or `clientMessages` to receive it.
+
+```json
+{
+  "message": {
+    "type": "assistant.speechStarted",
+    "text": "Hello world, how can I help you today?",
+    "turn": 2,
+    "source": "model",
+    "timing": {
+      /* optional — shape depends on voice provider, see below */
+    }
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `text` | Full assistant text for the current turn. **Not a delta** — accumulates across events in the same turn. |
+| `turn` | 0-indexed turn number. Multiple events within the same turn share the same `turn`. |
+| `source` | `"model"` (LLM-generated), `"force-say"` (firstMessage / queued `say` actions), or `"custom-voice"`. |
+| `timing` | Optional. Present when the voice provider supports word-level timing. Shape depends on `timing.type`. |
+
+#### `timing.type: "word-alignment"` — ElevenLabs
+
+```json
+{
+  "type": "word-alignment",
+  "words": ["Hello", " ", "world"],
+  "wordsStartTimesMs": [0, 320, 360],
+  "wordsEndTimesMs": [310, 350, 720]
+}
+```
+
+Per-word timestamps from ElevenLabs' alignment API. Events arrive at audio playback cadence (~50–200ms apart). The `words[]` array includes space entries with real timing — join them and track a running character cursor to highlight `text` up to that position. No client-side interpolation needed.
+
+#### `timing.type: "word-progress"` — Minimax (with `voice.subtitleType: "word"`)
+
+```json
+{
+  "type": "word-progress",
+  "wordsSpoken": 22,
+  "totalWords": 45,
+  "segment": "the latest spoken segment text",
+  "segmentDurationMs": 3200,
+  "words": [
+    { "word": "the", "startMs": 0, "endMs": 110 },
+    { "word": "latest", "startMs": 110, "endMs": 480 }
+  ]
+}
+```
+
+Cursor-based per-segment progress.
+
+<Warning>
+  Minimax only attaches subtitle data to the **final audio chunk of each synthesis segment**, so each `assistant.speechStarted` event for a Minimax turn fires near the *end* of that segment's audio playback — not at the start, and not per-word. The `wordsSpoken` value jumps in segment-sized increments, and the `words[]` array carries timestamps for the segment that just *finished*. Use it to retroactively animate that segment, or to extrapolate forward — but it cannot drive smooth real-time highlighting *during* the current segment. For true playback-cadence per-word events, use ElevenLabs.
+</Warning>
+
+`totalWords: 0` is a valid sentinel on the very first event of a turn before Minimax confirms its word count — guard against divide-by-zero when computing a progress fraction. See the [Minimax voice provider page](/providers/voice/minimax) for full configuration details.
+
+#### No `timing` field — text-only fallback
+
+All other providers (Cartesia, Deepgram, Azure, OpenAI, Inworld, etc.) emit text-only events with no `timing` object. One event per TTS chunk, gated to actual audio playback. Display `text` as a caption block, or interpolate a word cursor at a flat rate (~3.5 words/sec) between events for an approximate cursor.
+
+#### Behaviors to be aware of
+
+- **`force-say` events always emit as text-only**, even on ElevenLabs and Minimax — there's no provider-level alignment for forced utterances (firstMessage, queued `say` actions).
+- **On user barge-in, no further events fire for the interrupted turn.** Pair with the [`user-interrupted`](#user-interrupted) message and use the most recent `wordsSpoken` (or joined char cursor) to know what was actually spoken.
+- **There is no companion `assistant.speechStopped` event.** Use [`speech-update`](#speech-update) (`status: "stopped"`) or watch `turn` increment to detect end-of-turn.
+- **Custom voice timing depends on what your voice server returns.** If you return timestamped JSON frames from your custom voice server, those flow through as `timing.words[]`; raw PCM responses produce text-only events.
+
 ### Model Output
 
 Tokens or tool-call outputs as the model generates. The optional `turnId` groups all tokens from the same LLM response, so you can correlate output with a specific turn.
