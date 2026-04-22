@@ -194,6 +194,51 @@ Build browser-based voice assistants and widgets for real-time user interaction.
   </Tab>
 </Tabs>
 
+### Live captions and word-level timing
+
+For UIs that need to render live captions or karaoke-style word highlighting as the assistant speaks, subscribe to the opt-in `assistant.speechStarted` message. Add it to your assistant's `clientMessages`:
+
+```json
+{
+  "clientMessages": ["assistant.speechStarted", "transcript", "speech-update"]
+}
+```
+
+Each event carries the full assistant turn `text`, the `turn` number, the `source` (`"model"`, `"force-say"`, or `"custom-voice"`), and optional `timing` data whose shape depends on your voice provider:
+
+```typescript
+vapi.on('message', (message) => {
+  if (message.type !== 'assistant.speechStarted') return;
+
+  const { text, turn, source, timing } = message;
+
+  if (timing?.type === 'word-alignment') {
+    // ElevenLabs: per-word timestamps at playback cadence (~50-200ms apart).
+    // timing.words includes spaces; join them into a char cursor and
+    // highlight `text` up to that position.
+  } else if (timing?.type === 'word-progress') {
+    // Minimax with voice.subtitleType: "word". Cursor-based:
+    // wordsSpoken / totalWords. See note below — events arrive in
+    // segment-sized jumps, not word-by-word ticks.
+  } else {
+    // Cartesia, Deepgram, Azure, OpenAI, etc.: text-only event tied
+    // to audio playback. Display `text` as a caption block.
+  }
+});
+```
+
+<Warning>
+  Cadence and granularity vary significantly by voice provider — pick the one that matches your UI requirements:
+
+  - **ElevenLabs (`word-alignment`)** is the only provider that emits at true playback cadence with real per-word timestamps. Best for smooth karaoke-style highlighting with no client-side interpolation.
+  - **Minimax (`word-progress`)** with `subtitleType: "word"` emits once per synthesis segment, near the *end* of that segment's playback. The per-word `timing.words[]` array carries timestamps for the segment that just finished — useful for retroactive animation or forward extrapolation, but not for driving real-time highlighting *during* that segment. See the [Minimax provider page](/providers/voice/minimax) for details.
+  - **All other providers** emit text-only events (no `timing`). One event per TTS chunk; you can interpolate a word cursor at a flat rate (~3.5 words/sec) between events for an approximate cursor.
+
+  `force-say` events (your `firstMessage`, `say` actions) always emit as text-only, even on ElevenLabs and Minimax. On user barge-in, no further events fire for the interrupted turn — pair with the `user-interrupted` message to know what was actually spoken.
+</Warning>
+
+For the full event schema and field reference, see [Server events → Assistant Speech Started](/server-url/events#assistant-speech-started).
+
 ### Voice widget implementation
 
 Create a voice widget for your website:
