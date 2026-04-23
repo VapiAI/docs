@@ -1,0 +1,181 @@
+---
+title: Passing data between assistants
+subtitle: Three approaches for forwarding context to the next assistant in a squad — when to use each, and what each one costs.
+slug: squads/passing-data-between-assistants
+---
+
+When an assistant in a squad hands off to another assistant, you usually need to forward something — the caller's name, an extracted intent, an upstream tool's result, a session ID. Vapi gives you **three different mechanisms** to do this. Each one trades off latency, accuracy, and where the value comes from. Picking the wrong one is the single most common reason squad handoffs feel slow or unreliable.
+
+This page is a decision guide. For end-to-end configuration of the handoff itself, see the [Handoff tool](/squads/handoff) page.
+
+## The three approaches at a glance
+
+| Approach | Where the value comes from | LLM involved? | Latency | Hallucination risk | Best for |
+| -------- | -------------------------- | ------------- | ------- | ------------------ | -------- |
+| **Handoff arguments** (`function.parameters` on the handoff tool) | The model decides, inline with the same tool call that triggers the handoff | Yes — piggybacks on the LLM call already happening | Zero added | Yes (model fills the value) | Classifications, summaries, sentiment, intent — anything the model has to derive from the live conversation |
+| **Variable extraction** (`variableExtractionPlan.schema` on the destination) | The model extracts from the full conversation transcript | Yes — separate dedicated LLM call | Full LLM round-trip (hundreds of ms) | Yes | Structured extraction with a dedicated prompt — e.g. pulling `dateOfBirth`, `appointmentTime` from the user's last few utterances |
+| **Liquid templating in the destination's prompt** | Already in the variable bag (call data, prior tool results, prior extractions) | No — pure template substitution | Sub-millisecond per render | No (deterministic) | Forwarding values that already exist — caller phone number, prior `lookupPatient` result, time variables |
+
+## Approach 1: Handoff arguments
+
+Define `function.parameters` on the handoff tool. The LLM that's already generating the handoff tool call also fills in your custom arguments as part of the same call — no extra round-trip.
+
+```json
+{
+  "type": "handoff",
+  "function": {
+    "name": "handoff_to_specialist",
+    "description": "Hand off to the specialist when the customer is ready",
+    "parameters": {
+      "type": "object",
+      "required": ["destination", "customerIntent", "customerSentiment"],
+      "properties": {
+        "destination": {
+          "type": "string",
+          "enum": ["specialist"]
+        },
+        "customerIntent": {
+          "type": "string",
+          "enum": ["new-customer", "existing-customer", "billing-issue"],
+          "description": "What the customer is calling about"
+        },
+        "customerSentiment": {
+          "type": "string",
+          "enum": ["positive", "neutral", "frustrated"],
+          "description": "Caller's overall sentiment"
+        }
+      }
+    }
+  },
+  "destinations": [
+    {
+      "type": "assistant",
+      "assistantName": "Specialist"
+    }
+  ]
+}
+```
+
+The next assistant receives `customerIntent` and `customerSentiment` in the variable bag and can reference them as `{{customerIntent}}` / `{{customerSentiment}}` in its prompts.
+
+**Use this when** the value only exists "in the model's head" — it has to be derived from the live conversation, but you don't need a separate dedicated extraction call.
+
+**Avoid this when** the value already exists somewhere structured (a prior tool result, the call's `customer.number`, etc.) — the model could mishear or paraphrase it. Use Approach 3 for those.
+
+<Tip>
+The Vapi dashboard exposes this as the **Handoff Arguments** section on the handoff tool config in the squad builder.
+</Tip>
+
+## Approach 2: Variable extraction (`variableExtractionPlan.schema`)
+
+Define a `variableExtractionPlan.schema` on the handoff destination. After the handoff fires, Vapi makes a dedicated LLM call against the full conversation transcript to fill the schema, then merges the result into the variable bag for the next assistant.
+
+```json
+{
+  "type": "assistant",
+  "assistantName": "Scheduler",
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "required": ["preferredDate", "preferredTime"],
+      "properties": {
+        "preferredDate": {
+          "type": "string",
+          "description": "The date the caller asked to schedule for, in YYYY-MM-DD format"
+        },
+        "preferredTime": {
+          "type": "string",
+          "description": "The time of day the caller asked for, in 24-hour HH:MM format"
+        }
+      }
+    }
+  }
+}
+```
+
+**Use this when** the value lives across several user utterances and needs a dedicated extraction prompt to get reliably. Schema validation gives you typed output and lets you constrain values via JSON-schema `enum` / `pattern`.
+
+**Avoid this when** zero added latency matters — this path adds a full LLM round-trip per handoff (typically a few hundred ms). For high-traffic flows where the value is something the model can fill inline, Approach 1 is faster.
+
+For full configuration details — multiple destinations, dynamic handoffs, context engineering — see the [Variable extraction section of the Handoff tool page](/squads/handoff#variable-extraction).
+
+## Approach 3: Liquid templating in the destination's prompt
+
+The variable bag is **shared across every assistant in the squad** for the lifetime of the call. Anything that's been put into it — by Approach 1, Approach 2, by a prior tool call returning JSON, by call-level data like `customer.number` and `phoneNumber.number`, by time variables like `now` and `year` — is reachable from any subsequent assistant's prompt via Liquid syntax. No extra wiring required.
+
+```text
+You are the scheduling specialist. The caller is {{customer.name}}, calling
+from {{customer.number}}. Their patient ID is {{patientId}} (looked up earlier
+this call). They want a {{preferredAppointmentType}} appointment.
+
+Today is {{currentDateTime}}.
+```
+
+If `customer.name`, `patientId`, etc. are in the bag, they render. If they're not, they render as the literal token `{{patientId}}` (so the caller might hear "patientId" spoken — worth handling defensively in your prompt).
+
+**Use this when** the value is already in the bag — there's no reason to re-extract via LLM what you already have structurally. Sub-millisecond, deterministic, free.
+
+**Avoid this when** the value isn't in the bag yet. Liquid can't extract from the conversation; it can only forward what's already there.
+
+<Note>
+**Sensitive fields are sanitized.** Vapi automatically redacts credential-like keys (`twilioAuthToken`, `twilioApiSecret`, `serverUrlSecret`, `accountSid`, `callToken`, `credentialId`, etc.) from the variable bag before any prompt rendering. References like `{{phoneNumber.twilioAuthToken}}` will render as `[REDACTED]` rather than leaking the actual credential.
+</Note>
+
+## Decision flowchart
+
+```text
+What do you want the next assistant to know?
+│
+├─ "Something the model just heard / classified / summarized"
+│  └─→ Approach 1: Handoff arguments
+│      Zero added latency, model fills inline.
+│
+├─ "Something the user explicitly said and I want a dedicated, schema-validated extraction"
+│  └─→ Approach 2: variableExtractionPlan.schema
+│      Adds an LLM round-trip, but you get structured output and a focused
+│      extraction prompt.
+│
+└─ "Something I already have — call data, prior tool result, prior extraction"
+   └─→ Approach 3: Reference it via Liquid in the destination's prompt
+       No extra cost. Use {{customer.number}}, {{patientId}}, etc. directly.
+```
+
+## Common patterns
+
+### Pattern: "Forward an extracted ID after a database lookup"
+
+A `lookupPatient` tool returned `{patientId: "p_42", dob: "1990-01-15"}` on assistant A. Assistant B needs `patientId`.
+
+Use **Approach 3** — it's already in the bag. Assistant B's prompt: `The patient ID is {{patientId}}.` Don't re-extract it via schema; the model could mishear digits.
+
+### Pattern: "Categorize what the caller wants and route on it"
+
+Caller spent two turns describing a problem. Assistant A needs to classify the intent and hand off to a specialist who knows about that intent.
+
+Use **Approach 1** — handoff arguments with an `enum` for `intent`. The classifying assistant's tool call carries the intent inline; the destination assistant reads `{{intent}}`.
+
+### Pattern: "Pull a structured booking request out of free-form speech"
+
+Caller said "I want to come in next Tuesday around 2 PM, maybe earlier if there's something". Assistant A needs `{preferredDate, preferredTime, alternativesOK}` as structured fields.
+
+Use **Approach 2** — `variableExtractionPlan.schema` with the destination. The dedicated extraction prompt + schema validation catches the structure better than inline arguments.
+
+### Pattern: "Mix and match"
+
+You can combine all three on a single handoff. Common shape: handoff arguments for the LLM-classified intent, schema extraction for one structured field that needs the dedicated prompt, and the destination's system prompt directly references prior tool results via Liquid.
+
+## What if extraction fails?
+
+Vapi's handoff path is failure-isolated:
+
+- An empty `variableExtractionPlan` (`{}`) is a graceful no-op — the handoff proceeds without extraction.
+- A schema-extraction LLM failure (5xx, timeout, rate limit) is logged and the handoff proceeds with no extracted variables — it does not bail the handoff.
+- A schema-extraction result that isn't a plain object (an array, a primitive, `null`) is dropped before merge — it does not corrupt the variable bag.
+
+So extraction is best-effort; if values are critical for the next assistant to function, prefer **Approach 1** (handoff arguments — required by the function schema, blocks the LLM call until provided) or **Approach 3** (reference values you already have).
+
+## Next steps
+
+- [Handoff tool](/squads/handoff) — full configuration reference for the handoff tool itself.
+- [Static variables and aliases](/tools/static-variables-and-aliases) — how the variable bag is built and what's available in scope.
+- [Dynamic variables](/assistants/dynamic-variables) — set initial variables when starting a call.
