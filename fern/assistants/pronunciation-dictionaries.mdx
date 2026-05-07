@@ -6,9 +6,20 @@ slug: assistants/pronunciation-dictionaries
 
 ## Overview
 
-Pronunciation dictionaries allow you to customize how your AI assistant pronounces specific words, names, acronyms, or technical terms. This feature is particularly useful for ensuring consistent pronunciation of brand names, proper nouns, or industry-specific terminology that might be mispronounced by default.
+Pronunciation dictionaries allow you to customize how your AI assistant pronounces specific words, names, acronyms, or technical terms. This is particularly useful for ensuring consistent pronunciation of brand names, proper nouns, or industry-specific terminology that might be mispronounced by default.
 
-**Note:** Pronunciation dictionaries are exclusive to ElevenLabs voices and require specific model configurations.
+## Provider support
+
+Pronunciation dictionaries are supported on two voice providers. The required model and the field on `voice` differ between them:
+
+| Provider | Required model | Field on `voice` | Cardinality |
+|---|---|---|---|
+| **Cartesia** | `sonic-3` (or any date-pinned variant such as `sonic-3-2026-01-12`) | `pronunciationDictId` (single string) | One dictionary per voice |
+| **ElevenLabs** | `eleven_turbo_v2`, `eleven_turbo_v2_5`, `eleven_flash_v2`, etc. | `pronunciationDictionaryLocators` (array of locators) | Multiple dictionaries per voice |
+
+<Note>
+Cartesia pronunciation dictionaries require the `sonic-3` model — older Cartesia models (`sonic-2`, `sonic-english`, etc.) will reject `pronunciationDictId` on assistant create/update with a validation error.
+</Note>
 
 ## How Pronunciation Dictionaries Work
 
@@ -47,13 +58,30 @@ Corrected pronunciations:
 
 ## Prerequisites
 
-- A Vapi assistant configured with an ElevenLabs voice
+- A Vapi assistant configured with a Cartesia or ElevenLabs voice
+- For Cartesia: the voice must use the `sonic-3` model
+- For ElevenLabs: phoneme rules require `eleven_turbo_v2`, `eleven_flash_v2`, or another compatible model
 - Understanding of phonetic notation (IPA or CMU Arpabet) for phoneme-based rules
 - Access to Vapi's API for dictionary creation
 
 ## Types of Pronunciation Rules
 
-### Phoneme Rules
+Cartesia and ElevenLabs use slightly different rule shapes — Cartesia dictionaries are flat lists of `{ text, alias }` items, while ElevenLabs supports both `alias` and `phoneme` rule types.
+
+### Cartesia: alias items
+
+Cartesia dictionaries use a single `items` array. Each entry replaces a word or phrase with a phonetic spelling:
+
+```json
+{
+  "text": "Vapi",
+  "alias": "vay-pee"
+}
+```
+
+Phonemes are not separately typed on Cartesia — write the desired pronunciation directly in the `alias` field.
+
+### ElevenLabs: phoneme rules
 
 Phoneme rules specify exact pronunciation using phonetic alphabets. These provide the most precise control over pronunciation.
 
@@ -66,7 +94,7 @@ Phoneme rules only work with specific ElevenLabs models:
 - `eleven_turbo_v2`
 - `eleven_flash_v2`
 
-### Alias Rules
+### ElevenLabs: alias rules
 
 Alias rules replace words with alternative spellings or phrases. These work with all ElevenLabs models and are useful for:
 - Converting acronyms to full phrases (e.g., "UN" → "United Nations")
@@ -75,121 +103,218 @@ Alias rules replace words with alternative spellings or phrases. These work with
 
 ## Implementation
 
-<Steps>
-  <Step title="Create a Pronunciation Dictionary">
-    Use Vapi's API to create a pronunciation dictionary with your custom rules.
+<Tabs>
+  <Tab title="Cartesia">
+    <Steps>
+      <Step title="Create a Pronunciation Dictionary">
+        Use Vapi's API to create a Cartesia pronunciation dictionary.
 
-    ```bash
-    POST https://api.vapi.ai/provider/11labs/pronunciation-dictionary
-    Content-Type: application/json
-    Authorization: Bearer YOUR_API_KEY
-    ```
+        ```bash
+        POST https://api.vapi.ai/provider/cartesia/pronunciation-dictionary
+        Content-Type: application/json
+        Authorization: Bearer YOUR_API_KEY
+        ```
 
-    ```json
-    {
-      "name": "My Custom Dictionary",
-      "rules": [
+        ```json
         {
-          "stringToReplace": "tomato",
-          "type": "phoneme",
-          "phoneme": "/tə'meɪtoʊ/",
-          "alphabet": "ipa"
-        },
-        {
-          "stringToReplace": "Vapi",
-          "type": "phoneme", 
-          "phoneme": "V AE P IY",
-          "alphabet": "cmu-arpabet"
-        },
-        {
-          "stringToReplace": "UN",
-          "type": "alias",
-          "alias": "United Nations"
+          "name": "My Cartesia Dictionary",
+          "items": [
+            { "text": "Vapi", "alias": "vay-pee" },
+            { "text": "VCS", "alias": "vee see ess" },
+            { "text": "API", "alias": "ay pee eye" }
+          ]
         }
-      ]
-    }
+        ```
+
+        The API responds with a Vapi-wrapped envelope containing both a Vapi-side UUID and the upstream Cartesia resource ID:
+
+        ```json
+        {
+          "id": "d0ccf95c-2bd5-410a-8236-3432da032198",
+          "orgId": "YOUR_ORG_ID",
+          "provider": "cartesia",
+          "resourceName": "pronunciation-dictionary",
+          "resourceId": "pdict_xuvPYBguZ4cpdiakWM3dPN",
+          "resource": {
+            "id": "pdict_xuvPYBguZ4cpdiakWM3dPN",
+            "name": "My Cartesia Dictionary",
+            "items": [{ "text": "Vapi", "alias": "vay-pee", "pronunciation": "vay-pee" }]
+          }
+        }
+        ```
+
+        <Warning>
+          Cartesia returns **two IDs**. When attaching the dictionary to your assistant, use the **upstream `resourceId`** (e.g. `pdict_xuvPYBguZ4cpdiakWM3dPN`), NOT the Vapi UUID. Using the Vapi UUID is silent — the call won't fail, but the pronunciation rules won't apply.
+        </Warning>
+      </Step>
+
+      <Step title="Configure Your Assistant's Voice">
+        Update your assistant configuration to reference the Cartesia upstream `resourceId` via `voice.pronunciationDictId`. The voice model must be `sonic-3`.
+
+        ```json
+        {
+          "voice": {
+            "provider": "cartesia",
+            "model": "sonic-3",
+            "voiceId": "a0e99841-438c-4a64-b679-ae501e7d6091",
+            "pronunciationDictId": "pdict_xuvPYBguZ4cpdiakWM3dPN"
+          }
+        }
+        ```
+
+        Date-pinned `sonic-3-*` variants (such as `sonic-3-2026-01-12`) also accept the field. Older Cartesia models reject it.
+      </Step>
+
+      <Step title="Test Your Pronunciation">
+        Create a test call or use the Vapi playground to verify that your custom pronunciations are working correctly.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="ElevenLabs">
+    <Steps>
+      <Step title="Create a Pronunciation Dictionary">
+        Use Vapi's API to create an ElevenLabs pronunciation dictionary with your custom rules.
+
+        ```bash
+        POST https://api.vapi.ai/provider/11labs/pronunciation-dictionary
+        Content-Type: application/json
+        Authorization: Bearer YOUR_API_KEY
+        ```
+
+        ```json
+        {
+          "name": "My Custom Dictionary",
+          "rules": [
+            {
+              "stringToReplace": "tomato",
+              "type": "phoneme",
+              "phoneme": "/tə'meɪtoʊ/",
+              "alphabet": "ipa"
+            },
+            {
+              "stringToReplace": "Vapi",
+              "type": "phoneme",
+              "phoneme": "V AE P IY",
+              "alphabet": "cmu-arpabet"
+            },
+            {
+              "stringToReplace": "UN",
+              "type": "alias",
+              "alias": "United Nations"
+            }
+          ]
+        }
+        ```
+
+        The API responds with a Vapi-wrapped envelope. Both the upstream `pronunciationDictionaryId` and `versionId` (used to attach the dictionary) are inside the `resource` field:
+
+        ```json
+        {
+          "id": "YOUR_VAPI_UUID",
+          "orgId": "YOUR_ORG_ID",
+          "provider": "11labs",
+          "resourceName": "pronunciation-dictionary",
+          "resourceId": "rjshI10OgN6KxqtJBqO4",
+          "resource": {
+            "pronunciationDictionaryId": "rjshI10OgN6KxqtJBqO4",
+            "versionId": "xJl0ImZzi3cYp61T0UQG",
+            "name": "My Custom Dictionary"
+          }
+        }
+        ```
+
+        <Warning>
+          As with Cartesia, attach the dictionary using the upstream IDs (`pronunciationDictionaryId` and `versionId`), NOT the Vapi UUID.
+        </Warning>
+      </Step>
+
+      <Step title="Configure Your Assistant's Voice">
+        Update your assistant configuration to use the pronunciation dictionary. ElevenLabs supports multiple dictionaries per voice via `pronunciationDictionaryLocators`.
+
+        ```json
+        {
+          "voice": {
+            "model": "eleven_turbo_v2_5",
+            "voiceId": "sarah",
+            "provider": "11labs",
+            "stability": 0.5,
+            "similarityBoost": 0.75,
+            "pronunciationDictionaryLocators": [
+              {
+                "pronunciationDictionaryId": "rjshI10OgN6KxqtJBqO4",
+                "versionId": "xJl0ImZzi3cYp61T0UQG"
+              }
+            ]
+          }
+        }
+        ```
+
+        <Note>
+          When a pronunciation dictionary is added, SSML parsing will be automatically enabled for your assistant.
+        </Note>
+      </Step>
+
+      <Step title="Test Your Pronunciation">
+        Create a test call or use the Vapi playground to verify that your custom pronunciations are working correctly.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Bring Your Own Key (BYOK)
+
+Vapi-managed pronunciation dictionaries (created via the Vapi API as shown above) use Vapi's platform credentials with the upstream provider. If your organization has its own Cartesia or ElevenLabs credentials configured (BYOK), the lifecycle changes:
+
+<Tabs>
+  <Tab title="Cartesia BYOK">
+    Organizations with Cartesia BYOK credentials must create, edit, and delete pronunciation dictionaries directly through Cartesia's API. Vapi's `POST/PATCH/DELETE /provider/cartesia/pronunciation-dictionary` endpoints will reject requests from BYOK orgs with the following error:
+
+    ```text
+    Found credentials for cartesia. Use cartesia's API with your own credentials to manage 'pronunciation-dictionary' resources.
     ```
 
-    The API will respond with:
-    ```json
-    {
-      "pronunciationDictionaryId": "rjshI10OgN6KxqtJBqO4",
-      "versionId": "xJl0ImZzi3cYp61T0UQG",
-      "name": "My Custom Dictionary",
-      "rules": [...],
-      "createdAt": "2024-01-15T10:30:00Z"
-    }
-    ```
-  </Step>
+    Once you have the dictionary ID from Cartesia (a `pdict_*` string), attach it to your Vapi assistant the same way as Vapi-managed dictionaries — set `voice.pronunciationDictId` to that ID. The dictionary itself lives on Cartesia's side; Vapi just references it.
+  </Tab>
 
-  <Step title="Configure Your Assistant's Voice">
-    Update your assistant configuration to use the pronunciation dictionary.
+  <Tab title="ElevenLabs BYOK">
+    Organizations with ElevenLabs BYOK credentials must create, edit, and delete pronunciation dictionaries directly through ElevenLabs's API or dashboard. Vapi's create/update/delete endpoints will reject BYOK requests with the same shape of error.
+
+    Once you have the `pronunciationDictionaryId` and `versionId` from ElevenLabs, attach them to your Vapi assistant via `voice.pronunciationDictionaryLocators`:
 
     ```json
     {
       "voice": {
         "model": "eleven_turbo_v2_5",
-        "voiceId": "sarah",
+        "voiceId": "your-voice-id",
         "provider": "11labs",
-        "stability": 0.5,
-        "similarityBoost": 0.75,
         "pronunciationDictionaryLocators": [
           {
-            "pronunciationDictionaryId": "rjshI10OgN6KxqtJBqO4",
-            "versionId": "xJl0ImZzi3cYp61T0UQG"
+            "pronunciationDictionaryId": "your-elevenlabs-dict-id",
+            "versionId": "your-elevenlabs-version-id"
           }
         ]
       }
     }
     ```
-
-    <Note>
-      When a pronunciation dictionary is added, SSML parsing will be automatically enabled for your assistant.
-    </Note>
-  </Step>
-
-  <Step title="Test Your Pronunciation">
-    Create a test call or use the Vapi playground to verify that your custom pronunciations are working correctly.
-  </Step>
-</Steps>
-
-## Using Your Own ElevenLabs Account (BYOK)
-
-If you're using your own ElevenLabs API key (Bring Your Own Key), you can create pronunciation dictionaries directly in your ElevenLabs account and reference them in Vapi:
-
-1. Create a pronunciation dictionary in your ElevenLabs account
-2. Note the `pronunciationDictionaryId` and `versionId` from ElevenLabs
-3. Use these IDs in your Vapi assistant configuration:
-
-```json
-{
-  "voice": {
-    "model": "eleven_turbo_v2_5",
-    "voiceId": "your-voice-id",
-    "provider": "11labs",
-    "pronunciationDictionaryLocators": [
-      {
-        "pronunciationDictionaryId": "your-elevenlabs-dict-id",
-        "versionId": "your-elevenlabs-version-id"
-      }
-    ]
-  }
-}
-```
+  </Tab>
+</Tabs>
 
 ## Managing Pronunciation Dictionaries
+
+The same management endpoints work for both providers — replace `{provider}` with `cartesia` or `11labs`.
 
 ### List Your Dictionaries
 
 ```bash
-GET https://api.vapi.ai/provider/11labs/pronunciation-dictionary
+GET https://api.vapi.ai/provider/{provider}/pronunciation-dictionary
 Authorization: Bearer YOUR_API_KEY
 ```
 
 ### Update Dictionary Rules
 
 ```bash
-PATCH https://api.vapi.ai/provider/11labs/pronunciation-dictionary/{dictionaryId}
+PATCH https://api.vapi.ai/provider/{provider}/pronunciation-dictionary/{dictionaryId}
 Content-Type: application/json
 Authorization: Bearer YOUR_API_KEY
 ```
@@ -207,6 +332,15 @@ Authorization: Bearer YOUR_API_KEY
 }
 ```
 
+### Delete a Dictionary
+
+```bash
+DELETE https://api.vapi.ai/provider/{provider}/pronunciation-dictionary/{dictionaryId}
+Authorization: Bearer YOUR_API_KEY
+```
+
+The `{dictionaryId}` here is the Vapi UUID (returned as `id` in the create response), not the upstream provider ID.
+
 ## Best Practices
 
 <Note>
@@ -214,20 +348,25 @@ Authorization: Bearer YOUR_API_KEY
 - **Order Matters**: Rules are applied in the order they appear in the dictionary. The first matching rule is used.
 - **Testing**: Always test pronunciation changes with your specific voice and model combination.
 - **Phoneme Accuracy**: Ensure proper stress marking for multi-syllable words when using phoneme rules.
-- **Model Compatibility**: Remember that phoneme rules only work with specific ElevenLabs models.
+- **Model Compatibility**: Cartesia dictionaries require `sonic-3`; ElevenLabs phoneme rules require specific models.
+- **Use the upstream resourceId**: When attaching a dictionary to a voice, always use the upstream provider's ID (`pdict_*` for Cartesia, the 20-char alphanumeric for ElevenLabs), not the Vapi UUID.
 </Note>
 
 ## Common Issues
 
 **Pronunciation Not Applied**
-- Verify you're using a compatible ElevenLabs model for phoneme rules
-- Check that the `stringToReplace` exactly matches the text in your content (case-sensitive)
-- Ensure the pronunciation dictionary is properly referenced in your voice configuration
+- Verify you're using a compatible model: `sonic-3` for Cartesia, or a compatible ElevenLabs model for phoneme rules
+- Check that the `text` (Cartesia) or `stringToReplace` (ElevenLabs) exactly matches the text in your content (case-sensitive)
+- Ensure you used the **upstream `resourceId`** (not the Vapi UUID) when attaching the dictionary to your voice — see the warning callouts above
+- Confirm the pronunciation dictionary is properly referenced in your voice configuration
 
-**SSML Conflicts**
-- When pronunciation dictionaries are enabled, SSML parsing is automatically activated
+**Cartesia create/update/delete returns a 4xx**
+- If your organization has Cartesia BYOK credentials configured, the management endpoints will reject your request. See the BYOK section above for the alternate flow
+
+**SSML Conflicts (ElevenLabs only)**
+- When ElevenLabs pronunciation dictionaries are enabled, SSML parsing is automatically activated
 - Ensure any existing SSML tags in your content are properly formatted
 
 **Performance Impact**
 - Large dictionaries may slightly increase processing time
-- Consider organizing rules by frequency of use for optimal performance 
+- Consider organizing rules by frequency of use for optimal performance
