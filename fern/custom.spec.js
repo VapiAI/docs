@@ -103,6 +103,10 @@ assert(customJsContent.indexOf("redirect: 'manual'") !== -1,
   'custom.js uses fetch with redirect:manual to handle 302');
 assert(customJsContent.indexOf('opaqueredirect') !== -1,
   'custom.js checks for opaqueredirect response type');
+assert(customJsContent.indexOf('URLSearchParams') !== -1,
+  'custom.js sends body as application/x-www-form-urlencoded (URLSearchParams)');
+assert(customJsContent.indexOf('new FormData()') === -1,
+  'custom.js does not use FormData (multipart) for the Customer.io submit');
 assert(customJsContent.indexOf('subscribe-form-message') !== -1,
   'custom.js updates the message div');
 assert(customJsContent.indexOf('Thanks for subscribing') !== -1,

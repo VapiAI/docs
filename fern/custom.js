@@ -158,12 +158,15 @@ function initializeSubscribeForm() {
     submitBtn.textContent = 'Submitting...';
 
     var formAction = form.getAttribute('action');
-    var formData = new FormData();
-    formData.append('email', email);
+    // Customer.io's submit_action endpoint expects application/x-www-form-urlencoded
+    // (the encoding native HTML form POSTs use). FormData sends multipart/form-data,
+    // which the endpoint accepts but does not record as a form_submit event.
+    var body = new URLSearchParams();
+    body.append('email', email);
 
     fetch(formAction, {
       method: 'POST',
-      body: formData,
+      body: body,
       redirect: 'manual',
     })
       .then(function (response) {
