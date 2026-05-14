@@ -556,7 +556,18 @@ Voice agents must never output formatting that only works visually:
 
 ### Pronunciation
 
-Pronunciation handling lives in the voice/TTS layer, not the prompt. A "pronounce VAT as 'vat'" rule in the system prompt is unreliable — the LLM doesn't drive TTS phonemes. The prompt is for behavior, not pronunciation. Use your voice provider's pronunciation dictionary instead. See the [Pronunciation dictionaries documentation](https://docs.vapi.ai/assistants/pronunciation-dictionaries) for setup instructions.
+For brand names, provider names, and acronyms, include a pronunciation guide in your prompt. This can help the model output text in a form that the TTS engine is more likely to pronounce correctly — results vary by voice provider.
+
+```
+## Pronunciation
+- Brand: Vapi → "VAA-pee" (rhymes with happy)
+- Anthropic → "an-THROH-pick"
+- HIPAA → "HIP-uh"
+- SOC 2 → "Sock Two"
+- Acronyms letter-by-letter: API, SDK, CRM, STT, TTS
+```
+
+For more reliable pronunciation control, also configure your voice provider's pronunciation dictionary — prompt-level hints and TTS-layer dictionaries work best together. See the [Pronunciation dictionaries documentation](https://docs.vapi.ai/assistants/pronunciation-dictionaries) for setup.
 
 ---
 
