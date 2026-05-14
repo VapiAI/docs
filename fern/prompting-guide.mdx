@@ -444,14 +444,183 @@ For requests outside your configured capabilities:
 with our team. Would you like me to transfer you now?"
 ```
 
+## Making your agent sound human
+
+The techniques above will get you a reliable, well-structured voice agent. The techniques in this section are what make callers say "wait — that was AI?"
+
+### Design disfluency into the prompt
+
+LLMs default to clean, polished output. In text, that's a feature. In voice, it's the uncanny valley. Real people stutter, restart sentences, and drop filler words. If your agent doesn't, callers will notice — even if they can't articulate why.
+
+Disfluency isn't a bug to tolerate; it's a design pattern to implement deliberately:
+
+- **Define a disfluency vocabulary** — fillers (um, uh, like, so, well), thinking sounds (let me see, hmm, one sec), stutters (I-I think so, w-well), self-corrects ("It's at 3 — wait, no, 2:30"), and trail-offs ("so if we go that route then...")
+- **Set a frequency target** — 2–4 disfluencies per turn is a good baseline for conversational agents. Too few sounds robotic; too many sounds glitchy.
+- **Add a self-monitoring instruction** — "If a turn comes out as one clean, polished sentence with no disfluency, you've drifted off-character. Add a filler and try again." This gives the model a way to self-correct.
+
+**Example prompt section:**
+
+```
+# How You Talk
+- Stutter and self-correct occasionally: "I- I think we can, uh,
+  set that up for you."
+- Restart sentences mid-thought: "So we— wait, hold on, let me
+  check that."
+- Use fillers naturally: um, uh, like, so, well, okay so
+- Trail off sometimes: "so if you're already at that stage then..."
+- Aim for 2-4 disfluencies per turn.
+- If a turn comes out perfectly polished, add a filler and try again.
+```
+
+<Note>
+Disfluency only works when it's calibrated to the agent's persona. A casual sales rep can stutter freely. A clinical triage agent should use lighter disfluency — more "let me see" and "one moment" than "uh" and "like." Match the disfluency vocabulary to the role.
+</Note>
+
+### Build rapport, not just answers
+
+The difference between a voice agent that feels like a form and one that feels like a conversation is rapport — reacting to what the caller says like a real person would.
+
+There are two kinds of rapport moments:
+
+**Personal-share rapport.** When the caller mentions something personal ("sorry, long Monday"), react before moving on. Two moves to choose from (pick one, not both):
+
+1. **Quick follow-up question** — specific and curious, not generic. "Oof, yeah — what's eating up the day?" Then, after their response, briefly acknowledge and return to the task.
+2. **Small personal anecdote** — one sentence, mundane, slightly self-deprecating. "Oof, mine too — three meetings before lunch and somehow still behind. Okay so — what are you exploring?"
+
+**Industry/context rapport.** When the caller tells you about their company or situation, riff on it for a beat before moving to the next question. One specific observation about their industry, then back to the flow.
+
+```
+User: "I'm with Acme Healthcare."
+Assistant: "Oh nice — healthcare is, uh, the hot space for voice
+right now, you're probably knee-deep in EHR integrations. Okay
+so — how familiar are you with Vapi already?"
+```
+
+Keep rapport to 1–2 turns max. If the caller doesn't engage with it (one-word answer, deflects), drop it and move on. You're reading energy, not running a script.
+
+### Distinguish banter from off-topic
+
+Not every unexpected response is an error. If a caller cracks a joke, asks if you're real, or drops a cheeky comment — that's **banter**, and your agent should engage with it. Treating banter as an off-topic violation makes your agent sound like a humorless intake bot.
+
+Define two separate handling paths in your prompt:
+
+**Light banter** (engage, then continue):
+
+```
+## Light Banter
+When the caller jokes, asks if you're real, or makes a playful
+comment — engage with one quick witty beat, then continue to the
+next question. Don't redirect. Don't lecture.
+
+Example:
+User: "You sound like you've had too much coffee."
+Assistant: "Yeah, that's the only setting I have today. So — what
+are you exploring?"
+```
+
+**Hard off-topic** (redirect with escalation):
+
+```
+## Off-Topic Requests
+For requests clearly outside your scope (recipes, weather, homework):
+- First time: light redirect. "You're testing my range — I'm really
+  just here to help with [scope]. What are you working on?"
+- Second time: offer to wrap. "I love this energy but I'm not built
+  for trivia — want me to wrap up?"
+- Third time: end the call warmly.
+```
+
+### Match the caller's energy
+
+Not every caller communicates the same way. A crisp, time-pressed caller wants efficiency. A chatty, curious caller wants warmth. Your prompt should tell the agent to adapt:
+
+```
+## Tone Matching
+Match the caller's energy:
+- Crisp callers → fewer fillers, shorter turns, move faster.
+- Chatty callers → lean in, riff a little more, take your time.
+- Confused callers → slow down, use shorter sentences, confirm more.
+```
+
+This is especially important for disfluency — a chatty caller won't mind extra fillers, but a time-pressed caller will find them annoying.
+
+### Budget your conversation length
+
+Voice calls have a natural tolerance window. Too short feels abrupt; too long feels like a survey. Define a turn budget in your prompt:
+
+```
+Keep the conversation to approximately 7-9 turns total. A couple
+of extra turns for rapport is fine, but don't let it become an
+interview.
+```
+
+The exact number depends on your use case — a simple appointment booking might be 5–7 turns, while a qualification intake might be 8–12. The point is to set an explicit target so the agent doesn't let conversations drift.
+
+### Control emotional expression frequency
+
+Emotional expressions like laughter are powerful because they're rare. Without frequency rules, the LLM tends to overuse them — every turn opens with "haha" and the agent sounds manic.
+
+```
+## Laughter
+- Laugh on at most one turn in every four or five. No higher.
+- Never open two consecutive turns with a laugh.
+- Only laugh when there's a real comedic beat — the caller cracked
+  a joke or the situation is genuinely funny.
+- If you're about to type "haha" and there's no clear joke, use
+  "oh" or "yeah" instead.
+```
+
+This same principle applies to other emotional markers — exclamation marks, elongated words ("niiice"), and reaction sounds ("oh man"). Sprinkle, don't pour.
+
+### Use incremental tool calls
+
+For tools that capture data (like a lead capture or CRM update), don't wait until you have every field to call the tool. Call it incrementally — one field at a time, as soon as you hear it. This ensures data isn't lost if the call drops mid-conversation.
+
+```
+Call the capture tool incrementally — one detail at a time, as soon
+as you have it. The moment the caller says their company, call the
+tool with companyName filled and other fields empty. After each new
+field, call again with everything you have so far. Always send all
+fields on every call — empty string for the ones you don't have yet.
+```
+
+### When to skip read-backs
+
+The [information collection patterns](#collect-information-smoothly) above recommend batch confirmation at the end. That works well for **transactional flows** where accuracy is critical — booking an appointment, processing a return, updating account details.
+
+But for **intake and qualification flows**, read-backs make the call feel like a form. If your agent is collecting soft data (interest level, use case, timeline), trust what you heard and move on:
+
+```
+Don't read data back to confirm. No "so that's Sarah at FintechGo,
+looking to build in Q3, right?" — that turns the call into a form.
+Acknowledge naturally and keep going.
+```
+
+**Use read-backs when:** the data has to be exact (appointment times, spelling of names for records, email addresses).
+
+**Skip read-backs when:** you're collecting intent, preference, or soft qualification data. A simple "got it" or "sweet" is enough.
+
+### Manage call endings deliberately
+
+How a call ends matters as much as how it begins. Define specific rules for when to end and when not to:
+
+```
+## When to End the Call
+- The flow is complete and you've set expectations for next steps.
+- The caller gives a clear goodbye signal and the intake is done.
+
+## When NOT to End the Call
+- The caller interrupts you. Stop talking, listen, respond.
+- The caller goes quiet. Wait 10-15 seconds, then check in once
+  ("still there?"). Only end if no response.
+- The caller drops a confused fragment ("ok," "hmm"). Ask one
+  short clarifier before assuming they want to end.
+```
+
 ## Additional tips
 
 - **Iterate as much as possible.** AI is driven by experimentation — refining prompts through trial and error will help you achieve more precise, relevant responses.
 - **Structure your prompt with markdown headers** so each section is clearly delineated. (This is about prompt structure, not agent output — your agent's spoken responses should never contain markdown formatting.)
-- **Add voice realism when appropriate.** For agents that should sound more human, you can incorporate natural speech elements:
-  - **Hesitations:** "I was, uh, thinking about it."
-  - **Pauses:** Use ellipses to indicate a pause ("I... I'm not sure").
-  - **Emotional emphasis:** Use capital letters or exclamation marks to reflect tone.
 - **Match tone to context.** A sales agent calling new leads will sound different from a clinical triage agent. Define tone explicitly rather than relying on defaults.
 
 ## Common issues

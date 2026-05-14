@@ -20,9 +20,10 @@ A reference guide for writing system prompts for production voice agents on Vapi
 10. [Tool Description Optimization](#10-tool-description-optimization)
 11. [Smart Information Collection](#11-smart-information-collection)
 12. [Voice Formatting](#12-voice-formatting)
-13. [Common Anti-Patterns](#13-common-anti-patterns)
-14. [Complete Prompt Template](#14-complete-prompt-template)
-15. [Prompt Optimization Checklist](#15-prompt-optimization-checklist)
+13. [Making Your Agent Sound Human](#13-making-your-agent-sound-human)
+14. [Common Anti-Patterns](#14-common-anti-patterns)
+15. [Complete Prompt Template](#15-complete-prompt-template)
+16. [Prompt Optimization Checklist](#16-prompt-optimization-checklist)
 
 ---
 
@@ -559,7 +560,151 @@ Pronunciation handling lives in the voice/TTS layer, not the prompt. A "pronounc
 
 ---
 
-## 13. Common Anti-Patterns
+## 13. Making Your Agent Sound Human
+
+The six-section structure and the patterns above will get you a reliable agent. The techniques below are what make callers say "wait — that was AI?"
+
+### Disfluency design
+
+LLMs default to clean, polished output. In voice, that's the uncanny valley. Design disfluency deliberately:
+
+- **Define a vocabulary** — fillers (um, uh, like, so, well), thinking sounds (let me see, hmm, one sec), stutters ("I-I think so"), self-corrects ("It's at 3 — wait, no, 2:30"), trail-offs ("so if we go that route then...")
+- **Set a frequency** — 2–4 disfluencies per turn for conversational agents.
+- **Add self-monitoring** — "If a turn comes out perfectly polished, add a filler and try again."
+- **Calibrate to persona** — a casual sales rep stutters freely; a clinical triage agent uses lighter disfluency ("let me see" over "uh").
+
+```
+# How You Talk
+- Stutter and self-correct occasionally: "I- I think we can, uh,
+  set that up for you."
+- Restart sentences mid-thought: "So we— wait, hold on, let me
+  check that."
+- Use fillers naturally: um, uh, like, so, well, okay so
+- Trail off sometimes: "so if you're already at that stage then..."
+- Aim for 2-4 disfluencies per turn.
+- If a turn comes out perfectly polished, add a filler and try again.
+```
+
+### Rapport patterns
+
+Rapport is what separates a voice agent from a survey form. Two types:
+
+**Personal-share rapport** — when the caller mentions something personal, react before continuing. Pick one move per moment:
+
+1. **Quick follow-up question** — specific and curious. "Oof, yeah — what's eating up the day?" Then briefly acknowledge and return to the task.
+2. **Small personal anecdote** — one sentence, mundane, slightly self-deprecating. "Oof, mine too — three meetings before lunch and somehow still behind. Okay so — what are you exploring?"
+
+**Industry/context rapport** — when the caller tells you about their company, riff for 1–2 turns before moving on:
+
+```
+User: "I'm with Acme Healthcare."
+Assistant: "Oh nice — healthcare is, uh, the hot space for voice
+right now, you're probably knee-deep in EHR integrations. Okay
+so — how familiar are you with Vapi already?"
+```
+
+Rules: 1–2 rapport turns max. If the caller doesn't engage, drop it and move on.
+
+### Banter vs. off-topic
+
+Not every unexpected response is an error. Define two separate handling paths:
+
+**Light banter** (caller jokes, asks if you're real, makes a playful comment) — engage with one witty beat, then continue. Don't redirect.
+
+```
+## Light Banter
+User: "You sound like you've had too much coffee."
+Assistant: "Yeah, that's the only setting I have today. So — what
+are you exploring?"
+```
+
+**Hard off-topic** (recipes, weather, homework) — redirect with escalation:
+
+```
+## Off-Topic Requests
+- First time: light redirect.
+- Second time: offer to wrap.
+- Third time: end the call warmly.
+```
+
+Treating banter as off-topic makes your agent sound like a humorless intake bot.
+
+### Energy matching
+
+```
+## Tone Matching
+Match the caller's energy:
+- Crisp callers → fewer fillers, shorter turns, move faster.
+- Chatty callers → lean in, riff more, take your time.
+- Confused callers → slow down, shorter sentences, confirm more.
+```
+
+### Turn budgeting
+
+Voice calls have a natural tolerance window. Set an explicit target:
+
+```
+Keep the conversation to approximately 7-9 turns total. A couple
+of extra turns for rapport is fine, but don't let it become an
+interview.
+```
+
+Adjust for your use case — simple booking: 5–7 turns; qualification intake: 8–12.
+
+### Emotional expression frequency
+
+Without frequency rules, LLMs overuse laughter and excitement.
+
+```
+## Laughter
+- Laugh on at most one turn in every four or five.
+- Never open two consecutive turns with a laugh.
+- Only laugh when there's a real comedic beat.
+- If about to type "haha" with no clear joke, use "oh" or "yeah."
+```
+
+Same principle for exclamation marks, elongated words ("niiice"), and reaction sounds.
+
+### Incremental tool calls
+
+For data capture tools, don't wait until you have every field. Call incrementally:
+
+```
+Call the capture tool incrementally — one detail at a time, as soon
+as you have it. The moment the caller says their company, call the
+tool with companyName filled and other fields empty. After each new
+field, call again with everything you have so far.
+```
+
+### When to skip read-backs
+
+**Use read-backs when:** accuracy is critical — appointment times, spelling of names, email addresses.
+
+**Skip read-backs when:** collecting intent, preference, or soft qualification data.
+
+```
+Don't read data back to confirm. No "so that's Sarah at FintechGo,
+looking to build in Q3, right?" — that turns the call into a form.
+Acknowledge naturally and keep going.
+```
+
+### Call ending rules
+
+```
+## When to End the Call
+- The flow is complete and next steps are set.
+- The caller gives a clear goodbye and the intake is done.
+
+## When NOT to End
+- The caller interrupts you. Stop, listen, respond.
+- The caller goes quiet. Wait 10-15 seconds, check in once.
+- The caller drops a confused fragment ("ok," "hmm"). Ask one
+  short clarifier first.
+```
+
+---
+
+## 14. Common Anti-Patterns
 
 ### 1. Porting a text chatbot prompt
 
@@ -603,7 +748,7 @@ The prompt is probabilistic and can be jailbroken. For values the model must not
 
 ---
 
-## 14. Complete Prompt Template
+## 15. Complete Prompt Template
 
 ```
 # Identity & Purpose
@@ -705,7 +850,7 @@ help directly?"
 
 ---
 
-## 15. Prompt Optimization Checklist
+## 16. Prompt Optimization Checklist
 
 ### Identity & Personality
 
@@ -763,9 +908,23 @@ help directly?"
 - [ ] Out-of-scope handling defined
 - [ ] Slow tools have `request-start` messages configured
 
+### Human Feel
+
+- [ ] Disfluency vocabulary defined (fillers, stutters, self-corrects, trail-offs)
+- [ ] Disfluency frequency target set (e.g. 2–4 per turn)
+- [ ] Self-monitoring instruction included ("if a turn is too polished, add disfluency")
+- [ ] Disfluency calibrated to persona (casual vs. clinical)
+- [ ] Rapport patterns defined (personal-share and/or industry rapport)
+- [ ] Banter and off-topic handled separately (engage vs. redirect)
+- [ ] Energy matching rules included (crisp vs. chatty callers)
+- [ ] Emotional expression frequency capped (laughter, excitement)
+- [ ] Turn budget set for the conversation
+
 ### General
 
 - [ ] Prompt is lean — no unnecessary sections
 - [ ] No long monologues — caller-facing responses stay short
 - [ ] One question at a time during info collection
-- [ ] Batch confirmation pattern used at end of collection, not after each field
+- [ ] Read-back strategy chosen (batch confirm for transactional, skip for intake)
+- [ ] Call ending rules defined (when to end, when NOT to end)
+- [ ] Incremental tool calls for data capture (don't wait for all fields)
