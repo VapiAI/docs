@@ -567,7 +567,7 @@ For brand names, provider names, and acronyms, include a pronunciation guide in 
 - Acronyms letter-by-letter: API, SDK, CRM, STT, TTS
 ```
 
-For more reliable pronunciation control, also configure your voice provider's pronunciation dictionary — prompt-level hints and TTS-layer dictionaries work best together. Note that pronunciation dictionaries are currently only available for ElevenLabs voices — for other providers, prompt-level hints are your primary tool for pronunciation control. See the [Pronunciation dictionaries documentation](https://docs.vapi.ai/assistants/pronunciation-dictionaries) for setup.
+For more reliable pronunciation control, also configure your voice provider's pronunciation dictionary — prompt-level hints and TTS-layer dictionaries work best together. See the [Pronunciation dictionaries documentation](https://docs.vapi.ai/assistants/pronunciation-dictionaries) for setup.
 
 ---
 
