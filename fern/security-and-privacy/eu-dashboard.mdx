@@ -1,0 +1,163 @@
+---
+title: "EU Dashboard & GDPR Compliance"
+subtitle: Everything you need to know about migrating to the Vapi EU dashboard and achieving GDPR compliance.
+slug: security-and-privacy/eu-dashboard
+---
+
+## Overview
+
+The Vapi EU dashboard (`eu.vapi.ai`) is a dedicated deployment of the Vapi platform with all infrastructure hosted within the European Union. This guide answers the most common questions about GDPR compliance when using the EU dashboard.
+
+<Note>
+The EU dashboard is a separate account environment from the US dashboard (`dashboard.vapi.ai`). Assistants, API keys, phone numbers, and call data are not shared between the two environments.
+</Note>
+
+---
+
+## Is the EU Dashboard Fully GDPR Compliant?
+
+**Yes.** The EU dashboard is architected specifically for European data residency requirements under GDPR. Key properties:
+
+| Property | EU Dashboard |
+|----------|-------------|
+| **Data residency** | All infrastructure in the EU (Frankfurt, AWS eu-central-1) |
+| **Call data storage** | Recordings, transcripts, and call logs stored in EU |
+| **Vapi orchestration** | Runs on EU infrastructure |
+| **API endpoint** | `https://api.vapi.ai` (routed to EU region for EU accounts) |
+| **Dashboard** | [eu.vapi.ai](https://eu.vapi.ai) |
+
+Vapi maintains a SOC 2 Type II certification and GDPR compliance program. You can review the full compliance posture at [security.vapi.ai](https://security.vapi.ai).
+
+---
+
+## Do You Need Your Own LLM, STT, and Voice Providers?
+
+This depends on your compliance requirements. The answer varies by component:
+
+### Default Providers (Vapi-managed)
+
+When you use the **default models** provided in the Vapi agent settings (e.g., GPT-4o, Deepgram, ElevenLabs), your audio and text data is sent to those third-party providers. These providers are **not necessarily EU-hosted** by default.
+
+| Component | Default Provider | EU Hosting Available? |
+|-----------|-----------------|----------------------|
+| LLM | OpenAI (GPT-4o) | ✅ Azure OpenAI (EU regions) |
+| Speech-to-Text | Deepgram | ✅ Deepgram EU endpoint |
+| Text-to-Speech | ElevenLabs / Vapi voices | ⚠️ Varies by provider |
+
+<Warning>
+If strict EU data residency is required for all data in transit, using default US-hosted provider APIs may not meet your compliance needs. Review each provider's data processing agreements and regional endpoints.
+</Warning>
+
+### Recommended Configurations for Full GDPR Compliance
+
+**Option 1: Use providers with EU endpoints (simplest)**
+
+Several of Vapi's supported providers offer EU-based endpoints you can configure with your own API keys:
+
+- **LLM:** [Azure OpenAI](/providers/model/azure-openai) — deploy in `westeurope` or `francecentral`
+- **STT:** [Deepgram](https://developers.deepgram.com/docs/using-deepgram-with-eucloud) — EU Cloud available
+- **TTS:** [Azure TTS](/providers/voice/azure) — EU regions available, or ElevenLabs (GDPR-compliant, EU DPA available)
+
+To use your own API keys with these providers, see [Provider Keys](/customization/provider-keys).
+
+**Option 2: Self-hosted models (maximum control)**
+
+For organizations requiring zero third-party data transfer:
+
+- **Custom LLM:** Host any OpenAI-compatible model in your EU infrastructure. See [Custom LLM](/customization/custom-llm/using-your-server).
+- **Custom STT:** Connect your own transcription service via WebSocket. See [Custom Transcriber](/customization/custom-transcriber).
+- **Custom TTS:** Stream audio from your own voice synthesis endpoint. See [Custom TTS](/customization/custom-tts).
+
+With full custom configuration, **only Vapi's proprietary orchestration models** (endpointing, interruption detection) process your data — and this processing is ephemeral (not stored). See [Data Flow](/security-and-privacy/data-flow) for a complete breakdown.
+
+---
+
+## Additional GDPR Considerations
+
+### 1. Call Recordings and Transcripts
+
+By default, Vapi stores call recordings and transcripts on its EU infrastructure. You have full control:
+
+- **Disable recordings:** Set `artifact.recordingEnabled: false` on your assistant
+- **Disable transcripts:** Set `artifact.transcriptPlan.enabled: false`  
+- **Use custom storage:** Route call data to your own S3/GCS/Azure bucket in your preferred EU region. See [Data Flow](/security-and-privacy/data-flow#custom-storage-data-flow).
+
+### 2. Recording Consent
+
+GDPR requires informed consent before recording calls. Vapi provides a [Recording Consent Plan](/security-and-privacy/recording-consent-plan) to help you implement proper consent flows within your voice agents.
+
+### 3. Data Retention
+
+Configure data retention periods to align with your GDPR retention policies:
+
+- Call recordings and transcripts can be deleted via the Vapi API
+- Use the [DELETE /calls/{id}](/api-reference/calls/delete) endpoint to remove call data
+- Contact [security@vapi.ai](mailto:security@vapi.ai) to discuss custom retention policies
+
+### 4. Data Subject Rights (Right to Erasure)
+
+When a user exercises their right to erasure under GDPR Article 17, you can:
+
+1. Use the Vapi API to delete all call records associated with that user
+2. If using custom storage, delete data from your own storage bucket
+3. Contact [support@vapi.ai](mailto:support@vapi.ai) for assistance with bulk data deletion requests
+
+### 5. Data Processing Agreements (DPA)
+
+Vapi offers a GDPR-compliant Data Processing Agreement for business customers. To request a DPA, contact [legal@vapi.ai](mailto:legal@vapi.ai).
+
+### 6. Sub-processors
+
+When using Vapi's default providers, those providers become sub-processors under GDPR. Vapi maintains a list of sub-processors at [security.vapi.ai](https://security.vapi.ai). You will be notified of material changes to the sub-processor list.
+
+---
+
+## Migration Checklist: US → EU Dashboard
+
+If migrating from the US dashboard (`dashboard.vapi.ai`) to the EU dashboard (`eu.vapi.ai`):
+
+<Steps>
+  <Step title="Create a new EU account">
+    Sign up at [eu.vapi.ai](https://eu.vapi.ai). This is a separate environment — your US account credentials and data do not carry over.
+  </Step>
+  <Step title="Recreate assistants and phone numbers">
+    Export your assistant configurations from the US dashboard and recreate them in the EU environment. Phone numbers must be re-provisioned.
+  </Step>
+  <Step title="Configure EU-region providers">
+    Update your LLM, STT, and TTS provider keys to use EU-region endpoints (see table above).
+  </Step>
+  <Step title="Update API keys">
+    Generate new API keys from the EU dashboard and update all integrations (server URL webhooks, SDK initializations, etc.).
+  </Step>
+  <Step title="Configure custom storage (optional)">
+    Point your custom storage bucket to an EU-region bucket for full data residency.
+  </Step>
+  <Step title="Test and validate">
+    Run test calls through your agents to confirm proper routing and data handling before switching production traffic.
+  </Step>
+</Steps>
+
+---
+
+## Summary
+
+| Requirement | Vapi EU Dashboard | Notes |
+|-------------|-------------------|-------|
+| EU data residency (Vapi infra) | ✅ Yes | All Vapi-owned infrastructure in EU |
+| EU data residency (LLM) | ⚠️ Configure required | Use Azure OpenAI EU or custom LLM |
+| EU data residency (STT) | ⚠️ Configure required | Use Deepgram EU Cloud or custom STT |
+| EU data residency (TTS) | ⚠️ Configure required | Use Azure TTS EU or custom TTS |
+| GDPR-compliant DPA | ✅ Available | Contact legal@vapi.ai |
+| SOC 2 Type II | ✅ Yes | See security.vapi.ai |
+| Right to erasure support | ✅ Yes | Via API or support request |
+| Recording consent tools | ✅ Yes | Recording Consent Plan |
+
+---
+
+## Further Reading
+
+- [GDPR Compliance Overview](/security-and-privacy/GDPR) — Vapi's general GDPR posture
+- [Data Flow](/security-and-privacy/data-flow) — Detailed data flow diagrams for all configurations
+- [HIPAA Compliance](/security-and-privacy/hipaa) — For healthcare-related requirements
+- [Recording Consent Plan](/security-and-privacy/recording-consent-plan) — Consent best practices
+- [security.vapi.ai](https://security.vapi.ai) — SOC 2, DPA, and full compliance documentation
