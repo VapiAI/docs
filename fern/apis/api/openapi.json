@@ -19247,6 +19247,20 @@
               "say"
             ]
           },
+          "exact": {
+            "description": "This is the message to say",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
           "prompt": {
             "description": "This is the prompt for the assistant to generate a response based on existing conversation.\nCan be a string or an array of chat messages.",
             "oneOf": [
@@ -19292,10 +19306,6 @@
                 }
               ]
             ]
-          },
-          "exact": {
-            "type": "object",
-            "description": "This is the message to say"
           }
         },
         "required": [
@@ -19599,6 +19609,14 @@
       "CustomerSpeechTimeoutOptions": {
         "type": "object",
         "properties": {
+          "triggerResetMode": {
+            "type": "string",
+            "description": "This is whether the counter for hook trigger resets the user speaks.\n\n@default never",
+            "enum": [
+              "onUserSpeech",
+              "never"
+            ]
+          },
           "timeoutSeconds": {
             "type": "number",
             "description": "This is the timeout in seconds before action is triggered.\nThe clock starts when the assistant finishes speaking and remains active until the user speaks.\n\n@default 7.5\n@minimum 2\n@maximum 1000",
@@ -19610,10 +19628,6 @@
             "description": "This is the maximum number of times the hook will trigger in a call.\n\n@default 3",
             "minimum": 1,
             "maximum": 10
-          },
-          "triggerResetMode": {
-            "type": "object",
-            "description": "This is whether the counter for hook trigger resets the user speaks.\n\n@default never"
           }
         },
         "required": [
@@ -20344,24 +20358,108 @@
           "schema"
         ]
       },
-      "ScorecardMetric": {
+      "NumberComparatorScorecardMetricCondition": {
         "type": "object",
         "properties": {
-          "structuredOutputId": {
+          "type": {
             "type": "string",
-            "description": "This is the unique identifier for the structured output that will be used to evaluate the scorecard.\nThe structured output must be of type number or boolean only for now."
+            "description": "This is the type of the condition. Currently only 'comparator' is supported.",
+            "enum": [
+              "comparator"
+            ]
           },
-          "conditions": {
-            "description": "These are the conditions that will be used to evaluate the scorecard.\nEach condition will have a comparator, value, and points that will be used to calculate the final score.\nThe points will be added to the overall score if the condition is met.\nThe overall score will be normalized to a 100 point scale to ensure uniformity across different scorecards.",
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
+          "comparator": {
+            "type": "string",
+            "description": "This is the comparator that will be used to compare the result of the structured output with the value specified.\nOnly '=', '!=', '>', '<', '>=', and '<=' are supported for number conditions\nOnly '=' is supported for boolean conditions.",
+            "enum": [
+              "=",
+              "!=",
+              ">",
+              "<",
+              ">=",
+              "<="
+            ]
+          },
+          "value": {
+            "type": "number",
+            "description": "This is the value that will be used to compare the result of the structured output with the comparator.\nIf the result of the comparison is true, the points will be added to the overall score."
+          },
+          "points": {
+            "type": "number",
+            "description": "These are the points that will be added to the overall score if the condition is met.\nThe points must be between 0 and 100.",
+            "minimum": 0,
+            "maximum": 100
           }
         },
         "required": [
-          "structuredOutputId",
-          "conditions"
+          "type",
+          "comparator",
+          "value",
+          "points"
+        ]
+      },
+      "BooleanComparatorScorecardMetricCondition": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of the condition. Currently only 'comparator' is supported.",
+            "enum": [
+              "comparator"
+            ]
+          },
+          "comparator": {
+            "type": "string",
+            "description": "The comparator can only be '=' for boolean conditions.",
+            "enum": [
+              "="
+            ]
+          },
+          "value": {
+            "type": "boolean",
+            "description": "This is the value that will be used to compare the result of the structured output with the comparator.\nIf the result of the comparison is true, the points will be added to the overall score."
+          },
+          "points": {
+            "type": "number",
+            "description": "These are the points that will be added to the overall score if the condition is met.\nThe points must be between 0 and 100.",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "type",
+          "comparator",
+          "value",
+          "points"
+        ]
+      },
+      "ScorecardMetric": {
+        "type": "object",
+        "properties": {
+          "conditions": {
+            "type": "array",
+            "description": "These are the conditions that will be used to evaluate the scorecard.\nEach condition will have a comparator, value, and points that will be used to calculate the final score.\nThe points will be added to the overall score if the condition is met.\nThe overall score will be normalized to a 100 point scale to ensure uniformity across different scorecards.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NumberComparatorScorecardMetricCondition",
+                  "title": "NumberComparatorScorecardMetricCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/BooleanComparatorScorecardMetricCondition",
+                  "title": "BooleanComparatorScorecardMetricCondition"
+                }
+              ]
+            }
+          },
+          "structuredOutputId": {
+            "type": "string",
+            "description": "This is the unique identifier for the structured output that will be used to evaluate the scorecard.\nThe structured output must be of type number or boolean only for now."
+          }
+        },
+        "required": [
+          "conditions",
+          "structuredOutputId"
         ]
       },
       "CreateScorecardDTO": {
@@ -21670,7 +21768,8 @@
               "grok-4-fast-reasoning",
               "grok-4-fast-non-reasoning",
               "grok-4.20-0309-reasoning",
-              "grok-4.20-0309-non-reasoning"
+              "grok-4.20-0309-non-reasoning",
+              "grok-4.3"
             ]
           },
           "provider": {
@@ -34534,6 +34633,776 @@
           }
         }
       },
+      "UserMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "The role of the user in the conversation."
+          },
+          "message": {
+            "type": "string",
+            "description": "The message content from the user."
+          },
+          "time": {
+            "type": "number",
+            "description": "The timestamp when the message was sent."
+          },
+          "endTime": {
+            "type": "number",
+            "description": "The timestamp when the message ended."
+          },
+          "secondsFromStart": {
+            "type": "number",
+            "description": "The number of seconds from the start of the conversation."
+          },
+          "duration": {
+            "type": "number",
+            "description": "The duration of the message in seconds."
+          },
+          "isFiltered": {
+            "type": "boolean",
+            "description": "Indicates if the message was filtered for security reasons."
+          },
+          "detectedThreats": {
+            "description": "List of detected security threats if the message was filtered.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "originalMessage": {
+            "type": "string",
+            "description": "The original message before filtering (only included if content was filtered)."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "The metadata associated with the message. Currently used to store the transcriber's word level confidence."
+          },
+          "speakerLabel": {
+            "type": "string",
+            "description": "Stable speaker label for diarized user speakers (e.g., \"Speaker 1\")."
+          }
+        },
+        "required": [
+          "role",
+          "message",
+          "time",
+          "endTime",
+          "secondsFromStart"
+        ]
+      },
+      "SystemMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "The role of the system in the conversation."
+          },
+          "message": {
+            "type": "string",
+            "description": "The message content from the system."
+          },
+          "time": {
+            "type": "number",
+            "description": "The timestamp when the message was sent."
+          },
+          "secondsFromStart": {
+            "type": "number",
+            "description": "The number of seconds from the start of the conversation."
+          }
+        },
+        "required": [
+          "role",
+          "message",
+          "time",
+          "secondsFromStart"
+        ]
+      },
+      "BotMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "The role of the bot in the conversation."
+          },
+          "message": {
+            "type": "string",
+            "description": "The message content from the bot."
+          },
+          "time": {
+            "type": "number",
+            "description": "The timestamp when the message was sent."
+          },
+          "endTime": {
+            "type": "number",
+            "description": "The timestamp when the message ended."
+          },
+          "secondsFromStart": {
+            "type": "number",
+            "description": "The number of seconds from the start of the conversation."
+          },
+          "source": {
+            "type": "string",
+            "description": "The source of the message."
+          },
+          "duration": {
+            "type": "number",
+            "description": "The duration of the message in seconds."
+          }
+        },
+        "required": [
+          "role",
+          "message",
+          "time",
+          "endTime",
+          "secondsFromStart"
+        ]
+      },
+      "ToolCallMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "The role of the tool call in the conversation."
+          },
+          "toolCalls": {
+            "description": "The list of tool calls made during the conversation.",
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "The message content for the tool call."
+          },
+          "time": {
+            "type": "number",
+            "description": "The timestamp when the message was sent."
+          },
+          "secondsFromStart": {
+            "type": "number",
+            "description": "The number of seconds from the start of the conversation."
+          }
+        },
+        "required": [
+          "role",
+          "toolCalls",
+          "message",
+          "time",
+          "secondsFromStart"
+        ]
+      },
+      "ToolCallResultMessageWarning": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The kind of warning. Currently:\n- `oversized-tool-response`: the tool's serialized response exceeded the\n  recommended size and is likely to bloat the model context, increasing\n  latency and risking truncation of earlier instructions.",
+            "enum": [
+              "oversized-tool-response"
+            ]
+          },
+          "tokenCount": {
+            "type": "number",
+            "description": "The estimated number of tokens in the serialized tool response."
+          },
+          "threshold": {
+            "type": "number",
+            "description": "The threshold (in tokens) above which the warning is raised."
+          }
+        },
+        "required": [
+          "type",
+          "tokenCount",
+          "threshold"
+        ]
+      },
+      "ToolCallResultMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "The role of the tool call result in the conversation."
+          },
+          "toolCallId": {
+            "type": "string",
+            "description": "The ID of the tool call."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of the tool that returned the result."
+          },
+          "result": {
+            "type": "string",
+            "description": "The result of the tool call in JSON format."
+          },
+          "time": {
+            "type": "number",
+            "description": "The timestamp when the message was sent."
+          },
+          "secondsFromStart": {
+            "type": "number",
+            "description": "The number of seconds from the start of the conversation."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "The metadata for the tool call result."
+          },
+          "warnings": {
+            "description": "Warnings raised for this tool call result, e.g. when the response is\nlarger than recommended for voice AI context windows.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCallResultMessageWarning"
+            }
+          }
+        },
+        "required": [
+          "role",
+          "toolCallId",
+          "name",
+          "result",
+          "time",
+          "secondsFromStart"
+        ]
+      },
+      "TransportCost": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of cost, always 'transport' for this class.",
+            "enum": [
+              "transport"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "vapi.websocket",
+              "twilio",
+              "vonage",
+              "telnyx",
+              "vapi.sip"
+            ]
+          },
+          "minutes": {
+            "type": "number",
+            "description": "This is the minutes of `transport` usage. This should match `call.endedAt` - `call.startedAt`."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost of the component in USD."
+          }
+        },
+        "required": [
+          "type",
+          "minutes",
+          "cost"
+        ]
+      },
+      "TranscriberCost": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of cost, always 'transcriber' for this class.",
+            "enum": [
+              "transcriber"
+            ]
+          },
+          "transcriber": {
+            "type": "object",
+            "description": "This is the transcriber that was used during the call.\n\nThis matches one of the below:\n- `call.assistant.transcriber`,\n- `call.assistantId->transcriber`,\n- `call.squad[n].assistant.transcriber`,\n- `call.squad[n].assistantId->transcriber`,\n- `call.squadId->[n].assistant.transcriber`,\n- `call.squadId->[n].assistantId->transcriber`."
+          },
+          "minutes": {
+            "type": "number",
+            "description": "This is the minutes of `transcriber` usage. This should match `call.endedAt` - `call.startedAt` for single assistant calls, while squad calls will have multiple transcriber costs one for each assistant that was used."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost of the component in USD."
+          }
+        },
+        "required": [
+          "type",
+          "transcriber",
+          "minutes",
+          "cost"
+        ]
+      },
+      "ModelCost": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of cost, always 'model' for this class.",
+            "enum": [
+              "model"
+            ]
+          },
+          "model": {
+            "type": "object",
+            "description": "This is the model that was used during the call.\n\nThis matches one of the following:\n- `call.assistant.model`,\n- `call.assistantId->model`,\n- `call.squad[n].assistant.model`,\n- `call.squad[n].assistantId->model`,\n- `call.squadId->[n].assistant.model`,\n- `call.squadId->[n].assistantId->model`."
+          },
+          "promptTokens": {
+            "type": "number",
+            "description": "This is the number of prompt tokens used in the call. These should be total prompt tokens used in the call for single assistant calls, while squad calls will have multiple model costs one for each assistant that was used."
+          },
+          "completionTokens": {
+            "type": "number",
+            "description": "This is the number of completion tokens generated in the call. These should be total completion tokens used in the call for single assistant calls, while squad calls will have multiple model costs one for each assistant that was used."
+          },
+          "cachedPromptTokens": {
+            "type": "number",
+            "description": "This is the number of cached prompt tokens used in the call. This is only applicable to certain providers (e.g., OpenAI, Azure OpenAI) that support prompt caching. Cached tokens are billed at a discounted rate."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost of the component in USD."
+          }
+        },
+        "required": [
+          "type",
+          "model",
+          "promptTokens",
+          "completionTokens",
+          "cost"
+        ]
+      },
+      "VoiceCost": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of cost, always 'voice' for this class.",
+            "enum": [
+              "voice"
+            ]
+          },
+          "voice": {
+            "type": "object",
+            "description": "This is the voice that was used during the call.\n\nThis matches one of the following:\n- `call.assistant.voice`,\n- `call.assistantId->voice`,\n- `call.squad[n].assistant.voice`,\n- `call.squad[n].assistantId->voice`,\n- `call.squadId->[n].assistant.voice`,\n- `call.squadId->[n].assistantId->voice`."
+          },
+          "characters": {
+            "type": "number",
+            "description": "This is the number of characters that were generated during the call. These should be total characters used in the call for single assistant calls, while squad calls will have multiple voice costs one for each assistant that was used."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost of the component in USD."
+          }
+        },
+        "required": [
+          "type",
+          "voice",
+          "characters",
+          "cost"
+        ]
+      },
+      "ChatCost": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of cost, always 'chat' for this class.",
+            "enum": [
+              "chat"
+            ]
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost of the component in USD."
+          }
+        },
+        "required": [
+          "type",
+          "cost"
+        ]
+      },
+      "VapiCost": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of cost, always 'vapi' for this class.",
+            "enum": [
+              "vapi"
+            ]
+          },
+          "subType": {
+            "type": "string",
+            "description": "This is the sub type of the cost.",
+            "enum": [
+              "normal",
+              "overage"
+            ]
+          },
+          "minutes": {
+            "type": "number",
+            "description": "This is the minutes of Vapi usage. This should match `call.endedAt` - `call.startedAt`."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost of the component in USD."
+          }
+        },
+        "required": [
+          "type",
+          "subType",
+          "minutes",
+          "cost"
+        ]
+      },
+      "VoicemailDetectionCost": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of cost, always 'voicemail-detection' for this class.",
+            "enum": [
+              "voicemail-detection"
+            ]
+          },
+          "model": {
+            "type": "object",
+            "description": "This is the model that was used to perform the analysis."
+          },
+          "provider": {
+            "type": "string",
+            "description": "This is the provider that was used to detect the voicemail.",
+            "enum": [
+              "twilio",
+              "google",
+              "openai",
+              "vapi"
+            ]
+          },
+          "promptTextTokens": {
+            "type": "number",
+            "description": "This is the number of prompt text tokens used in the voicemail detection."
+          },
+          "promptAudioTokens": {
+            "type": "number",
+            "description": "This is the number of prompt audio tokens used in the voicemail detection."
+          },
+          "completionTextTokens": {
+            "type": "number",
+            "description": "This is the number of completion text tokens used in the voicemail detection."
+          },
+          "completionAudioTokens": {
+            "type": "number",
+            "description": "This is the number of completion audio tokens used in the voicemail detection."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost of the component in USD."
+          }
+        },
+        "required": [
+          "type",
+          "model",
+          "provider",
+          "promptTextTokens",
+          "promptAudioTokens",
+          "completionTextTokens",
+          "completionAudioTokens",
+          "cost"
+        ]
+      },
+      "AnalysisCost": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "This is the type of cost, always 'analysis' for this class.",
+            "enum": [
+              "analysis"
+            ]
+          },
+          "analysisType": {
+            "type": "string",
+            "description": "This is the type of analysis performed.",
+            "enum": [
+              "summary",
+              "structuredData",
+              "successEvaluation",
+              "structuredOutput"
+            ]
+          },
+          "model": {
+            "type": "object",
+            "description": "This is the model that was used to perform the analysis."
+          },
+          "promptTokens": {
+            "type": "number",
+            "description": "This is the number of prompt tokens used in the analysis."
+          },
+          "completionTokens": {
+            "type": "number",
+            "description": "This is the number of completion tokens generated in the analysis."
+          },
+          "cachedPromptTokens": {
+            "type": "number",
+            "description": "This is the number of cached prompt tokens used in the analysis. This is only applicable to certain providers (e.g., OpenAI, Azure OpenAI) that support prompt caching. Cached tokens are billed at a discounted rate."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost of the component in USD."
+          }
+        },
+        "required": [
+          "type",
+          "analysisType",
+          "model",
+          "promptTokens",
+          "completionTokens",
+          "cost"
+        ]
+      },
+      "AudioFormat": {
+        "type": "object",
+        "properties": {
+          "sampleRate": {
+            "type": "number",
+            "description": "This is the sample rate of the call.\n\n@default 16000",
+            "minimum": 0,
+            "maximum": 192000
+          },
+          "format": {
+            "type": "object",
+            "description": "This is the audio format of the call.\n\n@default 'pcm_s16le'",
+            "enum": [
+              "pcm_s16le",
+              "mulaw"
+            ]
+          },
+          "container": {
+            "type": "string",
+            "description": "This is the container format of the call.\n\n@default 'raw'",
+            "enum": [
+              "raw"
+            ]
+          }
+        },
+        "required": [
+          "sampleRate",
+          "format"
+        ]
+      },
+      "VapiWebsocketTransport": {
+        "type": "object",
+        "properties": {
+          "conversationType": {
+            "type": "string",
+            "description": "This is the conversation type of the call (ie, voice or chat).",
+            "default": "voice",
+            "enum": [
+              "voice"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "description": "Vapi websocket transport provider",
+            "enum": [
+              "vapi.websocket"
+            ]
+          },
+          "audioFormat": {
+            "description": "This is the audio format of the call. Defaults to 16KHz raw pcm_s16le",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AudioFormat"
+              }
+            ]
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "VapiWebCallTransport": {
+        "type": "object",
+        "properties": {
+          "conversationType": {
+            "type": "string",
+            "description": "This is the conversation type of the call (ie, voice or chat).",
+            "default": "voice",
+            "enum": [
+              "voice"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "description": "Vapi web call transport provider",
+            "enum": [
+              "daily"
+            ]
+          },
+          "roomDeleteOnUserLeaveEnabled": {
+            "type": "boolean",
+            "description": "This determines whether the daily room will be deleted and all participants will be kicked once the user leaves the room.\nIf set to `false`, the room will be kept alive even after the user leaves, allowing clients to reconnect to the same room.\nIf set to `true`, the room will be deleted and reconnection will not be allowed.\n\nDefaults to `true`.",
+            "example": true,
+            "default": true
+          },
+          "callUrl": {
+            "type": "string",
+            "description": "This is the URL of the web call."
+          },
+          "callSipUri": {
+            "type": "string",
+            "description": "This is the SIP URI of the web call."
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "TwilioTransport": {
+        "type": "object",
+        "properties": {
+          "conversationType": {
+            "type": "string",
+            "description": "This is the conversation type of the call (ie, voice or chat).",
+            "default": "voice",
+            "enum": [
+              "voice"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "description": "Twilio transport provider",
+            "enum": [
+              "twilio"
+            ]
+          },
+          "accountSid": {
+            "type": "string",
+            "description": "This is the account SID of the Twilio account."
+          },
+          "callSid": {
+            "type": "string",
+            "description": "This is the call SID of the Twilio call."
+          },
+          "callToken": {
+            "type": "string",
+            "description": "This is the call token of the Twilio call."
+          },
+          "forwardedFrom": {
+            "type": "string",
+            "description": "This is the phone number from which the call was forwarded.\nUndefined if the call was not forwarded."
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "TelnyxTransport": {
+        "type": "object",
+        "properties": {
+          "conversationType": {
+            "type": "string",
+            "description": "This is the conversation type of the call (ie, voice or chat).",
+            "default": "voice",
+            "enum": [
+              "voice"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "description": "Telnyx transport provider",
+            "enum": [
+              "telnyx"
+            ]
+          },
+          "callControlId": {
+            "type": "string",
+            "description": "This is the call control ID of the Telnyx call."
+          },
+          "callLegId": {
+            "type": "string",
+            "description": "This is the call leg ID of the Telnyx call."
+          },
+          "callSessionId": {
+            "type": "string",
+            "description": "This is the call session ID of the Telnyx call."
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "VapiSipTransport": {
+        "type": "object",
+        "properties": {
+          "conversationType": {
+            "type": "string",
+            "description": "This is the conversation type of the call (ie, voice or chat).",
+            "default": "voice",
+            "enum": [
+              "voice"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "description": "Vapi SIP transport provider",
+            "enum": [
+              "vapi.sip"
+            ]
+          },
+          "dialTimeout": {
+            "type": "number",
+            "description": "This sets the timeout for outbound dial operations in seconds. This is the duration the call will ring before timing out.\n\n@default 60",
+            "minimum": 1,
+            "maximum": 600,
+            "default": 60
+          },
+          "sbcCallSid": {
+            "type": "string",
+            "description": "This is the call SID of the Vapi SIP call."
+          },
+          "callSid": {
+            "type": "string",
+            "description": "This is the call ID of the Vapi SIP call."
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "VonageTransport": {
+        "type": "object",
+        "properties": {
+          "conversationType": {
+            "type": "string",
+            "description": "This is the conversation type of the call (ie, voice or chat).",
+            "default": "voice",
+            "enum": [
+              "voice"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "description": "Vonage transport provider",
+            "enum": [
+              "vonage"
+            ]
+          },
+          "conversationUUID": {
+            "type": "string",
+            "description": "This is the conversation UUID of the Vonage call."
+          },
+          "callUUID": {
+            "type": "string",
+            "description": "This is the call ID of the Vonage call."
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
       "AnalysisCostBreakdown": {
         "type": "object",
         "properties": {
@@ -35020,8 +35889,12 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "object",
-            "description": "This is the type of recording consent."
+            "type": "string",
+            "description": "This is the type of recording consent.",
+            "enum": [
+              "stay-on-line",
+              "verbal"
+            ]
           },
           "grantedAt": {
             "format": "date-time",
@@ -36174,6 +37047,35 @@
               }
             ]
           },
+          "transport": {
+            "description": "This is the transport of the call.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VapiWebsocketTransport",
+                "title": "VapiWebsocketTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VonageTransport",
+                "title": "VonageTransport"
+              },
+              {
+                "$ref": "#/components/schemas/TwilioTransport",
+                "title": "TwilioTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VapiSipTransport",
+                "title": "VapiSipTransport"
+              },
+              {
+                "$ref": "#/components/schemas/TelnyxTransport",
+                "title": "TelnyxTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VapiWebCallTransport",
+                "title": "VapiWebCallTransport"
+              }
+            ]
+          },
           "id": {
             "type": "string",
             "description": "This is the unique identifier for the call."
@@ -36359,10 +37261,6 @@
                 "$ref": "#/components/schemas/SchedulePlan"
               }
             ]
-          },
-          "transport": {
-            "type": "object",
-            "description": "This is the transport of the call."
           }
         },
         "required": [
@@ -36522,6 +37420,35 @@
       "CreateCallDTO": {
         "type": "object",
         "properties": {
+          "transport": {
+            "description": "This is the transport of the call.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VapiWebsocketTransport",
+                "title": "VapiWebsocketTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VonageTransport",
+                "title": "VonageTransport"
+              },
+              {
+                "$ref": "#/components/schemas/TwilioTransport",
+                "title": "TwilioTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VapiSipTransport",
+                "title": "VapiSipTransport"
+              },
+              {
+                "$ref": "#/components/schemas/TelnyxTransport",
+                "title": "TelnyxTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VapiWebCallTransport",
+                "title": "VapiWebCallTransport"
+              }
+            ]
+          },
           "customers": {
             "description": "This is used to issue batch calls to multiple customers.\n\nOnly relevant for `outboundPhoneCall`. To call a single customer, use `customer` instead.",
             "type": "array",
@@ -36541,10 +37468,6 @@
                 "$ref": "#/components/schemas/SchedulePlan"
               }
             ]
-          },
-          "transport": {
-            "type": "object",
-            "description": "This is the transport of the call."
           },
           "assistantId": {
             "type": "string",
@@ -36690,6 +37613,35 @@
       "CreateOutboundCallDTO": {
         "type": "object",
         "properties": {
+          "transport": {
+            "description": "This is the transport of the call.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VapiWebsocketTransport",
+                "title": "VapiWebsocketTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VonageTransport",
+                "title": "VonageTransport"
+              },
+              {
+                "$ref": "#/components/schemas/TwilioTransport",
+                "title": "TwilioTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VapiSipTransport",
+                "title": "VapiSipTransport"
+              },
+              {
+                "$ref": "#/components/schemas/TelnyxTransport",
+                "title": "TelnyxTransport"
+              },
+              {
+                "$ref": "#/components/schemas/VapiWebCallTransport",
+                "title": "VapiWebCallTransport"
+              }
+            ]
+          },
           "customers": {
             "description": "This is used to issue batch calls to multiple customers.\n\nOnly relevant for `outboundPhoneCall`. To call a single customer, use `customer` instead.",
             "type": "array",
@@ -36709,10 +37661,6 @@
                 "$ref": "#/components/schemas/SchedulePlan"
               }
             ]
-          },
-          "transport": {
-            "type": "object",
-            "description": "This is the transport of the call."
           },
           "assistantId": {
             "type": "string",
@@ -36920,92 +37868,6 @@
         "required": [
           "role",
           "content"
-        ]
-      },
-      "SystemMessage": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "description": "The role of the system in the conversation."
-          },
-          "message": {
-            "type": "string",
-            "description": "The message content from the system."
-          },
-          "time": {
-            "type": "number",
-            "description": "The timestamp when the message was sent."
-          },
-          "secondsFromStart": {
-            "type": "number",
-            "description": "The number of seconds from the start of the conversation."
-          }
-        },
-        "required": [
-          "role",
-          "message",
-          "time",
-          "secondsFromStart"
-        ]
-      },
-      "UserMessage": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "description": "The role of the user in the conversation."
-          },
-          "message": {
-            "type": "string",
-            "description": "The message content from the user."
-          },
-          "time": {
-            "type": "number",
-            "description": "The timestamp when the message was sent."
-          },
-          "endTime": {
-            "type": "number",
-            "description": "The timestamp when the message ended."
-          },
-          "secondsFromStart": {
-            "type": "number",
-            "description": "The number of seconds from the start of the conversation."
-          },
-          "duration": {
-            "type": "number",
-            "description": "The duration of the message in seconds."
-          },
-          "isFiltered": {
-            "type": "boolean",
-            "description": "Indicates if the message was filtered for security reasons."
-          },
-          "detectedThreats": {
-            "description": "List of detected security threats if the message was filtered.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "originalMessage": {
-            "type": "string",
-            "description": "The original message before filtering (only included if content was filtered)."
-          },
-          "metadata": {
-            "type": "object",
-            "description": "The metadata associated with the message. Currently used to store the transcriber's word level confidence."
-          },
-          "speakerLabel": {
-            "type": "string",
-            "description": "Stable speaker label for diarized user speakers (e.g., \"Speaker 1\")."
-          }
-        },
-        "required": [
-          "role",
-          "message",
-          "time",
-          "endTime",
-          "secondsFromStart"
         ]
       },
       "ToolCallFunction": {
@@ -58876,6 +59738,16 @@
       "VoiceLibraryVoiceResponse": {
         "type": "object",
         "properties": {
+          "age": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
           "voiceId": {
             "type": "string"
           },
@@ -58890,9 +59762,6 @@
           },
           "gender": {
             "type": "string"
-          },
-          "age": {
-            "type": "object"
           },
           "accent": {
             "type": "string"
@@ -65744,429 +66613,6 @@
           "message"
         ]
       },
-      "BotMessage": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "description": "The role of the bot in the conversation."
-          },
-          "message": {
-            "type": "string",
-            "description": "The message content from the bot."
-          },
-          "time": {
-            "type": "number",
-            "description": "The timestamp when the message was sent."
-          },
-          "endTime": {
-            "type": "number",
-            "description": "The timestamp when the message ended."
-          },
-          "secondsFromStart": {
-            "type": "number",
-            "description": "The number of seconds from the start of the conversation."
-          },
-          "source": {
-            "type": "string",
-            "description": "The source of the message."
-          },
-          "duration": {
-            "type": "number",
-            "description": "The duration of the message in seconds."
-          }
-        },
-        "required": [
-          "role",
-          "message",
-          "time",
-          "endTime",
-          "secondsFromStart"
-        ]
-      },
-      "ToolCallMessage": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "description": "The role of the tool call in the conversation."
-          },
-          "toolCalls": {
-            "description": "The list of tool calls made during the conversation.",
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
-          },
-          "message": {
-            "type": "string",
-            "description": "The message content for the tool call."
-          },
-          "time": {
-            "type": "number",
-            "description": "The timestamp when the message was sent."
-          },
-          "secondsFromStart": {
-            "type": "number",
-            "description": "The number of seconds from the start of the conversation."
-          }
-        },
-        "required": [
-          "role",
-          "toolCalls",
-          "message",
-          "time",
-          "secondsFromStart"
-        ]
-      },
-      "ToolCallResultMessageWarning": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "The kind of warning. Currently:\n- `oversized-tool-response`: the tool's serialized response exceeded the\n  recommended size and is likely to bloat the model context, increasing\n  latency and risking truncation of earlier instructions.",
-            "enum": [
-              "oversized-tool-response"
-            ]
-          },
-          "tokenCount": {
-            "type": "number",
-            "description": "The estimated number of tokens in the serialized tool response."
-          },
-          "threshold": {
-            "type": "number",
-            "description": "The threshold (in tokens) above which the warning is raised."
-          }
-        },
-        "required": [
-          "type",
-          "tokenCount",
-          "threshold"
-        ]
-      },
-      "ToolCallResultMessage": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "description": "The role of the tool call result in the conversation."
-          },
-          "toolCallId": {
-            "type": "string",
-            "description": "The ID of the tool call."
-          },
-          "name": {
-            "type": "string",
-            "description": "The name of the tool that returned the result."
-          },
-          "result": {
-            "type": "string",
-            "description": "The result of the tool call in JSON format."
-          },
-          "time": {
-            "type": "number",
-            "description": "The timestamp when the message was sent."
-          },
-          "secondsFromStart": {
-            "type": "number",
-            "description": "The number of seconds from the start of the conversation."
-          },
-          "metadata": {
-            "type": "object",
-            "description": "The metadata for the tool call result."
-          },
-          "warnings": {
-            "description": "Warnings raised for this tool call result, e.g. when the response is\nlarger than recommended for voice AI context windows.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ToolCallResultMessageWarning"
-            }
-          }
-        },
-        "required": [
-          "role",
-          "toolCallId",
-          "name",
-          "result",
-          "time",
-          "secondsFromStart"
-        ]
-      },
-      "TransportCost": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of cost, always 'transport' for this class.",
-            "enum": [
-              "transport"
-            ]
-          },
-          "provider": {
-            "type": "string",
-            "enum": [
-              "daily",
-              "vapi.websocket",
-              "twilio",
-              "vonage",
-              "telnyx",
-              "vapi.sip"
-            ]
-          },
-          "minutes": {
-            "type": "number",
-            "description": "This is the minutes of `transport` usage. This should match `call.endedAt` - `call.startedAt`."
-          },
-          "cost": {
-            "type": "number",
-            "description": "This is the cost of the component in USD."
-          }
-        },
-        "required": [
-          "type",
-          "minutes",
-          "cost"
-        ]
-      },
-      "TranscriberCost": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of cost, always 'transcriber' for this class.",
-            "enum": [
-              "transcriber"
-            ]
-          },
-          "transcriber": {
-            "type": "object",
-            "description": "This is the transcriber that was used during the call.\n\nThis matches one of the below:\n- `call.assistant.transcriber`,\n- `call.assistantId->transcriber`,\n- `call.squad[n].assistant.transcriber`,\n- `call.squad[n].assistantId->transcriber`,\n- `call.squadId->[n].assistant.transcriber`,\n- `call.squadId->[n].assistantId->transcriber`."
-          },
-          "minutes": {
-            "type": "number",
-            "description": "This is the minutes of `transcriber` usage. This should match `call.endedAt` - `call.startedAt` for single assistant calls, while squad calls will have multiple transcriber costs one for each assistant that was used."
-          },
-          "cost": {
-            "type": "number",
-            "description": "This is the cost of the component in USD."
-          }
-        },
-        "required": [
-          "type",
-          "transcriber",
-          "minutes",
-          "cost"
-        ]
-      },
-      "ModelCost": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of cost, always 'model' for this class.",
-            "enum": [
-              "model"
-            ]
-          },
-          "model": {
-            "type": "object",
-            "description": "This is the model that was used during the call.\n\nThis matches one of the following:\n- `call.assistant.model`,\n- `call.assistantId->model`,\n- `call.squad[n].assistant.model`,\n- `call.squad[n].assistantId->model`,\n- `call.squadId->[n].assistant.model`,\n- `call.squadId->[n].assistantId->model`."
-          },
-          "promptTokens": {
-            "type": "number",
-            "description": "This is the number of prompt tokens used in the call. These should be total prompt tokens used in the call for single assistant calls, while squad calls will have multiple model costs one for each assistant that was used."
-          },
-          "completionTokens": {
-            "type": "number",
-            "description": "This is the number of completion tokens generated in the call. These should be total completion tokens used in the call for single assistant calls, while squad calls will have multiple model costs one for each assistant that was used."
-          },
-          "cachedPromptTokens": {
-            "type": "number",
-            "description": "This is the number of cached prompt tokens used in the call. This is only applicable to certain providers (e.g., OpenAI, Azure OpenAI) that support prompt caching. Cached tokens are billed at a discounted rate."
-          },
-          "cost": {
-            "type": "number",
-            "description": "This is the cost of the component in USD."
-          }
-        },
-        "required": [
-          "type",
-          "model",
-          "promptTokens",
-          "completionTokens",
-          "cost"
-        ]
-      },
-      "VoiceCost": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of cost, always 'voice' for this class.",
-            "enum": [
-              "voice"
-            ]
-          },
-          "voice": {
-            "type": "object",
-            "description": "This is the voice that was used during the call.\n\nThis matches one of the following:\n- `call.assistant.voice`,\n- `call.assistantId->voice`,\n- `call.squad[n].assistant.voice`,\n- `call.squad[n].assistantId->voice`,\n- `call.squadId->[n].assistant.voice`,\n- `call.squadId->[n].assistantId->voice`."
-          },
-          "characters": {
-            "type": "number",
-            "description": "This is the number of characters that were generated during the call. These should be total characters used in the call for single assistant calls, while squad calls will have multiple voice costs one for each assistant that was used."
-          },
-          "cost": {
-            "type": "number",
-            "description": "This is the cost of the component in USD."
-          }
-        },
-        "required": [
-          "type",
-          "voice",
-          "characters",
-          "cost"
-        ]
-      },
-      "VapiCost": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of cost, always 'vapi' for this class.",
-            "enum": [
-              "vapi"
-            ]
-          },
-          "subType": {
-            "type": "string",
-            "description": "This is the sub type of the cost.",
-            "enum": [
-              "normal",
-              "overage"
-            ]
-          },
-          "minutes": {
-            "type": "number",
-            "description": "This is the minutes of Vapi usage. This should match `call.endedAt` - `call.startedAt`."
-          },
-          "cost": {
-            "type": "number",
-            "description": "This is the cost of the component in USD."
-          }
-        },
-        "required": [
-          "type",
-          "subType",
-          "minutes",
-          "cost"
-        ]
-      },
-      "AnalysisCost": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of cost, always 'analysis' for this class.",
-            "enum": [
-              "analysis"
-            ]
-          },
-          "analysisType": {
-            "type": "string",
-            "description": "This is the type of analysis performed.",
-            "enum": [
-              "summary",
-              "structuredData",
-              "successEvaluation",
-              "structuredOutput"
-            ]
-          },
-          "model": {
-            "type": "object",
-            "description": "This is the model that was used to perform the analysis."
-          },
-          "promptTokens": {
-            "type": "number",
-            "description": "This is the number of prompt tokens used in the analysis."
-          },
-          "completionTokens": {
-            "type": "number",
-            "description": "This is the number of completion tokens generated in the analysis."
-          },
-          "cachedPromptTokens": {
-            "type": "number",
-            "description": "This is the number of cached prompt tokens used in the analysis. This is only applicable to certain providers (e.g., OpenAI, Azure OpenAI) that support prompt caching. Cached tokens are billed at a discounted rate."
-          },
-          "cost": {
-            "type": "number",
-            "description": "This is the cost of the component in USD."
-          }
-        },
-        "required": [
-          "type",
-          "analysisType",
-          "model",
-          "promptTokens",
-          "completionTokens",
-          "cost"
-        ]
-      },
-      "VoicemailDetectionCost": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of cost, always 'voicemail-detection' for this class.",
-            "enum": [
-              "voicemail-detection"
-            ]
-          },
-          "model": {
-            "type": "object",
-            "description": "This is the model that was used to perform the analysis."
-          },
-          "provider": {
-            "type": "string",
-            "description": "This is the provider that was used to detect the voicemail.",
-            "enum": [
-              "twilio",
-              "google",
-              "openai",
-              "vapi"
-            ]
-          },
-          "promptTextTokens": {
-            "type": "number",
-            "description": "This is the number of prompt text tokens used in the voicemail detection."
-          },
-          "promptAudioTokens": {
-            "type": "number",
-            "description": "This is the number of prompt audio tokens used in the voicemail detection."
-          },
-          "completionTextTokens": {
-            "type": "number",
-            "description": "This is the number of completion text tokens used in the voicemail detection."
-          },
-          "completionAudioTokens": {
-            "type": "number",
-            "description": "This is the number of completion audio tokens used in the voicemail detection."
-          },
-          "cost": {
-            "type": "number",
-            "description": "This is the cost of the component in USD."
-          }
-        },
-        "required": [
-          "type",
-          "model",
-          "provider",
-          "promptTextTokens",
-          "promptAudioTokens",
-          "completionTextTokens",
-          "completionAudioTokens",
-          "cost"
-        ]
-      },
       "KnowledgeBaseCost": {
         "type": "object",
         "properties": {
@@ -66199,26 +66645,6 @@
           "model",
           "promptTokens",
           "completionTokens",
-          "cost"
-        ]
-      },
-      "ChatCost": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "This is the type of cost, always 'chat' for this class.",
-            "enum": [
-              "chat"
-            ]
-          },
-          "cost": {
-            "type": "number",
-            "description": "This is the cost of the component in USD."
-          }
-        },
-        "required": [
-          "type",
           "cost"
         ]
       },
