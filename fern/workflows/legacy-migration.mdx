@@ -88,12 +88,18 @@ If anything looks off, fix it manually using the steps below.
 
   Do **not** assume a 1:1 mapping between Workflow conversation nodes and Squad members. Some workflows include dozens of nodes (e.g. IVR-style menus where each node asks a question and extracts a variable). In these cases, a 1:1 migration usually creates too many assistants and makes the system harder to maintain.
 
-  Instead:
+  **Start by bundling as much of the workflow as you can into a single assistant.** Squads work best for *linear, unidirectional* flows where the conversation moves forward through a predictable sequence of stages. Only split work into a separate assistant when there's a clear functional boundary and you don't expect the conversation to bounce back and forth between the two. If two stages would repeatedly hand off to each other throughout a call, consolidate them into one assistant — frequent cyclical handoffs add latency and can introduce hallucinations.
+
+  Then:
 
   - Group related nodes into a small number of well-defined stages (e.g. intake → triage → scheduling → human handoff)
   - Create **one assistant per stage** with a clear responsibility and a focused prompt (1–3 goals max)
   - Use **Handoff tools** to move between stages and extract/pass variables at the boundaries
   - Attach tools (API requests, transfers, etc.) to the assistant responsible for that stage
+
+  <Tip>
+  A predictable, one-directional path like triage → voicemail → SDR is a good fit for separate assistants. A pair like SDR ↔ FAQ that would hand back and forth many times within a single conversation is not — consolidate those into one assistant instead.
+  </Tip>
 
   For an example of this "stage-based" approach, see the [Clinic triage & scheduling example](/squads/examples/clinic-triage-scheduling-handoff-tool).
 
@@ -122,7 +128,7 @@ If anything looks off, fix it manually using the steps below.
   Group your assistants into a Squad:
 
   - The first member in the `members` array is the entry point (equivalent to the Start Node)
-  - Use `assistantOverrides` to standardize settings across members if needed (e.g. same voice throughout)
+  - Use `memberOverrides` to standardize settings across *all* members if needed (e.g. the same voice throughout). To override a single member instead, use `assistantOverrides` on that member.
 
   ```json
   {
@@ -130,7 +136,14 @@ If anything looks off, fix it manually using the steps below.
       "members": [
         { "assistantId": "your-first-assistant-id" },
         { "assistantId": "your-second-assistant-id" }
-      ]
+      ],
+      "memberOverrides": {
+        "voice": {
+          "provider": "vapi",
+          "version": 2,
+          "voiceId": "Elliot"
+        }
+      }
     }
   }
   ```
