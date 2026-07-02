@@ -1,0 +1,255 @@
+---
+title: Campaigns API
+subtitle: Create and manage batch outbound call campaigns programmatically with the Campaigns V2 API
+slug: outbound-campaigns/campaigns-api
+description: Use Vapi's Campaigns V2 API to launch, monitor, cancel, and duplicate batch outbound call campaigns with concurrency control and scheduling.
+---
+
+## Overview
+
+The Campaigns V2 API lets you launch batch outbound call campaigns programmatically. You upload a list of customers, pick an assistant (or squad) and a phone number, set a concurrency limit, and Vapi dials through the list for you — dispatching the next call as soon as one finishes, until every contact has been called.
+
+**Use the Campaigns API to:**
+
+- Call thousands of contacts from a single API request
+- Control dial rate with a per-campaign concurrency cap
+- Personalize each call with per-customer variables and overrides
+- Schedule campaigns to run within a time window
+- Monitor per-call outcomes, transcripts, and analysis as calls complete
+
+<Note>
+Campaigns V2 is in limited availability. If you receive `403 Campaigns V2 is not enabled for your organization`, contact [Vapi support](/support) to have it enabled for your organization.
+</Note>
+
+## Prerequisites
+
+- **API key**: Your private API key from the [Vapi Dashboard](https://dashboard.vapi.ai)
+- **Assistant or squad**: A saved assistant (`assistantId`) or squad (`squadId`) to handle the calls
+- **Phone number**: An imported phone number (e.g. Twilio, Vonage, Telnyx). Free Vapi numbers are not suitable for campaigns due to daily outbound limits
+- **Customer list**: The phone numbers you want to call, in E.164 format (e.g. `+14155551234`)
+
+<Warning>
+It is a violation of FCC law to dial phone numbers without consent in an automated manner. See our [TCPA Consent Guide](/tcpa-consent) before launching campaigns.
+</Warning>
+
+## Create a campaign
+
+Create and start a campaign with a single request to [`POST /v2/campaign`](/api-reference/campaigns/campaign-controller-create-v2). Campaigns start automatically on creation — there is no separate draft or start step.
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Q3 Renewal Reminders",
+    "assistantId": "your-assistant-id",
+    "phoneNumberId": "your-phone-number-id",
+    "maxConcurrency": 5,
+    "customers": [
+      { "number": "+14155551234", "name": "John" },
+      { "number": "+14155555678", "name": "Mary" }
+    ]
+  }'
+```
+
+The response is the campaign object, including its `id` and initial `status`:
+
+```json
+{
+  "id": "4a5b6c7d-...",
+  "orgId": "...",
+  "name": "Q3 Renewal Reminders",
+  "status": "scheduled",
+  "maxConcurrency": 5,
+  "assistantId": "your-assistant-id",
+  "phoneNumberId": "your-phone-number-id",
+  "createdAt": "2026-07-02T18:00:00.000Z",
+  "updatedAt": "2026-07-02T18:00:00.000Z"
+}
+```
+
+### Required fields
+
+| Field | Description |
+| --- | --- |
+| `name` | Campaign name, for your own reference |
+| `assistantId` or `squadId` | Who handles the calls. Provide exactly one |
+| `phoneNumberId` | The imported phone number to call from |
+| `customers` | The list of customers to call |
+
+<Note>
+`workflowId` and `dialPlan` are V1-only fields. V2 campaigns require an `assistantId` or `squadId`, and a single `phoneNumberId`.
+</Note>
+
+### Concurrency
+
+`maxConcurrency` caps how many campaign calls run at once. The campaign uses a sliding window: when one call ends, the next dispatches immediately, keeping up to `maxConcurrency` calls in flight until the list is exhausted. Set it explicitly — it defaults to 1.
+
+Two limits apply to every campaign call:
+
+- **Campaign pacing**: `maxConcurrency` on the campaign itself
+- **Organization capacity**: your org-wide [concurrency limit](/calls/call-concurrency), shared with all other calls your org is making
+
+If your org is at capacity when a campaign call would dispatch, that dispatch can fail even if the campaign is under its own cap. Keep `maxConcurrency` comfortably below your org limit if you place other calls while campaigns run.
+
+## Personalize calls per customer
+
+Each entry in `customers` supports a `name` and per-customer overrides. Use `assistantOverrides.variableValues` to inject [dynamic variables](/assistants/dynamic-variables) into your assistant's prompts for that specific call:
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Post-Service Feedback",
+    "assistantId": "your-assistant-id",
+    "phoneNumberId": "your-phone-number-id",
+    "maxConcurrency": 10,
+    "assistantOverrides": {
+      "variableValues": { "company": "TechFlow" }
+    },
+    "customers": [
+      {
+        "number": "+14155551234",
+        "name": "John",
+        "assistantOverrides": {
+          "variableValues": { "customer_issue": "password reset" }
+        }
+      },
+      {
+        "number": "+14155555678",
+        "name": "Mary",
+        "assistantOverrides": {
+          "variableValues": { "customer_issue": "address update" }
+        }
+      }
+    ]
+  }'
+```
+
+Campaign-level `assistantOverrides` apply to every call; per-customer `assistantOverrides` are merged on top for that customer's call. Your assistant can then reference `{{company}}` and `{{customer_issue}}` in its prompts.
+
+For squad campaigns, use `squadOverrides` (campaign-level and per-customer) the same way.
+
+## Schedule a campaign
+
+Use `schedulePlan` to control when dialing starts. Pass a future ISO 8601 date-time in `earliestAt`; dialing begins then instead of immediately. Optionally set `latestAt` as a deadline after which no further calls are attempted.
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Weekend Promo",
+    "assistantId": "your-assistant-id",
+    "phoneNumberId": "your-phone-number-id",
+    "customers": [ { "number": "+14155551234" } ],
+    "schedulePlan": {
+      "earliestAt": "2026-07-04T16:00:00Z",
+      "latestAt": "2026-07-05T01:00:00Z"
+    }
+  }'
+```
+
+## Monitor a campaign
+
+Poll [`GET /v2/campaign/{id}`](/api-reference/campaigns/campaign-controller-find-one-v2) to track progress. The response includes the campaign's `customers` list along with its current status and per-call outcomes.
+
+```bash
+curl https://api.vapi.ai/v2/campaign/CAMPAIGN_ID \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+### Campaign status lifecycle
+
+| Status | Meaning |
+| --- | --- |
+| `scheduled` | Created; waiting for its schedule window (or about to start dialing) |
+| `in-progress` | Actively dialing through the customer list |
+| `ended` | All customers have been called; see `endedReason` |
+| `cancelled` | Stopped by a cancel request before completing |
+
+When a campaign reaches a terminal state, `endedReason` explains why — `campaign.ended.success` for natural completion, or `campaign.scheduled.ended-by-user` / `campaign.in-progress.ended-by-user` for cancellations.
+
+### Per-call outcomes
+
+As each call ends, it appears in the campaign's `calls` map keyed by call ID, with the customer, `startedAt` / `endedAt`, final `status`, `endedReason`, and the call [`analysis`](/assistants/call-analysis) (summary, structured data, success evaluation):
+
+```json
+{
+  "status": "in-progress",
+  "calls": {
+    "call-id-1": {
+      "id": "call-id-1",
+      "customer": { "number": "+14155551234", "name": "John" },
+      "status": "ended",
+      "endedReason": "customer-ended-call",
+      "startedAt": "2026-07-02T18:01:12.000Z",
+      "endedAt": "2026-07-02T18:03:45.000Z",
+      "analysis": { "summary": "..." }
+    }
+  },
+  "callsCounterEndedVoicemail": 3
+}
+```
+
+For full call artifacts (recording, transcript), fetch the individual call with [`GET /call/{id}`](/api-reference/calls/get).
+
+To list campaigns, use [`GET /v2/campaign`](/api-reference/campaigns/campaign-controller-find-all-v2), which supports pagination and filtering by `status`.
+
+## Cancel a campaign
+
+Stop a running campaign by setting its status to `cancelled` via [`PATCH /v2/campaign/{id}`](/api-reference/campaigns/campaign-controller-update-v2):
+
+```bash
+curl -X PATCH https://api.vapi.ai/v2/campaign/CAMPAIGN_ID \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "status": "cancelled" }'
+```
+
+Cancellation stops new calls from being dispatched. Calls already in progress are allowed to finish naturally — cancelling never hangs up a live conversation.
+
+<Note>
+V2 campaigns are immutable after creation: cancellation is the only supported update. To change a campaign's configuration, cancel it and create a new one (see [duplicating](#duplicate-a-campaign) below).
+</Note>
+
+## Duplicate a campaign
+
+To re-run a campaign — or relaunch it with tweaks — pass `duplicateFromCampaignId` when creating. The new campaign inherits the source's configuration and contacts, and starts immediately:
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Q3 Renewal Reminders (rerun)",
+    "duplicateFromCampaignId": "SOURCE_CAMPAIGN_ID"
+  }'
+```
+
+Any fields you provide override the source's values. If you provide `customers`, they replace the source's contact list; if omitted, the source's contacts are copied. The source must itself be a V2 campaign.
+
+## Delete a campaign
+
+[`DELETE /v2/campaign/{id}`](/api-reference/campaigns/campaign-controller-remove-v2) archives the campaign. If it is still running, it is cancelled first (in-progress calls finish naturally). Archived campaigns no longer appear in list or get responses.
+
+```bash
+curl -X DELETE https://api.vapi.ai/v2/campaign/CAMPAIGN_ID \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+## Differences from V1 campaigns
+
+| | V1 (`/campaign`) | V2 (`/v2/campaign`) |
+| --- | --- | --- |
+| Designed for | Dashboard-driven campaigns | Programmatic, high-volume campaigns |
+| Start | On create | On create |
+| Call handler | `assistantId`, `workflowId`, or `squadId` | `assistantId` or `squadId` |
+| Phone numbers | `phoneNumberId` or `dialPlan` | Single `phoneNumberId` |
+| Concurrency control | Org limit only | `maxConcurrency` per campaign + org limit |
+| Updates after create | Editable while scheduled | Immutable; cancel-only |
+| Duplicate | — | `duplicateFromCampaignId` |
+| Delete | Deletes the campaign | Cancels (if running), then archives |
+
+The dashboard experience is covered in the [Outbound campaigns overview](/outbound-campaigns/overview) and [quickstart](/outbound-campaigns/quickstart).
