@@ -1,0 +1,59 @@
+---
+title: Campaigns overview
+subtitle: Scalable batch outbound calling with per-campaign concurrency control
+slug: campaigns/overview
+description: Learn how Vapi Campaigns work — upload contacts, set a concurrency limit, and let Vapi dial through your list from the dashboard or the API.
+---
+
+## Overview
+
+Campaigns are Vapi's batch outbound calling system. You provide a list of contacts, pick an assistant (or squad) and a phone number, set a concurrency limit, and Vapi dials through the list for you — as soon as one call finishes, the next contact is dialed, keeping up to your concurrency limit in flight until everyone has been called.
+
+You can create and manage campaigns from the **dashboard** or programmatically via the **API** — both drive the same system.
+
+<Note>
+Campaigns are in limited availability. If you don't see **Campaigns** in your dashboard, or the API returns `403 Campaigns V2 is not enabled for your organization`, contact [Vapi support](/support) to have it enabled.
+</Note>
+
+## Key capabilities
+
+- **Scale**: call thousands of contacts from a single campaign
+- **Concurrency control**: cap how many calls run at once with `maxConcurrency`
+- **Personalization**: per-contact variables and overrides for tailored conversations
+- **Scheduling**: start now or within a time window
+- **Pre-dial webhook**: approve or skip each contact right before it's dialed
+- **Monitoring**: per-call outcomes, transcripts, and analysis as calls complete
+
+## How a campaign runs
+
+1. **Create** — you submit the campaign (dashboard or [`POST /v2/campaign`](/api-reference/campaigns/campaign-controller-create-v2)). Campaigns start automatically; there is no draft state.
+2. **Dispatch** — Vapi claims contacts from your list and dials them, keeping up to `maxConcurrency` calls active at once. When a call ends, the next contact is dialed immediately.
+3. **Complete** — each finished call is recorded on the campaign with its outcome, timestamps, and [analysis](/assistants/call-analysis). When every contact has been called, the campaign ends.
+
+### Campaign lifecycle
+
+| Status | Meaning |
+| --- | --- |
+| `scheduled` | Created; waiting for its schedule window (or about to start dialing) |
+| `in-progress` | Actively dialing through the contact list |
+| `ended` | All contacts have been called (`endedReason: campaign.ended.success`) |
+| `cancelled` | Stopped by you before completing; in-progress calls finished naturally |
+
+Campaigns are immutable after creation — cancellation is the only change you can make to a running campaign. Deleting a campaign archives it: it stops (if running) and disappears from your list. To iterate on a campaign, duplicate it with your changes (see [Advanced](/campaigns/advanced#re-running-a-campaign)).
+
+## Concurrency: two limits apply
+
+- **Campaign pacing** — `maxConcurrency` on the campaign caps how many of *its* calls run at once. It's required at creation and can't exceed your org limit.
+- **Organization capacity** — your org-wide [concurrency limit](/calls/call-concurrency) is shared by *all* calls your org makes, campaign or not.
+
+If your org is at capacity when a campaign call would dispatch, that dispatch can fail even though the campaign is under its own cap. If you place other calls while campaigns run, keep `maxConcurrency` comfortably below your org limit.
+
+## Next steps
+
+- **[Quickstart](/campaigns/quickstart)**: launch your first campaign from the dashboard
+- **[Advanced](/campaigns/advanced)**: personalization, scheduling, the pre-dial webhook, and managing campaigns via the API
+- **[API reference](/api-reference/campaigns/campaign-controller-create-v2)**: the `/v2/campaign` endpoints
+
+<Warning>
+It is a violation of FCC law to dial phone numbers without consent in an automated manner. See our [TCPA Consent Guide](/tcpa-consent) before launching campaigns.
+</Warning>

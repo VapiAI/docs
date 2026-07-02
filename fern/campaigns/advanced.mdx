@@ -1,0 +1,217 @@
+---
+title: Campaigns advanced
+subtitle: Personalization, scheduling, the pre-dial webhook, and managing campaigns via the API
+slug: campaigns/advanced
+description: Personalize each campaign call with variables and overrides, schedule dialing windows, gate contacts with the pre-dial webhook, and manage campaigns via the REST API.
+---
+
+## Personalize each call
+
+Every contact can get a tailored conversation. Overrides exist at two levels and are deep-merged at dial time:
+
+- **Campaign-level** overrides apply to every call in the campaign
+- **Per-contact** overrides are merged on top for that contact's call
+
+Both `assistantOverrides` and `squadOverrides` are supported — at the campaign level and per contact. `assistantOverrides` applies when the call is handled by an assistant; `squadOverrides` when it's handled by a squad.
+
+The most common use is `variableValues`, which feed [dynamic variables](/assistants/dynamic-variables) in your assistant's prompts:
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Post-Service Feedback",
+    "assistantId": "your-assistant-id",
+    "phoneNumberId": "your-phone-number-id",
+    "maxConcurrency": 10,
+    "assistantOverrides": {
+      "variableValues": { "company": "TechFlow" }
+    },
+    "customers": [
+      {
+        "number": "+14155551234",
+        "name": "John",
+        "assistantOverrides": {
+          "variableValues": { "customer_issue": "password reset" }
+        }
+      },
+      {
+        "number": "+14155555678",
+        "name": "Mary",
+        "assistantOverrides": {
+          "variableValues": { "customer_issue": "address update" }
+        }
+      }
+    ]
+  }'
+```
+
+Your assistant can then reference `{{company}}` and `{{customer_issue}}` in its prompts.
+
+In the dashboard, extra CSV columns become per-contact `variableValues` automatically — a `customer_issue` column fills `{{customer_issue}}` for each row.
+
+## Schedule a campaign
+
+By default, dialing starts immediately on creation. Use `schedulePlan` to control the window:
+
+- `earliestAt` — dialing starts at this time instead of immediately
+- `latestAt` — optional deadline; no further calls are attempted after it
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Weekend Promo",
+    "assistantId": "your-assistant-id",
+    "phoneNumberId": "your-phone-number-id",
+    "maxConcurrency": 10,
+    "customers": [ { "number": "+14155551234" } ],
+    "schedulePlan": {
+      "earliestAt": "2026-07-04T16:00:00Z",
+      "latestAt": "2026-07-05T01:00:00Z"
+    }
+  }'
+```
+
+In the dashboard, this is the **Schedule for later** option when launching.
+
+<Tip>
+Times are absolute UTC instants (ISO 8601). "9am in each contact's local timezone" isn't expressible yet — if you need per-timezone windows, split contacts into one campaign per region with region-appropriate windows.
+</Tip>
+
+## Pre-dial webhook
+
+Set a `server` on the campaign to receive a `campaign.predial` webhook **before each contact is dialed**. Your server decides, contact by contact, whether the call should happen — useful for do-not-call registries, opt-out lists, or last-minute eligibility checks that can't be known at campaign creation time.
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Renewals with DNC check",
+    "assistantId": "your-assistant-id",
+    "phoneNumberId": "your-phone-number-id",
+    "maxConcurrency": 10,
+    "customers": [ { "number": "+14155551234" } ],
+    "server": { "url": "https://example.com/vapi/campaign-webhook" }
+  }'
+```
+
+Before each dial, your server receives:
+
+```json
+{
+  "message": {
+    "type": "campaign.predial",
+    "campaignId": "4a5b6c7d-...",
+    "contact": {
+      "id": "contact-id",
+      "campaignId": "4a5b6c7d-...",
+      "number": "+14155551234",
+      "name": "John"
+    }
+  }
+}
+```
+
+Respond with whether the contact may be dialed:
+
+```json
+{ "eligible": true }
+```
+
+<Warning>
+The pre-dial check **fails closed**: if your server responds `"eligible": false`, is unreachable, errors, or times out, the contact is **skipped** and not called. Make sure the endpoint is fast and highly available — an outage on your side pauses dialing decisions against you, not in your favor.
+</Warning>
+
+In the dashboard, this is the **Pre-dial webhook** field when creating a campaign.
+
+## Tune concurrency
+
+`maxConcurrency` is required at creation, must be within your org's [concurrency limit](/calls/call-concurrency), and caps how many campaign calls run at once. Both the campaign cap and the org-wide limit apply to every campaign call — see the [overview](/campaigns/overview#concurrency-two-limits-apply).
+
+Practical guidance:
+
+- **Leave headroom.** If your org limit is 10 and inbound or one-off outbound calls happen alongside the campaign, a `maxConcurrency` of 10 will starve them — and campaign dispatches at capacity can fail.
+- **Telephony limits are separate.** Your provider (e.g. Twilio) has its own rate limits on outbound call initiation.
+- **More isn't always faster.** Answer rates, voicemail, and call duration dominate campaign wall-clock time more than raw concurrency.
+
+## Manage campaigns via the API
+
+Everything the dashboard does, the API does too — the endpoints live under `/v2/campaign` and use your private API key. Full request/response schemas are in the [API reference](/api-reference/campaigns/campaign-controller-create-v2).
+
+### Create
+
+`POST /v2/campaign` creates and starts a campaign in one request. Required: `name`, an `assistantId` or `squadId` (exactly one), `phoneNumberId`, `customers` (at least one), and `maxConcurrency`.
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Q3 Renewal Reminders",
+    "assistantId": "your-assistant-id",
+    "phoneNumberId": "your-phone-number-id",
+    "maxConcurrency": 5,
+    "customers": [
+      { "number": "+14155551234", "name": "John" },
+      { "number": "+14155555678", "name": "Mary" }
+    ]
+  }'
+```
+
+### Monitor
+
+Poll `GET /v2/campaign/{id}`. The response includes the contact list, current `status`, and — as each call ends — an entry in the `calls` map with the customer, timestamps, `endedReason`, and [`analysis`](/assistants/call-analysis):
+
+```json
+{
+  "status": "in-progress",
+  "calls": {
+    "call-id-1": {
+      "id": "call-id-1",
+      "customer": { "number": "+14155551234", "name": "John" },
+      "status": "ended",
+      "endedReason": "customer-ended-call",
+      "startedAt": "2026-07-02T18:01:12.000Z",
+      "endedAt": "2026-07-02T18:03:45.000Z",
+      "analysis": { "summary": "..." }
+    }
+  }
+}
+```
+
+For full call artifacts (recording, transcript), fetch the individual call with [`GET /call/{id}`](/api-reference/calls/get). To list campaigns, use `GET /v2/campaign` (paginated, filterable by `status`).
+
+### Cancel
+
+Campaigns are immutable after creation — cancellation is the only supported update:
+
+```bash
+curl -X PATCH https://api.vapi.ai/v2/campaign/CAMPAIGN_ID \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "status": "cancelled" }'
+```
+
+New calls stop being dispatched; calls already in progress finish naturally.
+
+### Delete
+
+`DELETE /v2/campaign/{id}` archives the campaign — cancelling it first if it's still running. Archived campaigns no longer appear in list or get responses.
+
+## Re-running a campaign
+
+Since campaigns are immutable, iteration works by duplication: pass `duplicateFromCampaignId` on create to inherit the source campaign's configuration and contacts. Any fields you provide override the source; if you provide `customers`, they replace the source's contact list.
+
+```bash
+curl https://api.vapi.ai/v2/campaign \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Q3 Renewal Reminders (rerun)",
+    "duplicateFromCampaignId": "SOURCE_CAMPAIGN_ID"
+  }'
+```
