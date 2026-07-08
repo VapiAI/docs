@@ -66,7 +66,12 @@ This guide walks you through setting up both outbound and inbound SIP trunking b
 
 2. **Create a SIP Trunk Credential**
    
-   Use the following API call to create a SIP trunk credential, replacing the gateway IP with your Twilio Termination SIP URI:
+   Use the following API call to create a SIP trunk credential. Configure the
+   Twilio termination hostname as an outbound-only gateway. Configure Twilio's
+   published signaling networks as separate inbound-only gateways.
+
+   The example below uses a Dublin termination hostname with Twilio's Ireland
+   and Frankfurt signaling networks:
 
    ```bash
    curl -X POST https://api.vapi.ai/credential \
@@ -77,13 +82,48 @@ This guide walks you through setting up both outbound and inbound SIP trunking b
      "name": "Twilio Trunk",
      "gateways": [
        {
-         "ip": "YOUR_TWILIO_GATEWAY_ID",
-         "inboundEnabled": false
+         "ip": "YOUR_TRUNK_NAME.pstn.dublin.twilio.com",
+         "port": 5060,
+         "inboundEnabled": false,
+         "outboundEnabled": true
+       },
+       {
+         "ip": "54.171.127.192",
+         "netmask": 30,
+         "port": 5060,
+         "inboundEnabled": true,
+         "outboundEnabled": false
+       },
+       {
+         "ip": "35.156.191.128",
+         "netmask": 30,
+         "port": 5060,
+         "inboundEnabled": true,
+         "outboundEnabled": false
        }
      ],
      "outboundLeadingPlusEnabled": true
    }'
    ```
+
+   <Warning>
+     Replace the example hostname and networks with the values for your Twilio
+     trunk's selected edges. Add every primary and failover signaling network
+     that can originate calls. Use Twilio's current [Elastic SIP Trunking IP
+     address list](https://www.twilio.com/docs/sip-trunking/ip-addresses) as the
+     source of truth.
+   </Warning>
+
+   A termination hostname can be used for outbound routing because Vapi
+   resolves it when placing a call. It cannot identify inbound traffic: Vapi
+   must match the source of an incoming SIP request against a numeric IPv4
+   network. The `netmask` value represents the CIDR prefix, so a `/30` network
+   is configured as `"netmask": 30`.
+
+   If you are adding inbound gateways to an existing credential, send a
+   `PATCH /credential/YOUR_CREDENTIAL_ID` request with the complete `gateways`
+   array, including the existing outbound gateway and the new inbound
+   networks.
    
    Note the `id` (credentialId) from the response for the next step.
 
@@ -158,3 +198,10 @@ This guide walks you through setting up both outbound and inbound SIP trunking b
    - In the assistant settings, link it to the phone number you created
    
    Now when someone calls your Twilio number, the call will be routed to your Vapi assistant.
+
+<Note>
+  If inbound calls do not reach Vapi, verify that the credential includes the
+  numeric Twilio signaling networks for every origination edge you configured.
+  Adding only the Twilio termination hostname enables outbound routing but does
+  not allowlist inbound SIP traffic.
+</Note>

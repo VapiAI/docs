@@ -1,209 +1,306 @@
-# Vapi Workflows → Squads Migration Guide
+# Task: migrate a Vapi Workflow to a Squad
 
-A self-contained reference for migrating a Vapi **Workflow** to a **Squad** before Workflows is retired on **August 18, 2026**.
+You are migrating a Vapi **Workflow** (a graph of nodes and edges) into a **Squad** (a set of specialized assistants that hand off to each other). This file is the complete spec: input schema, output schema, the transform procedure, and a worked example. Produce a valid Squad config and the assistant configs it references.
 
-**How to use this file:** Attach it to an AI coding assistant (Claude Code, Composer, Cursor, or any LLM) as context, along with your existing workflow's configuration (the workflow JSON, or a description of its nodes and edges). Ask the assistant to draft the equivalent Squad. The mapping table, steps, and rules below give the model everything it needs to produce a correct, focused Squad without re-reading the docs site.
+> **Why this migration is needed:** Vapi Workflows are retired on **August 18, 2026**. From **August 19, 2026** onward, existing workflows stop running. Squads are the replacement.
 
-**Deadline:** Workflows stop running on **August 18, 2026**. From **August 19, 2026** onward, existing workflows will no longer run. Migrate before then to avoid disruption.
-
-**Canonical web version:** https://docs.vapi.ai/workflows/legacy-migration
+**How a human should use this file:** paste it into your AI coding assistant (Claude Code, Cursor, Composer, or any LLM) together with your workflow's JSON (`GET https://api.vapi.ai/workflow/{id}`), and ask it to produce the equivalent Squad. The assistant has everything it needs below.
 
 ---
 
-## Table of contents
+## Inputs you will be given
 
-1. [What's changing](#1-whats-changing)
-2. [Mental model](#2-mental-model)
-3. [Concept mapping (Workflows → Squads)](#3-concept-mapping-workflows--squads)
-4. [Rules an agent should follow](#4-rules-an-agent-should-follow)
-5. [Migration steps](#5-migration-steps)
-6. [Squad configuration reference](#6-squad-configuration-reference)
-7. [Variable extraction](#7-variable-extraction)
-8. [Validation checklist](#8-validation-checklist)
-9. [FAQs](#9-faqs)
-10. [Resources](#10-resources)
+A Workflow object. Relevant shape:
+
+```jsonc
+{
+  "name": "string",
+  "nodes": [
+    {
+      "id": "string",
+      "type": "conversation | gather | apiRequest | transferCall | endCall | hangup",
+      "firstMessage": "string?",        // spoken on entering the node
+      "systemPrompt": "string?",        // node instructions (may contain {{variables}})
+      "extractVariables": [             // variables captured at this node
+        { "name": "string", "type": "string | number | boolean", "description": "string" }
+      ],
+      "isGlobal": "boolean?",           // global node: reachable from anywhere
+      "condition": "string?",           // entry condition for a global node
+      "destination": "string?",         // transferCall: phone number
+      "transferPlan": { "message": "string" }  // transferCall only
+    }
+  ],
+  "edges": [
+    { "from": "nodeId", "to": "nodeId", "condition": "string?" }  // no condition = automatic
+  ]
+}
+```
+
+## Output you must produce
+
+A Squad plus the assistants it references. Squad shape:
+
+```jsonc
+{
+  "squad": {
+    "members": [
+      { "assistantId": "string" },              // a saved assistant, OR
+      { "assistant": { /* transient assistant */ } }  // an inline assistant
+    ],
+    "memberOverrides": { /* settings applied to ALL members, e.g. shared voice */ }
+  }
+}
+```
+
+- **The first member is the entry point** (equivalent to the workflow's Start Node).
+- `memberOverrides` overrides **all** members (use for squad-wide settings like one voice). To override a **single** member, put `assistantOverrides` on that member.
+
+Assistant shape (each member). The node's `systemPrompt` becomes `model.messages[0].content`; handoff tools live in `model.tools`:
+
+```jsonc
+{
+  "name": "string",
+  "firstMessage": "string?",
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [ { "role": "system", "content": "the assistant's instructions" } ],
+    "tools": [ /* handoff tools, transferCall tools, apiRequest/custom tools */ ]
+  }
+}
+```
+
+Handoff tool shape (this is how an edge is represented):
+
+```jsonc
+{
+  "type": "handoff",
+  "destinations": [
+    {
+      "type": "assistant",
+      "assistantName": "string",        // or "assistantId"
+      "description": "when to hand off here — this is the edge condition, in plain language",
+      "contextEngineeringPlan": { "type": "all" },   // or lastNMessages + maxMessages, etc.
+      "variableExtractionPlan": {        // only if data must cross to the next assistant
+        "schema": { "type": "object", "properties": { /* ... */ }, "required": [ /* ... */ ] }
+      }
+    }
+  ]
+}
+```
 
 ---
 
-## 1. What's changing
+## Transform procedure
 
-- Workflows will be retired by **August 18, 2026**. From **August 19, 2026** onward, existing workflows will no longer run.
-- Workflows are no longer recommended for new builds. Use **Assistants** for most cases, or **Squads** for multi-assistant setups.
-- **Squads** is the recommended replacement for Workflows.
-- If you are no longer using Workflows, no action is required.
+Run these in order.
 
-**Why the change:** current AI systems aren't reliable as fully autonomous graph-walking agents — they struggle to simultaneously hold the current node's instructions and reason about every possible next step and its trigger conditions. The Squads pattern (specialized assistants that hand off to each other) has consistently produced better results.
+1. **Parse the graph.** Build the node list, the adjacency from `edges`, and note every `extractVariables` and where each variable is referenced (`{{name}}`) downstream.
 
----
+2. **Group nodes into stages, then collapse stages into assistants — minimize the count.** Do **not** map one node to one assistant. Walk each linear (non-branching, one-directional) chain of `conversation`/`gather` nodes and merge it into a **single** assistant whose system prompt covers the whole chain's behavior in order. A 6-node linear workflow is usually 1 assistant, not 6.
 
-## 2. Mental model
+3. **Split only at real boundaries.** Create a separate assistant only where there is a clear functional boundary (different job, different tools) **and** the conversation flows one way into it. If two stages would hand off back and forth repeatedly within one call, **keep them in one assistant** — cyclical handoffs add latency and cause hallucinations.
+   - Good split (one-directional): `triage → voicemail → SDR`.
+   - Bad split (consolidate): `SDR ↔ FAQ` that bounces back and forth.
 
-Instead of a visual graph of nodes and edges, a Squad is a set of specialized **assistants** that **hand off** to each other during one continuous conversation. Each assistant owns one focused part of the conversation, with clear handoff conditions in between. Conversation context is preserved across handoffs.
+4. **Turn each retained edge into a handoff tool** on the source assistant. The edge's `condition` becomes the destination's `description` (plain language). An edge with no condition = automatic progression; if it crosses an assistant boundary, still make a handoff with a description like "after collecting X". Multiple outgoing edges from one node → one handoff tool with multiple `destinations`.
 
----
+5. **Map `extractVariables`:**
+   - If the variable is only used **within the same assistant**, you do **not** need a `variableExtractionPlan` — it's already in that assistant's context. Just reference `{{name}}` in the prompt.
+   - If the variable is referenced in a **different** assistant, add a `variableExtractionPlan.schema` to the handoff destination(s) that cross that boundary, so the value is passed across. Access it downstream as `{{name}}`.
+   - A variable used only to *choose a branch* doesn't need extraction — that decision is encoded in which destination the model picks.
 
-## 3. Concept mapping (Workflows → Squads)
+6. **Map the remaining node types:**
+   - `apiRequest` → an apiRequest/custom tool on the assistant that owns that stage.
+   - `transferCall` → a transferCall tool on the relevant assistant (`destination` = phone number, `transferPlan.message` carried over).
+   - `endCall` / `hangup` → fold "end the call" into the terminal assistant's prompt (no separate member needed).
+   - **Global node** (`isGlobal: true`) → give the relevant assistant(s) a handoff/transfer whose `description` is the node's `condition` (e.g. "caller asks to speak to a human"). It applies from anywhere that assistant is active.
 
-| Workflows | Squads |
+7. **Assemble the Squad.** Put the entry assistant first in `members`. Use `assistantName` references between members (or `assistantId` for saved assistants). Add `memberOverrides` for any setting that should be identical across all members (e.g. voice).
+
+8. **Validate** against the checklist at the bottom.
+
+### Node → Squad construct (quick reference)
+
+| Workflow | Squad |
 | --- | --- |
-| Conversation Node | Squad member (assistant with its own prompt, voice, model, and tools) |
-| Edge condition | Handoff tool with a description of when to transfer |
-| Global Node | Assistant with a broad handoff condition (e.g. "user wants to speak to a human" or "user says hotword") |
-| Extract Variables | Variable extraction in the Handoff tool, passed across the full Squad |
-| API Request Node | Custom or API Request tool attached to a Squad member |
-| Transfer Call Node | Transfer call tool attached to a Squad member |
-| Start Node | First member in the Squad `members` array |
+| `conversation` / `gather` node | Folded into an assistant's system prompt (group linear chains into one assistant) |
+| Edge `condition` | `destination.description` on a handoff tool |
+| Edge with no condition (crossing a boundary) | Handoff with a "when done with X" description |
+| `extractVariables` used downstream in another assistant | `variableExtractionPlan.schema` on the crossing handoff |
+| `extractVariables` used only locally | Just `{{name}}` in the same assistant's prompt — no plan needed |
+| `apiRequest` node | apiRequest/custom tool on the owning assistant |
+| `transferCall` node | transferCall tool on the relevant assistant |
+| `endCall` / `hangup` node | "end the call" instruction in the terminal assistant's prompt |
+| Global node (`isGlobal`) | A broad-condition handoff/transfer on the relevant assistant(s) |
+| Start node | First member of `members` |
 
 ---
 
-## 4. Rules an agent should follow
+## Worked example
 
-These are the most important judgment rules — apply them before generating any Squad:
+### Input workflow
 
-1. **Do NOT do a 1:1 node-to-assistant mapping.** Workflows often have dozens of nodes (e.g. IVR menus). A 1:1 migration creates too many assistants and is hard to maintain.
-2. **Bundle as much as possible into a single assistant.** Squads work best for **linear, unidirectional** flows. Start with one assistant and only split when there is a clear functional boundary.
-3. **Avoid cyclical handoffs.** If two stages would hand off back and forth repeatedly within one conversation, consolidate them into a single assistant. Frequent cyclical handoffs add latency and can introduce hallucinations.
-   - Good fit for separate assistants: a predictable one-directional path like `triage → voicemail → SDR`.
-   - Bad fit (consolidate instead): a pair like `SDR ↔ FAQ` that would bounce back and forth many times in a single call.
-4. **Keep each assistant focused.** One clear responsibility, a short prompt, 1–3 goals maximum. Attach only the tools that stage needs.
-5. **One handoff tool per transition.** Replace each edge with a handoff tool on the source assistant, with a plain-language description of when to hand off.
-6. **The first member is the entry point** (equivalent to the Start Node).
+```json
+{
+  "name": "Acme Dental Front Desk",
+  "nodes": [
+    { "id": "greet", "type": "conversation", "firstMessage": "Hi! Thanks for calling Acme Dental. How can I help?", "systemPrompt": "Greet the caller and ask what they need." },
+    { "id": "collect", "type": "conversation", "systemPrompt": "Ask for the caller's full name and whether they're calling about an appointment or a billing question.",
+      "extractVariables": [
+        { "name": "patientName", "type": "string", "description": "the caller's full name" },
+        { "name": "intent", "type": "string", "description": "appointment or billing" }
+      ] },
+    { "id": "schedule", "type": "conversation", "systemPrompt": "Ask {{patientName}} for a preferred date/time, confirm the appointment, and mention a text confirmation." },
+    { "id": "billing", "type": "conversation", "systemPrompt": "Answer {{patientName}}'s billing question." },
+    { "id": "bye", "type": "endCall", "firstMessage": "You're all set, have a great day!" }
+  ],
+  "edges": [
+    { "from": "greet", "to": "collect", "condition": "caller states what they need" },
+    { "from": "collect", "to": "schedule", "condition": "caller wants an appointment" },
+    { "from": "collect", "to": "billing", "condition": "caller has a billing question" },
+    { "from": "schedule", "to": "bye" },
+    { "from": "billing", "to": "bye" }
+  ]
+}
+```
 
----
+### Transform decisions
 
-## 5. Migration steps
+- `greet` + `collect` are sequential, same job (intake) → merge into one **Intake** assistant.
+- `collect` branches to two stages (`schedule`, `billing`) with different jobs and one-directional flow → keep **Scheduling** and **Billing** as separate members. The two branch edges become one handoff tool with two destinations; the edge conditions become the destination descriptions.
+- `bye` is a trivial terminal `endCall` → fold "end the call" into the Scheduling and Billing prompts. No separate member.
+- `patientName` is captured in Intake but used in Scheduling/Billing (a different assistant) → pass it via `variableExtractionPlan` on both handoff destinations; reference `{{patientName}}` downstream.
+- `intent` only chooses the branch → no extraction needed; it's encoded in which destination the model picks.
+- One shared voice across all members → `memberOverrides.voice`.
 
-### Step 1 — Map the existing workflow
-
-Document what the workflow does before building anything:
-
-- List each node and its purpose.
-- Note the condition on each edge.
-- Identify every extracted variable and where it's used downstream.
-- Note any API calls or transfers to phone numbers.
-
-### Step 2 — Decide on assistants (consolidate aggressively)
-
-Apply the rules in section 4. Group related nodes into a small number of well-defined **stages** (e.g. `intake → triage → scheduling → human handoff`), then create **one assistant per stage**. Bundle stages that would hand off cyclically into one assistant.
-
-For each assistant: give it a clear responsibility, a focused prompt (1–3 goals), and only the tools it needs (API requests, transfers, etc.).
-
-Stage-based example: https://docs.vapi.ai/squads/examples/clinic-triage-scheduling-handoff-tool
-
-### Step 3 — Add handoff tools (replace edges)
-
-For each transition between stages, add a [Handoff tool](https://docs.vapi.ai/squads/handoff) on the source assistant:
-
-- Set the destination to the next assistant (or a phone number for transfers).
-- Write a clear description of **when** to hand off — this replaces the edge condition.
-- For AI-based conditions (e.g. "user wants to talk about pricing"), describe the condition in plain language.
-- For logical conditions (e.g. `{{ customer_tier == "VIP" }}`), extract the value first (see Step 4), then reference it in the handoff tool description.
-
-### Step 4 — Handle variable extraction
-
-Configure variable extraction in each handoff so key data passes to the next assistant. Variables extracted mid-conversation are available across the full Squad. See section 7 for the important caveats.
-
-### Step 5 — Assemble the Squad
-
-- The first member in the `members` array is the entry point.
-- Use `memberOverrides` to standardize settings across **all** members (e.g. the same voice throughout). To override a **single** member, use `assistantOverrides` on that member.
-
-See section 6 for config.
-
-### Step 6 — Test
-
-Use the built-in calling feature to test all conversation paths before going live. Check:
-
-- Handoff conditions trigger at the right time.
-- Variables pass correctly between assistants.
-- Edge cases: confused users, unexpected inputs, human-escalation paths.
-
----
-
-## 6. Squad configuration reference
-
-Minimal Squad with a squad-wide voice override (`memberOverrides`):
+### Output squad
 
 ```json
 {
   "squad": {
     "members": [
-      { "assistantId": "your-first-assistant-id" },
-      { "assistantId": "your-second-assistant-id" }
+      {
+        "assistant": {
+          "name": "Intake",
+          "firstMessage": "Hi! Thanks for calling Acme Dental. How can I help?",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [
+              { "role": "system", "content": "[Identity]\nYou are the intake agent for Acme Dental.\n\n[Task]\n1. Ask for the caller's full name.\n2. Ask whether they're calling about scheduling an appointment or a billing question.\n3. When their intent is clear, hand off: use the Scheduling destination for appointments, or the Billing destination for billing questions. Do not mention the handoff to the caller." }
+            ],
+            "tools": [
+              {
+                "type": "handoff",
+                "destinations": [
+                  {
+                    "type": "assistant",
+                    "assistantName": "Scheduling",
+                    "description": "caller wants to book, reschedule, or cancel an appointment",
+                    "contextEngineeringPlan": { "type": "all" },
+                    "variableExtractionPlan": {
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "patientName": { "type": "string", "description": "the caller's full name" }
+                        },
+                        "required": ["patientName"]
+                      }
+                    }
+                  },
+                  {
+                    "type": "assistant",
+                    "assistantName": "Billing",
+                    "description": "caller has a question about an invoice, payment, or refund",
+                    "contextEngineeringPlan": { "type": "all" },
+                    "variableExtractionPlan": {
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "patientName": { "type": "string", "description": "the caller's full name" }
+                        },
+                        "required": ["patientName"]
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "assistant": {
+          "name": "Scheduling",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [
+              { "role": "system", "content": "[Identity]\nYou are the scheduling agent for Acme Dental. The caller's name is {{patientName}}.\n\n[Task]\n1. Greet {{patientName}} by name.\n2. Ask for their preferred date and time and confirm the appointment.\n3. Tell them they'll receive a text confirmation, then end the call." }
+            ]
+          }
+        }
+      },
+      {
+        "assistant": {
+          "name": "Billing",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [
+              { "role": "system", "content": "[Identity]\nYou are the billing agent for Acme Dental. The caller's name is {{patientName}}.\n\n[Task]\n1. Greet {{patientName}} by name.\n2. Answer their billing question, then end the call." }
+            ]
+          }
+        }
+      }
     ],
     "memberOverrides": {
-      "voice": {
-        "provider": "vapi",
-        "version": 2,
-        "voiceId": "Elliot"
-      }
+      "voice": { "provider": "vapi", "version": 2, "voiceId": "Elliot" }
     }
   }
 }
 ```
 
-- `members` — ordered array; index 0 is the entry point (Start Node equivalent). Each member is either `{ "assistantId": "..." }` (saved assistant) or `{ "assistant": { ... } }` (transient, inline assistant).
-- `memberOverrides` — overrides applied to **all** members without modifying the underlying assistants. Use for squad-wide settings like voice.
-- `assistantOverrides` — set **on an individual member** to override just that one assistant.
-
-Using Workflows via API? Replace `workflowId` with `squadId` in your call configuration. Squads API reference: https://docs.vapi.ai/api-reference/squads/create
+Five nodes with a branch collapsed to **three** members: one intake, two one-directional destinations, the terminal `endCall` folded into prompts, and the cross-boundary variable passed via extraction.
 
 ---
 
-## 7. Variable extraction
+## Variable extraction reference
 
-Configure variable extraction in each [Handoff tool](https://docs.vapi.ai/squads/handoff#variable-extraction) to pass data to the next assistant.
+- Put `variableExtractionPlan.schema` (a JSON Schema object) on the handoff **destination** when data must cross to the next assistant. Top-level properties become globals: schema property `patientName` → `{{patientName}}` (not `{{root.patientName}}`).
+- Access patterns: nested object `{{name.first}}`; array `{{ids[0]}}`; array of objects `{{people[0].name}}`.
+- `aliases` derive new variables with Liquid: `{ "key": "fullName", "value": "{{firstName}} {{lastName}}" }`. Alias keys: start with a letter, letters/numbers/underscores, ≤40 chars.
+- **Extraction is best-effort, not deterministic.** It runs an LLM against the transcript at handoff time. If a value isn't clearly present, or a transient error occurs, it can return empty and the handoff still proceeds. For business-critical or strictly deterministic values, capture them via a tool/API response instead of transcript extraction, and test that they're reliably populated.
+- For OpenAI models, prefer one handoff tool per destination ("multiple tools" pattern); for Anthropic models, prefer one handoff tool with multiple destinations.
 
-**How it differs from Workflows:** Squads extract variables with an LLM at handoff time (a schema-driven extraction against the conversation transcript), then pass them to the next assistant. This is **best-effort, not deterministic**:
+## When to stop and ask the human
 
-- If a value isn't clearly present in the conversation, or a transient model error occurs, extraction can return empty — and the handoff still proceeds.
-- Define clear extraction schemas, and **test that business-critical variables are reliably captured** before depending on them downstream.
-- For strictly deterministic values, capture them via a tool or API response rather than relying on transcript extraction.
+Flag these instead of guessing:
 
-Control what conversation context carries across a handoff with context engineering: https://docs.vapi.ai/squads/handoff#context-engineering
+- The workflow uses logical/deterministic edge conditions (e.g. `{{ tier == "VIP" }}`) that need exact routing — confirm whether to extract the value first and reference it, or capture it deterministically via a tool.
+- A business-critical variable must never be missing — confirm a deterministic capture method.
+- Two stages look like they hand off cyclically — confirm consolidation vs. keeping them split.
+- Phone-transfer destinations, API endpoints, or auth headers aren't present in the input — ask for them.
 
----
+## Output requirements / validation
 
-## 8. Validation checklist
+- [ ] The first `members` entry is the workflow's start.
+- [ ] Assistant count is minimized; linear chains are merged; no cyclical handoff pair is left split.
+- [ ] Every retained edge is represented by a handoff destination whose `description` captures the edge condition.
+- [ ] Every variable referenced across an assistant boundary has a `variableExtractionPlan` on the crossing handoff; locally-used variables don't.
+- [ ] `apiRequest`, `transferCall`, and tool nodes are attached to the correct assistant.
+- [ ] `endCall`/`hangup` behavior is folded into terminal prompts.
+- [ ] All referenced `assistantName`/`assistantId` values resolve to a member.
+- [ ] JSON is valid and matches the shapes above.
+- [ ] If migrating an API integration, the caller sends `squadId` instead of `workflowId`.
 
-Before going live, verify:
+## Resources (canonical docs)
 
-- [ ] Each Conversation Node's logic is captured (stages consolidated where appropriate).
-- [ ] Assistants are kept to the minimum needed; no cyclical handoff pairs remain split.
-- [ ] Every handoff condition triggers at the right time.
-- [ ] Variable extraction passes the right data between assistants.
-- [ ] Tools, API requests, and transfers are attached to the correct assistant.
-- [ ] Business-critical variables are reliably extracted (tested, not assumed).
-- [ ] Test calls cover **all** conversation paths, including edge cases.
-- [ ] API integrations send `squadId` instead of `workflowId`.
-
----
-
-## 9. FAQs
-
-**Why is Workflows being retired?** Squads consistently produces better results for customers. Rather than maintaining two parallel products, Vapi is going all-in on Squads.
-
-**Will my workflows stop working immediately on the deprecation date?** Yes. After August 18, 2026, existing workflows will no longer run. Complete your migration before then.
-
-**Do I need to rebuild everything from scratch?** No — the concepts map closely. Each Conversation Node becomes a Squad member and each edge becomes a Handoff tool. The main work is rewriting prompts to be more focused and configuring handoff tools with clear transfer conditions.
-
-**What if I need deterministic routing?** For strict logical conditions (e.g. `{{ customer_tier == "VIP" }}`), extract the relevant variable first and reference it in the handoff tool description. For edge cases, contact support@vapi.ai.
-
-**What happens to my workflow data?** Historical call data remains accessible in your call logs. Workflows-specific post-call data (nodes traversed, extracted variables from Workflow runs) remains viewable for existing calls.
-
-**I'm using Workflows via API — do I need to change my integration?** Yes. Switch from passing `workflowId` to passing `squadId`. See https://docs.vapi.ai/api-reference/squads/create
-
-**Can I get help migrating?** Contact support@vapi.ai. High-volume users can arrange a walkthrough. Vapi also added a **Composer skill** that auto-drafts a Squad from your existing workflow — open Composer in your dashboard and ask "help me migrate my workflows to squads." It's a best-effort starting point; always review and test before going live.
-
----
-
-## 10. Resources
-
-- Migration guide (web): https://docs.vapi.ai/workflows/legacy-migration
+- Migration guide: https://docs.vapi.ai/workflows/legacy-migration
 - Squads overview: https://docs.vapi.ai/squads
-- Squads quickstart: https://docs.vapi.ai/squads-example
-- Handoff tool: https://docs.vapi.ai/squads/handoff
+- Handoff tool (full schema): https://docs.vapi.ai/squads/handoff
 - Variable extraction: https://docs.vapi.ai/squads/handoff#variable-extraction
 - Context engineering: https://docs.vapi.ai/squads/handoff#context-engineering
 - Squads API reference: https://docs.vapi.ai/api-reference/squads/create
-- Clinic triage & scheduling example: https://docs.vapi.ai/squads/examples/clinic-triage-scheduling-handoff-tool
+- Worked stage-based example: https://docs.vapi.ai/squads/examples/clinic-triage-scheduling-handoff-tool
