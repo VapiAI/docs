@@ -1,46 +1,352 @@
 ---
 title: Static IP addresses
-subtitle: Whitelist Vapi IP addresses 
+subtitle: Configure Vapi to send requests from a fixed IP range for firewall whitelisting
 slug: security-and-privacy/static-ip-addresses
 ---
 
-
-## Introduction to Vapi static IP addresses
+## Overview
 
 Vapi supports static IP addresses for outbound HTTP requests. When enabled, all HTTP requests from Vapi to your server will originate from a fixed set of IP addresses, allowing you to configure strict firewall rules and network security policies.
 
-## Why use static IP addresses
+**Static IP addressing allows you to:**
 
-Static IP addresses provide an additional layer of security for your infrastructure by allowing you to:
+- Whitelist specific IPs in your firewall configuration
+- Meet enterprise security and compliance requirements
+- Audit and verify that requests genuinely originate from Vapi
+- Integrate with corporate networks that restrict inbound traffic
 
-- **Control network access** - Restrict incoming traffic to only trusted sources
-- **Simplify firewall rules** - Define precise IP based access controls
-- **Meet compliance requirements** - Satisfy security policies that mandate IP whitelisting
-- **Audit traffic sources** - Verify that requests are genuinely from Vapi's infrastructure
+<Info>
+Static IP addresses apply to **outbound HTTP requests** from Vapi to your servers, including webhook events, tool calls, and custom transcriber requests.
+</Info>
 
-## Vapi's static IP addresses
+## Vapi's static IP range
 
-When static IP addressing is enabled, all webhook requests from Vapi will originate from the following CIDR block:
+When static IP addressing is enabled, all requests from Vapi will originate from the following CIDR block:
 
-- `167.150.224.0/23`
+```txt title="Static IP CIDR Range"
+167.150.224.0/23
+```
+
+This CIDR range includes IP addresses from `167.150.224.0` to `167.150.225.255` (512 addresses total).
+
+<Tip>
+Add this CIDR range to your firewall's allowlist to permit traffic from Vapi's static IP infrastructure.
+</Tip>
 
 ## Enabling static IP addresses
 
-You can enable static IP addressing through the server object
+You can enable static IP addressing through the `server` configuration object. Set `staticIpAddressesEnabled` to `true` in any server configuration.
 
-### Example
+### Assistant server configuration
 
-```json
+Enable static IPs for webhook requests sent to your assistant's server URL:
+
+<CodeBlocks>
+```json title="API Request"
 {
-  "serverUrl": "https://your-server.example.com/webhook",
-  "staticIpAddressesEnabled": true
+  "name": "Support Assistant",
+  "server": {
+    "url": "https://api.yourcompany.com/webhook",
+    "staticIpAddressesEnabled": true
+  },
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4"
+  }
 }
 ```
 
+```typescript title="TypeScript SDK"
+import { VapiClient } from "@vapi-ai/server-sdk";
+
+const client = new VapiClient({ token: process.env.VAPI_API_KEY });
+
+const assistant = await client.assistants.create({
+  name: "Support Assistant",
+  server: {
+    url: "https://api.yourcompany.com/webhook",
+    staticIpAddressesEnabled: true
+  },
+  model: {
+    provider: "openai",
+    model: "gpt-4"
+  }
+});
+```
+
+```python title="Python SDK"
+from vapi import Vapi
+import os
+
+client = Vapi(token=os.getenv("VAPI_API_KEY"))
+
+assistant = client.assistants.create(
+    name="Support Assistant",
+    server={
+        "url": "https://api.yourcompany.com/webhook",
+        "staticIpAddressesEnabled": True
+    },
+    model={
+        "provider": "openai",
+        "model": "gpt-4"
+    }
+)
+```
+
+```bash title="cURL"
+curl -X POST "https://api.vapi.ai/assistant" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Support Assistant",
+    "server": {
+      "url": "https://api.yourcompany.com/webhook",
+      "staticIpAddressesEnabled": true
+    },
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4"
+    }
+  }'
+```
+</CodeBlocks>
+
+### Phone number server configuration
+
+Enable static IPs for incoming call webhooks on a phone number:
+
+<CodeBlocks>
+```json title="API Request"
+{
+  "number": "+14155551234",
+  "server": {
+    "url": "https://api.yourcompany.com/calls",
+    "staticIpAddressesEnabled": true
+  }
+}
+```
+
+```typescript title="TypeScript SDK"
+const phoneNumber = await client.phoneNumbers.update("phone-number-id", {
+  server: {
+    url: "https://api.yourcompany.com/calls",
+    staticIpAddressesEnabled: true
+  }
+});
+```
+
+```python title="Python SDK"
+phone_number = client.phone_numbers.update(
+    "phone-number-id",
+    server={
+        "url": "https://api.yourcompany.com/calls",
+        "staticIpAddressesEnabled": True
+    }
+)
+```
+</CodeBlocks>
+
+### Tool server configuration
+
+Enable static IPs for custom tool endpoints:
+
+<CodeBlocks>
+```json title="API Request"
+{
+  "type": "function",
+  "function": {
+    "name": "get_customer_data",
+    "description": "Retrieve customer information from CRM",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" }
+      },
+      "required": ["customerId"]
+    }
+  },
+  "server": {
+    "url": "https://api.yourcompany.com/crm/customer",
+    "staticIpAddressesEnabled": true
+  }
+}
+```
+
+```typescript title="TypeScript SDK"
+const tool = await client.tools.create({
+  type: "function",
+  function: {
+    name: "get_customer_data",
+    description: "Retrieve customer information from CRM",
+    parameters: {
+      type: "object",
+      properties: {
+        customerId: { type: "string" }
+      },
+      required: ["customerId"]
+    }
+  },
+  server: {
+    url: "https://api.yourcompany.com/crm/customer",
+    staticIpAddressesEnabled: true
+  }
+});
+```
+
+```python title="Python SDK"
+tool = client.tools.create(
+    type="function",
+    function={
+        "name": "get_customer_data",
+        "description": "Retrieve customer information from CRM",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "customerId": {"type": "string"}
+            },
+            "required": ["customerId"]
+        }
+    },
+    server={
+        "url": "https://api.yourcompany.com/crm/customer",
+        "staticIpAddressesEnabled": True
+    }
+)
+```
+</CodeBlocks>
+
+## Firewall configuration
+
+To allow traffic from Vapi's static IP range, add the CIDR block to your firewall's allowlist.
+
+### Common firewall configurations
+
+<Tabs>
+  <Tab title="AWS Security Groups">
+    Add an inbound rule to your security group:
+
+    ```txt
+    Type: HTTPS
+    Protocol: TCP
+    Port: 443
+    Source: 167.150.224.0/23
+    Description: Vapi Static IPs
+    ```
+  </Tab>
+  <Tab title="GCP Firewall Rules">
+    Create a firewall rule:
+
+    ```bash
+    gcloud compute firewall-rules create allow-vapi-static-ips \
+      --direction=INGRESS \
+      --priority=1000 \
+      --network=your-vpc-network \
+      --action=ALLOW \
+      --rules=tcp:443 \
+      --source-ranges=167.150.224.0/23 \
+      --description="Allow Vapi Static IP traffic"
+    ```
+  </Tab>
+  <Tab title="Azure NSG">
+    Add an inbound security rule:
+
+    ```txt
+    Name: AllowVapiStaticIPs
+    Priority: 100
+    Source: 167.150.224.0/23
+    Destination: Any
+    Port: 443
+    Protocol: TCP
+    Action: Allow
+    ```
+  </Tab>
+  <Tab title="nginx">
+    Configure IP-based access control:
+
+    ```nginx
+    # Allow Vapi static IP range
+    allow 167.150.224.0/23;
+
+    # Deny all other traffic (optional)
+    deny all;
+    ```
+  </Tab>
+</Tabs>
+
 <Warning>
-Always test static IP configuration in a staging environment before deploying to production to avoid service disruptions.
+Always test your firewall configuration in a staging environment before deploying to production to avoid service disruptions.
 </Warning>
 
-## Need help?
+## Use cases
 
-If you have questions about static IP addressing, contact our support team at support@vapi.ai. 
+### Enterprise security requirements
+
+Many enterprise environments require strict network access controls. Static IP addresses enable you to:
+
+- Comply with corporate security policies that mandate IP whitelisting
+- Integrate with on-premise systems behind corporate firewalls
+- Meet regulatory requirements for controlled network access
+
+### Audit and compliance
+
+Static IPs provide a verifiable source for request origin:
+
+- Log and audit all incoming requests from the known IP range
+- Verify that webhook requests genuinely originate from Vapi
+- Support compliance audits with clear network traffic documentation
+
+### Multi-layer security
+
+Combine static IP whitelisting with other security measures:
+
+- **IP whitelisting** + **[Server authentication](/server-url/server-authentication)** for defense in depth
+- **IP whitelisting** + **TLS/HTTPS** for encrypted, verified traffic
+- **IP whitelisting** + **Request signing** for tamper-proof webhooks
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="What requests use static IP addresses?">
+    When enabled, static IP addresses apply to all outbound HTTP requests from Vapi to your servers, including:
+
+    - Webhook events (call status, transcripts, end-of-call reports)
+    - Custom tool calls
+    - Assistant request callbacks
+    - Custom transcriber requests
+
+    Static IPs do **not** apply to:
+    - SIP/RTP media traffic
+    - WebSocket connections initiated by your client SDKs
+  </Accordion>
+
+  <Accordion title="Is there additional cost for static IP addresses?">
+    Contact our sales team for pricing information about static IP addresses. This feature may be included in certain enterprise plans.
+  </Accordion>
+
+  <Accordion title="Can I use static IPs with existing authentication?">
+    Yes. Static IP addresses work alongside all authentication methods:
+
+    - Bearer token authentication
+    - OAuth 2.0
+    - HMAC signatures
+    - Custom headers
+
+    We recommend using static IPs **in addition to** authentication for defense in depth.
+  </Accordion>
+
+  <Accordion title="What happens if I enable static IPs for some configurations but not others?">
+    Static IP addressing is configured per server object. You can enable it for specific assistants, phone numbers, or tools while leaving others on dynamic IPs. Each configuration is independent.
+  </Accordion>
+
+  <Accordion title="Will the static IP range change?">
+    Vapi's static IP range (`167.150.224.0/23`) is stable and changes are rare. If changes are necessary, we will provide advance notice to affected customers. Subscribe to our status page for infrastructure updates.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+Now that you've configured static IP addresses:
+
+- **[Server authentication](/server-url/server-authentication):** Add authentication to your webhook endpoints
+- **[Server events](/server-url/events):** Learn about the webhook events Vapi sends
+- **[Proxy server guide](/security-and-privacy/proxy-server):** Route requests through your own proxy
