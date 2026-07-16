@@ -1,0 +1,435 @@
+---
+title: "Building a Vendor Interview Platform with Vapi"
+description: "A comprehensive technical guide for IDC's vendor interview platform — covering architecture, voice pipeline tuning, silence handling, testing, scaling, and EU compliance."
+---
+
+# Building a Vendor Interview Platform with Vapi
+
+> **Context**: This guide was prepared for IDC (International Data Corporation) to support their vendor interview platform project. It addresses architecture patterns, voice configuration, silence handling, quality assurance, scaling, EU data residency, and web-based session delivery.
+
+---
+
+## 1. Architecture Pattern — Transient Assistants & Dynamic Config
+
+For a platform that interviews vendors across many product categories, **transient (inline) assistant configuration** is the recommended pattern. Instead of creating and managing persistent assistant resources, you pass the full assistant config at call time.
+
+### Web SDK — Inline Config
+
+```javascript
+const vapi = new Vapi('your-public-key');
+
+vapi.start({
+  model: {
+    provider: "openai",
+    model: "gpt-4.1",
+    messages: [{
+      role: "system",
+      content: vendorSpecificPrompt
+    }]
+  },
+  voice: {
+    provider: "11labs",
+    voiceId: "...",
+    model: "eleven_turbo_v2"
+  },
+  firstMessage: "Hi! Thanks for joining this interview about [Vendor]..."
+});
+```
+
+Every field — system prompt, voice, transcriber, tools — is set per-call. Nothing is stored as a persistent assistant resource on Vapi's side.
+
+### Server URL — Dynamic Injection
+
+For server-side control, use the **Server URL webhook pattern**. When a call is initiated, Vapi sends an `assistant-request` event to your server URL. Your server responds with the full assistant configuration:
+
+```
+Vapi ──▶ POST {your-server-url}
+         { "message": { "type": "assistant-request", ... } }
+
+Your Server ──▶ responds with:
+         { "assistant": { model: {...}, voice: {...}, ... } }
+```
+
+This lets you dynamically select prompts, voices, and tools based on the vendor, category, or respondent metadata — all without pre-creating assistants.
+
+### Scheduled Outbound Calls (PSTN Only)
+
+If interviewing via phone, you can schedule calls in advance:
+
+```json
+{
+  "assistantId": "...",
+  "phoneNumberId": "...",
+  "customer": { "number": "+11234567890" },
+  "schedulePlan": {
+    "earliestAt": "2025-06-15T14:00:00Z",
+    "latestAt": "2025-06-15T15:00:00Z"
+  }
+}
+```
+
+> ⚠️ **`schedulePlan` is PSTN-only** — it is not available for Web SDK sessions. For web-based scheduling, handle scheduling in your own application layer and initiate the `vapi.start()` call when the respondent joins.
+
+### Squads (Multi-Section Interviews)
+
+For interviews with distinct sections (e.g., "Product Capabilities" → "Pricing" → "Support"), consider **Squads**:
+
+- Each squad member is a specialized assistant config for one section
+- Handoffs between members happen automatically based on conditions you define
+- **Recommended**: 2–5 members per squad. Each handoff adds ~1–2s latency
+- If you have more than 5 sections, consider consolidating into fewer members with broader prompts
+
+---
+
+## 2. Voice Pipeline Tuning — LLM, TTS & STT
+
+### Recommended Full Config Skeleton
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4.1",
+    "temperature": 0.3,
+    "maxTokens": 500
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "<selected-voice>",
+    "model": "eleven_turbo_v2",
+    "stability": 0.6,
+    "similarityBoost": 0.75
+  },
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-3-general",
+    "language": "en",
+    "keyterms": ["SIEM", "SOAR", "XDR"]
+  },
+  "modelOutputInMessagesEnabled": true,
+  "backgroundDenoisingEnabled": true
+}
+```
+
+### LLM — GPT-4.1
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| Model | `gpt-4.1` | GPT-4o is being deprecated. Migrate to 4.1. |
+| Temperature | `0.3` | Low creativity — keeps interviews consistent and on-script |
+| Max Tokens | `500` | Keeps responses concise; increase if longer answers are needed |
+
+### TTS — ElevenLabs
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| Model | `eleven_turbo_v2` | Lowest latency ElevenLabs model |
+| Stability | `0.6` | Balances naturalness with consistency |
+| Similarity Boost | `0.75` | Keeps voice close to the selected voiceId |
+
+### STT — Deepgram Keyword Boosting
+
+Industry jargon (SIEM, SOAR, XDR, ServiceNow, etc.) is frequently mis-transcribed. Deepgram supports keyword boosting, but **the parameter name differs between models**:
+
+#### Nova-2 — `keywords` (with boost weights)
+
+```json
+{
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "keywords": ["SIEM:2", "SOAR:2", "XDR:2", "ServiceNow:3"]
+  }
+}
+```
+
+#### Nova-3 — `keyterms` (no weights)
+
+```json
+{
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-3-general",
+    "keyterms": ["SIEM", "SOAR", "XDR", "ServiceNow"]
+  }
+}
+```
+
+> ⚠️ **Critical**: Nova-2 uses `keywords` (with numeric boost values). Nova-3 uses `keyterms` (plain strings, no weights). Using the wrong parameter name will silently fail — no error, just no boosting.
+
+### Transcript Drift Prevention
+
+Enable `modelOutputInMessagesEnabled: true` to ensure the conversation history sent to the LLM uses the **exact text the model generated**, not a re-transcription of the TTS audio. This prevents "transcript drift" where small STT errors compound over a long conversation.
+
+### Background Denoising
+
+Enable `backgroundDenoisingEnabled: true` — vendor respondents may be in noisy office environments, and this significantly improves transcription accuracy.
+
+---
+
+## 3. Silence & Turn-Taking — Handling Pauses Gracefully
+
+### The Silence Timeout Race Condition
+
+> ⚠️ **Critical**: `silenceTimeoutSeconds` is **deprecated** but still active if set. If you configure both `silenceTimeoutSeconds` AND `customer.speech.timeout` hooks, they will **race against each other**, causing unpredictable behavior.
+
+**You MUST set `silenceTimeoutSeconds: null`** before using the hooks-based approach.
+
+### Recommended: Tiered Silence Hooks
+
+```json
+{
+  "silenceTimeoutSeconds": null,
+  "hooks": [
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 10,
+        "triggerMaxCount": 3,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [{
+        "type": "say",
+        "exact": "Take your time — I'm here when you're ready."
+      }]
+    },
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 20,
+        "triggerMaxCount": 3,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [{
+        "type": "say",
+        "prompt": "The user has not responded in 20s. Based on the above conversation in {{transcript}} ask the user if they need help."
+      }]
+    },
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 60,
+        "triggerMaxCount": 1,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [
+        {
+          "type": "say",
+          "exact": "It seems like you may have stepped away. I'll end the call now — feel free to rejoin anytime."
+        },
+        {
+          "type": "tool",
+          "tool": { "type": "endCall" }
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Tier | Timeout | Behavior |
+|------|---------|----------|
+| Gentle nudge | 10s | Fixed message: "Take your time..." (up to 3 times) |
+| Context-aware prompt | 20s | LLM generates a contextual follow-up using transcript (up to 3 times) |
+| Graceful exit | 60s | Announces departure and ends the call (once) |
+
+### Turn-Taking Plans
+
+Fine-tune how the assistant handles interruptions and when it starts speaking:
+
+**Stop Speaking Plan** (how the assistant reacts to interruptions):
+
+```json
+{
+  "stopSpeakingPlan": {
+    "numWords": 5,
+    "voiceSeconds": 0.3,
+    "backoffSeconds": 2.5
+  }
+}
+```
+
+- `numWords: 5` — assistant stops after detecting 5 words of interruption
+- `voiceSeconds: 0.3` — minimum voice activity to count as an interruption
+- `backoffSeconds: 2.5` — wait time before the assistant resumes speaking
+
+**Start Speaking Plan** (when the assistant begins its turn):
+
+```json
+{
+  "startSpeakingPlan": {
+    "smartEndpointingEnabled": true,
+    "waitSeconds": 0.4
+  }
+}
+```
+
+- `smartEndpointingEnabled: true` — uses ML-based endpointing instead of a fixed timer
+- `waitSeconds: 0.4` — minimum pause before the assistant starts speaking (prevents cutting off the respondent)
+
+---
+
+## 4. Testing & Quality — Vapi Eval Framework
+
+Vapi provides a built-in evaluation framework for testing voice agents without manual QA:
+
+### Simulations (E2E Voice-to-Voice)
+
+Run full voice-to-voice simulations with synthetic personas:
+
+```json
+POST /eval/simulation/run
+{
+  "simulations": [{
+    "simulation": {
+      "personality": {
+        "description": "Skeptical IT director evaluating SIEM vendors"
+      },
+      "scenario": {
+        "description": "Respondent is rushed, gives short answers, asks for clarification on question 3"
+      }
+    }
+  }],
+  "target": {
+    "assistant": { }
+  },
+  "transport": "voice",
+  "iterations": 1
+}
+```
+
+### Evals (Regression & Unit Tests)
+
+After running simulations, define **Evals** — assertions against the simulation results:
+
+- Did the assistant ask all required questions?
+- Did it handle the "I don't know" response gracefully?
+- Did it stay within the expected topic boundaries?
+- Did the silence timeout hooks fire correctly?
+
+### Structured Outputs & Boards
+
+- **Structured Outputs**: Define the expected JSON schema for extracted interview data
+- **Boards**: Visual dashboards to track eval results over time, compare across prompt versions, and monitor regression
+
+### Recommended Testing Workflow
+
+1. **Define personas** for your most common respondent types (cooperative, skeptical, rushed, verbose)
+2. **Create scenarios** that cover edge cases (silence, interruptions, off-topic tangents)
+3. **Run simulations** after every prompt or config change
+4. **Set up evals** as regression tests in your CI/CD pipeline
+5. **Monitor boards** for score trends across versions
+
+---
+
+## 5. Scaling & Monitoring
+
+### Concurrency Limits
+
+Configure maximum concurrent calls via `subscriptionLimits`:
+
+```json
+{
+  "subscriptionLimits": {
+    "maxConcurrentCalls": 50
+  }
+}
+```
+
+### Monitoring
+
+Use the **`/analytics` API** to track:
+
+- Active concurrent calls
+- Call completion rates
+- Average call duration
+- Error rates by type
+
+### Rate Limiting Best Practices
+
+- Start with conservative concurrency limits and increase gradually
+- Monitor for degraded audio quality as concurrency increases
+- Implement exponential backoff for API calls from your server
+- Use webhooks (not polling) to track call status
+
+---
+
+## 6. EU Data Residency & Compliance
+
+### EU Deployment
+
+Vapi offers a **dedicated EU region** deployment:
+
+| Resource | URL |
+|----------|-----|
+| Dashboard | `https://dashboard.eu.vapi.ai` |
+| API | `https://api.eu.vapi.ai` |
+| Region | Frankfurt, AWS `eu-central-1` |
+| API Keys | **Separate from US** — generate new keys in the EU dashboard |
+
+### Web SDK — EU Configuration
+
+```javascript
+const vapi = new Vapi("your-eu-api-key", {
+  apiUrl: "https://api.eu.vapi.ai"
+});
+```
+
+> ⚠️ EU and US environments are **completely separate**. Assistants, phone numbers, and API keys do not transfer between regions.
+
+### Zero Data Retention (ZDR) Mode
+
+Enable ZDR mode to ensure **no recordings or transcripts are stored on Vapi's infrastructure**. All data is streamed to your endpoints in real-time and not persisted.
+
+### Compliance Certifications
+
+| Certification | Status |
+|---------------|--------|
+| SOC 2 Type II | ✅ Completed |
+| DPA with EU SCCs | ✅ Available on request |
+| ISO 27001 | 🔄 Targeted Q2 2026 |
+| HIPAA BAA | ✅ Available on request |
+
+---
+
+## 7. Web-Based Session Delivery
+
+### Token-Based Session Links
+
+For web-based interviews (no phone numbers required), the session link flow is **entirely on your side**:
+
+1. Your backend generates a unique, time-limited token for each interview session
+2. You build a URL like `https://your-platform.com/interview?token=abc123`
+3. When the respondent opens the link, your frontend:
+   - Validates the token
+   - Loads the appropriate vendor config
+   - Calls `vapi.start({...})` with the inline assistant config
+4. The interview runs in the browser via WebRTC
+
+Vapi does not provide a built-in scheduling or link generation system for web sessions — this is intentionally left to your application layer for maximum flexibility.
+
+### Key Considerations for Web Sessions
+
+- **No `schedulePlan`**: This feature is PSTN-only. Handle scheduling in your app.
+- **Browser permissions**: The respondent must grant microphone access. Handle the permission denial gracefully in your UI.
+- **Session resumption**: If the browser tab is closed, the call ends. Consider implementing a "rejoin" flow using the same token.
+- **Mobile support**: The Web SDK works on mobile browsers, but test thoroughly on iOS Safari (microphone handling differs).
+
+---
+
+## Quick Reference Card
+
+| Category | Recommendation |
+|----------|---------------|
+| Architecture | Transient inline config via `vapi.start()` or Server URL webhook |
+| LLM | GPT-4.1, temp 0.3, maxTokens 500 |
+| TTS | ElevenLabs `eleven_turbo_v2`, stability 0.6 |
+| STT | Deepgram Nova-3 with `keyterms` (or Nova-2 with `keywords`) |
+| Silence | Tiered hooks at 10s / 20s / 60s — **set `silenceTimeoutSeconds: null`** |
+| Turn-taking | `numWords: 5`, `smartEndpointingEnabled: true`, `waitSeconds: 0.4` |
+| Testing | Vapi Eval: Simulations → Evals → Boards |
+| Scaling | `subscriptionLimits` + `/analytics` API monitoring |
+| EU | `api.eu.vapi.ai`, Frankfurt, separate API keys, ZDR available |
+| Web sessions | Token-based URLs, `vapi.start()` in browser, no `schedulePlan` |
+| Transcript | `modelOutputInMessagesEnabled: true` to prevent drift |
+| Noise | `backgroundDenoisingEnabled: true` |
