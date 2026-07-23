@@ -1,0 +1,306 @@
+---
+title: DIDWW SIP integration
+subtitle: Connect DIDWW SIP trunks to Vapi so your assistants can receive calls, place outbound calls, and transfer active calls with SIP REFER.
+slug: advanced/sip/didww
+---
+
+## Before you begin
+
+- An active DIDWW account is required. [Sign in](https://my.didww.com/users/sign_in) or [create an account](https://my.didww.com/users/sign_up#/users/sign_up).
+- Access to [DIDWW Outbound Trunks](https://doc.didww.com/voice/outbound-trunks/get-access.html) is required.
+- A Vapi account and assistant is required.
+
+## 1. Route incoming calls to Vapi
+
+Create a DIDWW inbound SIP trunk that sends calls from your DIDWW numbers to Vapi.
+
+<Steps>
+  <Step title="Create an inbound SIP trunk">
+    In the [DIDWW User Panel](https://my.didww.com/#/trunks), go to **Voice → Inbound Trunks** and select **Create New → SIP Trunk**.
+  </Step>
+
+  <Step title="Configure the required trunk fields">
+    In the **General** tab, configure every field below:
+
+    | Field | Value |
+    | --- | --- |
+    | **Name** | A descriptive name, such as `Vapi` |
+    | **Endpoint type** | **Static Endpoint** |
+    | **Host** | `sip.vapi.ai` for US organizations or `sip.eu.vapi.ai` for EU organizations |
+    | **Transport** | **UDP**, **TCP**, or **TLS** |
+    | **Port** | `5060` for UDP/TCP or `5061` for TLS |
+    | **Network Protocol** | Match the IP version allowed on the DIDWW outbound trunk; use **Prefer IPv4 over IPv6** or **IPv4 only** when allowlisting IPv4 addresses |
+
+    <Frame caption="Required DIDWW inbound SIP trunk settings for Vapi.">
+      <img src="../../static/images/sip/sip-didww-inbound-general.png" />
+    </Frame>
+  </Step>
+
+  <Step title="Enable call transfer signaling">
+    In the **Signalling** tab, set **Max transfers** to `1` or higher. This permits the in-dialog SIP REFER requests used for call transfers.
+
+    <Frame caption="Allow at least one SIP transfer on the inbound trunk.">
+      <img src="../../static/images/sip/sip-didww-inbound-transfer-signaling.png" />
+    </Frame>
+  </Step>
+
+  <Step title="Save the inbound trunk">
+    Click **Create**. For additional DIDWW options, see the [inbound SIP trunk guide](https://doc.didww.com/voice/inbound-trunks/creating-a-new-sip-trunk.html).
+  </Step>
+</Steps>
+
+## 2. Enable outbound calling through DIDWW
+
+Create a DIDWW outbound trunk for Vapi calls and for authenticated SIP REFER transfers.
+
+<Steps>
+  <Step title="Create an outbound voice trunk">
+    In the DIDWW User Panel, go to **Voice → Outbound Trunks** and click **Create New**.
+  </Step>
+
+  <Step title="Configure authentication and allowed IPs">
+    Set a **Friendly Name**, such as `Vapi`, and keep **Credentials & IP-based** authentication selected.
+
+    Under **Allowed SIP IP addresses**, add the signaling addresses for your Vapi region:
+
+    | Region | Vapi signaling IPs |
+    | --- | --- |
+    | US | `44.229.228.186/32`, `44.238.177.138/32` |
+    | EU | `63.182.83.170/32` |
+
+    To support call transfers, also add all DIDWW inbound signaling addresses:
+
+    ```text
+    46.19.209.14
+    46.19.210.14
+    46.19.212.14
+    46.19.213.14
+    46.19.214.14
+    46.19.215.14
+    185.238.173.14
+    ```
+
+    <Frame caption="Allow Vapi and DIDWW signaling addresses on the outbound trunk.">
+      <img src="../../static/images/sip/sip-didww-outbound-allowlist.png" />
+    </Frame>
+
+    <Warning>
+      Do not use `0.0.0.0/0` in production. Restrict the trunk to the current [Vapi signaling IPs](/advanced/sip/sip-networking#sip-signalling) and [DIDWW SIP servers](https://doc.didww.com/voice/inbound-trunks/technical-data/sip.html#service-did-sip).
+    </Warning>
+  </Step>
+
+  <Step title="Save the outbound trunk">
+    Click **Create** to save it.
+  </Step>
+
+  <Step title="Copy the outbound credentials">
+    On **Voice → Outbound Trunks**, click the key icon in the trunk's **Credentials** column. Copy the **Username** and **Password**; you will use both in DIDWW and Vapi.
+
+    <Frame caption="Open and copy the DIDWW outbound trunk credentials.">
+      <img src="../../static/images/sip/sip-didww-outbound-credentials.png" />
+    </Frame>
+  </Step>
+
+  <Step title="Authorize transfers on the inbound trunk">
+    Edit the Vapi inbound trunk and open **Authorization**. Turn on **Enable Authorization**, paste the outbound trunk **Username** and **Password** into **Auth User** and **Auth Password**, then click **Submit**.
+
+    <Frame caption="Reuse the outbound credentials for authenticated SIP REFER transfers.">
+      <img src="../../static/images/sip/sip-didww-inbound-authorization.png" />
+    </Frame>
+
+    For more detail, see [Add outbound credentials to the inbound trunk](https://doc.didww.com/integrations/vapi/index.html#step-5-add-outbound-credentials-to-the-inbound-trunk).
+  </Step>
+</Steps>
+
+## 3. Connect the SIP trunks in Vapi
+
+Use the same transport and port on both sides. In API examples, use `https://api.vapi.ai` for US organizations or replace it with `https://api.eu.vapi.ai` for EU organizations.
+
+### Step 1: Create the outbound trunk
+
+<Tabs>
+  <Tab title="UI" language="ui">
+    In Vapi, go to **Organization Settings → Integrations → SIP Trunk** and click **Configure New SIP Trunk**.
+
+    1. Set **Name** to `DIDWW Outbound Trunk`.
+    2. Set **IP Address / Domain** to a [DIDWW outbound endpoint](https://doc.didww.com/voice/outbound-trunks/technical-data/sip-details.html#voice-out-signaling-endpoints), such as `fra.eu.out.didww.com`.
+    3. Select the transport and port: `5060` for UDP/TCP or `5061` for TLS.
+    4. Turn off **Allow inbound calls** and leave **Allow outbound calls** on.
+
+    <Frame caption="Configure the DIDWW gateway for outbound calls.">
+      <img src="../../static/images/sip/sip-didww-outbound-gateway.png" />
+    </Frame>
+
+    5. Under **Authentication**, enter the DIDWW outbound username and password. Leave SIP registration off and save the trunk.
+
+    <Frame caption="Add the DIDWW outbound trunk credentials.">
+      <img src="../../static/images/sip/sip-didww-authentication.png" />
+    </Frame>
+  </Tab>
+
+  <Tab title="API" language="api">
+    ```bash
+    curl -X POST https://api.vapi.ai/credential \
+      -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "provider": "byo-sip-trunk",
+        "name": "DIDWW Outbound Trunk",
+        "gateways": [
+          {
+            "ip": "YOUR_DIDWW_OUTBOUND_ENDPOINT",
+            "port": 5060,
+            "inboundEnabled": false,
+            "outboundEnabled": true,
+            "outboundProtocol": "udp"
+          }
+        ],
+        "outboundAuthenticationPlan": {
+          "authUsername": "YOUR_DIDWW_TRUNK_USERNAME",
+          "authPassword": "YOUR_DIDWW_TRUNK_PASSWORD"
+        }
+      }'
+    ```
+
+    Replace the endpoint with the DIDWW signaling endpoint selected for your deployment.
+  </Tab>
+</Tabs>
+
+### Step 2: Create the inbound trunk
+
+<Tabs>
+  <Tab title="UI" language="ui">
+    Create another Vapi SIP trunk named `DIDWW Inbound Trunk`.
+
+    1. Add one gateway for each DIDWW IP below, using netmask `32` and the same port as the DIDWW inbound trunk.
+    2. For every gateway, turn on **Allow inbound calls** and turn off **Allow outbound calls**.
+
+    <Frame caption="Create one inbound gateway for each DIDWW signaling IP.">
+      <img src="../../static/images/sip/sip-didww-vapi-inbound-gateways.png" />
+    </Frame>
+
+    3. Under **Authentication**, enter the DIDWW outbound username and password, then save the trunk.
+
+    ```text
+    46.19.209.14
+    46.19.210.14
+    46.19.212.14
+    46.19.213.14
+    46.19.214.14
+    46.19.215.14
+    185.238.173.14
+    ```
+
+    <Frame caption="Add the DIDWW credentials to the Vapi inbound trunk.">
+      <img src="../../static/images/sip/sip-didww-vapi-inbound-authentication.png" />
+    </Frame>
+  </Tab>
+
+  <Tab title="API" language="api">
+    ```bash
+    curl -X POST https://api.vapi.ai/credential \
+      -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "provider": "byo-sip-trunk",
+        "name": "DIDWW Inbound Trunk",
+        "gateways": [
+          { "ip": "46.19.209.14", "port": 5060, "netmask": 32, "inboundEnabled": true, "outboundEnabled": false },
+          { "ip": "46.19.210.14", "port": 5060, "netmask": 32, "inboundEnabled": true, "outboundEnabled": false },
+          { "ip": "46.19.212.14", "port": 5060, "netmask": 32, "inboundEnabled": true, "outboundEnabled": false },
+          { "ip": "46.19.213.14", "port": 5060, "netmask": 32, "inboundEnabled": true, "outboundEnabled": false },
+          { "ip": "46.19.214.14", "port": 5060, "netmask": 32, "inboundEnabled": true, "outboundEnabled": false },
+          { "ip": "46.19.215.14", "port": 5060, "netmask": 32, "inboundEnabled": true, "outboundEnabled": false },
+          { "ip": "185.238.173.14", "port": 5060, "netmask": 32, "inboundEnabled": true, "outboundEnabled": false }
+        ],
+        "outboundAuthenticationPlan": {
+          "authUsername": "YOUR_DIDWW_TRUNK_USERNAME",
+          "authPassword": "YOUR_DIDWW_TRUNK_PASSWORD"
+        }
+      }'
+    ```
+
+    Save the returned credential `id`; it is required when you [import the DIDWW number](/phone-numbers/didww).
+  </Tab>
+</Tabs>
+
+### Step 3: Create a call transfer tool
+
+<Tabs>
+  <Tab title="UI" language="ui">
+    In Vapi, go to **Tools → Create Tool → Transfer Call**.
+
+    1. Enter a tool name and describe when the assistant should transfer the caller.
+    2. Add a **SIP** destination.
+    3. Set **SIP URI** to `sip:+E164_NUMBER@OUTBOUND_ENDPOINT`, for example `sip:+1234567890@fra.eu.out.didww.com`.
+    4. Add the customer message and destination description, keep **Blind Transfer**, and save.
+
+    <Frame caption="Configure the DIDWW SIP transfer destination.">
+      <img src="../../static/images/sip/sip-didww-transfer-destination.png" />
+    </Frame>
+  </Tab>
+
+  <Tab title="API" language="api">
+    ```bash
+    curl -X POST https://api.vapi.ai/tool \
+      -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "type": "transferCall",
+        "destinations": [
+          {
+            "type": "sip",
+            "sipUri": "sip:+1234567890@YOUR_DIDWW_OUTBOUND_ENDPOINT",
+            "message": "Please wait while I transfer your call.",
+            "description": "Use when the caller asks to speak with a live person.",
+            "transferPlan": {
+              "mode": "blind-transfer",
+              "sipVerb": "refer"
+            }
+          }
+        ]
+      }'
+    ```
+
+    Save the returned tool `id` for the next step.
+  </Tab>
+</Tabs>
+
+### Step 4: Add the transfer tool to your assistant
+
+<Tabs>
+  <Tab title="UI" language="ui">
+    Open the assistant, go to **Tools → Add tool**, and select the transfer tool. Click **Publish**, then confirm the publication.
+
+    <Frame caption="Add the transfer tool to the Vapi assistant.">
+      <img src="../../static/images/sip/sip-didww-assistant-tool.png" />
+    </Frame>
+  </Tab>
+
+  <Tab title="API" language="api">
+    Retrieve the assistant, add the transfer tool ID to `model.toolIds`, and PATCH the complete model back. The example uses `jq` to preserve the existing model configuration and tool IDs.
+
+    ```bash
+    VAPI_API_BASE="https://api.vapi.ai"
+    ASSISTANT_ID="YOUR_ASSISTANT_ID"
+    TRANSFER_TOOL_ID="YOUR_TRANSFER_TOOL_ID"
+
+    CURRENT_MODEL=$(curl -s "$VAPI_API_BASE/assistant/$ASSISTANT_ID" \
+      -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" | jq '.model')
+
+    UPDATED_MODEL=$(printf '%s' "$CURRENT_MODEL" | jq \
+      --arg toolId "$TRANSFER_TOOL_ID" \
+      '.toolIds = (((.toolIds // []) + [$toolId]) | unique)')
+
+    jq -n --argjson model "$UPDATED_MODEL" '{model: $model}' | \
+      curl -X PATCH "$VAPI_API_BASE/assistant/$ASSISTANT_ID" \
+        -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+        -H "Content-Type: application/json" \
+        --data-binary @-
+    ```
+  </Tab>
+</Tabs>
+
+## Next step
+
+[Purchase or select a DIDWW number, assign the inbound trunk, and import the number into Vapi](/phone-numbers/didww).
