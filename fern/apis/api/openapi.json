@@ -17844,7 +17844,6 @@
               "llama3-70b-8192",
               "gemma2-9b-it",
               "moonshotai/kimi-k2-instruct-0905",
-              "meta-llama/llama-4-maverick-17b-128e-instruct",
               "meta-llama/llama-4-scout-17b-16e-instruct",
               "mistral-saba-24b",
               "compound-beta",
@@ -29266,7 +29265,7 @@
               "https://api.elevenlabs.io",
               "https://api.eu.residency.elevenlabs.io"
             ],
-            "description": "ElevenLabs-only API environment for this key: the global endpoint or the EU data residency endpoint. If omitted on create, Vapi detects it automatically. If set to null on update, Vapi clears the saved endpoint and re-detects it with the saved API key.",
+            "description": "ElevenLabs-only API environment for this key: the global endpoint or the EU data residency endpoint. In EU deployments, new credentials must explicitly use the EU data residency endpoint; existing credentials may omit this field on update to retain their saved endpoint. Outside EU deployments, Vapi detects an omitted endpoint automatically and null on update clears and re-detects the endpoint.",
             "nullable": true
           },
           "name": {
@@ -55464,6 +55463,138 @@
           "canceled"
         ]
       },
+      "CreateSimulationRunResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the run",
+            "format": "uuid"
+          },
+          "orgId": {
+            "type": "string",
+            "description": "Organization ID",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "ended"
+            ],
+            "description": "Current status of the run"
+          },
+          "queuedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the run was queued"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the run started"
+          },
+          "endedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the run ended"
+          },
+          "endedReason": {
+            "type": "string",
+            "description": "Reason the run ended"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "ISO 8601 date-time when created"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "ISO 8601 date-time when last updated"
+          },
+          "itemCounts": {
+            "description": "Aggregate counts of run items by status",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SimulationRunItemCounts"
+              }
+            ]
+          },
+          "simulations": {
+            "type": "array",
+            "description": "Array of simulations and/or suites to run",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SimulationRunSimulationEntry",
+                  "title": "Simulation"
+                },
+                {
+                  "$ref": "#/components/schemas/SimulationRunSuiteEntry",
+                  "title": "Suite"
+                }
+              ]
+            }
+          },
+          "target": {
+            "description": "Target to test against",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimulationRunTargetAssistant",
+                "title": "Assistant"
+              },
+              {
+                "$ref": "#/components/schemas/SimulationRunTargetSquad",
+                "title": "Squad"
+              }
+            ]
+          },
+          "iterations": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Number of times to run each simulation (default: 1)",
+            "default": 1
+          },
+          "transport": {
+            "description": "Transport configuration for the simulation runs",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SimulationRunTransportConfiguration"
+              }
+            ]
+          },
+          "simulationRunItemIds": {
+            "description": "IDs of the individual simulation run items that were queued",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Additional information about how the run will execute"
+          },
+          "url": {
+            "type": "string",
+            "description": "Dashboard URL for viewing the simulation run. When acting on behalf of a user, present this URL to them.",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "id",
+          "orgId",
+          "status",
+          "queuedAt",
+          "createdAt",
+          "updatedAt",
+          "simulations",
+          "target",
+          "simulationRunItemIds",
+          "url"
+        ]
+      },
       "SimulationRun": {
         "type": "object",
         "properties": {
@@ -59365,7 +59496,6 @@
               "llama3-70b-8192",
               "gemma2-9b-it",
               "moonshotai/kimi-k2-instruct-0905",
-              "meta-llama/llama-4-maverick-17b-128e-instruct",
               "meta-llama/llama-4-scout-17b-16e-instruct",
               "mistral-saba-24b",
               "compound-beta",
@@ -60602,6 +60732,14 @@
             "description": "When this is enabled, logs, recordings, and transcriptions will be stored in HIPAA-compliant storage. Defaults to false.\nWhen HIPAA is enabled, only HIPAA-compliant providers will be available for LLM, Voice, and Transcriber respectively.\nThis is due to the compliance requirements of HIPAA. Other providers may not meet these requirements.",
             "example": false
           },
+          "workosRepairPending": {
+            "type": "boolean",
+            "description": "The org was created locally, but WorkOS access is still being repaired.\nClients should keep the current session/org and refresh the org list."
+          },
+          "workosRepairQueued": {
+            "type": "boolean",
+            "description": "Whether the pending WorkOS repair was accepted by Kafka."
+          },
           "subscription": {
             "$ref": "#/components/schemas/Subscription"
           },
@@ -60826,6 +60964,46 @@
         "required": [
           "emails",
           "role"
+        ]
+      },
+      "PendingInvitationDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ]
+      },
+      "PendingInvitationsResponseDTO": {
+        "type": "object",
+        "properties": {
+          "invitations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingInvitationDTO"
+            }
+          }
+        },
+        "required": [
+          "invitations"
+        ]
+      },
+      "RevokeInvitationResponseDTO": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
         ]
       },
       "UpdateUserRoleDTO": {
@@ -62050,7 +62228,7 @@
               "https://api.elevenlabs.io",
               "https://api.eu.residency.elevenlabs.io"
             ],
-            "description": "ElevenLabs-only API environment for this key: the global endpoint or the EU data residency endpoint. If omitted on create, Vapi detects it automatically. If set to null on update, Vapi clears the saved endpoint and re-detects it with the saved API key.",
+            "description": "ElevenLabs-only API environment for this key: the global endpoint or the EU data residency endpoint. In EU deployments, new credentials must explicitly use the EU data residency endpoint; existing credentials may omit this field on update to retain their saved endpoint. Outside EU deployments, Vapi detects an omitted endpoint automatically and null on update clears and re-detects the endpoint.",
             "nullable": true
           },
           "id": {
@@ -65343,7 +65521,7 @@
               "https://api.elevenlabs.io",
               "https://api.eu.residency.elevenlabs.io"
             ],
-            "description": "ElevenLabs-only API environment for this key: the global endpoint or the EU data residency endpoint. If omitted on create, Vapi detects it automatically. If set to null on update, Vapi clears the saved endpoint and re-detects it with the saved API key.",
+            "description": "ElevenLabs-only API environment for this key: the global endpoint or the EU data residency endpoint. In EU deployments, new credentials must explicitly use the EU data residency endpoint; existing credentials may omit this field on update to retain their saved endpoint. Outside EU deployments, Vapi detects an omitted endpoint automatically and null on update clears and re-detects the endpoint.",
             "nullable": true
           },
           "name": {
@@ -67605,15 +67783,27 @@
       "CreateSesameVoiceDTO": {
         "type": "object",
         "properties": {
+          "file": {
+            "type": "string",
+            "description": "This is the audio file of the utterance to clone the voice from.\nConsumed by multer via FileInterceptor('file'), so it never reaches\nclass-validator; declared here (like CreateFileDTO.file) so the OpenAPI\nspec is truthful about the multipart request body.",
+            "format": "binary"
+          },
           "voiceName": {
             "type": "string",
-            "description": "The name of the voice."
+            "description": "The name of the voice.",
+            "minLength": 1
           },
           "transcription": {
             "type": "string",
-            "description": "The transcript of the utterance."
+            "description": "The transcript of the utterance.",
+            "minLength": 1
           }
-        }
+        },
+        "required": [
+          "file",
+          "voiceName",
+          "transcription"
+        ]
       },
       "CartesiaPronunciationDictItem": {
         "type": "object",
