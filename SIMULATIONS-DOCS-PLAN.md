@@ -14,7 +14,7 @@ Remove this file before merging the Simulations GA docs to main.
 
 ## Deliverables (fern/observability/)
 - simulations-overview-stub.mdx — Conceptual/Explainer. WRITTEN (Lead, Key concepts, How it works, Simulations vs Evals, Related). 1 PENDING: run/live-monitoring wording.
-- simulations-quickstart-stub.mdx — Quickstart. WRITTEN end-to-end. PENDING: run drill-in detail (per-item pass/fail, transcript, recording) — needs a completed run.
+- simulations-quickstart-stub.mdx — Quickstart. WRITTEN end-to-end incl. run-detail STRUCTURE (Run items list; Results tab = Evaluations + Transcript; Tools & webhooks tab; header result badge; Re-run). Only PENDING: POPULATED content from a SUCCESSFUL run (eval rows, transcript text, voice recording) — for V&V. Runs currently cancel/fail before completing (beta).
 - simulations-advanced-stub.mdx — Feature Guide. SKELETON only. May SPLIT into how-tos (one-page-one-type).
 - docs.yml: temp nav "Simulations (DRAFT stubs)" under Observability. Remove before publish.
 
@@ -22,6 +22,8 @@ Remove this file before merging the Simulations GA docs to main.
 Suite (name + targets assistant/squad) → Simulation [Scenario: name+Intent | Personality: preset/Behavior/Who-starts-first Tester|Target/Advanced Model+Transcriber+Voice] → Next → review [Evaluation plan (structured output + comparator; >=1 REQUIRED to run) | Variables (Name/Value) | Tool mocks & webhooks (mock tool outputs; Simulation start/end toggles, VOICE ONLY)] → Save & run [Mode Chat/Voice, Iterations 1/3/5/10] → Runs list (status queued->running->ended; filters; Re-run).
 - Suite-first; Simulations sub-nav = only Suites + Runs.
 - Confirms advanced stale-nav fix: hooks/tool mocks on the review step, NOT "Scenarios -> Hooks".
+- EDIT-TO-MODIFY: a suite opens in VIEW mode; select **Edit** (top right) to make any changes. Added to quickstart Step 1.
+- Runs not succeeding as of 2026-07-28 (Stephen) — likely beta/env, not a docs issue. A FAILED run still shows the run-detail view, so its screenshot is still useful (documents results view + the failed-run case).
 
 ## Key decisions (Stephen)
 - Testing node (test/test-suites, chat-testing, voice-testing) = deprecated predecessor; DROP at launch. Dangling-content pass + 3 redirects in docs.yml (~line 888). NO migration guide.
