@@ -14,7 +14,7 @@ Remove this file before merging the Simulations GA docs to main.
 
 ## Deliverables (fern/observability/)
 - simulations-overview-stub.mdx — Conceptual/Explainer. WRITTEN (Lead, Key concepts, How it works, Simulations vs Evals, Related). 1 PENDING: run/live-monitoring wording.
-- simulations-quickstart-stub.mdx — Quickstart. WRITTEN end-to-end incl. run-detail STRUCTURE (Run items list; Results tab = Evaluations + Transcript; Tools & webhooks tab; header result badge; Re-run). Only PENDING: POPULATED content from a SUCCESSFUL run (eval rows, transcript text, voice recording) — for V&V. Runs currently cancel/fail before completing (beta).
+- simulations-quickstart-stub.mdx — Quickstart. CONTENT-COMPLETE end-to-end. Populated results confirmed from a PASSING chat run: Evaluations show "<name> — Passed. Expected = true and got true." (boolean); Transcript is turn-by-turn tester/assistant. Concrete eval example added (appointment_booked = true). Example names cleaned (test artifacts were "Steve Test"/"My Test"). Remaining for V&V: voice-run recording playback (chat run has none); screenshots; un-stub/frontmatter polish at launch.
 - simulations-advanced-stub.mdx — Feature Guide. SKELETON only. May SPLIT into how-tos (one-page-one-type).
 - docs.yml: temp nav "Simulations (DRAFT stubs)" under Observability. Remove before publish.
 
