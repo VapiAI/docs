@@ -20,7 +20,10 @@ Remove this file before merging the Simulations GA docs to main.
   - VARIABLES confirmed from code: draft.variables -> scenario.targetOverrides.variableValues = the TARGET assistant's dynamic-variable values for the run (fill {{placeholders}} in the target's prompt). Applies to target, not tester. Docs now link /assistants/dynamic-variables.
   - WEBHOOK PAYLOAD confirmed from code (libs/core/src/types/message.types.ts: SimulationRunStartedMessage / SimulationRunEndedMessage, base OutboundMessageBase). Fields: type, simulationId, runId?, simulationRunItemId, iterationNumber, isSimulation:true, calls{testerCallId?,targetCallId?,listenUrl?}, timestamp?, call?. Ended adds: endedReason?, canceled?, failureReason?, startedAt?, endedAt?, transcript?, messages?, recordingUrl?. ⚠ CORRECTS live doc (uses `type` not `event`; not just timestamp). calls.listenUrl = live-listen WSS (ties to live-listening gap).
   - TOOL-MOCK fields confirmed from code (ConfigureToolsPanel.tsx + CreateWizardToolMock {toolName, result:string, enabled}): Tool (select from target's tools), Mock result (string textarea, placeholder "Mock result string returned to the assistant"), Enabled (toggle). Result is plain text (JSON allowed but passed as string).
-  - Still PENDING: enumerate endedReason values (link calls/call-ended-reason.mdx instead of enumerating); CI/CD (API). May SPLIT into how-tos later.
+  - endedReason: LINKED to canonical /calls/call-ended-reason (not enumerated).
+  - Still PENDING: CI/CD section (Stephen getting API shapes access). May SPLIT into how-tos later.
+
+PRINCIPLE (Stephen): LINK to the canonical reference page wherever possible instead of duplicating/enumerating (style-guide aligned). Applied: endedReason->call-ended-reason, variables->dynamic-variables. Keep applying across all pages.
 - Quickstart prereq added: structured output required (can create during setup).
 - Eval-plan RENAME: back burner — awaiting engineering decision. Keep current UI wording ("Evaluation plan") in docs meanwhile. Candidates parked: Success criteria / Assertions / Checks.
 - docs.yml: temp nav "Simulations (DRAFT stubs)" under Observability. Remove before publish.
