@@ -24,6 +24,13 @@ Remove this file before merging the Simulations GA docs to main.
   - Added "Configure the tester" section: tester model/transcriber/voice (Personality tab → Advanced settings). Transcriber+voice = voice sims only; chat uses model only. Warning: personality is SHARED — changing model/transcriber/voice/behavior updates EVERY simulation using it; applies to future runs, not completed ones (propagation verified in code: wizardPersistenceExecute.ts updatePersonality).
   - Still PENDING: CI/CD section (Stephen getting API shapes access); confirm chat mode ignores transcriber/voice (inferred). May SPLIT into how-tos later.
 
+PERSONALITY FORK-VS-MUTATE (verified in code, EXPECTED not a bug):
+- "(Default)" label = personality.orgId === null (built-in/system presets: Skeptical Sam, Impatient Irene, Rambling Roger, Emotional Eva, Multitasking Maya, Decisive Derek, Confused Carl). PersonalitySelector.tsx:46.
+- Editing a DEFAULT (orgId null) -> createPersonality = forks a NEW org-owned copy (drops "(Default)"). Does NOT change the default or other sims using it. (wizardPersistenceExecute.ts:44)
+- Editing YOUR OWN personality (orgId set) -> updatePersonality = mutates in place -> affects EVERY simulation using it (future runs only; completed runs unchanged).
+- Corrected the earlier over-broad "editing changes every sim" claim in quickstart Note + advanced Warning.
+Also added: "Add more" = multiple simulations per suite (quickstart Step 2 note); Scenario name + Intent are REQUIRED (quickstart Step 2).
+
 PRINCIPLE (Stephen): LINK to the canonical reference page wherever possible instead of duplicating/enumerating (style-guide aligned). Applied: endedReason->call-ended-reason, variables->dynamic-variables, structured outputs->assistants/structured-outputs(-quickstart) across all 3 sim pages (inline links + wayfinding cards). Keep applying.
 Structured-output canonical pages: /assistants/structured-outputs (concept), /assistants/structured-outputs-quickstart (how-to), /assistants/structured-outputs-examples.
 - Quickstart prereq added: structured output required (can create during setup).
