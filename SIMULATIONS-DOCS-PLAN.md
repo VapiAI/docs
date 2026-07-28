@@ -23,7 +23,8 @@ Remove this file before merging the Simulations GA docs to main.
   - endedReason: LINKED to canonical /calls/call-ended-reason (not enumerated).
   - Still PENDING: CI/CD section (Stephen getting API shapes access). May SPLIT into how-tos later.
 
-PRINCIPLE (Stephen): LINK to the canonical reference page wherever possible instead of duplicating/enumerating (style-guide aligned). Applied: endedReason->call-ended-reason, variables->dynamic-variables. Keep applying across all pages.
+PRINCIPLE (Stephen): LINK to the canonical reference page wherever possible instead of duplicating/enumerating (style-guide aligned). Applied: endedReason->call-ended-reason, variables->dynamic-variables, structured outputs->assistants/structured-outputs(-quickstart) across all 3 sim pages (inline links + wayfinding cards). Keep applying.
+Structured-output canonical pages: /assistants/structured-outputs (concept), /assistants/structured-outputs-quickstart (how-to), /assistants/structured-outputs-examples.
 - Quickstart prereq added: structured output required (can create during setup).
 - Eval-plan RENAME: back burner — awaiting engineering decision. Keep current UI wording ("Evaluation plan") in docs meanwhile. Candidates parked: Success criteria / Assertions / Checks.
 - docs.yml: temp nav "Simulations (DRAFT stubs)" under Observability. Remove before publish.
