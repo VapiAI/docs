@@ -27,8 +27,10 @@ Remove this file before merging the Simulations GA docs to main.
 PERSONALITY FORK-VS-MUTATE (verified in code, EXPECTED not a bug):
 - "(Default)" label = personality.orgId === null (built-in/system presets: Skeptical Sam, Impatient Irene, Rambling Roger, Emotional Eva, Multitasking Maya, Decisive Derek, Confused Carl). PersonalitySelector.tsx:46.
 - Editing a DEFAULT (orgId null) -> createPersonality = forks a NEW org-owned copy (drops "(Default)"). Does NOT change the default or other sims using it. (wizardPersistenceExecute.ts:44)
-- Editing YOUR OWN personality (orgId set) -> updatePersonality = mutates in place -> affects EVERY simulation using it (future runs only; completed runs unchanged).
-- Corrected the earlier over-broad "editing changes every sim" claim in quickstart Note + advanced Warning.
+- CODE said: editing YOUR OWN personality (orgId set) -> updatePersonality (mutate in place). BUT ⚠ EMPIRICALLY (Stephen, screenshots) editing DEFAULTS spawns MULTIPLE owned copies over time (e.g. two "Multitasking Maya" + a "Rambling Roger", all non-default, same inherited names). So "forks once then updates" is WRONG in practice.
+- NAME cannot be changed: PersonalitySelector is a Select (no text input); PersonalityPanel has no name field; wizardPayloadBuild uses originalPersonality.name (inherited). No personalities-management page (nav = Suites + Runs only). => duplicates share names, indistinguishable.
+- DOC STANCE: pulled back to only the certain fact — "editing a (Default) saves a new personality you own; the default is unchanged." Removed all cross-simulation propagation + fork-once claims from quickstart Note + advanced (Warning->Note). Revisit once behavior confirmed.
+- FLAGGED to team as possible bug (duplicate spawning + no rename). See spawn_task.
 Also added: "Add more" = multiple simulations per suite (quickstart Step 2 note); Scenario name + Intent are REQUIRED (quickstart Step 2).
 
 PRINCIPLE (Stephen): LINK to the canonical reference page wherever possible instead of duplicating/enumerating (style-guide aligned). Applied: endedReason->call-ended-reason, variables->dynamic-variables, structured outputs->assistants/structured-outputs(-quickstart) across all 3 sim pages (inline links + wayfinding cards). Keep applying.
