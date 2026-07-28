@@ -1,0 +1,85 @@
+---
+title: Fix API validation errors
+subtitle: Find invalid fields with stable codes while keeping older clients working
+slug: errors/validation-errors
+---
+
+When Vapi rejects an API request because a field is missing or invalid, the response can identify the field, explain the problem, and tell you what to correct.
+
+<Note>
+The structured contract on this page covers request DTO validation. Other API errors, including some HTTP 400 responses, may use a different shape.
+</Note>
+
+## Response shape
+
+```json
+{
+  "statusCode": 400,
+  "message": ["name must be a string"],
+  "error": "Bad Request",
+  "type": "urn:vapi:problem:validation-failed",
+  "title": "Request validation failed",
+  "status": 400,
+  "detail": "Fix the fields listed below and try again.",
+  "code": "VALIDATION_FAILED",
+  "errors": [
+    {
+      "code": "INVALID_TYPE",
+      "message": "name must be a string",
+      "pointer": "/body/name"
+    }
+  ],
+  "requestId": "req_01JEXAMPLE"
+}
+```
+
+The response remains `application/json`. The `X-Request-ID` response header is the primary request identifier; `requestId` may also be present in the structured body.
+
+## Fields to use
+
+| Field | Purpose |
+|---|---|
+| `code` | Stable top-level category. For this response, it is `VALIDATION_FAILED`. |
+| `errors[].code` | Stable reason for one field issue. Branch application logic on this value instead of the message text. |
+| `errors[].pointer` | JSON Pointer to the invalid input. Use it to associate the issue with a form field or request property. |
+| `errors[].message` | Human-readable explanation. Display it to a developer, but do not parse it for application logic. |
+| `detail` | Plain-language recovery guidance for the request as a whole. |
+| `requestId` | Optional body copy of the request correlation ID. Prefer the `X-Request-ID` response header when available. |
+
+## Field issue codes
+
+| Code | Meaning | Correction |
+|---|---|---|
+| `FIELD_NOT_ALLOWED` | The request includes a field that this endpoint does not accept. | Remove the field. |
+| `FIELD_REQUIRED` | A required value is missing or empty, or a required set has no supplied value. | Add the required field or provide at least one accepted value. |
+| `INVALID_CHOICE` | The value is not one of the allowed choices. | Use a documented choice. |
+| `INVALID_FORMAT` | The value has the wrong format. | Match the documented format, such as a UUID or URL. |
+| `INVALID_SCHEMA` | An object or nested value does not match the expected schema. | Compare the value with the endpoint schema and correct its structure. |
+| `INVALID_TYPE` | The value has the wrong JSON type. | Send the documented string, number, boolean, array, or object type. |
+| `INVALID_VALUE` | The value is not valid for this field. | Replace it with a valid value. |
+| `OUT_OF_RANGE` | A number, length, or count is outside the accepted range. | Use a value within the documented limits. |
+
+## Locate the invalid input
+
+Pointers follow JSON Pointer notation and begin with the request location:
+
+| Pointer | Location |
+|---|---|
+| `/body/name` | The `name` property in the JSON request body. |
+| `/query/search` | The `search` query parameter. |
+| `/param/id` | The `id` path parameter. |
+| `/input/0/name` | The `name` property in the first item of an input array. |
+
+Nested properties and array indexes continue as additional pointer segments. JSON Pointer escapes `~` as `~0` and `/` as `~1` inside a property name.
+
+## Client handling
+
+1. If `code` is `VALIDATION_FAILED` and `errors` is present, group the issues by `pointer`.
+2. Use each issue `code` to choose behavior; show its `message` as supporting context.
+3. Keep a fallback for the legacy `statusCode`, `message`, and `error` fields.
+4. Preserve the `X-Request-ID` header so logs and support reports can identify the request.
+5. Retry only after correcting the reported fields.
+
+The legacy fields remain available during the additive rollout. No removal date is currently published, so clients should keep the fallback until a future compatibility notice says otherwise.
+
+For other dashboard and product codes, see the [diagnostic code reference](/errors/diagnostic-codes).
