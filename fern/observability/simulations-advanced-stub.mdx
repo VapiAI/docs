@@ -40,16 +40,58 @@ Use tool mocks to keep a run deterministic and to steer the conversation down a 
 
 ## Send webhooks on run start and end
 
-Turn on webhooks to notify an external system when a simulation run item starts or ends. On the **Tool mocks & webhooks** tab, under **Webhooks**, toggle **Simulation start** and **Simulation end**.
+Turn on webhooks to notify your server when a simulation run item starts or ends. On the **Tool mocks & webhooks** tab, under **Webhooks**, toggle **Simulation start** and **Simulation end**. Each fires a `POST` to your server URL.
 
 <Warning>
   Webhooks fire for **voice simulations only**. They do not trigger in chat mode.
 </Warning>
 
-{/* [OK] screen: Webhooks section — Simulation start / Simulation end toggles, "Voice simulations only".
-   These correspond to the simulation.run.started / simulation.run.ended events. */}
-{/* [PENDING] payload shape + optional include (transcript/messages/recordingUrl). From current doc:
-   { "event": "simulation.run.started", "simulationId", "runId", "timestamp" }. Confirm and show payloads. */}
+Vapi sends `simulation.run.started` when a run item goes live:
+
+```json
+{
+  "type": "simulation.run.started",
+  "simulationId": "8f2a9c1e-3b4d-4a7e-9c2f-1d6b0a5e7f34",
+  "runId": "b7d4e2a0-6c9f-4e13-8a52-2f7c9b1d4e60",
+  "simulationRunItemId": "c3e8f1a2-9d47-4b6c-8e30-5a1f2b9c7d84",
+  "iterationNumber": 1,
+  "isSimulation": true,
+  "calls": {
+    "testerCallId": "a1b2c3d4-...",
+    "targetCallId": "e5f6a7b8-...",
+    "listenUrl": "wss://..."
+  },
+  "timestamp": 1710000000000
+}
+```
+
+Vapi sends `simulation.run.ended` when the run item finishes, adding the outcome:
+
+```json
+{
+  "type": "simulation.run.ended",
+  "simulationId": "8f2a9c1e-3b4d-4a7e-9c2f-1d6b0a5e7f34",
+  "runId": "b7d4e2a0-6c9f-4e13-8a52-2f7c9b1d4e60",
+  "simulationRunItemId": "c3e8f1a2-9d47-4b6c-8e30-5a1f2b9c7d84",
+  "iterationNumber": 1,
+  "isSimulation": true,
+  "calls": { "testerCallId": "a1b2c3d4-...", "targetCallId": "e5f6a7b8-..." },
+  "endedReason": "...",
+  "canceled": false,
+  "startedAt": "2026-07-28T17:10:05.000Z",
+  "endedAt": "2026-07-28T17:12:30.000Z",
+  "transcript": "...",
+  "messages": [],
+  "recordingUrl": "https://..."
+}
+```
+
+Key fields: `calls.listenUrl` is a live-listen WebSocket URL for eavesdropping on the run; `iterationNumber` identifies which iteration of the run item this is; and the ended payload carries `endedReason`, `canceled`, `transcript`, `messages`, and `recordingUrl`.
+
+{/* [OK] payloads from libs/core/src/types/message.types.ts (SimulationRunStartedMessage /
+   SimulationRunEndedMessage, base OutboundMessageBase). CORRECTS current live doc which used
+   `event`/`timestamp`-only shape. [PENDING] enumerate endedReason values; confirm which optional
+   base fields (call, phoneNumber, customer) are populated for sims. */}
 {/* NOTE: replaces the old, now-stale "Simulations → Scenarios → Hooks" instruction. */}
 
 ## Reuse structured outputs
