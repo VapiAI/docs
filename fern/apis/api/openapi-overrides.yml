@@ -433,8 +433,199 @@ paths:
       x-fern-sdk-group-name:
         - logs
       x-fern-sdk-method-name: get
+  # --- Simulations operation descriptions (staged; /eval/simulation/* not yet in openapi.json) ---
+  /eval/simulation/personality:
+    post:
+      description: Creates a personality — the AI tester's configuration used in simulations.
+    get:
+      description: Returns the personalities for the authenticated organization.
+  /eval/simulation/personality/{id}:
+    get:
+      description: Returns the specified personality.
+    patch:
+      description: Updates the specified personality. Changes apply to future runs.
+    delete:
+      description: Deletes the specified personality.
+  /eval/simulation/scenario:
+    post:
+      description: Creates a scenario — the tester's intent plus the evaluation plan that scores a run.
+    get:
+      description: Returns the scenarios for the authenticated organization.
+  /eval/simulation/scenario/{id}:
+    get:
+      description: Returns the specified scenario.
+    patch:
+      description: Updates the specified scenario.
+    delete:
+      description: Deletes the specified scenario.
+  /eval/simulation/run:
+    post:
+      description: Starts a simulation run against a target assistant or squad.
+    get:
+      description: Returns the simulation runs for the authenticated organization.
+  /eval/simulation/run/{id}:
+    get:
+      description: Returns the specified simulation run, including its status and item counts.
+    patch:
+      description: Cancels the specified simulation run.
+  /eval/simulation/run/{id}/item:
+    get:
+      description: Returns the run items for the specified simulation run.
+  /eval/simulation/run/{id}/item/{itemId}:
+    get:
+      description: Returns the specified run item, including its evaluation results and transcript.
+    patch:
+      description: Cancels the specified run item.
+  /eval/simulation/run/{id}/item/{itemId}/generate:
+    post:
+      description: Generates improvement suggestions for the specified run item.
+  /eval/simulation/suite:
+    post:
+      description: Creates a simulation suite — a group of simulations that run together.
+    get:
+      description: Returns the simulation suites for the authenticated organization.
+  /eval/simulation/suite/{id}:
+    get:
+      description: Returns the specified simulation suite.
+    patch:
+      description: Updates the specified simulation suite.
+    delete:
+      description: Deletes the specified simulation suite.
+  /eval/simulation:
+    post:
+      description: Creates a simulation by pairing a scenario with a personality.
+    get:
+      description: Returns the simulations for the authenticated organization.
+  /eval/simulation/{id}:
+    get:
+      description: Returns the specified simulation.
+    patch:
+      description: Updates the specified simulation.
+    delete:
+      description: Deletes the specified simulation.
+  /eval/simulation/concurrency:
+    get:
+      description: Returns the organization's current and maximum simulation concurrency.
+
 components:
   schemas:
+    # --- Simulations (staged) — /eval/simulation/* are api-extended-only today, so these
+    #     attach once the backend publishes them and `fern api update` syncs them into openapi.json.
+    CreatePersonalityDTO:
+      properties:
+        name:
+          description: The display name of the personality, for example `Impatient customer`.
+        assistant:
+          description: >-
+            The assistant configuration for the AI tester — the model, voice, and system
+            prompt that determine how the tester behaves during the conversation.
+    CreateScenarioDTO:
+      properties:
+        name:
+          description: The display name of the scenario, for example `Book an appointment`.
+        instructions:
+          description: >-
+            What the tester should try to accomplish in the conversation. Write it as the
+            tester's goal, for example `Book an appointment for next week and confirm the time.`
+        evaluations:
+          description: >-
+            The checks that decide whether a run passes. Each evaluation compares a structured
+            output against an expected value. At least one evaluation is required to run.
+        toolMocks:
+          description: >-
+            Mock results for the target assistant's tools during the simulation, so the run
+            stays deterministic without calling real services.
+    EvaluationPlanItem:
+      properties:
+        structuredOutputId:
+          description: >-
+            The ID of an existing structured output to evaluate. Use this to reuse a structured
+            output across scenarios. Provide either `structuredOutputId` or an inline `structuredOutput`.
+        structuredOutput:
+          description: >-
+            An inline structured output to evaluate, defined by its name and schema. Provide
+            either this or `structuredOutputId`.
+        comparator:
+          description: How the structured output value is compared against `value`. One of `=`, `!=`, `>`, `<`, `>=`, `<=`.
+        value:
+          description: The expected value the structured output is compared against. Can be a number, string, or boolean, for example `true`.
+        required:
+          description: Set to `false` to record this evaluation's result without requiring it to pass. Default is `true`.
+    ScenarioToolMock:
+      properties:
+        toolName:
+          description: The name of the target assistant's tool to mock. Must match the tool's name exactly.
+        result:
+          description: The result string returned to the assistant in place of calling the real tool.
+        enabled:
+          description: Set to `true` to apply this mock during the simulation.
+    CreateSimulationDTO:
+      properties:
+        name:
+          description: Optional display name for the simulation.
+        scenarioId:
+          description: The ID of the scenario to run.
+        personalityId:
+          description: The ID of the personality the tester uses.
+    CreateSimulationSuiteDTO:
+      properties:
+        name:
+          description: The display name of the suite.
+        simulationIds:
+          description: The IDs of the simulations included in the suite.
+        slackWebhookUrl:
+          description: A Slack incoming-webhook URL notified when the suite runs.
+        targetAssignments:
+          description: The assistants or squads the suite's simulations run against.
+    # --- Simulations response schemas (staged) ---
+    SimulationRun:
+      properties:
+        status:
+          description: The run's current status. One of `queued`, `running`, or `ended`.
+        endedReason:
+          description: Why the run ended, when applicable.
+        itemCounts:
+          description: Aggregate counts of the run's items by status.
+        simulations:
+          description: The simulations included in the run.
+        target:
+          description: The assistant or squad the run was tested against.
+        iterations:
+          description: The number of times each simulation was run.
+        transport:
+          description: The transport used for the run — voice or chat.
+    SimulationRunItemCounts:
+      properties:
+        total:
+          description: The total number of run items.
+        passed:
+          description: The number of run items that passed all required evaluations.
+        failed:
+          description: The number of run items that failed at least one required evaluation.
+        running:
+          description: The number of run items currently running.
+        queued:
+          description: The number of run items waiting to start.
+        canceled:
+          description: The number of run items that were canceled.
+    SimulationRunItem:
+      properties:
+        status:
+          description: The run item's current status.
+        results:
+          description: The evaluation results for this run item.
+        improvementSuggestions:
+          description: AI-generated suggestions for improving the target, when requested.
+        callId:
+          description: The ID of the call that ran this item.
+        failureReason:
+          description: Why the run item failed, when applicable.
+        iterationNumber:
+          description: Which iteration of the simulation this item represents.
+        scenarioId:
+          description: The ID of the scenario used for this run item.
+        personalityId:
+          description: The ID of the personality used for this run item.
     CreateAssistantDTO:
       description: >-
         Configuration used to create an assistant, including its model, voice,

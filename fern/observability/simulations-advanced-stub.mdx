@@ -49,15 +49,39 @@ Transcriber and voice apply to voice simulations. Chat simulations use the model
 
 ## Mock tool responses
 
-Mock a tool so it returns a fixed result instead of running. On the review step, open **Tool mocks & webhooks**. Under **Tool mocks**, select **Add**, then configure each mock with three fields:
+Mock a tool so it returns a fixed result instead of running.
+
+<Warning>
+  Simulations do not run real tools. A mock returns a fixed result string to the assistant — the actual tool or API is never called. You cannot exercise real tool behavior in a simulation.
+</Warning>
+
+<Tabs>
+<Tab title="Dashboard">
+
+On the review step, open **Tool mocks & webhooks**. Under **Tool mocks**, select **Add**, then configure each mock with three fields:
 
 - **Tool** — pick one of the target assistant's tools from the dropdown.
 - **Mock result** — the string returned to the assistant in place of the tool's real output.
 - **Enabled** — toggle the mock on or off.
 
-<Warning>
-  Simulations do not run real tools. A mock returns a fixed result string to the assistant — the actual tool or API is never called. You cannot exercise real tool behavior in a simulation.
-</Warning>
+</Tab>
+<Tab title="cURL">
+
+Tool mocks are a property of the scenario. Add them when you create a scenario, or patch an existing one:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolMocks": [
+      { "toolName": "transferCall", "result": "Transfer completed.", "enabled": true }
+    ]
+  }'
+```
+
+</Tab>
+</Tabs>
 
 The mock result is plain text. You can enter JSON, but it is passed to the assistant as a string exactly as typed. Use tool mocks to keep a run deterministic and to steer the conversation down a specific path without depending on a live service.
 
@@ -67,13 +91,48 @@ The mock result is plain text. You can enter JSON, but it is passed to the assis
 
 ## Send webhooks on run start and end
 
-Turn on webhooks to notify your server when a simulation run item starts or ends. On the **Tool mocks & webhooks** tab, under **Webhooks**, toggle **Simulation start** and **Simulation end**. Each fires a `POST` to your server URL.
+Turn on webhooks to notify your server when a simulation run item starts or ends. Each fires a `POST` to your server URL.
 
 <Warning>
   Webhooks fire for **voice simulations only**. They do not trigger in chat mode.
 </Warning>
 
-Vapi sends `simulation.run.started` when a run item goes live:
+<Tabs>
+<Tab title="Dashboard">
+
+On the **Tool mocks & webhooks** tab, under **Webhooks**, toggle **Simulation start** and **Simulation end**.
+
+</Tab>
+<Tab title="cURL">
+
+Webhooks are configured as `hooks` on the scenario:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hooks": [
+      {
+        "on": "simulation.run.started",
+        "do": [{ "type": "webhook", "server": { "url": "https://example.com/webhooks/simulation-started" } }]
+      },
+      {
+        "on": "simulation.run.ended",
+        "do": [{
+          "type": "webhook",
+          "server": { "url": "https://example.com/webhooks/simulation-ended" },
+          "include": { "transcript": true, "messages": true, "recordingUrl": true }
+        }]
+      }
+    ]
+  }'
+```
+
+</Tab>
+</Tabs>
+
+Whichever way you configure them, Vapi sends `simulation.run.started` when a run item goes live:
 
 ```json
 {
@@ -124,7 +183,31 @@ Key fields: `calls.listenUrl` is a live-listen WebSocket URL for eavesdropping o
 
 ## Reuse structured outputs
 
-Each evaluation references a [structured output](/assistants/structured-outputs). Reuse an existing structured output across simulations to keep the same criterion consistent, or create a new one inline from the **Evaluation plan** tab. For how structured outputs are defined, see the [structured outputs quickstart](/assistants/structured-outputs-quickstart).
+Each evaluation references a [structured output](/assistants/structured-outputs). For how structured outputs are defined, see the [structured outputs quickstart](/assistants/structured-outputs-quickstart).
+
+<Tabs>
+<Tab title="Dashboard">
+
+Reuse an existing structured output across simulations to keep the same criterion consistent, or create a new one inline from the **Evaluation plan** tab.
+
+</Tab>
+<Tab title="cURL">
+
+Reference an existing structured output by `structuredOutputId` in an evaluation instead of defining one inline:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "evaluations": [
+      { "structuredOutputId": "<structured-output-id>", "comparator": "=", "value": true, "required": true }
+    ]
+  }'
+```
+
+</Tab>
+</Tabs>
 
 {/* [OK] reuse concept confirmed; [PENDING] confirm the picker/reference UI on the eval plan */}
 

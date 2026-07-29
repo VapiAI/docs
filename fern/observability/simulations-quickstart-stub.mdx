@@ -9,7 +9,7 @@ slug: observability/simulations-quickstart-stub
   DRAFT STUB — Quickstart type. Based on the Linear "Quickstart Template"
   (vapi/document/quickstart-template-3c72691b97ab). Replaces simulations-quickstart.mdx at launch.
   Legend: [OK] confirmed from preview screens (PR 15471)  [PENDING] confirm  [TODO] to write
-  Dashboard-only for now — cURL/API tabs parked until the API is exposed.
+  Dashboard + cURL tabs. cURL shapes verified vs the extended API; endpoints ship when the feature is live.
   Screens captured 2026-07-23 via Stephen (browser tool domain-blocked).
 */}
 
@@ -29,7 +29,10 @@ A simulation suite that runs a scripted tester — with its own personality and 
 * At least one assistant or squad to test.
 * A [structured output](/assistants/structured-outputs-quickstart) to evaluate the conversation. Simulations require at least one, and you can create it during setup.
 
-## Steps
+## Build and run a simulation
+
+<Tabs>
+<Tab title="Dashboard">
 
 <Steps>
   <Step title="Create a simulation suite">
@@ -105,14 +108,17 @@ A simulation suite that runs a scripted tester — with its own personality and 
   </Step>
 </Steps>
 
-## Use the API
+</Tab>
+<Tab title="cURL">
 
-You can build and run the same simulation with the API. The API builds **bottom-up** — create a personality and a scenario, pair them into a simulation, then run it. (The dashboard's suite-first flow is a convenience layer over these calls.)
+The API builds **bottom-up** — create a personality and a scenario, pair them into a simulation, then run it. (The **Dashboard** flow is a convenience layer over these same calls.)
 
 {/* [OK] endpoints/bodies verified against the extended API spec (2026-07-28). Endpoints are
    api-extended today; docs ship when the feature is live. Example names cleaned. */}
 
-**1. Create a personality** — the AI tester, as a name plus a full assistant config.
+**1. Create a personality**
+
+This request creates a personality — the AI tester's configuration. You give it a name and a full assistant setup (model, voice, and system prompt), which together determine how the tester behaves in the conversation.
 
 ```bash
 curl -X POST "https://api.vapi.ai/eval/simulation/personality" \
@@ -131,7 +137,11 @@ curl -X POST "https://api.vapi.ai/eval/simulation/personality" \
   }'
 ```
 
-**2. Create a scenario** — the caller's intent plus the evaluation plan.
+The response returns the created personality, including its `id`. Save it — you pass it as `personalityId` in step 3.
+
+**2. Create a scenario**
+
+This request creates a scenario: what the tester should try to accomplish, plus the evaluation plan that decides whether a run passes. The `instructions` set the tester's goal, and each item in `evaluations` compares a structured output against an expected value.
 
 ```bash
 curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
@@ -153,7 +163,11 @@ curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
 
 `comparator` accepts `=`, `!=`, `>`, `<`, `>=`, `<=`. To reuse an existing structured output, pass `structuredOutputId` instead of an inline `structuredOutput`.
 
-**3. Create a simulation** — pair the scenario with the personality.
+The response returns the created scenario, including its `id`. Save it — you pass it as `scenarioId` in step 3.
+
+**3. Create a simulation**
+
+This request creates a simulation by pairing a scenario with a personality. It ties together what the tester does (the scenario) with who the tester is (the personality), producing the unit you run against a target.
 
 ```bash
 curl -X POST "https://api.vapi.ai/eval/simulation" \
@@ -162,7 +176,11 @@ curl -X POST "https://api.vapi.ai/eval/simulation" \
   -d '{ "scenarioId": "<scenario-id>", "personalityId": "<personality-id>" }'
 ```
 
-**4. Run it** — against your assistant or squad.
+The response returns the created simulation, including its `id`. Save it — you pass it as `simulationId` in step 4.
+
+**4. Run it**
+
+This request starts a run against your assistant or squad. You pass the simulation to run, the target to test, the transport (voice or chat), and how many iterations to execute.
 
 ```bash
 curl -X POST "https://api.vapi.ai/eval/simulation/run" \
@@ -178,7 +196,11 @@ curl -X POST "https://api.vapi.ai/eval/simulation/run" \
 
 Use `"provider": "vapi.websocket"` for voice. To run a suite instead, create one with `POST /eval/simulation/suite` and pass `{ "type": "simulationSuite", "simulationSuiteId": "<suite-id>" }` in `simulations`.
 
-**5. Check the result** — poll the run until its status is `ended`.
+The response returns the run, including its `id`. Save it — you use it in step 5 to check the result.
+
+**5. Check the result**
+
+This request fetches the run's current state. Poll it until `status` is `ended`, then read `itemCounts` to see how many simulations passed or failed.
 
 ```bash
 curl -X GET "https://api.vapi.ai/eval/simulation/run/<run-id>" \
@@ -186,6 +208,9 @@ curl -X GET "https://api.vapi.ai/eval/simulation/run/<run-id>" \
 ```
 
 The response includes `status` (`queued`, `running`, `ended`) and `itemCounts` (`total`, `passed`, `failed`, `running`, `queued`, `canceled`).
+
+</Tab>
+</Tabs>
 
 ## Next steps
 
@@ -205,5 +230,5 @@ The response includes `status` (`queued`, `running`, `ended`) and `itemCounts` (
   REMOVED vs current page:
   [REMOVED] standalone Create-a-Personality / Create-a-Scenario / Create-a-Simulation steps (now inline in suite)
   [REMOVED] 5-tab nav model (now only Suites + Runs)
-  [REMOVED] cURL tabs to /eval/simulation/* (API not exposed — park)
+  [NOTE] cURL is now a tab (shapes verified vs extended API; /eval/simulation/* ships when the feature is live)
 */}
