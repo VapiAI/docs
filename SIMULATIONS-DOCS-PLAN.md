@@ -33,6 +33,12 @@ PERSONALITY FORK-VS-MUTATE (verified in code, EXPECTED not a bug):
 - FLAGGED to team as possible bug (duplicate spawning + no rename). See spawn_task.
 Also added: "Add more" = multiple simulations per suite (quickstart Step 2 note); Scenario name + Intent are REQUIRED (quickstart Step 2).
 
+API (local extended spec at http://localhost:3001/api-extended-json; public at /api-json):
+- Sim API (/eval/simulation/*) = EXTENDED-ONLY (not public). Public shows only /eval, /eval/run, /eval/run/{id}, /eval/{id} — byte-identical to extended (no drift). Legacy /test-suite/* also extended-only.
+- Existing docs cURL VERIFIED accurate vs extended: personality{name,assistant}; scenario{name,instructions,evaluations[{structuredOutput|structuredOutputId,comparator,value,required}]}; simulation{scenarioId,personalityId}; suite{name,simulationIds}; run{simulations[{type:simulation+simulationId | simulationSuite+simulationSuiteId}],target{assistant+assistantId|squad+squadId},transport{provider:vapi.websocket|vapi.webchat},iterations}. comparator enum: = != > < >= <=. Run response: status(queued|running|ended), itemCounts{total,passed,failed,running,queued,canceled}.
+- HOW #3 WORKS: fern/apis/api/generators.yml origin=https://api.vapi.ai/api-json -> docs openapi.json auto-synced via `fern api update`. Sim endpoints appear ONLY after backend makes them public; then overlay (openapi-overrides.yml, schema+property descriptions) attaches. Overlay for sim DTOs is inert/error until then. => draft overlay wording now, apply on sync.
+- #2 DONE (quickstart): added "Use the API" section (bottom-up cURL sequence). Advanced-page cURL = next.
+
 PRINCIPLE (Stephen): LINK to the canonical reference page wherever possible instead of duplicating/enumerating (style-guide aligned). Applied: endedReason->call-ended-reason, variables->dynamic-variables, structured outputs->assistants/structured-outputs(-quickstart) across all 3 sim pages (inline links + wayfinding cards). Keep applying.
 Structured-output canonical pages: /assistants/structured-outputs (concept), /assistants/structured-outputs-quickstart (how-to), /assistants/structured-outputs-examples.
 - Quickstart prereq added: structured output required (can create during setup).

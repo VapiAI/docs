@@ -105,6 +105,88 @@ A simulation suite that runs a scripted tester — with its own personality and 
   </Step>
 </Steps>
 
+## Use the API
+
+You can build and run the same simulation with the API. The API builds **bottom-up** — create a personality and a scenario, pair them into a simulation, then run it. (The dashboard's suite-first flow is a convenience layer over these calls.)
+
+{/* [OK] endpoints/bodies verified against the extended API spec (2026-07-28). Endpoints are
+   api-extended today; docs ship when the feature is live. Example names cleaned. */}
+
+**1. Create a personality** — the AI tester, as a name plus a full assistant config.
+
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/personality" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Skeptical caller",
+    "assistant": {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "messages": [{ "role": "system", "content": "You are a cautious caller who double-checks details before sharing information." }]
+      },
+      "voice": { "provider": "11labs", "voiceId": "sarah" }
+    }
+  }'
+```
+
+**2. Create a scenario** — the caller's intent plus the evaluation plan.
+
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Book an appointment",
+    "instructions": "Book an appointment for next week. Confirm your details when asked.",
+    "evaluations": [
+      {
+        "structuredOutput": { "name": "appointment_booked", "schema": { "type": "boolean" } },
+        "comparator": "=",
+        "value": true,
+        "required": true
+      }
+    ]
+  }'
+```
+
+`comparator` accepts `=`, `!=`, `>`, `<`, `>=`, `<=`. To reuse an existing structured output, pass `structuredOutputId` instead of an inline `structuredOutput`.
+
+**3. Create a simulation** — pair the scenario with the personality.
+
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "scenarioId": "<scenario-id>", "personalityId": "<personality-id>" }'
+```
+
+**4. Run it** — against your assistant or squad.
+
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/run" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "simulations": [{ "type": "simulation", "simulationId": "<simulation-id>" }],
+    "target": { "type": "assistant", "assistantId": "<assistant-id>" },
+    "transport": { "provider": "vapi.webchat" },
+    "iterations": 1
+  }'
+```
+
+Use `"provider": "vapi.websocket"` for voice. To run a suite instead, create one with `POST /eval/simulation/suite` and pass `{ "type": "simulationSuite", "simulationSuiteId": "<suite-id>" }` in `simulations`.
+
+**5. Check the result** — poll the run until its status is `ended`.
+
+```bash
+curl -X GET "https://api.vapi.ai/eval/simulation/run/<run-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+The response includes `status` (`queued`, `running`, `ended`) and `itemCounts` (`total`, `passed`, `failed`, `running`, `queued`, `canceled`).
+
 ## Next steps
 
 <CardGroup cols={2}>
