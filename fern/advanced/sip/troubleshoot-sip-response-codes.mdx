@@ -1,0 +1,129 @@
+---
+title: Troubleshoot SIP response codes
+subtitle: Identify where a SIP request failed and what to check in Vapi, your provider, and your SIP infrastructure
+description: Diagnose SIP response codes by response class, failure point, and call direction, then check the relevant Vapi, provider, network, or destination configuration.
+slug: advanced/sip/troubleshoot-sip-response-codes
+---
+
+Session Initiation Protocol (SIP) response codes describe the result of a SIP request. They are standard protocol responses, not Vapi-specific error codes.
+
+A response can originate from Vapi, your SIP provider, your PBX or Session Border Controller (SBC), a downstream carrier, or the destination. The code identifies the type of response, but it does not always identify the root cause. Start with the response class, find the system that returned the response, and then check the relevant configuration.
+
+<Note>
+  Vapi's `endedReason` summarizes why the call ended. For some outbound SIP failures, it includes the response code directly. For example, if Vapi receives `403 Forbidden`, the call can have an `endedReason` of `call.in-progress.error-providerfault-outbound-sip-403-forbidden`.
+
+  Vapi does not have a code-specific `endedReason` for every SIP response. For example, if Vapi receives `404 Not Found`, the call may have a generic SIP failure reason. The original response is still `404`. Only Vapi's summary is generic. Check your provider or PBX/SBC logs when the `endedReason` does not include the response code.
+</Note>
+
+## Start in Vapi
+
+<Steps>
+  <Step title="Open the failed call">
+    Open the [**Vapi Dashboard**](https://dashboard.vapi.ai/), then choose **Observe** > **Logs**. Choose the **Calls** tab, then choose the failed call.
+  </Step>
+
+  <Step title="Collect the call context">
+    Record the call ID, timestamp, call direction, SIP provider, and `endedReason`. The direction determines which signaling path to inspect first.
+
+    You can also retrieve `endedReason` from the [Call object](/api-reference/calls/get-call).
+
+    - For an outbound call, start with Vapi and your outbound SIP provider.
+    - For an inbound call, start with the originating provider or PBX and the Vapi phone number or trunk configuration.
+  </Step>
+
+  <Step title="Find the final SIP response">
+    If the `endedReason` contains a SIP response code, use that code as your starting point. If the ended reason is generic, check your provider, PBX, or SBC logs for the final response code and reason phrase.
+
+    Record which system returned the response. The same code can have different causes when it comes from a different system.
+  </Step>
+
+  <Step title="Use the response class to choose the next check">
+    Use the first digit of the response code to identify the broad failure area, then use the exact code and provider logs to narrow the cause.
+  </Step>
+</Steps>
+
+## Understand the response class
+
+| Response class | What it indicates | Where to investigate |
+| --- | --- | --- |
+| `1xx` | The request was received and call setup is progressing. | Usually no action is needed. Investigate only if setup never reaches a final response. |
+| `2xx` | The request succeeded. | Usually no action is needed. |
+| `3xx` | The request was redirected. | Check the returned contact, SIP URI, routing rules, and redirect handling. |
+| `4xx` | The responding system rejected or could not fulfill this request. | Check authentication, allowlists, addressing, routing, destination state, permissions, and account limits. |
+| `5xx` | A server could not fulfill an apparently valid request. | Check provider status, routing availability, capacity, downstream services, and retry behavior. |
+| `6xx` | The request cannot be fulfilled at any destination known to the responding system. | Check destination rejection, account policy, and carrier restrictions. |
+
+<Warning>
+  A `4xx` response does not always mean that your application sent an invalid request. A provider can use a `4xx` response for account restrictions, call limits, routing rules, or destination state. Use the provider's reason phrase and call trace to identify the specific cause.
+</Warning>
+
+## Locate the likely failure point
+
+Use the response family to decide which part of the call path to inspect first.
+
+| Likely failure point | Common responses | Start with these checks |
+| --- | --- | --- |
+| Authentication or authorization | `401`, `403`, `407` | SIP credentials, digest authentication, IP allowlists, account status, caller ID permissions, and geographic permissions |
+| Addressing or routing | `404`, `480`, `484` | Destination number or SIP URI, phone number assignment, dial plan, provider route, and endpoint registration |
+| Destination state | `480`, `486`, `487`, `600`, `603` | Endpoint availability, busy state, do-not-disturb settings, cancellation source, and destination policy |
+| Signaling or network timeout | `408`, `504` | DNS, firewall, signaling ports, transport protocol, provider reachability, and endpoint response |
+| Media negotiation | `415`, `488`, `606` | Session Description Protocol (SDP), codecs, public media addresses, TLS, and Secure Real-time Transport Protocol (SRTP) settings |
+| Provider or downstream server | `500`, `502`, `503`, `504` | Provider status, routing capacity, calls-per-second limits, concurrent-call limits, downstream carrier errors, and retry headers |
+
+## Troubleshoot common 4xx responses
+
+| Response | What it usually means | What to check |
+| --- | --- | --- |
+| `401 Unauthorized` | The destination server requests authentication. This can be a normal SIP challenge. | If the call fails, check the SIP username, password, authentication realm, and digest authentication. Confirm that a second authenticated request was sent. |
+| `403 Forbidden` | The responding system understood the request but refused it. | Check credentials, caller ID and destination permissions, geographic restrictions, and account or trunk limits. For outbound calls, confirm that the provider allows Vapi's [SIP signaling IP addresses](/advanced/sip/sip-networking#sip-signalling). For inbound calls, confirm that the provider's source addresses match the gateways configured in Vapi. Do not retry until you identify the restriction. |
+| `404 Not Found` | The responding system could not find the requested user or domain. | Check the number or SIP URI. For inbound calls, confirm that the called number is configured and assigned in Vapi. For outbound calls, confirm that the provider has a route to an active destination. |
+| `407 Proxy Authentication Required` | A SIP proxy requests authentication. This can be a normal SIP challenge. | If the call fails, check the trunk username, password, authentication realm, and proxy configuration. Confirm that an authenticated request followed the challenge. |
+| `408 Request Timeout` | The responding server could not produce a response in time. | Check DNS, firewall rules, signaling ports, transport protocol, and endpoint availability. Compare Vapi and provider timestamps to find the system that stopped responding. |
+| `480 Temporarily Unavailable` | The destination is known but is currently unavailable, offline, unregistered, or set to do not disturb. | Check endpoint registration and routing. Retry later if the destination is expected to become available. |
+| `484 Address Incomplete` | The request address is incomplete. | Check the destination number, country code, SIP URI user, and provider dialing format. Use E.164 format when required. |
+| `486 Busy Here` | The destination was reached but is busy or cannot accept another call. | This is normally a destination state, not a Vapi configuration error. Retry later or follow your busy-call handling policy. |
+| `487 Request Terminated` | The request was canceled before it completed. | Check the timeline or signaling trace to identify who sent the `CANCEL`. This is expected when the caller intentionally abandons the call. |
+| `488 Not Acceptable Here` | The endpoint could not accept the proposed session or media configuration. | Check the SDP offer and answer, codecs, public media addresses, TLS, and SRTP. Review the [networking and firewall configuration](/advanced/sip/sip-networking). |
+
+## Troubleshoot common 5xx responses
+
+| Response | What it usually means | What to check |
+| --- | --- | --- |
+| `500 Server Internal Error` | The responding server encountered an unexpected condition. | Check the status and logs for the system that returned the response. If Vapi returned it, check the [Vapi status page](https://status.vapi.ai/). Retry after a short delay if the failure is temporary. |
+| `502 Bad Gateway` | A gateway or proxy received an invalid response from a downstream server. | Check the responding system's routing logs and downstream details. Contact the operator of the gateway if you cannot inspect those logs. |
+| `503 Service Unavailable` | The responding server is temporarily unavailable. Providers can also use this response for routing failures or call limits. | Check system status, account limits, trunk capacity, and available routes. Follow `Retry-After` when present. Use an alternate route when your provider supports failover. |
+| `504 Server Time-out` | A server did not receive a timely response from a downstream server. | Check the responding system's downstream routing and destination reachability. Retry if the failure was temporary. |
+
+## Troubleshoot common 6xx responses
+
+| Response | What it usually means | What to check |
+| --- | --- | --- |
+| `600 Busy Everywhere` | The destination is busy across all endpoints known to the responding system. | Retry later according to your busy-call handling policy. |
+| `603 Decline` | The destination or a system acting for it declined the request. | Check destination policy, provider account status, call blocking, and the provider-specific reason before retrying. |
+
+## If the response is still unclear
+
+The reason phrase and provider-specific details are important because different providers can use the same response code for different causes. The reason phrase is descriptive text and can vary between implementations, so do not build automated handling from the phrase alone.
+
+Collect the following information before contacting your SIP provider or [Vapi Support](/support):
+
+- Vapi call ID and organization ID
+- Timestamp with timezone
+- Inbound or outbound direction
+- SIP provider and PBX or SBC product
+- Exact SIP response code and reason phrase
+- The system that returned the response, when known
+- SIP Call-ID and a redacted signaling trace, when available
+- The configuration checks and retries you already performed
+
+Do not include SIP passwords, API keys, or other secrets in logs or support requests.
+
+## Related resources
+
+- [Call end reasons](/calls/call-ended-reason)
+- [Troubleshoot call errors](/calls/troubleshoot-call-errors)
+- [SIP networking and firewall configuration](/advanced/sip/sip-networking)
+- [Troubleshoot SIP trunk credential errors](/advanced/sip/troubleshoot-sip-trunk-credential-errors)
+- [IETF RFC 3261](https://www.rfc-editor.org/rfc/rfc3261.html)
+- [IANA SIP response code registry](https://www.iana.org/assignments/sip-parameters/sip-parameters.xhtml#sip-parameters-7)
+- [Telnyx SIP response code quick reference](https://telnyx.com/resources/sip-response-codes-need-know-2-minutes)
