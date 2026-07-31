@@ -4,19 +4,17 @@ subtitle: 'Connect your assistant to third-party apps with per-user tool calls v
 slug: tools/scalekit
 ---
 
-The Scalekit integration lets your Vapi assistant call third-party apps (calendar, email, CRM, and more) during calls and chats **on behalf of each end user**.
+The Scalekit integration lets your Vapi assistant call [third-party apps](https://docs.scalekit.com/agentkit/connectors/) (calendar, email, CRM, and more) during calls and chats **on behalf of each end user**.
 
 You expose each action as a [Function](/tools/custom-tools) tool with a Server URL. Scalekit stores each user's connected accounts and executes the tool with that user's credentials. Your webhook never needs to manage OAuth tokens for those apps.
-
-This differs from the built-in [Google Calendar](/tools/google-calendar), [Slack](/tools/slack), and similar External tools, which connect a single workspace or account in the Vapi dashboard. Use those when one shared connection is enough. Use Scalekit when each caller should act with their own connected apps.
 
 ## Prerequisites
 
 Before you can use the Scalekit integration, you need to:
 
-1. Have access to the Vapi Dashboard and an assistant
-2. Have a [Scalekit](https://www.scalekit.com) account with API credentials (environment URL, client ID, and client secret)
-3. Have a connection configured in Scalekit and an **ACTIVE** connected account for a test user identifier
+1. Have access to the [Vapi Dashboard](https://dashboard.vapi.ai) and an assistant
+2. Have a [Scalekit](https://www.scalekit.com) account with API credentials (`SCALEKIT_ENV_URL`, `SCALEKIT_CLIENT_ID`, `SCALEKIT_CLIENT_SECRET` from [app.scalekit.com](https://app.scalekit.com) → Developers → Settings → API Credentials)
+3. Have a connection configured in Scalekit (**Dashboard → AgentKit → Connections**) and an **ACTIVE** connected account for a test user identifier
 4. Have a publicly reachable HTTPS endpoint for your Function tool Server URL (use a tunnel such as ngrok for local development)
 
 Optional: clone the reference demo at [vapi-scalekit-voice-demo](https://github.com/scalekit-developers/vapi-scalekit-voice-demo).
@@ -27,12 +25,12 @@ Optional: clone the reference demo at [vapi-scalekit-voice-demo](https://github.
 
 First, authorize the third-party app for a specific user in Scalekit:
 
-1. Open the [Scalekit Dashboard](https://app.scalekit.com)
-2. Configure a connection for the app you need (for example Google Calendar or Gmail)
+1. Open the [Scalekit Dashboard](https://app.scalekit.com) → **AgentKit** → **Connections**
+2. Create a connection for the app you need (**+ Create Connection** → select connector → set **Connection Name** → Save). Gmail is available without dashboard setup; other connectors require this step.
 3. Create or look up a connected account for your user **identifier** (a stable ID you control, such as your app's user id or email)
 4. Complete the authorization flow until the connected account status is **ACTIVE**
 
-Use the exact **Connection Name** from the Scalekit dashboard in any connect or authorize API calls. Do not invent a name from the provider slug alone.
+Use the exact **Connection Name** from the dashboard as the `connector` value in SDK calls. Do not invent a name from the provider slug alone. See [Connections](https://docs.scalekit.com/agentkit/connections/) and [Connected accounts](https://docs.scalekit.com/agentkit/connected-accounts/).
 
 ### 2. Create a Function tool in Vapi
 
@@ -91,14 +89,15 @@ Your server should:
 
 1. Read each tool call's id, name, and arguments
 2. Read the Scalekit identifier from metadata (for example `scalekitConnectionId`)
-3. Call Scalekit `executeTool` with that identifier and the tool name/inputs
+3. Call Scalekit `executeTool` with `toolName`, `identifier`, `connector` (dashboard Connection Name), and `toolInput`
 4. Return the response shape Vapi expects
 
 ```typescript
 import { ScalekitClient } from '@scalekit-sdk/node';
 
+// SCALEKIT_ENV_URL from Scalekit Dashboard → Developers → Settings → API Credentials
 const scalekit = new ScalekitClient(
-  process.env.SCALEKIT_ENVIRONMENT_URL!, // some setups use SCALEKIT_ENV_URL for the same value
+  process.env.SCALEKIT_ENV_URL!,
   process.env.SCALEKIT_CLIENT_ID!,
   process.env.SCALEKIT_CLIENT_SECRET!
 );
@@ -120,14 +119,18 @@ export async function POST(req: Request) {
   const results = [];
 
   for (const toolCall of toolCalls) {
+    // Prefer exact Scalekit tool names (e.g. googlecalendar_list_events, gmail_fetch_mails)
     const toolName = toolCall.name || toolCall.function?.name || '';
     const args = toolCall.arguments || toolCall.parameters || {};
     const toolCallId = toolCall.id || toolCall.toolCallId;
 
     try {
+      // Pass identifier + connector (exact Connection Name from the dashboard).
+      // Tool output lives in execution.data — see Scalekit agent tools docs.
       const execution = await scalekit.actions.executeTool({
-        identifier,
         toolName,
+        identifier,
+        connector: process.env.SCALEKIT_CONNECTION_NAME!, // e.g. googlecalendar or your dashboard Connection Name
         toolInput: args.toolInput || args,
       });
 
@@ -212,17 +215,15 @@ Example assistant configuration that attaches a Function tool backed by your Sca
 }
 ```
 
-Use real Scalekit tool names and parameter schemas for the connector you enabled. Discover tools for an identifier in the Scalekit dashboard or with the Scalekit tools/list APIs.
+Use real Scalekit tool names and parameter schemas for the connector you enabled (do not invent names from the product label). Discover tools for an identifier with `scalekit.tools.listScopedTools(identifier, { filter: { connectionNames }, pageSize: 100 })`, the connector **Tool list** in the dashboard, or [tool discovery](https://docs.scalekit.com/agentkit/tool-discovery/).
 
 ## Best Practices
 
 1. **Exact tool names**: Reference the Function tool name exactly in the system prompt so the model invokes it reliably
-2. **String results**: Return speakable single-line strings from the webhook for voice; stringify objects from Scalekit
+2. **String results**: Return speakable single-line strings from the webhook for voice; stringify objects from Scalekit (`execution.data`)
 3. **Server-side identity**: Resolve the Scalekit identifier from your session in production; treat call metadata as a transport, not as authentication by itself
-4. **Token limits**: Increase tool `maxTokens` if complex arguments are truncated
-5. **Latency**: Keep webhook and Scalekit calls fast; long tool runs hurt voice turn-taking
-6. **Prefer native tools when enough**: Use [Google Calendar](/tools/google-calendar) or [Slack](/tools/slack) when a single shared account is sufficient
-7. **Connection status**: Confirm the connected account is **ACTIVE** in Scalekit before testing tool calls
+4. **Latency**: Keep webhook and Scalekit calls fast; long tool runs hurt voice turn-taking
+5. **Connection status**: Confirm the connected account is **ACTIVE** in Scalekit before testing tool calls
 
 ## Troubleshooting
 
@@ -238,7 +239,9 @@ Use real Scalekit tool names and parameter schemas for the connector you enabled
 
 - [Custom Tools](/tools/custom-tools) — Function tools and Server URL contracts
 - [Custom tools troubleshooting](/tools/custom-tools-troubleshooting) — Response format and common failures
-- [Scalekit documentation](https://docs.scalekit.com/agentkit/overview) — Connections, connected accounts, and tool execution
+- [AgentKit overview](https://docs.scalekit.com/agentkit/overview/) — Connections, connected accounts, and tool execution
+- [Tool discovery](https://docs.scalekit.com/agentkit/tool-discovery/) — List tools and schemas for a user
+- [Connectors](https://docs.scalekit.com/agentkit/connectors/) — Supported third-party apps
 - [Reference demo](https://github.com/scalekit-developers/vapi-scalekit-voice-demo) — End-to-end Web SDK + webhook example
 
 <CardGroup cols={2}>
