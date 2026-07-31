@@ -5,6 +5,8 @@ Remove this file before merging the Simulations GA docs to main.
 
 # Simulations Docs — Gap Tracker & Plan
 
+> UN-STUBBED 2026-07-29 for initial review: 4 final pages fern/observability/simulations-{overview,quickstart,advanced,manage}.mdx. Old quickstart/advanced.mdx REPLACED; overview/manage new; all *-stub.mdx deleted. Stripped "(STUB — DRAFT)" titles, draft <Warning>, {/* */} comments, -stub slugs/links. docs.yml = single Simulations section (Overview/Quickstart/Advanced/Manage); DRAFT-stubs section removed. Critical callouts preserved as <Note>/prose. NOT committed (Stephen reviews). overview/quickstart/advanced prose = Stephen's separate-LLM edit pass; manage = mine.
+
 ## Repos / access
 - DOCS: this repo (VapiDocs1, Fern). Branch: **docs/simulations-ga-stubs**.
 - CODE: /Users/stephen-vapi/Vapi/vapi — SimulationsV2 on branch codex/pal-198-sims-ga-e2e.
