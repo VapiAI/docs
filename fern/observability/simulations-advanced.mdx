@@ -11,7 +11,7 @@ Advanced simulation options let you configure the AI tester, set variable values
 
 Advanced options belong to each simulation in a suite. They control how the AI tester behaves, which values the [**assistant**](/assistants) or [**squad**](/squads) receives, what mocked tools return, and which lifecycle events send webhooks.
 
-Open a suite and select **Edit**, then **Next**. The review step contains the **Evaluation plan**, **Variables**, and **Tool mocks & webhooks** tabs.
+Open a suite and select **Edit**, then **Next**. The review step contains the **Success criteria**, **Variables**, and **Tool mocks & webhooks** tabs.
 
 <CardGroup cols={2}>
   <Card title="Configure the AI tester" icon="robot" href="#configure-the-ai-tester">
@@ -39,7 +39,7 @@ Open a suite and select **Edit**, then **Next**. The review step contains the **
 The **AI tester** drives the simulated conversation, and its configuration lives in the personality. On a simulation's **Personality** tab, expand **Advanced settings** to change how the AI tester reasons, listens, and speaks:
 
 - **Model**: Choose the provider and model that control how the AI tester reasons. Use a provider and model you can access.
-- **Transcriber** (optional): Override the AI tester's speech-to-text provider, language, and model. By default, the simulation uses the [**assistant's**](/assistants) transcriber.
+- **Transcriber** (optional): Override the AI tester's speech-to-text provider, language, and model. If you leave it unset, the AI tester falls back to a built-in default.
 - **Voice**: Choose the provider and voice for the AI tester. Select a configured voice or enter a custom voice ID.
 
 Transcriber and voice apply to voice simulations. Chat simulations use the model only.
@@ -50,16 +50,18 @@ Transcriber and voice apply to voice simulations. Chat simulations use the model
 
 ## Mock tool responses
 
-Simulations do not run real tools. Mock a tool to send fixed text to the [**assistant**](/assistants) or [**squad**](/squads) without calling the live tool or API.
+During a simulation, the [**assistant**](/assistants) or [**squad**](/squads) under test runs its real [**tools**](/tools/introduction). Mock a tool to return fixed text instead, so that tool never calls its live service or API. A mock intercepts only the tool it names; every other tool the assistant or squad calls still runs for real.
 
 <Tabs>
 <Tab title="Dashboard">
 
 On the review step, open **Tool mocks & webhooks**. Under **Tool mocks**, select **Add**, then configure each mock with three fields:
 
-- **Tool**: Select a tool available to the assistant or squad.
+- **Tool**: Select one of the [**tools**](/tools/introduction) configured on the assistant or squad. Only its configured tools, including [**custom tools**](/tools/custom-tools), can be mocked.
 - **Mock result**: Enter the string returned in place of the tool's live output.
-- **Enabled**: Toggle the mock on or off.
+- **Enabled**: Toggle the mock on or off. A disabled mock is ignored, and the tool runs live.
+
+{/* TODO(image): Capture the suite editor "Tool mocks & webhooks" tab showing the Tool mocks section with an example mock configured (Tool, Mock result, Enabled). Save to ./static/images/simulations/tool-mocks.png and replace this comment with a <Frame> per repo convention. */}
 
 </Tab>
 <Tab title="cURL">
@@ -77,10 +79,12 @@ curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
   }'
 ```
 
+`toolName` must match the tool's name exactly, and only tools configured on the assistant or squad can be mocked. Set `enabled` to `false` to keep a mock defined without applying it.
+
 </Tab>
 </Tabs>
 
-The mock result is plain text and is passed to the assistant or squad exactly as entered. Use tool mocks to keep tool behavior deterministic and steer the conversation down a specific path without depending on a live service.
+The mock result is passed to the assistant or squad as the tool's result exactly as entered, so both plain text and JSON strings work. Use tool mocks to keep tool behavior deterministic, avoid side effects, and steer the conversation down a specific path without depending on a live service.
 
 ## Send webhooks on run start and end
 
@@ -94,6 +98,8 @@ Turn on webhooks to notify your server when a simulation iteration starts or end
 <Tab title="Dashboard">
 
 On the **Tool mocks & webhooks** tab, under **Webhooks**, toggle **Simulation start** and **Simulation end**.
+
+{/* TODO(image): Capture the suite editor "Tool mocks & webhooks" tab showing the Webhooks section with "Simulation start" and "Simulation end" toggles. Save to ./static/images/simulations/webhooks-toggles.png and replace this comment with a <Frame> per repo convention. */}
 
 </Tab>
 <Tab title="cURL">
@@ -139,8 +145,7 @@ Vapi sends `simulation.run.started` when a simulation iteration begins:
     "testerCallId": "a1b2c3d4-...",
     "targetCallId": "e5f6a7b8-...",
     "listenUrl": "wss://..."
-  },
-  "timestamp": 1710000000000
+  }
 }
 ```
 
@@ -154,9 +159,10 @@ Vapi sends `simulation.run.ended` when the simulation iteration finishes:
   "simulationRunItemId": "c3e8f1a2-9d47-4b6c-8e30-5a1f2b9c7d84",
   "iterationNumber": 1,
   "isSimulation": true,
-  "calls": { "testerCallId": "a1b2c3d4-...", "targetCallId": "e5f6a7b8-..." },
+  "calls": { "testerCallId": "a1b2c3d4-...", "targetCallId": "e5f6a7b8-...", "listenUrl": "wss://..." },
   "endedReason": "...",
   "canceled": false,
+  "failureReason": "...",
   "startedAt": "2026-07-28T17:10:05.000Z",
   "endedAt": "2026-07-28T17:12:30.000Z",
   "transcript": "...",
@@ -165,7 +171,7 @@ Vapi sends `simulation.run.ended` when the simulation iteration finishes:
 }
 ```
 
-The `calls.listenUrl` field contains a WebSocket URL for monitoring the simulation in real time. The `iterationNumber` field identifies the iteration. The ended payload includes `endedReason`, `canceled`, `transcript`, `messages`, and `recordingUrl`. For the complete list of `endedReason` values, see [**Call ended reasons**](/calls/call-ended-reason).
+The `calls.listenUrl` field contains a WebSocket URL for monitoring the simulation in real time. The `iterationNumber` field identifies the iteration. The ended payload includes `endedReason`, `canceled`, `failureReason`, `transcript`, `messages`, and `recordingUrl`. For the complete list of `endedReason` values, see [**Call ended reasons**](/calls/call-ended-reason).
 
 ## Reuse structured outputs
 
@@ -174,7 +180,7 @@ Each evaluation references a [**structured output**](/assistants/structured-outp
 <Tabs>
 <Tab title="Dashboard">
 
-Reuse an existing structured output across simulations to keep the same criterion consistent, or create a new one inline from the **Evaluation plan** tab.
+Reuse an existing structured output across simulations to keep the same criterion consistent, or create a new one inline from the **Success criteria** tab.
 
 </Tab>
 <Tab title="cURL">
@@ -219,7 +225,7 @@ Use these strategies to expand a working suite:
     Create and run your first simulation suite.
   </Card>
   <Card title="Manage simulations" icon="gear" href="/observability/simulations-manage">
-    Edit suites, review results, re-run tests, cancel active runs, and delete suites.
+    Edit suites, review results, rerun tests, cancel active runs, and delete suites.
   </Card>
   <Card title="Structured outputs quickstart" icon="database" href="/assistants/structured-outputs-quickstart">
     Define the structured outputs used in evaluations.
