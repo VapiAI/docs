@@ -1,7 +1,7 @@
 ---
 title: Simulations advanced
 subtitle: Mock tools, send lifecycle webhooks, and reuse structured outputs in simulations.
-description: "Configure advanced simulations with AI tester settings, variables, tool mocks, lifecycle webhooks, reusable structured outputs, and testing strategies."
+description: "Configure advanced simulations with AI tester settings, variables, tool mocks, lifecycle webhooks, and reusable structured outputs for consistent testing."
 slug: observability/simulations-advanced
 ---
 
@@ -29,8 +29,8 @@ Open a suite and select **Edit**, then **Next**. The review step contains the **
   <Card title="Reuse structured outputs" icon="database" href="#reuse-structured-outputs">
     Apply the same evaluation criterion across simulations.
   </Card>
-  <Card title="Apply testing strategies" icon="flask" href="#testing-strategies">
-    Build coverage from smoke tests through edge cases.
+  <Card title="Manage test coverage" icon="flask" href="/observability/simulations-manage#testing-strategies">
+    Build coverage with smoke tests, regression tests, and edge cases.
   </Card>
 </CardGroup>
 
@@ -50,18 +50,23 @@ Transcriber and voice apply to voice simulations. Chat simulations use the model
 
 ## Mock tool responses
 
-During a simulation, the [**assistant**](/assistants) or [**squad**](/squads) under test runs its real [**tools**](/tools/introduction). Mock a tool to return fixed text instead, so that tool never calls its live service or API. A mock intercepts only the tool it names; every other tool the assistant or squad calls still runs for real.
+During a simulation, the [**assistant**](/assistants) or [**squad**](/squads) under test runs its real [**tools**](/tools). Mock a tool to return fixed text instead, so that tool never calls its live service or API. A mock intercepts only the tool it names; every other tool the assistant or squad calls still runs for real.
 
 <Tabs>
 <Tab title="Dashboard">
 
 On the review step, open **Tool mocks & webhooks**. Under **Tool mocks**, select **Add**, then configure each mock with three fields:
 
-- **Tool**: Select one of the [**tools**](/tools/introduction) configured on the assistant or squad. Only its configured tools, including [**custom tools**](/tools/custom-tools), can be mocked.
+- **Tool**: Select one of the [**tools**](/tools) configured on the assistant or squad. Only its configured tools, including [**custom tools**](/tools/custom-tools), can be mocked.
 - **Mock result**: Enter the string returned in place of the tool's live output.
 - **Enabled**: Toggle the mock on or off. A disabled mock is ignored, and the tool runs live.
 
-{/* TODO(image): Capture the suite editor "Tool mocks & webhooks" tab showing the Tool mocks section with an example mock configured (Tool, Mock result, Enabled). Save to ./static/images/simulations/tool-mocks.png and replace this comment with a <Frame> per repo convention. */}
+<Frame>
+  <img
+    src="../static/images/simulations/tool-mocks.png"
+    alt="Tool mocks section with a tool, mock result, and Enabled setting configured"
+  />
+</Frame>
 
 </Tab>
 <Tab title="cURL">
@@ -74,7 +79,11 @@ curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
   -H "Content-Type: application/json" \
   -d '{
     "toolMocks": [
-      { "toolName": "transferCall", "result": "Transfer completed.", "enabled": true }
+      {
+        "toolName": "bookAppointment",
+        "result": "{\"status\": \"success\", \"confirmationId\": \"MOCK-12345\"}",
+        "enabled": true
+      }
     ]
   }'
 ```
@@ -84,7 +93,49 @@ curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
 </Tab>
 </Tabs>
 
-The mock result is passed to the assistant or squad as the tool's result exactly as entered, so both plain text and JSON strings work. Use tool mocks to keep tool behavior deterministic, avoid side effects, and steer the conversation down a specific path without depending on a live service.
+The mock result is always passed to the assistant or squad as a string. In the Dashboard, enter plain text or JSON-formatted text directly. In a cURL JSON body, escape the quotation marks inside JSON-formatted text, as shown in the example. Use tool mocks to keep tool behavior deterministic, avoid side effects, and steer the conversation down a specific path without depending on a live service.
+
+### Common mock patterns
+
+Choose a result that leads the assistant or squad through the behavior you want to test. These examples show how the `result` field appears in a cURL JSON body:
+
+<Tabs>
+<Tab title="Success">
+
+Return the data that the tool normally provides after a successful action:
+
+```json
+{
+  "result": "{\"status\": \"success\", \"confirmationId\": \"APT-12345\"}"
+}
+```
+
+</Tab>
+<Tab title="Handled error">
+
+Return an error and recovery options to test how the assistant responds:
+
+```json
+{
+  "result": "{\"error\": \"Time slot no longer available\", \"availableSlots\": [\"14:30\", \"15:00\"]}"
+}
+```
+
+</Tab>
+<Tab title="Unavailable service">
+
+Return plain text to test how the assistant handles a service that is unavailable:
+
+```json
+{
+  "result": "The booking service is temporarily unavailable."
+}
+```
+
+</Tab>
+</Tabs>
+
+These strings replace the selected tool's output. They do not produce an HTTP error, add network latency, or cause a network timeout.
 
 ## Send webhooks on run start and end
 
@@ -99,7 +150,12 @@ Turn on webhooks to notify your server when a simulation iteration starts or end
 
 On the **Tool mocks & webhooks** tab, under **Webhooks**, toggle **Simulation start** and **Simulation end**.
 
-{/* TODO(image): Capture the suite editor "Tool mocks & webhooks" tab showing the Webhooks section with "Simulation start" and "Simulation end" toggles. Save to ./static/images/simulations/webhooks-toggles.png and replace this comment with a <Frame> per repo convention. */}
+<Frame>
+  <img
+    src="../static/images/simulations/webhooks-toggles.png"
+    alt="Webhooks section with Simulation start and Simulation end enabled"
+  />
+</Frame>
 
 </Tab>
 <Tab title="cURL">
@@ -114,13 +170,13 @@ curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
     "hooks": [
       {
         "on": "simulation.run.started",
-        "do": [{ "type": "webhook", "server": { "url": "https://example.com/webhooks/simulation-started" } }]
+        "do": [{ "type": "webhook", "server": { "url": "URL_START" } }]
       },
       {
         "on": "simulation.run.ended",
         "do": [{
           "type": "webhook",
-          "server": { "url": "https://example.com/webhooks/simulation-ended" },
+          "server": { "url": "URL_END" },
           "include": { "transcript": true, "messages": true, "recordingUrl": true }
         }]
       }
@@ -207,13 +263,16 @@ Variables provide values for the [**dynamic variables**](/assistants/dynamic-var
 
 Use variables to test specific inputs, such as a customer name or account tier, without editing the assistant or squad.
 
-## Testing strategies
+## Troubleshooting
 
-Use these strategies to expand a working suite:
-
-- **Build coverage gradually**: Start with smoke tests, then add regression tests and edge cases.
-- **Choose the mode deliberately**: Use **chat mode** for faster iteration and **voice mode** for final audio validation.
-- **Model realistic behavior**: Base AI tester personalities on the customer types the [**assistant**](/assistants) or [**squad**](/squads) handles.
+| Issue | What to check |
+| --- | --- |
+| Every iteration fails | Review the transcript, then verify the evaluation's description, data type, comparator, and expected value. |
+| A run stays queued or running | Check the assistant or squad configuration and its provider credentials. Fetch the run and its items to find a failure reason. |
+| Results vary between runs | Make the intent and evaluations more specific, then run multiple iterations to measure consistency. |
+| There is no audio or recording | Check whether the run used chat mode. Use voice mode to test or record audio. |
+| Start or end webhooks do not trigger | Confirm that the run uses voice mode and that the corresponding hook and URL are configured. |
+| A tool mock does not apply | Confirm that `toolName` matches the configured tool name exactly and that `enabled` is `true`. |
 
 ## Next steps
 
@@ -225,7 +284,7 @@ Use these strategies to expand a working suite:
     Create and run your first simulation suite.
   </Card>
   <Card title="Manage simulations" icon="gear" href="/observability/simulations-manage">
-    Edit suites, review results, rerun tests, cancel active runs, and delete suites.
+    Edit suites, review and rerun results, maintain test coverage, and delete suites.
   </Card>
   <Card title="Structured outputs quickstart" icon="database" href="/assistants/structured-outputs-quickstart">
     Define the structured outputs used in evaluations.
