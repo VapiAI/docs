@@ -2025,6 +2025,21 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "name": "includeCounters",
+            "required": false,
+            "in": "query",
+            "description": "When true, the response includes `contactCounters` and `callMetrics`.\nThese are aggregate queries over the campaign's contacts and events, so\nthey are opt-in rather than paid for on every read. Defaults to false.",
+            "schema": {
+              "enum": [
+                true,
+                false,
+                "true",
+                "false"
+              ],
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -2033,7 +2048,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Campaign"
+                  "$ref": "#/components/schemas/CampaignSummary"
                 }
               }
             }
@@ -2236,6 +2251,85 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Campaign"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Campaigns"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/v2/campaign/{id}/contacts": {
+      "get": {
+        "operationId": "CampaignController_getCampaignV2Contacts",
+        "summary": "Get Campaign V2 Contacts",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "This is the status to filter contacts by. Pass once or multiple times to\nfilter on any of the provided statuses.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "contact.pending",
+                  "contact.dispatched",
+                  "contact.completed",
+                  "contact.failed",
+                  "contact.skipped",
+                  "contact.predial-failed"
+                ]
+              }
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "This is the maximum number of contacts to return. Defaults to 50.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignContactPaginatedResponse"
                 }
               }
             }
@@ -25931,39 +26025,8 @@
           },
           "voiceId": {
             "type": "string",
-            "description": "The voices provided by Vapi",
-            "enum": [
-              "Clara",
-              "Godfrey",
-              "Elliot",
-              "Savannah",
-              "Nico",
-              "Kai",
-              "Emma",
-              "Sagar",
-              "Neil",
-              "Layla",
-              "Sid",
-              "Gustavo",
-              "Kylie",
-              "Rohan",
-              "Lily",
-              "Hana",
-              "Neha",
-              "Cole",
-              "Harry",
-              "Paige",
-              "Spencer",
-              "Naina",
-              "Leah",
-              "Tara",
-              "Jess",
-              "Leo",
-              "Dan",
-              "Mia",
-              "Zac",
-              "Zoe"
-            ]
+            "description": "The voice to use: a built-in Vapi voice name, or a cloned voice id (used with version 2).",
+            "example": "Clara"
           },
           "version": {
             "description": "The Vapi voice routing generation. `latest` auto-updates to the newest generation; version 1 uses legacy mappings; version 2 can use xAI-backed voices when available. When omitted, Version 1 is used. Accepts the string channel ('latest', '1', '2'); legacy numeric values (1, 2) are also accepted and coerced to their string form.",
@@ -28515,39 +28578,8 @@
           },
           "voiceId": {
             "type": "string",
-            "description": "The voices provided by Vapi",
-            "enum": [
-              "Clara",
-              "Godfrey",
-              "Elliot",
-              "Savannah",
-              "Nico",
-              "Kai",
-              "Emma",
-              "Sagar",
-              "Neil",
-              "Layla",
-              "Sid",
-              "Gustavo",
-              "Kylie",
-              "Rohan",
-              "Lily",
-              "Hana",
-              "Neha",
-              "Cole",
-              "Harry",
-              "Paige",
-              "Spencer",
-              "Naina",
-              "Leah",
-              "Tara",
-              "Jess",
-              "Leo",
-              "Dan",
-              "Mia",
-              "Zac",
-              "Zoe"
-            ]
+            "description": "The voice to use: a built-in Vapi voice name, or a cloned voice id (used with version 2).",
+            "example": "Clara"
           },
           "version": {
             "description": "The Vapi voice routing generation. `latest` auto-updates to the newest generation; version 1 uses legacy mappings; version 2 can use xAI-backed voices when available. When omitted, Version 1 is used. Accepts the string channel ('latest', '1', '2'); legacy numeric values (1, 2) are also accepted and coerced to their string form.",
@@ -35681,6 +35713,11 @@
             "type": "string",
             "nullable": true,
             "description": "This is the prior version label (vN-1). Null on v1 or for branch roots."
+          },
+          "restoredFromVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "The version this version was restored from. Null when it was not restored."
           },
           "createdBy": {
             "type": "string",
@@ -46131,6 +46168,220 @@
           "metadata"
         ]
       },
+      "CampaignContactCounters": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "number"
+          },
+          "dispatched": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "failed": {
+            "type": "number"
+          },
+          "skipped": {
+            "type": "number"
+          },
+          "predialFailed": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "pending",
+          "dispatched",
+          "completed",
+          "failed",
+          "skipped",
+          "predialFailed"
+        ]
+      },
+      "CampaignCallMetrics": {
+        "type": "object",
+        "properties": {
+          "dialed": {
+            "type": "number",
+            "description": "This is the number of contacts a call was actually placed for. Contacts\nthat were skipped, rejected before dialing, or failed to dispatch are not\ncounted — no call existed, so there was nothing to answer."
+          },
+          "connected": {
+            "type": "number",
+            "description": "This is the number of those calls a human picked up. Voicemail does not\ncount. Divide by `dialed` for the pick-up rate."
+          }
+        },
+        "required": [
+          "dialed",
+          "connected"
+        ]
+      },
+      "CampaignSummary": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "This is the status of the campaign.",
+            "enum": [
+              "scheduled",
+              "in-progress",
+              "ended",
+              "cancelled",
+              "archived"
+            ]
+          },
+          "endedReason": {
+            "type": "string",
+            "description": "This is the explanation for how the campaign ended.",
+            "enum": [
+              "campaign.scheduled.ended-by-user",
+              "campaign.in-progress.ended-by-user",
+              "campaign.ended.success"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the campaign. This is just for your own reference.",
+            "example": "Q2 Sales Campaign"
+          },
+          "assistantId": {
+            "type": "string",
+            "description": "This is the assistant ID that will be used for the campaign calls. Note: Only one of assistantId, workflowId, or squadId can be used."
+          },
+          "squadId": {
+            "type": "string",
+            "description": "This is the squad ID that will be used for the campaign calls. Note: Only one of assistantId, workflowId, or squadId can be used."
+          },
+          "phoneNumberId": {
+            "type": "string",
+            "description": "This is the phone number ID that will be used for the campaign calls. Required if dialPlan is not provided. Note: phoneNumberId and dialPlan are mutually exclusive."
+          },
+          "schedulePlan": {
+            "description": "This is the schedule plan for the campaign. Calls will start at startedAt and continue until your organization’s concurrency limit is reached. Any remaining calls will be retried for up to one hour as capacity becomes available. After that hour or after latestAt, whichever comes first, any calls that couldn’t be placed won’t be retried.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SchedulePlan"
+              }
+            ]
+          },
+          "maxConcurrency": {
+            "type": "number",
+            "minimum": 1,
+            "description": "This is the maximum number of concurrent calls that will be made for the campaign. Defaults to 10."
+          },
+          "assistantOverrides": {
+            "description": "These are the overrides for the assistant's settings and template variables for the campaign. Use this when the campaign targets an `assistantId`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
+          },
+          "squadOverrides": {
+            "description": "These are the overrides for the squad and template variables for the campaign. Use this when the campaign targets a `squadId`. Per-contact `squadOverrides` are deep-merged on top of this at dispatch time.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
+          },
+          "server": {
+            "description": "This is the server (URL, auth headers, timeout, etc.) for the campaign webhooks.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Server"
+              }
+            ]
+          },
+          "serverMessages": {
+            "type": "array",
+            "enum": [
+              "campaign.started",
+              "campaign.cancelled",
+              "campaign.ended",
+              "campaign.archived",
+              "campaign.unarchived",
+              "contact.dispatched",
+              "contact.completed",
+              "contact.failed",
+              "contact.skipped",
+              "contact.predial-failed",
+              "campaign.job.continued"
+            ],
+            "example": [
+              "campaign.started",
+              "contact.dispatched"
+            ],
+            "description": "These are the messages that will be sent to your Server URL.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "campaign.started",
+                "campaign.cancelled",
+                "campaign.ended",
+                "campaign.archived",
+                "campaign.unarchived",
+                "contact.dispatched",
+                "contact.completed",
+                "contact.failed",
+                "contact.skipped",
+                "contact.predial-failed",
+                "campaign.job.continued"
+              ]
+            }
+          },
+          "predialPlan": {
+            "description": "This opts the campaign into the blocking `campaign.predial` eligibility webhook. When set, every contact triggers a `campaign.predial` POST to the Server URL before dialing, and the response `{ eligible: boolean }` decides whether the call is placed. Requires `server`. When unset, no pre-dial webhook is sent.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CampaignPredialPlan"
+              }
+            ]
+          },
+          "contactCounters": {
+            "description": "These are the per-status contact counts for this campaign. Sum them for the\ncampaign's total audience; `pending` plus `dispatched` is what is left to\ncomplete.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CampaignContactCounters"
+              }
+            ]
+          },
+          "callMetrics": {
+            "description": "These are the call-level outcomes for this campaign — how many contacts\nwere actually dialed, and how many of those a human picked up.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CampaignCallMetrics"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the campaign."
+          },
+          "orgId": {
+            "type": "string",
+            "description": "This is the unique identifier for the org that this campaign belongs to."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the campaign was created."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the campaign was last updated."
+          }
+        },
+        "required": [
+          "status",
+          "name",
+          "id",
+          "orgId",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "UpdateCampaignDTO": {
         "type": "object",
         "properties": {
@@ -46178,6 +46429,64 @@
             ]
           }
         }
+      },
+      "CampaignContactWithOutcome": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "contact.pending",
+              "contact.dispatched",
+              "contact.completed",
+              "contact.failed",
+              "contact.skipped",
+              "contact.predial-failed"
+            ]
+          },
+          "callId": {
+            "type": "string"
+          },
+          "dispatchedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status"
+        ]
+      },
+      "CampaignContactPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CampaignContactWithOutcome"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
+        ]
       },
       "RelayTargetAssistant": {
         "type": "object",
@@ -68996,6 +69305,19 @@
             "format": "date-time",
             "type": "string",
             "description": "The ISO 8601 date-time string of when the voice library was last updated."
+          },
+          "isCloned": {
+            "type": "boolean",
+            "description": "Whether this voice was cloned by the org from their own audio, as opposed\nto a seeded/preset voice. Drives the cloned filter and tag. Backed by a\nNOT NULL DEFAULT false column, so it is always present at read time."
+          },
+          "cloneBackend": {
+            "type": "string",
+            "description": "The provider that produced the clone (e.g. 'xai'). The voice `provider`\nstays 'vapi'; this records the underlying backend. Unset for non-cloned voices."
+          },
+          "cloneChargedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the clone's prorated creation fee was successfully charged. Unset\nmeans the org was never charged for this clone, which is what makes it\nneither billable monthly nor refundable on delete."
           }
         },
         "required": [
@@ -69089,6 +69411,19 @@
           "voiceName",
           "transcription"
         ]
+      },
+      "UpdateVoiceLibraryMetadataDTO": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Updated display name for the voice."
+          },
+          "description": {
+            "type": "string",
+            "description": "Updated description for the voice."
+          }
+        }
       },
       "CartesiaPronunciationDictItem": {
         "type": "object",
@@ -69361,6 +69696,31 @@
           },
           "files": {
             "description": "These are the files you want to use to clone your voice. Only Audio files are supported.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "binary"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "files"
+        ]
+      },
+      "VapiVoiceCloneDTO": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the cloned voice."
+          },
+          "language": {
+            "type": "string",
+            "description": "Optional language (ISO-639 / BCP-47). When omitted, xAI infers it from the\nreference audio."
+          },
+          "files": {
+            "description": "Reference audio to clone the voice from (up to 120 seconds). Supported formats: MP3, WAV, OGG/Opus, WebM, AAC, M4A, FLAC, WMA.",
             "type": "array",
             "items": {
               "type": "string",
