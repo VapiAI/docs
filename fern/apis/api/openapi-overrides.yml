@@ -433,6 +433,81 @@ paths:
       x-fern-sdk-group-name:
         - logs
       x-fern-sdk-method-name: get
+  /eval/simulation/personality:
+    post:
+      description: Creates a personality, the AI tester's configuration used in simulations.
+    get:
+      description: Returns the personalities for the authenticated organization.
+  /eval/simulation/personality/{id}:
+    get:
+      description: Returns the specified personality.
+    patch:
+      description: Updates the specified personality. Changes apply to future runs.
+    delete:
+      description: Deletes the specified personality.
+  /eval/simulation/scenario:
+    post:
+      description: Creates a scenario, the AI tester's intent plus the success criteria that score a run.
+    get:
+      description: Returns the scenarios for the authenticated organization.
+  /eval/simulation/scenario/generate:
+    post:
+      description: Generates scenarios for an assistant or squad by analyzing its configuration with AI.
+  /eval/simulation/scenario/{id}:
+    get:
+      description: Returns the specified scenario.
+    patch:
+      description: Updates the specified scenario.
+    delete:
+      description: Deletes the specified scenario.
+  /eval/simulation/run:
+    post:
+      description: Starts a simulation run against a target assistant or squad.
+    get:
+      description: Returns the simulation runs for the authenticated organization.
+  /eval/simulation/run/{id}:
+    get:
+      description: Returns the specified simulation run, including its status and item counts.
+    patch:
+      description: Cancels the specified simulation run.
+  /eval/simulation/run/{id}/item:
+    get:
+      description: Returns the run items for the specified simulation run.
+  /eval/simulation/run/{id}/item/{itemId}:
+    get:
+      description: Returns the specified run item, including its evaluation results and the ID of the call that ran it.
+    patch:
+      description: Cancels the specified run item.
+  /eval/simulation/run/{id}/item/{itemId}/generate:
+    post:
+      description: Generates AI suggestions for improving the assistant or squad's system prompt, tools, and scenarios, based on the specified run item.
+  /eval/simulation/suite:
+    post:
+      description: Creates a simulation suite, a group of simulations that run together.
+    get:
+      description: Returns the simulation suites for the authenticated organization.
+  /eval/simulation/suite/{id}:
+    get:
+      description: Returns the specified simulation suite.
+    patch:
+      description: Updates the specified simulation suite.
+    delete:
+      description: Deletes the specified simulation suite.
+  /eval/simulation:
+    post:
+      description: Creates a simulation by pairing a scenario with a personality.
+    get:
+      description: Returns the simulations for the authenticated organization.
+  /eval/simulation/{id}:
+    get:
+      description: Returns the specified simulation.
+    patch:
+      description: Updates the specified simulation.
+    delete:
+      description: Deletes the specified simulation.
+  /eval/simulation/concurrency:
+    get:
+      description: Returns the organization's simulation concurrency limit, the number of active simulations, and how many more can start.
   /assistant/draft:
     get:
       description: Returns all assistant drafts for the organization.
@@ -480,8 +555,124 @@ paths:
       description: Updates the name and description of the specified tool version.
     delete:
       description: Deletes the specified tool version.
+
 components:
   schemas:
+    CreatePersonalityDTO:
+      properties:
+        name:
+          description: The display name of the personality, for example `Impatient customer`.
+        assistant:
+          description: >-
+            The assistant configuration for the AI tester: the model, voice, and system
+            prompt that determine how the AI tester behaves during the conversation.
+    CreateScenarioDTO:
+      properties:
+        name:
+          description: The display name of the scenario, for example `Book an appointment`.
+        instructions:
+          description: >-
+            What the AI tester should try to accomplish in the conversation. Write it as the
+            AI tester's goal, for example `Book an appointment for next week and confirm the time.`
+        evaluations:
+          description: >-
+            The checks that decide whether a run passes. Each evaluation compares a structured
+            output against an expected value. At least one evaluation is required to run.
+        toolMocks:
+          description: >-
+            Mock results for the assistant or squad's tools during the simulation, so the run
+            stays deterministic without calling real services.
+    EvaluationPlanItem:
+      properties:
+        structuredOutputId:
+          description: >-
+            The ID of an existing structured output to evaluate. Use this to reuse a structured
+            output across scenarios. Provide either `structuredOutputId` or an inline `structuredOutput`.
+        structuredOutput:
+          description: >-
+            An inline structured output to evaluate, defined by its name and schema. Only
+            primitive types (string, number, integer, boolean) are allowed. Provide either
+            this or `structuredOutputId`.
+        comparator:
+          description: How the structured output value is compared against `value`. Available operators depend on the output type. Boolean and string support `=` and `!=`; number and integer support `=`, `!=`, `>`, `<`, `>=`, `<=`.
+        value:
+          description: The expected value the structured output is compared against. Its type should match the structured output's type, for example `true` for a boolean.
+        required:
+          description: Set to `false` to record this evaluation's result without requiring it to pass. Default is `true`.
+    ScenarioToolMock:
+      properties:
+        toolName:
+          description: The name of the assistant or squad's tool to mock. Must match the tool's name exactly.
+        result:
+          description: The result string returned to the assistant or squad in place of calling the real tool.
+        enabled:
+          description: Set to `true` to apply this mock during the simulation. Defaults to `true`.
+    CreateSimulationDTO:
+      properties:
+        name:
+          description: Optional display name for the simulation.
+        scenarioId:
+          description: The ID of the scenario to run.
+        personalityId:
+          description: The ID of the personality the AI tester uses.
+    CreateSimulationSuiteDTO:
+      properties:
+        name:
+          description: The display name of the suite.
+        simulationIds:
+          description: The IDs of the simulations included in the suite.
+        slackWebhookUrl:
+          description: A Slack incoming-webhook URL notified when the suite runs.
+        targetAssignments:
+          description: The assistants or squads the suite's simulations run against.
+    SimulationRun:
+      properties:
+        status:
+          description: The run's current status. One of `queued`, `running`, or `ended`.
+        endedReason:
+          description: Why the run ended, when applicable.
+        itemCounts:
+          description: Aggregate counts of the run's items by status.
+        simulations:
+          description: The simulations and suites included in the run.
+        target:
+          description: The assistant or squad the run was tested against.
+        iterations:
+          description: The number of times each simulation was run. Defaults to 1.
+        transport:
+          description: The transport used for the run, either voice or chat.
+    SimulationRunItemCounts:
+      properties:
+        total:
+          description: The total number of run items.
+        passed:
+          description: The number of run items that passed all required evaluations.
+        failed:
+          description: The number of run items that failed at least one required evaluation.
+        running:
+          description: The number of run items currently running or evaluating.
+        queued:
+          description: The number of run items waiting to start.
+        canceled:
+          description: The number of run items that were canceled.
+    SimulationRunItem:
+      properties:
+        status:
+          description: The run item's current status.
+        results:
+          description: The evaluation results for this run item.
+        improvementSuggestions:
+          description: AI-generated suggestions for improving the assistant or squad's system prompt, tools, and scenarios after a failed run.
+        callId:
+          description: The ID of the call that ran this item.
+        failureReason:
+          description: Why the run item failed, when applicable.
+        iterationNumber:
+          description: Which iteration of the simulation this item represents.
+        scenarioId:
+          description: The ID of the scenario used for this run item.
+        personalityId:
+          description: The ID of the personality used for this run item.
     CreateAssistantDTO:
       description: >-
         Configuration used to create an assistant, including its model, voice,
@@ -4319,10 +4510,22 @@ components:
       properties:
         existingDraftId:
           description: The ID of the draft that already exists, which blocks creating another.
+        error:
+          description: A short error code identifying the conflict.
+        message:
+          description: A human-readable explanation of the conflict.
     ToolDraftConflictResponseDTO:
       properties:
         existingDraftId:
           description: The ID of the draft that already exists, which blocks creating another.
+        error:
+          description: A short error code identifying the conflict.
+        message:
+          description: A human-readable explanation of the conflict.
+    VersionPinConflictResponseDTO:
+      properties:
+        error:
+          description: A short error code identifying why the delete was rejected.
     VersionPinReference:
       properties:
         sourceId:
@@ -4331,6 +4534,82 @@ components:
       properties:
         createdBy:
           description: Filter drafts to those created by this user.
+    AssistantVersionPaginatedMetadata:
+      properties:
+        nextCursor:
+          description: The cursor to pass to fetch the next page of results, or null on the last page.
+        hasNextPage:
+          description: Whether more results are available after this page.
+        limit:
+          description: The maximum number of results returned per page.
+    AssistantVersionPaginatedResponse:
+      properties:
+        results:
+          description: The page of results.
+        metadata:
+          description: Pagination metadata for the response.
+    AssistantDraftPaginatedMetadata:
+      properties:
+        nextCursor:
+          description: The cursor to pass to fetch the next page of results, or null on the last page.
+        hasNextPage:
+          description: Whether more results are available after this page.
+        limit:
+          description: The maximum number of results returned per page.
+    AssistantDraftPaginatedResponse:
+      properties:
+        results:
+          description: The page of results.
+        metadata:
+          description: Pagination metadata for the response.
+    ToolVersionPaginatedMetadata:
+      properties:
+        nextCursor:
+          description: The cursor to pass to fetch the next page of results, or null on the last page.
+        hasNextPage:
+          description: Whether more results are available after this page.
+        limit:
+          description: The maximum number of results returned per page.
+    ToolVersionPaginatedResponse:
+      properties:
+        results:
+          description: The page of results.
+        metadata:
+          description: Pagination metadata for the response.
+    ToolDraftPaginatedMetadata:
+      properties:
+        nextCursor:
+          description: The cursor to pass to fetch the next page of results, or null on the last page.
+        hasNextPage:
+          description: Whether more results are available after this page.
+        limit:
+          description: The maximum number of results returned per page.
+    ToolDraftPaginatedResponse:
+      properties:
+        results:
+          description: The page of results.
+        metadata:
+          description: Pagination metadata for the response.
+    LegacyAssistantVersion:
+      properties:
+        id:
+          description: The unique identifier for this legacy version record.
+        assistantId:
+          description: The ID of the assistant this legacy version belongs to.
+        orgId:
+          description: The ID of the organization that owns this legacy version.
+        data:
+          description: The snapshotted assistant configuration for this legacy version.
+        createdAt:
+          description: The ISO 8601 timestamp of when this legacy version was created.
+    LegacyAssistantVersionPaginatedResponse:
+      properties:
+        results:
+          description: The page of legacy versions.
+        metadata:
+          description: Pagination metadata for the response.
+        nextPageState:
+          description: The cursor to pass to fetch the next page of results, or null on the last page.
   securitySchemes:
     bearer:
       description: >-
