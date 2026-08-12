@@ -1,6 +1,7 @@
 ---
 title: Structured outputs
 subtitle: Extract structured data from conversations using AI-powered analysis
+description: Extract structured, schema-defined data from voice calls using AI-powered analysis. Covers field types, extraction timing, limitations, and HIPAA storage behavior.
 slug: assistants/structured-outputs
 ---
 
@@ -37,9 +38,9 @@ Structured outputs enable automatic extraction of specific information from voic
 
 <CodeBlocks>
 ```typescript title="TypeScript (Server SDK)"
-import { Vapi } from '@vapi-ai/server-sdk';
+import { VapiClient } from '@vapi-ai/server-sdk';
 
-const vapi = new Vapi({ apiKey: process.env.VAPI_API_KEY });
+const vapi = new VapiClient({ token: process.env.VAPI_API_KEY });
 
 const structuredOutput = await vapi.structuredOutputs.create({
   name: "Customer Info",
@@ -75,9 +76,10 @@ console.log('Created structured output:', structuredOutput.id);
 ```
 
 ```python title="Python (Server SDK)"
-from vapi_python import Vapi
+import os
+from vapi import Vapi
 
-vapi = Vapi(api_key=os.environ['VAPI_API_KEY'])
+vapi = Vapi(token=os.environ['VAPI_API_KEY'])
 
 structured_output = vapi.structured_outputs.create(
     name="Customer Info",
@@ -236,10 +238,10 @@ for output_id, data in outputs.items():
 ```javascript title="Webhook Response"
 // In your webhook handler
 app.post('/vapi/webhook', (req, res) => {
-  const { type, call } = req.body;
+  const { message } = req.body;
   
-  if (type === 'call.ended') {
-    const outputs = call.artifact?.structuredOutputs;
+  if (message.type === 'end-of-call-report') {
+    const outputs = message.artifact?.structuredOutputs;
     
     if (outputs) {
       Object.entries(outputs).forEach(([outputId, data]) => {
@@ -439,9 +441,100 @@ Use `if/then/else` for conditional requirements:
 }
 ```
 
+## Conditional generation
+
+By default, every linked structured output runs after each call. Attach **conditions** to a structured output so it only generates when the call meets your criteria — for example, skip extraction on calls that barely started, or only run an output when the call ended a certain way.
+
+<Note>
+Conditions gate **whether the output runs at all**. This is different from the [`if/then/else` schema logic](#conditional-logic) above, which shapes the data *within* a single extraction.
+</Note>
+
+### How conditions work
+
+- Add a `conditions` array to a structured output.
+- **Every condition must pass** for the output to run (AND semantics).
+- When `conditions` is omitted or empty, no user-defined conditions gate the output (runtime defaults still apply).
+- On update (`PATCH`), send `conditions: null` to clear a previously saved gate.
+
+When a condition isn't met, the output is **skipped** rather than failed. Skipped outputs are surfaced in the **assistant preview**, **call logs**, and **sessions**, so you can see which outputs ran and which were gated out.
+
+### Condition types
+
+| Type | Fields | Output runs when |
+|------|--------|------------------|
+| `minMessages` | `count` (integer ≥ 0) | The conversation has at least `count` messages. `count: 0` removes the runtime default minimum. |
+| `minCallDuration` | `seconds` (integer ≥ 0) | The call lasted at least `seconds` seconds. |
+| `endedReason` | `operator` (`oneOf` or `notOneOf`), `values` (array of strings) | The call's [ended reason](/calls/call-ended-reason) passes the membership test against `values`. `oneOf` runs the output only if the ended reason is in `values`; `notOneOf` runs it only if the ended reason is not in `values`. |
+
+### Example
+
+Only extract a call summary when the call had a real conversation (at least 4 messages and 10 seconds) and the customer ended it:
+
+<CodeBlocks>
+```typescript title="TypeScript (Server SDK)"
+const structuredOutput = await vapi.structuredOutputs.create({
+  name: "Call Summary",
+  type: "ai",
+  description: "Summarize the conversation",
+  schema: {
+    type: "object",
+    properties: {
+      summary: { type: "string" }
+    }
+  },
+  conditions: [
+    { type: "minMessages", count: 4 },
+    { type: "minCallDuration", seconds: 10 },
+    { type: "endedReason", operator: "oneOf", values: ["customer-ended-call"] }
+  ]
+});
+```
+
+```python title="Python (Server SDK)"
+structured_output = vapi.structured_outputs.create(
+    name="Call Summary",
+    type="ai",
+    description="Summarize the conversation",
+    schema={
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"}
+        }
+    },
+    conditions=[
+        {"type": "minMessages", "count": 4},
+        {"type": "minCallDuration", "seconds": 10},
+        {"type": "endedReason", "operator": "oneOf", "values": ["customer-ended-call"]}
+    ]
+)
+```
+
+```bash title="cURL"
+curl -X POST https://api.vapi.ai/structured-output \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Call Summary",
+    "type": "ai",
+    "description": "Summarize the conversation",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string" }
+      }
+    },
+    "conditions": [
+      { "type": "minMessages", "count": 4 },
+      { "type": "minCallDuration", "seconds": 10 },
+      { "type": "endedReason", "operator": "oneOf", "values": ["customer-ended-call"] }
+    ]
+  }'
+```
+</CodeBlocks>
+
 ## Custom models
 
-Configure which AI model performs the extraction:
+By default, structured outputs are extracted with GPT-4.1. Configure the `model` to use a different provider or model, or to supply your own extraction prompts:
 
 <CodeBlocks>
 ```typescript title="TypeScript"
@@ -464,7 +557,7 @@ const structuredOutput = await vapi.structuredOutputs.create({
   },
   model: {
     provider: "openai",
-    model: "gpt-4-turbo-preview",
+    model: "gpt-4.1",
     temperature: 0.1,
     messages: [
       {
@@ -473,7 +566,7 @@ const structuredOutput = await vapi.structuredOutputs.create({
       },
       {
         role: "user",
-        content: "Analyze the sentiment of this conversation:\n{{transcript}}"
+        content: "Extract {{structuredOutput.name}} using this schema:\n{{structuredOutput.schema}}\n\nAnalyze the sentiment of this conversation:\n{{transcript}}"
       }
     ]
   }
@@ -500,7 +593,7 @@ structured_output = vapi.structured_outputs.create(
     },
     model={
         "provider": "openai",
-        "model": "gpt-4-turbo-preview",
+        "model": "gpt-4.1",
         "temperature": 0.1,
         "messages": [
             {
@@ -509,7 +602,7 @@ structured_output = vapi.structured_outputs.create(
             },
             {
                 "role": "user",
-                "content": "Analyze the sentiment of this conversation:\n{{transcript}}"
+                "content": "Extract {{structuredOutput.name}} using this schema:\n{{structuredOutput.schema}}\n\nAnalyze the sentiment of this conversation:\n{{transcript}}"
             }
         ]
     }
@@ -522,57 +615,44 @@ structured_output = vapi.structured_outputs.create(
 Use these variables in custom prompts:
 
 - `{{transcript}}` - Full conversation transcript
-- `{{messages}}` - Conversation messages array
-- `{{callEndedReason}}` - How the call ended
+- `{{messages}}` - Conversation messages array (JSON)
+- `{{endedReason}}` - How the call ended
+- `{{duration}}` - Call duration in seconds
+- `{{startedAt}}` - Call start time (ISO 8601)
+- `{{endedAt}}` - Call end time (ISO 8601)
+- `{{systemPrompt}}` - The assistant's system prompt
+- `{{structuredOutput}}` - The full structured output definition
 - `{{structuredOutput.name}}` - Output name
 - `{{structuredOutput.description}}` - Output description
 - `{{structuredOutput.schema}}` - Schema definition
 
+<Note>
+When you supply custom `messages`, reference either `{{transcript}}` or `{{messages}}` for the conversation, and a variation of `{{structuredOutput}}` so the model has the schema definition.
+</Note>
+
 ## API reference
 
-<EndpointRequestSnippet endpoint='POST /structured-output' />
+The full set of request fields, response types, and query parameters lives in the API reference. Refer there for all possible values rather than duplicating them here.
 
 ### Create structured output
 
-<ParamField path="name" type="string" required>
-  Display name for the structured output (max 40 characters)
-</ParamField>
+<EndpointRequestSnippet endpoint='POST /structured-output' />
 
-<ParamField path="type" type="string" required>
-  Must be set to "ai"
-</ParamField>
-
-<ParamField path="description" type="string">
-  Description of what data to extract
-</ParamField>
-
-<ParamField path="schema" type="object" required>
-  JSON Schema defining the structure of data to extract
-</ParamField>
-
-<ParamField path="assistantIds" type="array">
-  Array of assistant IDs to link this output to
-</ParamField>
-
-<ParamField path="model" type="object">
-  Custom model configuration for extraction
-</ParamField>
+See [Create structured output](/api-reference/structured-outputs/structured-output-controller-create) for every request field, including `type`, `conditions`, `model`, and `assistantIds`.
 
 ### Update structured output
 
 <EndpointRequestSnippet endpoint='PATCH /structured-output/{id}' />
 
-<Warning>
-To update the top level schema type after creation, you must include `?schemaOverride=true` as a query parameter in the URL
-</Warning>
+<Note>
+Updating the top-level schema type after creation requires the `?schemaOverride=true` query parameter. See [Update structured output](/api-reference/structured-outputs/structured-output-controller-update).
+</Note>
 
 ### List structured outputs
 
 <EndpointRequestSnippet endpoint='GET /structured-output' />
 
-Query parameters:
-- `page` - Page number (default: 1)
-- `limit` - Results per page (default: 20, max: 100)
+See [List structured outputs](/api-reference/structured-outputs/structured-output-controller-find-all) for all query parameters, including filtering, sorting, and pagination.
 
 ### Delete structured output
 
@@ -712,7 +792,7 @@ Query parameters:
 ### Performance tips
 
 - **Keep schemas focused**: Extract only what you need to minimize processing time
-- **Use appropriate models**: GPT-4 for complex schemas, GPT-3.5 for simple ones
+- **Use appropriate models**: use a capable model (for example, GPT-4.1) for complex schemas; lighter models can handle simpler ones
 - **Set low temperature**: Use 0.1 or lower for consistent extraction
 - **Monitor success rates**: Track extraction failures and adjust schemas accordingly
 
@@ -757,19 +837,6 @@ if (data.result === null) {
 
 - Make fields optional if they might not be mentioned
 - Verify data types match expected values
-
-## HIPAA compliance
-
-<Warning>
-**Important for HIPAA-enabled organizations:**
-
-If your organization has HIPAA compliance enabled (`hipaaEnabled: true`), structured outputs are **disabled by default** to protect PHI (Protected Health Information).
-
-To use structured outputs with HIPAA compliance:
-- Contact the Vapi team to enable structured outputs
-- Ensure you understand the implications for PHI handling
-- Follow all HIPAA compliance best practices when extracting sensitive health data
-</Warning>
 
 ## Limitations
 
