@@ -22,6 +22,25 @@ Every API key belongs to one Vapi organization. Choose the key type based on whe
 | Public API key | Client-side Vapi SDKs and web integrations | Client-side application configuration |
 | Private API key | Vapi REST API, server SDKs, and server-side integrations | Server-side secret manager or environment variable |
 
+## Choose the right key
+
+Pick the key type by where the request originates. Client-side code is anything a user can inspect, such as a browser, a mobile app, or a desktop app. Server-side code runs on infrastructure you control.
+
+| Where your code runs | Key to use |
+| --- | --- |
+| Browser, mobile, or other client-side code (Vapi Web SDK) | Public API key, or a public-scoped [JWT](/customization/jwt-authentication) |
+| `POST /call/web` requests | Public API key, or a public-scoped [JWT](/customization/jwt-authentication) — never a private key |
+| Vapi REST API (`https://api.vapi.ai`) | Private API key |
+| Vapi server SDKs and other server-side integrations | Private API key |
+
+<Warning>
+A public API key can only start web calls and is restricted to the origins and assistants you allow. It cannot list, create, or modify resources through the REST API. Requests to the REST API with a public key return `401`.
+</Warning>
+
+<Tip>
+To call the REST API from a client without shipping a private key, route the request through your own backend, or issue a short-lived [JWT](/customization/jwt-authentication). A private key placed in client-side code is exposed to anyone who opens the app.
+</Tip>
+
 ## Prerequisites
 
 - A [Vapi account](https://dashboard.vapi.ai/)
@@ -131,6 +150,19 @@ Some integrations require your organization ID in addition to an API key.
 Run the list-assistants request with a private API key. A successful request returns a JSON list containing the assistant you created. A `401` response means the key is missing, invalid, or unavailable to the organization making the request.
 
 Confirm that the new key also appears under **Private API Keys** or **Public API Keys** in the Dashboard.
+
+## Troubleshoot a 401 Unauthorized error
+
+A `401 Unauthorized` response means Vapi could not authenticate the request. The key itself is usually valid — the request is sending the wrong key, in the wrong place, or in the wrong format. Work through this checklist:
+
+- **Wrong key type for the surface.** Confirm the request uses the key from [Choose the right key](#choose-the-right-key). A private key used in client-side code, or a public key sent to the REST API, returns `401`.
+- **Malformed `Authorization` header.** For REST API requests, send the header exactly as `Authorization: Bearer YOUR_PRIVATE_API_KEY`. A missing `Bearer ` prefix or a misspelled header name fails authentication.
+- **Placeholder not replaced.** Make sure a literal placeholder such as `YOUR_PRIVATE_API_KEY` was replaced with the real key, and that the environment variable it reads from is actually set.
+- **Extra characters copied with the key.** Remove any leading or trailing whitespace, quotation marks, or line breaks that were copied along with the key value.
+- **Key from a different organization.** A key authenticates only the organization that created it. If you belong to more than one organization, confirm the key comes from the organization that owns the assistant or resource you are calling.
+- **Key rotated or deleted.** If the key was regenerated or removed in the Dashboard, create a new key and update the stored secret everywhere it is used.
+
+If requests still fail after these checks, view or copy the key again from the Dashboard to rule out a truncated value.
 
 ## Related
 
