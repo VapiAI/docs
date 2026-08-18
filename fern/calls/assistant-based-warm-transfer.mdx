@@ -1,372 +1,218 @@
 ---
-title: Assistant-based warm transfer
-subtitle: Use AI assistants to facilitate call transfers
+title: Configure assistant-based warm transfer
+subtitle: Let an AI assistant introduce a caller before connecting a transfer.
+description: Configure an assistant-based warm transfer in the Vapi Dashboard or API, including operator prompts, fallback behavior, summaries, custom audio, and testing.
 slug: calls/assistant-based-warm-transfer
 ---
 
-## Overview
+Assistant-based warm transfer places the customer on hold while a transfer assistant calls the destination. The transfer assistant can give the operator context, confirm that a person is ready, and then complete or cancel the transfer.
 
-Assistant-based warm transfer uses a dedicated AI assistant to handle the transfer process. You control how this assistant behaves through prompts and configuration. The assistant has access to the previous customer conversation and follows your instructions to decide whether to complete or cancel the transfer.
+Use this mode when the destination must accept the call or receive context before speaking with the customer. For a direct transfer without an operator conversation, use the [transfer call tool](/tools/transfer-call) with its default blind-transfer mode.
 
-**In this guide, you'll learn to:**
-- Configure transfer assistants with custom prompts
-- Control how the assistant interacts with operators
-- Handle failed transfer scenarios
+## Prerequisites
 
-## How it works
+Before you configure the transfer, prepare:
 
-When using assistant-based warm transfer:
+- A Vapi assistant that handles phone calls
+- A destination phone number in E.164 format, for example, `+14155550100`
+- A private Vapi API key for the curl method
+- A publicly accessible MP3 or WAV file if you want custom hold or completion audio
 
-1. **Customer requests transfer** - The original assistant initiates the transfer
-2. **Customer placed on hold** - Customer hears hold music while transfer is attempted
-3. **Transfer assistant calls operator** - A dedicated assistant is placed on the call to the destination
-4. **Assistant follows your prompts** - The transfer assistant has access to the previous conversation context and follows your configured behavior
-5. **Transfer decision** - Based on the interaction, the assistant either:
-   - **Completes transfer** (`transferSuccessful`) - Merges the calls and exits
-   - **Cancels transfer** (`transferCancel`) - Returns the customer to the original assistant
+## How assistant-based warm transfer works
 
-**Transfer cancellation occurs when:**
-- `maxDurationSeconds` is reached
-- Operator doesn't answer
-- Voicemail is detected (based on your prompt configuration)
-- Any condition you define in your prompts
+When the original assistant invokes the transfer call tool:
 
-## Configuration
+1. The customer hears the configured transfer message and is placed on hold.
+2. Vapi calls the destination and starts the transfer assistant.
+3. The transfer assistant speaks with the operator and uses the previous conversation as context by default.
+4. The transfer assistant calls `transferSuccessful` to connect the parties or `transferCancel` to return the customer to the original assistant.
+5. If the destination is busy, unreachable, or not human, the fallback plan determines what the customer hears and whether the call ends.
 
-<Note>
-The `function.name` property identifies your transfer tool. Use this name when instructing your assistant to perform transfers in system prompts.
-</Note>
+The `transferSuccessful` and `transferCancel` tools are always available to the transfer assistant. You can customize them through the API, but you do not need to add them to a basic configuration.
 
-<CodeBlocks>
-```json title="Basic Configuration"
-{
-  "type": "transferCall",
-  "function": {
-    "name": "salesTransferAssistant"
-  },
-  "destinations": [
-    {
-      "type": "number",
-      "number": "+14155551234",
-      "transferPlan": {
-        "mode": "warm-transfer-experimental",
-        "transferAssistant": {
-          "firstMessage": "Hello, I have a customer on the line. Are you available to take this call?",
-          "firstMessageMode": "assistant-speaks-first", // Default behavior - assistant speaks immediately
-          "maxDurationSeconds": 120,
-          "silenceTimeoutSeconds": 30,
-          "model": {
-            "provider": "openai",
-            "model": "gpt-4o",
-            "messages": [
+## Configure the warm transfer
+
+Create a reusable transfer call tool, configure a phone-number destination, and add the tool to the original assistant.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create a transfer call tool">
+        In the Vapi Dashboard, open **Tools**, click **Create Tool**, and select **Transfer Call**. Enter a name and a description that state when the assistant should use the tool.
+      </Step>
+
+      <Step title="Add a phone-number destination">
+        Under **Destinations**, click **Add Destination**, then select **Phone Number**. Enter the destination in E.164 format and describe when the assistant should select it.
+      </Step>
+
+      <Step title="Select assistant-based warm transfer">
+        Expand **Transfer Plan**. Under **Transfer Mode**, select **Warm Transfer - Experimental**.
+      </Step>
+
+      <Step title="Configure the operator experience">
+        Enter the **Message to Operator**. Under **Fallback Plan**, set the message spoken to the customer when the transfer fails and choose whether to end the call. Under **Summary Plan**, choose whether to generate a conversation summary for the operator.
+      </Step>
+
+      <Step title="Save and add the tool to the assistant">
+        Click **Save**. Open **Assistants**, select the original assistant, and add the tool from the assistant's **Tools** section. Update the system prompt with the conditions for starting the transfer, then save the assistant.
+      </Step>
+    </Steps>
+
+    The Dashboard exposes the transfer mode, operator message, fallback plan, and summary plan. Use the API to configure a custom transfer-assistant model, prompt, timeouts, voice, hold audio, or completion audio.
+  </Tab>
+
+  <Tab title="curl">
+    <Steps>
+      <Step title="Create the warm transfer tool">
+        Replace `YOUR_API_KEY`, then create the reusable tool with the [Create Tool endpoint](/api-reference/tools/create).
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/tool \
+          --header 'Authorization: Bearer YOUR_API_KEY' \
+          --header 'Content-Type: application/json' \
+          --data '{
+            "type": "transferCall",
+            "destinations": [
               {
-                "role": "system",
-                "content": "You are a transfer assistant designed to facilitate call transfers between a customer and an operator. Your core responsibility is to talk to the operator and manage the transfer process efficiently. \n\n## Core Responsibility \n - Facilitate the transfer process by using transferSuccessful or transferCancel tools. Engage briefly with the operator as needed and then facilitate the transfer by calling the corresponding transfer tool. \n ## When to Respond\n- Answer questions about the transfer process or provide summaries when specifically asked by the operator\n- Respond to direct questions about the current transfer situation\n\\n ## Transfer Tools\n- Use transferSuccessful when the operator agrees to accept the call\n- Use transferCancel when the transfer cannot be completed\n\n- Only call the tool when you addressed all the operators questions"
-              }
-            ]
-          }
-        }
-      }
-    }
-  ],
-  "messages": [
-    {
-      "type": "request-start",
-      "content": "I'll transfer you to our sales team. Please hold for a moment."
-    },
-    {
-      "type": "request-failed",
-      "content": "I apologize, but I'm having trouble connecting your call. Is there anything else I can help you with?"
-    }
-  ]
-}
-```
-</CodeBlocks>
-
-### Transfer assistant properties
-
-<ParamField path="transferAssistant.firstMessage" type="string">
-  The initial message spoken by the transfer assistant when the operator answers
-</ParamField>
-
-<ParamField path="transferAssistant.firstMessageMode" type="string" default="assistant-speaks-first">
-  Controls when the transfer assistant delivers the first message:
-  - `assistant-speaks-first`: The assistant immediately speaks the `firstMessage` when the operator answers
-  - `assistant-waits-for-user`: The assistant waits for the operator to speak before responding with the `firstMessage`
-</ParamField>
-
-<ParamField path="transferAssistant.maxDurationSeconds" type="number">
-  Maximum duration in seconds for the operator call. The transfer is automatically cancelled if this limit is reached.
-</ParamField>
-
-<ParamField path="transferAssistant.silenceTimeoutSeconds" type="number" default={30}>
-  Number of seconds to wait during silence before automatically cancelling the transfer. Must be between 10 and 3600 seconds.
-</ParamField>
-
-<ParamField path="transferAssistant.model" type="object" required>
-  Assistant configuration including provider, model, and system messages that control the transfer assistant's behavior
-</ParamField>
-
-### Customizing hold audio
-
-You can customize the audio played to the customer while they're on hold during the transfer process using the `request-complete` message type. If not specified, Vapi's default ringtone will be used.
-
-<CodeBlocks>
-```json title="Custom Hold Music"
-{
-  "type": "transferCall",
-  "function": {
-    "name": "transferCall"
-  },
-  "destinations": [
-    // ... destination configuration
-  ],
-  "messages": [
-    {
-      "type": "request-start",
-      "content": "I'll transfer you now. Please hold."
-    },
-    {
-      "type": "request-complete",
-      "content": "https://your-domain.com/assets/custom-hold-music.mp3"  // Custom hold audio URL
-    },
-    {
-      "type": "request-failed",
-      "content": "I couldn't complete the transfer."
-    }
-  ]
-}
-```
-</CodeBlocks>
-
-<Tip>
-The `request-complete` message with an audio URL will be played as hold music on the customer's side of the call while the transfer assistant connects with the operator. If you don't specify this message, Vapi's default ringtone will play.
-</Tip>
-
-## Built-in tools
-
-The transfer assistant has access to two built-in tools:
-
-<Note>
-You can configure the transfer assistant to perform various tasks before making a decision, such as:
-- Informing the operator about the customer's needs
-- Asking the operator specific questions
-- Following custom business logic you define in the prompts
-</Note>
-
-### transferSuccessful
-
-Completes the transfer by:
-- Merging the customer and operator calls
-- Removing the transfer assistant from the call
-- Connecting the parties directly
-
-### transferCancel
-
-Cancels the transfer by:
-- Disconnecting from the operator
-- Returning the customer to the original assistant
-- Optionally playing a fallback message
-
-## Additional examples
-
-### Handling operator interactions
-
-The transfer assistant can be configured to handle various operator responses:
-
-<CodeBlocks>
-```json title="Detailed Transfer Configuration"
-{
-  "type": "transferCall",
-  "function": {
-    "name": "warmTransferWithContext"
-  },
-  "destinations": [
-    {
-      "type": "number",
-      "number": "+14155551234",
-      "transferPlan": {
-        "mode": "warm-transfer-experimental",
-        "transferAssistant": {
-          "firstMessage": "Hi, I have a customer on the line who needs help with their recent order. Are you available?",
-          "firstMessageMode": "assistant-waits-for-user",
-          "maxDurationSeconds": 90,
-          "model": {
-            "provider": "openai",
-            "model": "gpt-4o",
-            "messages": [
-              {
-                "role": "system",
-                "content": "You are a transfer assistant. Your tasks:\n1. Confirm the operator is human and available\n2. Provide brief context about the customer's needs\n3. If they accept, call transferSuccessful\n4. If they decline or you detect voicemail, call transferCancel\n5. Keep the conversation under 30 seconds"
-              }
-            ]
-          }
-        }
-      }
-    }
-  ],
-  "messages": [
-    {
-      "type": "request-start",
-      "content": "Transferring you to our specialist. Please hold."
-    },
-    {
-      "type": "request-failed",
-      "content": "I couldn't reach our specialist. Please try again later.",
-      "endCallAfterSpokenEnabled": true
-    }
-  ]
-}
-```
-</CodeBlocks>
-
-### Multiple departments
-
-Configure different transfer assistants for different departments:
-
-<CodeBlocks>
-```json title="Department-specific Transfers"
-{
-  "type": "transferCall",
-  "function": {
-    "name": "departmentTransferAssistant"
-  },
-  "destinations": [
-    {
-      "type": "number",
-      "number": "+1234567890",
-      "description": "Sales team transfer line",
-      "transferPlan": {
-        "mode": "warm-transfer-experimental",
-        "transferAssistant": {
-          "firstMessage": "Hey there, I have a potential customer interested in our enterprise plans. Are you available to pick up the call?",
-          "maxDurationSeconds": 60,
-          "model": {
-            "provider": "openai",
-            "model": "gpt-4o",
-            "messages": [
-              {
-                "role": "system",
-                "content": "You are a transfer assistant designed to facilitate call transfers between a customer and an operator. Your core responsibility is to talk to the operator and manage the transfer process efficiently. \n\n## Core Responsibility \n - Facilitate the transfer process by using transferSuccessful or transferCancel tools. Engage briefly with the operator as needed and then facilitate the transfer by calling the corresponding transfer tool. \n ## When to Respond\n- Answer questions about the transfer process or provide summaries when specifically asked by the operator\n- Respond to direct questions about the current transfer situation\n\\n ## Transfer Tools\n- Use transferSuccessful when the operator agrees to accept the call\n- Use transferCancel when the transfer cannot be completed\n\n- Only call the tool when you addressed all the operators questions"
-              }
-            ],
-            "tools": [
-              {
-                "type": "transferSuccessful", // built-in tool
-                "function": {
-                  "name": "transferSuccessful",
-                  "description": "Confirm the transfer when operator accepts"
-                },
-                "messages": [
-                  {
-                    "type": "request-start",
-                    "content": "Great! I'll connect you to the customer now. One moment please."
+                "type": "number",
+                "number": "+14155550100",
+                "description": "Transfer to an account specialist after the customer agrees",
+                "transferPlan": {
+                  "mode": "warm-transfer-experimental",
+                  "transferAssistant": {
+                    "firstMessage": "Hello, I have a customer who needs help with an account issue. Are you available to take the call?",
+                    "firstMessageMode": "assistant-speaks-first",
+                    "maxDurationSeconds": 120,
+                    "silenceTimeoutSeconds": 30,
+                    "model": {
+                      "provider": "openai",
+                      "model": "gpt-4o",
+                      "messages": [
+                        {
+                          "role": "system",
+                          "content": "Confirm that a human operator is ready. Use transferSuccessful when the operator accepts the call. Use transferCancel for voicemail, no answer, or a declined transfer. Keep the conversation focused on the transfer."
+                        }
+                      ]
+                    }
                   },
-                  {
-                    "type": "request-complete",
-                    "content": "https://desert-horse-9859.twil.io/assets/call_complete_chime.mp3"
+                  "holdAudioUrl": "https://example.com/audio/hold.mp3",
+                  "transferCompleteAudioUrl": "https://example.com/audio/transfer-complete.mp3",
+                  "fallbackPlan": {
+                    "message": "I could not reach an account specialist. I can continue helping you.",
+                    "endCallEnabled": false
                   }
-                ]
-              },
-              {
-                "type": "transferCancel", // built-in tool
-                "function": {
-                  "name": "transferCancel",
-                  "description": "Cancel the transfer if operator declines or is unavailable"
-                },
-                "messages": [
-                  {
-                    "type": "request-complete",
-                    "content": "I'll let the customer know about it."
-                  }
-                ]
-              },
-              {
-                "type": "function", // custom tool
-                "function": {
-                  "name": "getCustomerInfo",
-                  "description": "Get detailed customer information"
-                },
-                "server": {
-                    "url": "https://vapi-webhook-listener-five.vercel.app/customer"
                 }
               }
+            ],
+            "messages": [
+              {
+                "type": "request-start",
+                "content": "I will call an account specialist now. Please hold."
+              },
+              {
+                "type": "request-failed",
+                "content": "I could not start the transfer."
+              }
             ]
-          }
-        }
-      }
-    },
-    {
-      "type": "number",
-      "number": "+0987654321",
-      "description": "Technical Support team transfer line",
-      "transferPlan": {
-        "mode": "warm-transfer-experimental",
-        "transferAssistant": {
-          "firstMessage": "Hey there, I have a customer experiencing issues with API integration. Can you help?",
-          "maxDurationSeconds": 90,
-          "model": {
-            "provider": "openai",
-            "model": "gpt-4o"
-          }
-        }
-      }
-    }
-  ],
-  "messages": [
-    {
-      "type": "request-start",
-      "content": "I'll transfer you to our team. Please hold for a moment."
-    },
-    {
-      "type": "request-complete",
-      "content": "https://desert-horse-9859.twil.io/assets/soothing-sound.mp3"   // played as hold music on the customer's side of the call
-    },
-    {
-      "type": "request-failed",
-      "content": "Sorry, none of our account executives are available right now. Our team get back to you later."
-    }
-  ]
-}
-```
-</CodeBlocks>
+          }'
+        ```
 
-## Best practices
+        The response contains the reusable tool's `id`. Save it as `TOOL_ID` for the next request.
+      </Step>
 
-<Tip>
-**First message**: Keep it brief and state the purpose clearly.
-</Tip>
+      <Step title="Add the tool to the original assistant">
+        Replace `ASSISTANT_ID` and `TOOL_ID`, then update the assistant with the [Update Assistant endpoint](/api-reference/assistants/update).
 
-<Note>
-**Timeout duration**: Set `maxDurationSeconds` between 60-120 seconds. This limits how long the operator call can last before automatic cancellation.
-</Note>
+        ```bash
+        curl --request PATCH \
+          --url https://api.vapi.ai/assistant/ASSISTANT_ID \
+          --header 'Authorization: Bearer YOUR_API_KEY' \
+          --header 'Content-Type: application/json' \
+          --data '{
+            "model": {
+              "toolIds": ["TOOL_ID"]
+            }
+          }'
+        ```
 
-<Warning>
-**System prompts**: Configure your prompts to handle voicemail detection, busy signals, and operator unavailability.
-</Warning>
+        If the assistant already has reusable tools, include their IDs in `toolIds` so this update does not remove them.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
-### System prompt configuration
+## Configure transfer behavior
 
-Configure your transfer assistant to:
-- **Detect voicemail** - Recognize automated messages and call `transferCancel`
-- **Verify human presence** - Confirm a person answered before proceeding
-- **Provide context** - Explain the customer's situation based on your knowledge
-- **Handle rejections** - Define behavior when operators decline
-- **Manage timing** - Complete interactions before `maxDurationSeconds`
+Use these fields to control the transfer assistant and the two call legs.
 
-## Limitations
+| Field | Controls | Default or constraint |
+| --- | --- | --- |
+| `transferAssistant.firstMessage` | What the transfer assistant says when the operator answers | If omitted, the assistant waits for the operator and generates a response |
+| `transferAssistant.firstMessageMode` | Whether the transfer assistant speaks first or waits | `assistant-speaks-first` |
+| `transferAssistant.maxDurationSeconds` | Maximum length of the transfer-assistant conversation | 120 seconds; allowed range is 10–43,200 seconds |
+| `transferAssistant.silenceTimeoutSeconds` | Silence allowed before the transfer is canceled | 30 seconds; allowed range is 5–3,600 seconds |
+| `transferAssistant.model` | Model and instructions used for the operator conversation | Required when you configure `transferAssistant` |
+| `holdAudioUrl` | MP3 or WAV audio played to the customer while on hold | Default hold audio |
+| `transferCompleteAudioUrl` | MP3 or WAV audio played to the destination after the introduction | No custom completion audio |
+| `fallbackPlan` | Customer message and end-call behavior when the transfer fails | Default fallback behavior when omitted |
+| `contextEngineeringPlan` | Conversation context provided to the transfer assistant | All previous messages |
 
-<Info>
-- Requires `warm-transfer-experimental` mode
-- Only works with Twilio, Vapi phone numbers, and SIP trunks. Does not support Telnyx or Vonage
-- Calls are limited by `maxDurationSeconds` to prevent indefinite duration
-- Built-in tools (`transferSuccessful`, `transferCancel`) are predefined and cannot be removed
-- The transfer assistant has access to the previous conversation context
-</Info>
+`firstMessageMode` also accepts `assistant-waits-for-user` and `assistant-speaks-first-with-model-generated-message`. Use the model-generated option when the introduction should adapt to the preceding conversation.
 
-## Next steps
+## Prompt the transfer assistant
 
-Now that you've configured assistant-based warm transfers:
-- **[Call forwarding](../call-forwarding):** Learn about other transfer modes and options
-- **[Assistant configuration](../assistants):** Configure assistant models and prompts
-- **[Custom tools](../tools/custom-tools):** Add custom tools to your assistants
+Keep the transfer assistant's system message focused on the operator conversation. Define when to use each built-in tool:
+
+- Call `transferSuccessful` after a human operator confirms that they will take the call
+- Call `transferCancel` for voicemail, a busy signal, no answer, or an operator who declines
+- Answer questions about the transfer or give a brief customer summary
+- Avoid unrelated conversation and complete the decision before `maxDurationSeconds`
+
+The transfer assistant receives the previous conversation by default. Set `contextEngineeringPlan.type` to `none` when the operator must not receive that context, or use `lastNMessages` to limit it.
+
+## Verify the warm transfer
+
+Place a test call and trigger the transfer. Confirm that:
+
+1. The customer hears the transfer message and hold audio.
+2. The destination receives the call and hears the transfer assistant.
+3. Accepting the call connects the customer and operator.
+4. Declining the call or reaching voicemail returns the customer to the original assistant or ends the call according to `fallbackPlan`.
+
+In **Logs → Call Logs**, inspect the original call, destination call leg, transcript, and ended reason. An `assistant-forwarded-call` ended reason confirms that the transfer was initiated; it does not confirm that the destination answered.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Resolution |
+| --- | --- | --- |
+| The customer is transferred without an operator conversation | The destination uses a blind or non-assistant warm-transfer mode | Set `transferPlan.mode` to `warm-transfer-experimental`. |
+| The transfer assistant never speaks | `firstMessage` is omitted or `firstMessageMode` waits for the operator | Set `firstMessage` and use `assistant-speaks-first`, or let the operator speak first. |
+| The transfer assistant talks but never connects the parties | The prompt does not require `transferSuccessful` | Tell the transfer assistant to call `transferSuccessful` immediately after the operator accepts. |
+| Voicemail or a declined transfer connects anyway | The prompt does not define cancellation conditions | Require `transferCancel` for voicemail, busy signals, no answer, and declined transfers. |
+| The customer hears the wrong audio | Hold audio was configured as a tool message | Put customer hold audio in `transferPlan.holdAudioUrl`. Use `transferCompleteAudioUrl` for audio played to the destination after the introduction. |
+| The customer cannot continue after a failed transfer | `fallbackPlan.endCallEnabled` is `true` | Set it to `false` so the original assistant remains on the call. |
+| The transfer ends during a long operator interaction | A duration or silence timeout is too short | Increase `maxDurationSeconds` or `silenceTimeoutSeconds` within the supported ranges. |
+
+Check **Logs → API Logs** for validation and transfer errors. If Vapi initiated the transfer but the destination never rings, inspect the telephony provider's call detail records and follow [Troubleshoot call forwarding drops](/calls/troubleshoot-call-forwarding-drops).
+
+## API reference
+
+The [Create Tool API reference](/api-reference/tools/create) documents the public transfer call destination and transfer-plan fields. This guide shows the additional transfer-assistant configuration used with `warm-transfer-experimental`.
+
+## Related guides
+
+<CardGroup cols={2}>
+  <Card title="Transfer call tool" icon="fa-light fa-phone-arrow-right" href="/tools/transfer-call">
+    Create a transfer call tool and configure its destinations.
+  </Card>
+  <Card title="Warm transfer" icon="fa-light fa-comments" href="/tools/transfer-call/warm-transfer">
+    Introduce the caller with a message, summary, or TwiML.
+  </Card>
+  <Card title="Dynamic call transfers" icon="fa-light fa-route" href="/calls/call-dynamic-transfers">
+    Choose a transfer destination at runtime.
+  </Card>
+  <Card title="Troubleshoot forwarding drops" icon="fa-light fa-screwdriver-wrench" href="/calls/troubleshoot-call-forwarding-drops">
+    Diagnose failed or incomplete transfers.
+  </Card>
+</CardGroup>
