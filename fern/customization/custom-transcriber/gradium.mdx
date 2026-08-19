@@ -178,21 +178,32 @@ async def endpointing(body: dict) -> dict:
     if message.get("type") != "call.endpointing.request":
         return {"ok": True}
 
-    state = gradium_turn_state()          # your live STT session
-    if not state["active"]:
-        return {"timeoutSeconds": 1.0}    # no session, do not stall the call
-    if state["seconds_since_final"] is not None and state["seconds_since_final"] < 2.5:
-        return {"timeoutSeconds": 0.05}   # Gradium flushed a final, the turn is over
-    if state["inactivity_prob"] is not None and state["inactivity_prob"] < 0.5:
-        return {"timeoutSeconds": 5.0}    # caller is audibly mid-sentence
-    return {"timeoutSeconds": 3.0}
+    state = gradium_turn_state()                    # your live STT session
+    since_final = state.get("seconds_since_final")
+    inactivity = state.get("inactivity_prob")
+
+    if not state.get("active"):
+        timeout = 1.0      # no live session, do not stall the call
+    elif since_final is not None and since_final < 2.5:
+        timeout = 0.05     # Gradium flushed a final, the turn is over
+    elif inactivity is not None and inactivity < 0.5:
+        timeout = 5.0      # caller is audibly mid-sentence
+    else:
+        timeout = 3.0      # a pause, the flush-final should arrive first
+    return {"timeoutSeconds": timeout}
 ```
 
-For barge-in, keep `stopSpeakingPlan.numWords` at `0` so Vapi interrupts on audio VAD rather than waiting for transcript text:
+Extend the table with any state your bridge tracks. The agent this is drawn from adds one more branch: while it is holding a short acknowledgement like "yeah" to merge with the rest of the sentence, it answers 2 seconds so the caller can finish the thought.
+
+This endpoint does not have to be a separate route. Vapi posts to whatever URL you put in `smartEndpointingPlan.server`, so you can point it at the same server URL that already handles your tool calls and branch on `message.type`.
+
+<Note>Clear your reference to the Gradium session when a call ends. If a finished session stays registered, the first endpointing requests of the next call are answered from stale turn state before the new session takes over.</Note>
+
+For barge-in, keep `stopSpeakingPlan.numWords` at `0` so Vapi interrupts on audio VAD rather than waiting for transcript text. An empty `acknowledgementPhrases` list stops Vapi from treating answers that open with "yeah" or "okay" as backchannels and ignoring the turn:
 
 ```json
 {
-  "stopSpeakingPlan": { "numWords": 0, "voiceSeconds": 0.2, "backoffSeconds": 0.5 }
+  "stopSpeakingPlan": { "numWords": 0, "voiceSeconds": 0.2, "backoffSeconds": 0.5, "acknowledgementPhrases": [] }
 }
 ```
 
