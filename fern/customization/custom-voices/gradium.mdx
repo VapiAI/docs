@@ -35,9 +35,9 @@ slug: customization/custom-voices/gradium
 
 ## Sample rates
 
-Vapi requests one of `8000`, `16000`, `22050`, `24000`, or `44100` Hz. Gradium accepts `pcm_8000`, `pcm_16000`, `pcm_24000`, `pcm_44100`, and `pcm_48000`.
+Gradium accepts `pcm_8000`, `pcm_16000`, `pcm_24000`, `pcm_44100`, and `pcm_48000`. Vapi requests one of `8000`, `16000`, `22050`, `24000`, or `44100` Hz, so `8000`, `16000`, `24000`, and `44100` map straight through: pass the requested rate to `output_format` and stream the result back.
 
-Every rate matches except `22050`. If Vapi asks for a rate Gradium does not support, synthesize at the nearest supported rate and resample before responding, or configure your assistant to use a rate both sides share.
+For `22050`, synthesize at the nearest Gradium rate and resample before responding, or set your assistant to one of the rates both sides share.
 
 ## Voice endpoint implementation
 
@@ -116,7 +116,7 @@ await stream.send_text(text, **stamp)
 await stream.send_eos(**stamp)
 ```
 
-Recycle pooled connections before Gradium's ~300 second session cap, and fall back to a fresh single-use connection if a pooled socket fails before it produces audio.
+Recycle pooled connections within Gradium's ~300 second session length, and open a fresh single-use connection if a pooled socket closes before it produces audio.
 
 ## Fix pronunciation of names and domain terms
 
@@ -134,7 +134,7 @@ Rules are plain text rewrites applied before synthesis, so `karaage` the Japanes
 
 ## Add a fallback voice
 
-If your endpoint is unreachable, Vapi can fall back to a built-in provider rather than dropping the call:
+Vapi can fall back to a built-in provider so calls keep running while your endpoint recovers:
 
 ```json
 {
@@ -154,7 +154,7 @@ If your endpoint is unreachable, Vapi can fall back to a built-in provider rathe
 | --- | --- | --- |
 | Audio plays at the wrong speed or pitch | Sample rate mismatch | Synthesize at the rate in `sampleRate`, or resample before responding |
 | Long pause before the first word | New WebSocket per sentence | Pool one connection per sample rate with `close_ws_on_eos: false` |
-| Voice edits do not take effect | Vapi's TTS cache | Set `"cachingEnabled": false` on the `voice` object |
+| Voice edits take effect on the next call | Vapi's TTS cache | Set `"cachingEnabled": false` on the `voice` object |
 | Speech cuts off mid-sentence | Response ended early | Stream until Gradium sends `end_of_stream`, and raise `timeoutSeconds` for long replies |
 
 ## Related
