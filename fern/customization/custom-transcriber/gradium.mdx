@@ -1,229 +1,57 @@
 ---
 title: Gradium
 subtitle: Use Gradium speech-to-text as a custom transcriber in Vapi
-description: Stream Vapi call audio to Gradium's real-time speech-to-text over WebSocket, and use Gradium's semantic VAD to decide when the caller has finished speaking.
+description: Stream Vapi call audio to Gradium's real-time speech-to-text over a WebSocket bridge.
 slug: customization/custom-transcriber/gradium
 ---
 
-[Gradium](https://gradium.ai) builds real-time audio language models. You can connect to the Gradium Speech-to-Text API through a [custom transcriber](/customization/custom-transcriber) endpoint: a small WebSocket bridge that receives audio from Vapi and forwards it to Gradium's real-time speech-to-text.
+[Gradium](https://gradium.ai) builds real-time audio models, including streaming speech-to-text with semantic voice activity detection. You can connect it through a [custom transcriber](/customization/custom-transcriber) endpoint: a small WebSocket bridge that forwards call audio to Gradium and returns transcripts to Vapi.
 
-Gradium's speech-to-text stream also emits a semantic voice activity detection (VAD) signal, which you can use as Vapi's end-of-turn authority for turn detection that follows the meaning of what the caller is saying.
-
-<Note>A Gradium account and API key are required. Install the SDK with `pip install gradium`.</Note>
-
-## How the bridge works
+<Note>A Gradium account and API key are required.</Note>
 
 <Steps>
-  <Step title="Vapi opens the WebSocket">
-    Vapi connects to your endpoint and sends a JSON `start` frame describing the stream:
+  <Step title="Build the bridge">
+    Gradium's [Vapi integration guide](https://docs.gradium.ai/integrations/agent-frameworks/vapi) has the complete bridge, including end-of-turn detection and reconnecting on long calls.
+
+    Two things matter most: forward **only channel 0** of the interleaved audio, or the agent transcribes its own speech; and send `partial` transcripts as well as `final` ones, which Vapi needs for barge-in.
+  </Step>
+  <Step title="Point your assistant at it">
+    Host the bridge somewhere Vapi can reach over `wss`, then reference it with
+    a [custom credential](/server-url/server-authentication) so Vapi can
+    authenticate to it:
 
     ```json
     {
-      "type": "start",
-      "encoding": "linear16",
-      "container": "raw",
-      "sampleRate": 16000,
-      "channels": 2
-    }
-    ```
-  </Step>
-  <Step title="Vapi streams binary PCM">
-    Vapi sends interleaved 16-bit PCM. When `channels` is 2, channel 0 carries the customer and channel 1 carries the assistant. Forward **only channel 0** to Gradium so the agent transcribes the caller alone.
-  </Step>
-  <Step title="Gradium transcribes">
-    Your bridge sends ~80 ms mono chunks to Gradium's real-time speech-to-text session. Gradium emits `text` events as words arrive and `step` events carrying VAD state.
-  </Step>
-  <Step title="You return transcripts">
-    Send partials as they arrive and a final when the turn ends:
-
-    ```json
-    {
-      "type": "transcriber-response",
-      "transcription": "I'd like a large oat latte",
-      "channel": "customer",
-      "transcriptType": "final"
+      "transcriber": {
+        "provider": "custom-transcriber",
+        "server": {
+          "url": "wss://your-server.com/vapi/transcriber",
+          "credentialId": "cred_transcriber_auth_123"
+        }
+      }
     }
     ```
 
-    Stream `"partial"` messages as well as the `"final"`. Vapi needs to see speech while it is happening for barge-in and turn tracking to work.
+    Start a call and your assistant transcribes with Gradium.
   </Step>
 </Steps>
-
-## Detecting end of turn
-
-Gradium's `step` events include a `vad` horizon list, where each entry carries an `inactivity_prob`. Reading that probability is how you know the caller has stopped talking, rather than guessing from silence.
-
-Finalizing the moment the probability crosses your threshold truncates the last words of the sentence, because Gradium is still holding audio in its decoding window. Use the flush handshake instead:
-
-<Steps>
-  <Step title="Threshold crossed">
-    `inactivity_prob` stays above your threshold (0.8 works well) for a few consecutive steps.
-  </Step>
-  <Step title="Send a flush">
-    Call `send_flush()` on the session and keep appending any `text` events that still arrive.
-  </Step>
-  <Step title="Finalize on the ack">
-    When Gradium returns `flushed`, emit the accumulated text as your `"final"` transcript. Keep a timeout fallback of about 2.5 seconds so the call keeps moving if an ack is delayed.
-  </Step>
-</Steps>
-
-<Note>A Gradium session runs for up to about 300 seconds. Reconnect transparently when a session completes so calls of any length keep transcribing.</Note>
-
-## Bridge implementation
-
-This FastAPI bridge forwards the customer channel to Gradium and returns transcripts to Vapi.
-
-```python title="transcriber.py"
-import json
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from gradium.client import GradiumClient
-
-router = APIRouter()
-
-def customer_channel(pcm: bytes, channels: int) -> bytes:
-    """Keep channel 0 (the customer) from interleaved 16-bit PCM."""
-    if channels == 1:
-        return pcm
-    stride = channels * 2
-    return b"".join(pcm[i:i + 2] for i in range(0, len(pcm) - stride + 1, stride))
-
-@router.websocket("/vapi/transcriber")
-async def vapi_transcriber(ws: WebSocket) -> None:
-    await ws.accept()
-    client = GradiumClient(api_key=GRADIUM_API_KEY)
-    channels, stt = 2, None
-
-    async def send(text: str, transcript_type: str) -> None:
-        await ws.send_text(json.dumps({
-            "type": "transcriber-response",
-            "transcription": text,
-            "channel": "customer",
-            "transcriptType": transcript_type,
-        }))
-
-    try:
-        while True:
-            message = await ws.receive()
-            if message.get("type") == "websocket.disconnect":
-                break
-
-            if (payload := message.get("text")) is not None:
-                frame = json.loads(payload)
-                if frame.get("type") == "start":
-                    channels = int(frame.get("channels", 2))
-                    rate = int(frame.get("sampleRate", 16000))
-                    # Open the Gradium session, then read text and VAD events
-                    # in a background task that calls send(...) as they arrive.
-                    stt = await open_gradium_session(client, rate, send)
-
-            elif (audio := message.get("bytes")) is not None and stt is not None:
-                await stt.send_audio(customer_channel(audio, channels))
-    except WebSocketDisconnect:
-        pass
-    finally:
-        if stt is not None:
-            await stt.close()
-```
-
-Open the Gradium session with the sample rate Vapi announced:
-
-```python title="gradium_session.py"
-stt = client.stt_realtime(
-    model_name="default",
-    input_format="pcm_16000",   # match the rate from the start frame
-    json_config={"language": "en", "delay_in_frames": 8},
-)
-```
-
-`delay_in_frames` trades latency for accuracy: each frame is 80 ms, and a larger value gives the model more context before it commits to text.
-
-## Configure your assistant
-
-Point `transcriber` at your bridge over `wss`:
-
-```bash
-curl -X PATCH "https://api.vapi.ai/assistant/ASSISTANT_ID" \
-  -H "Authorization: Bearer $VAPI_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "transcriber": {
-      "provider": "custom-transcriber",
-      "server": { "url": "wss://your-server.com/vapi/transcriber" }
-    }
-  }'
-```
-
-## Let Gradium decide when the turn ends
-
-By default Vapi runs its own endpointing on your partial transcripts, which races Gradium's VAD and makes the assistant reply before the flushed final arrives. Hand the decision to Gradium with a custom endpointing model:
-
-```json
-{
-  "startSpeakingPlan": {
-    "waitSeconds": 0.25,
-    "smartEndpointingPlan": {
-      "provider": "custom-endpointing-model",
-      "server": { "url": "https://your-server.com/vapi/endpointing", "timeoutSeconds": 3 }
-    }
-  }
-}
-```
-
-Vapi then sends a `call.endpointing.request` on every transcript update, and your server answers with how long to keep waiting, based on the live Gradium session:
-
-```python title="endpointing.py"
-@router.post("/vapi/endpointing")
-async def endpointing(body: dict) -> dict:
-    message = body.get("message") or {}
-    if message.get("type") != "call.endpointing.request":
-        return {"ok": True}
-
-    state = gradium_turn_state()                    # your live STT session
-    since_final = state.get("seconds_since_final")
-    inactivity = state.get("inactivity_prob")
-
-    if not state.get("active"):
-        timeout = 1.0      # no live session, keep the call moving
-    elif since_final is not None and since_final < 2.5:
-        timeout = 0.05     # Gradium flushed a final, the turn is over
-    elif inactivity is not None and inactivity < 0.5:
-        timeout = 5.0      # caller is audibly mid-sentence
-    else:
-        timeout = 3.0      # a pause, the flush-final should arrive first
-    return {"timeoutSeconds": timeout}
-```
-
-Extend the table with any state your bridge tracks. The agent this is drawn from adds one more branch: while it is holding a short acknowledgement like "yeah" to merge with the rest of the sentence, it answers 2 seconds so the caller can finish the thought.
-
-You can serve this from any route. Vapi posts to whatever URL you put in `smartEndpointingPlan.server`, so it can share the server URL that already handles your tool calls, branching on `message.type`.
-
-<Note>Clear your reference to the Gradium session when a call ends. If a finished session stays registered, the first endpointing requests of the next call are answered from stale turn state before the new session takes over.</Note>
-
-For barge-in, keep `stopSpeakingPlan.numWords` at `0` so Vapi interrupts on audio VAD as soon as the caller speaks. An empty `acknowledgementPhrases` list keeps answers that open with "yeah" or "okay" as real turns:
-
-```json
-{
-  "stopSpeakingPlan": { "numWords": 0, "voiceSeconds": 0.2, "backoffSeconds": 0.5, "acknowledgementPhrases": [] }
-}
-```
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| The agent transcribes its own speech | Both channels forwarded to Gradium | Send only channel 0 from the interleaved PCM |
-| Final transcripts lose the last word or two | Finalizing on the VAD threshold alone | Finalize on the `flushed` ack, not the threshold crossing |
-| The assistant replies before the caller finishes | Vapi's endpointing racing Gradium's VAD | Use the custom endpointing model above |
-| Turns get swallowed, barge-in stops working | Only finals sent to Vapi | Stream `"partial"` transcripts as well |
-| Transcription stops on long calls | The ~300 s session length was reached | Reconnect the Gradium session and keep Vapi's socket open |
+| Symptom | Fix |
+| --- | --- |
+| The agent transcribes its own speech | Both channels are being forwarded. Send only channel 0 from the interleaved PCM |
+| Turns get swallowed, barge-in stops working | Send `partial` transcripts as well as `final` |
+| Final transcripts lose the last word or two | Finalize on Gradium's flush acknowledgement, not on the VAD threshold crossing. See [Gradium's Vapi guide](https://docs.gradium.ai/integrations/agent-frameworks/vapi) |
+| The assistant replies before the caller finishes | Vapi's endpointing is racing Gradium's VAD. Tune [start and stop speaking plans](/customization/voice-pipeline-configuration), or hand the decision to Gradium with a [custom endpointing model](https://docs.gradium.ai/integrations/agent-frameworks/vapi) |
 
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Gradium text-to-speech" icon="volume-high" href="/customization/custom-voices/gradium">
-    Use Gradium voices as a custom voice.
+  <Card title="Gradium Vapi guide" icon="book" href="https://docs.gradium.ai/integrations/agent-frameworks/vapi">
+    The full bridge, tuning, and configuration reference.
   </Card>
-  <Card title="Custom transcriber" icon="wave-square" href="/customization/custom-transcriber">
-    The general custom transcriber protocol.
+  <Card title="Gradium text-to-speech" icon="volume-high" href="/customization/custom-tts/gradium">
+    Use Gradium voices as a custom voice.
   </Card>
 </CardGroup>
