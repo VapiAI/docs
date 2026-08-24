@@ -1122,6 +1122,67 @@ Process loan or credit applications with financial information.
 ```
 </CodeBlocks>
 
+## Conditional extraction
+
+Attach [conditions](/assistants/structured-outputs#conditional-generation) to a structured output so it only runs when a call is worth analyzing. This keeps noisy, incomplete calls out of your data and makes the reason for a skip visible in the assistant preview, call logs, and sessions.
+
+This example only extracts a post-call outcome when the customer actually reached and ended the conversation (at least 6 messages, 15 seconds, and a customer-ended call):
+
+<CodeBlocks>
+```typescript title="TypeScript (Server SDK)"
+const outcome = await vapi.structuredOutputs.create({
+  name: "Call Outcome",
+  type: "ai",
+  description: "Capture the outcome and any follow-up requested by the customer",
+  schema: {
+    type: "object",
+    properties: {
+      outcome: {
+        type: "string",
+        enum: ["resolved", "callback-requested", "escalated", "no-resolution"]
+      },
+      followUpNotes: { type: "string" }
+    },
+    required: ["outcome"]
+  },
+  conditions: [
+    { type: "minMessages", count: 6 },
+    { type: "minCallDuration", seconds: 15 },
+    { type: "endedReason", operator: "oneOf", values: ["customer-ended-call"] }
+  ]
+});
+```
+
+```bash title="cURL"
+curl -X POST https://api.vapi.ai/structured-output \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Call Outcome",
+    "type": "ai",
+    "description": "Capture the outcome and any follow-up requested by the customer",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["resolved", "callback-requested", "escalated", "no-resolution"]
+        },
+        "followUpNotes": { "type": "string" }
+      },
+      "required": ["outcome"]
+    },
+    "conditions": [
+      { "type": "minMessages", "count": 6 },
+      { "type": "minCallDuration", "seconds": 15 },
+      { "type": "endedReason", "operator": "oneOf", "values": ["customer-ended-call"] }
+    ]
+  }'
+```
+</CodeBlocks>
+
+On a call that ends before those thresholds are met — a wrong number, a hang-up, a voicemail — the output is skipped instead of producing an empty or misleading result.
+
 ## Best practices for complex schemas
 
 <CardGroup cols={2}>

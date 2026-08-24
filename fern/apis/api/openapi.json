@@ -329,6 +329,19 @@
         "summary": "List Squads",
         "parameters": [
           {
+            "name": "idAny",
+            "required": false,
+            "in": "query",
+            "description": "Return only squads matching the provided ids",
+            "schema": {
+              "format": "uuid",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
             "name": "limit",
             "required": false,
             "in": "query",
@@ -597,6 +610,12 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Client/policy failure (limits, validation, missing resources)"
+          },
+          "500": {
+            "description": "System failure (database, queue, or internal infra)"
           }
         },
         "tags": [
@@ -1219,6 +1238,15 @@
             }
           },
           {
+            "name": "idAny",
+            "required": false,
+            "in": "query",
+            "description": "Filter by multiple chat IDs. Provide as comma-separated values.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "page",
             "required": false,
             "in": "query",
@@ -1833,6 +1861,15 @@
             }
           },
           {
+            "name": "includeCounters",
+            "required": false,
+            "in": "query",
+            "description": "When true, every campaign in the response includes `contactCounters` and\n`callMetrics`. These are aggregate queries over contacts and events —\nbatched across the page, so the cost is three queries per request rather\nthan three per campaign, but still opt-in rather than paid for on every\nread. Defaults to false.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "page",
             "required": false,
             "in": "query",
@@ -1967,7 +2004,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CampaignPaginatedResponse"
+                  "$ref": "#/components/schemas/CampaignSummaryPaginatedResponse"
                 }
               }
             }
@@ -1997,6 +2034,15 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "name": "includeCounters",
+            "required": false,
+            "in": "query",
+            "description": "When true, the response includes `contactCounters` and `callMetrics`.\nThese are aggregate queries over the campaign's contacts and events, so\nthey are opt-in rather than paid for on every read. Defaults to false.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -2005,7 +2051,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Campaign"
+                  "$ref": "#/components/schemas/CampaignSummary"
                 }
               }
             }
@@ -2223,6 +2269,98 @@
         ]
       }
     },
+    "/v2/campaign/{id}/contacts": {
+      "get": {
+        "operationId": "CampaignController_getCampaignV2Contacts",
+        "summary": "Get Campaign V2 Contacts",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "This is the status to filter contacts by. Pass once or multiple times to\nfilter on any of the provided statuses.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "contact.pending",
+                  "contact.dispatched",
+                  "contact.completed",
+                  "contact.failed",
+                  "contact.skipped",
+                  "contact.predial-failed"
+                ]
+              }
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "This is the maximum number of contacts to return. Defaults to 50.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "This is the column to sort by. Defaults to `position` — the order contacts\nwere uploaded, which is also dial order.\n\n`status` sorts by the enum's declaration order rather than alphabetically,\nwhich means it reads as a lifecycle: pending, dispatched, completed,\nfailed, skipped, predial-failed.\n\nOnly columns on `campaign_contact` are sortable. Call-level values such as\ncost or duration live on the call and are attached after this query, so\nsorting by them here would only reorder the current page.",
+            "schema": {
+              "enum": [
+                "position",
+                "status"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignContactPaginatedResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Campaigns"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/session": {
       "post": {
         "operationId": "SessionController_create",
@@ -2420,6 +2558,15 @@
             "description": "Filter by any of the specified customer phone numbers (comma-separated).",
             "schema": {
               "example": "+1234567890,+0987654321",
+              "type": "string"
+            }
+          },
+          {
+            "name": "idAny",
+            "required": false,
+            "in": "query",
+            "description": "Filter by multiple session IDs. Provide as comma-separated values.",
+            "schema": {
               "type": "string"
             }
           },
@@ -3543,6 +3690,10 @@
                       "title": "FunctionTool"
                     },
                     {
+                      "$ref": "#/components/schemas/KnowledgeBaseTool",
+                      "title": "KnowledgeBaseTool"
+                    },
+                    {
                       "$ref": "#/components/schemas/GhlTool",
                       "title": "GhlTool"
                     },
@@ -3627,6 +3778,7 @@
                       "dtmf": "#/components/schemas/DtmfTool",
                       "endCall": "#/components/schemas/EndCallTool",
                       "function": "#/components/schemas/FunctionTool",
+                      "knowledgeBase": "#/components/schemas/KnowledgeBaseTool",
                       "transferCall": "#/components/schemas/TransferCallTool",
                       "handoff": "#/components/schemas/HandoffTool",
                       "bash": "#/components/schemas/BashTool",
@@ -3787,6 +3939,10 @@
                         "title": "FunctionTool"
                       },
                       {
+                        "$ref": "#/components/schemas/KnowledgeBaseTool",
+                        "title": "KnowledgeBaseTool"
+                      },
+                      {
                         "$ref": "#/components/schemas/GhlTool",
                         "title": "GhlTool"
                       },
@@ -3871,6 +4027,7 @@
                         "dtmf": "#/components/schemas/DtmfTool",
                         "endCall": "#/components/schemas/EndCallTool",
                         "function": "#/components/schemas/FunctionTool",
+                        "knowledgeBase": "#/components/schemas/KnowledgeBaseTool",
                         "transferCall": "#/components/schemas/TransferCallTool",
                         "handoff": "#/components/schemas/HandoffTool",
                         "bash": "#/components/schemas/BashTool",
@@ -3949,6 +4106,10 @@
                     {
                       "$ref": "#/components/schemas/FunctionTool",
                       "title": "FunctionTool"
+                    },
+                    {
+                      "$ref": "#/components/schemas/KnowledgeBaseTool",
+                      "title": "KnowledgeBaseTool"
                     },
                     {
                       "$ref": "#/components/schemas/GhlTool",
@@ -4035,6 +4196,7 @@
                       "dtmf": "#/components/schemas/DtmfTool",
                       "endCall": "#/components/schemas/EndCallTool",
                       "function": "#/components/schemas/FunctionTool",
+                      "knowledgeBase": "#/components/schemas/KnowledgeBaseTool",
                       "transferCall": "#/components/schemas/TransferCallTool",
                       "handoff": "#/components/schemas/HandoffTool",
                       "bash": "#/components/schemas/BashTool",
@@ -4109,6 +4271,10 @@
                   {
                     "$ref": "#/components/schemas/UpdateFunctionToolDTO",
                     "title": "FunctionTool"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UpdateKnowledgeBaseToolDTO",
+                    "title": "KnowledgeBaseTool"
                   },
                   {
                     "$ref": "#/components/schemas/UpdateTransferCallToolDTO",
@@ -4190,6 +4356,7 @@
                     "dtmf": "#/components/schemas/UpdateDtmfToolDTO",
                     "endCall": "#/components/schemas/UpdateEndCallToolDTO",
                     "function": "#/components/schemas/UpdateFunctionToolDTO",
+                    "knowledgeBase": "#/components/schemas/UpdateKnowledgeBaseToolDTO",
                     "transferCall": "#/components/schemas/UpdateTransferCallToolDTO",
                     "handoff": "#/components/schemas/UpdateHandoffToolDTO",
                     "bash": "#/components/schemas/UpdateBashToolDTO",
@@ -4240,6 +4407,10 @@
                     {
                       "$ref": "#/components/schemas/FunctionTool",
                       "title": "FunctionTool"
+                    },
+                    {
+                      "$ref": "#/components/schemas/KnowledgeBaseTool",
+                      "title": "KnowledgeBaseTool"
                     },
                     {
                       "$ref": "#/components/schemas/GhlTool",
@@ -4326,6 +4497,7 @@
                       "dtmf": "#/components/schemas/DtmfTool",
                       "endCall": "#/components/schemas/EndCallTool",
                       "function": "#/components/schemas/FunctionTool",
+                      "knowledgeBase": "#/components/schemas/KnowledgeBaseTool",
                       "transferCall": "#/components/schemas/TransferCallTool",
                       "handoff": "#/components/schemas/HandoffTool",
                       "bash": "#/components/schemas/BashTool",
@@ -4403,6 +4575,10 @@
                       "title": "FunctionTool"
                     },
                     {
+                      "$ref": "#/components/schemas/KnowledgeBaseTool",
+                      "title": "KnowledgeBaseTool"
+                    },
+                    {
                       "$ref": "#/components/schemas/GhlTool",
                       "title": "GhlTool"
                     },
@@ -4487,6 +4663,7 @@
                       "dtmf": "#/components/schemas/DtmfTool",
                       "endCall": "#/components/schemas/EndCallTool",
                       "function": "#/components/schemas/FunctionTool",
+                      "knowledgeBase": "#/components/schemas/KnowledgeBaseTool",
                       "transferCall": "#/components/schemas/TransferCallTool",
                       "handoff": "#/components/schemas/HandoffTool",
                       "bash": "#/components/schemas/BashTool",
@@ -4721,6 +4898,383 @@
         },
         "tags": [
           "Files"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/v2/knowledge-base": {
+      "post": {
+        "operationId": "KnowledgeBaseV2Controller_create",
+        "summary": "Create a Knowledge Base V2",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeBaseV2DTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseV2"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "KnowledgeBaseV2Controller_findAll",
+        "summary": "List Knowledge Bases V2",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "maximum": 1000,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeBaseV2"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/v2/knowledge-base/{id}/file": {
+      "get": {
+        "operationId": "KnowledgeBaseV2Controller_filesGet",
+        "summary": "List files in a Knowledge Base V2",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeBaseV2File"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "KnowledgeBaseV2Controller_fileAttach",
+        "summary": "Attach and ingest a file",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachKnowledgeBaseV2FileDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseV2File"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/v2/knowledge-base/{id}/file/{fileId}": {
+      "delete": {
+        "operationId": "KnowledgeBaseV2Controller_fileDetach",
+        "summary": "Detach a file",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseV2File"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/v2/knowledge-base/{id}/file/{fileId}/retry": {
+      "post": {
+        "operationId": "KnowledgeBaseV2Controller_fileRetry",
+        "summary": "Retry indexing a failed file",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseV2File"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/v2/knowledge-base/{id}": {
+      "patch": {
+        "operationId": "KnowledgeBaseV2Controller_update",
+        "summary": "Update a Knowledge Base V2",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateKnowledgeBaseV2DTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseV2"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "KnowledgeBaseV2Controller_findOne",
+        "summary": "Get a Knowledge Base V2",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseV2WithFiles"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "KnowledgeBaseV2Controller_remove",
+        "summary": "Delete a Knowledge Base V2",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseV2"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Knowledge Bases V2"
         ],
         "security": [
           {
@@ -5123,6 +5677,2075 @@
         },
         "tags": [
           "Structured Outputs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/personality": {
+      "post": {
+        "operationId": "PersonalityController_create",
+        "summary": "Create Personality",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePersonalityDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Personality"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Personalities"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "PersonalityController_findAll",
+        "summary": "List Personalities",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
+            "schema": {
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "This is the column to sort by. Defaults to 'createdAt'.",
+            "schema": {
+              "enum": [
+                "createdAt",
+                "duration",
+                "cost"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "This is the maximum number of items to return. Defaults to 100.",
+            "schema": {
+              "minimum": 0,
+              "maximum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "createdAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Personality"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Personalities"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/personality/{id}": {
+      "get": {
+        "operationId": "PersonalityController_findOne",
+        "summary": "Get Personality",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Personality"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Personalities"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "PersonalityController_update",
+        "summary": "Update Personality",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePersonalityDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Personality"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Personalities"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "PersonalityController_remove",
+        "summary": "Delete Personality",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Personality"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Personalities"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/scenario": {
+      "post": {
+        "operationId": "ScenarioController_create",
+        "summary": "Create Scenario",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScenarioDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scenario"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Scenarios"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "ScenarioController_findAll",
+        "summary": "List Scenarios",
+        "parameters": [
+          {
+            "name": "idAny",
+            "required": false,
+            "in": "query",
+            "description": "Return only scenarios matching the provided ids",
+            "schema": {
+              "format": "uuid",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "name",
+            "required": false,
+            "in": "query",
+            "description": "Search by scenario name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
+            "schema": {
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "This is the column to sort by. Defaults to 'createdAt'.",
+            "schema": {
+              "enum": [
+                "createdAt",
+                "duration",
+                "cost"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "This is the maximum number of items to return. Defaults to 100.",
+            "schema": {
+              "minimum": 0,
+              "maximum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "createdAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Scenario"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Scenarios"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/scenario/{id}": {
+      "get": {
+        "operationId": "ScenarioController_findOne",
+        "summary": "Get Scenario",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scenario"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Scenarios"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "ScenarioController_update",
+        "summary": "Update Scenario",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScenarioDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scenario"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Scenarios"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "ScenarioController_remove",
+        "summary": "Delete Scenario",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scenario"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Scenarios"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/run": {
+      "post": {
+        "operationId": "SimulationRunController_create",
+        "summary": "Create Simulation Run",
+        "parameters": [
+          {
+            "name": "user-agent",
+            "required": false,
+            "in": "header",
+            "description": "Identifies the client starting the simulation run",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSimulationRunDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSimulationRunResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "The organization is not eligible to start this run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationRunPaymentRequiredResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Runs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "SimulationRunController_findAll",
+        "summary": "List Simulation Runs",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filter by status",
+            "schema": {
+              "enum": [
+                "queued",
+                "running",
+                "ended"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "filterStatus",
+            "required": false,
+            "in": "query",
+            "description": "Filter by aggregate run result status",
+            "schema": {
+              "enum": [
+                "passed",
+                "failed",
+                "running"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetType",
+            "required": false,
+            "in": "query",
+            "description": "Filter by target type",
+            "schema": {
+              "enum": [
+                "assistant",
+                "squad"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by target id",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
+            "schema": {
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "This is the column to sort by. Defaults to 'createdAt'.",
+            "schema": {
+              "enum": [
+                "createdAt",
+                "duration",
+                "cost"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "This is the maximum number of items to return. Defaults to 100.",
+            "schema": {
+              "minimum": 0,
+              "maximum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "createdAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SimulationRun"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/SimulationRunsPaginatedResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Runs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/run/{id}": {
+      "get": {
+        "operationId": "SimulationRunController_findOne",
+        "summary": "Get Simulation Run",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationRun"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Runs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "SimulationRunController_cancelGroup",
+        "summary": "Cancel Simulation Run",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationRun"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Runs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/run/{id}/item": {
+      "get": {
+        "operationId": "SimulationRunController_findItems",
+        "summary": "List Simulation Run Items",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "simulationId",
+            "required": false,
+            "in": "query",
+            "description": "This is the simulation ID to filter by.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "required": false,
+            "in": "query",
+            "description": "This is the run ID (batch/group) to filter by.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "This is the status to filter by.",
+            "schema": {
+              "enum": [
+                "queued",
+                "running",
+                "evaluating",
+                "passed",
+                "failed",
+                "canceled"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
+            "schema": {
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "This is the column to sort by. Defaults to 'createdAt'.",
+            "schema": {
+              "enum": [
+                "createdAt",
+                "duration",
+                "cost"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "This is the maximum number of items to return. Defaults to 100.",
+            "schema": {
+              "minimum": 0,
+              "maximum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "createdAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SimulationRunItem"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Runs",
+          "Simulation Run Items"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/run/{id}/item/{itemId}": {
+      "get": {
+        "operationId": "SimulationRunController_findItem",
+        "summary": "Get Simulation Run Item",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationRunItem"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Runs",
+          "Simulation Run Items"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "SimulationRunController_cancelItem",
+        "summary": "Cancel Simulation Run Item",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationRunItem"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Runs",
+          "Simulation Run Items"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/run/{id}/item/{itemId}/generate": {
+      "post": {
+        "operationId": "SimulationRunController_generateSuggestions",
+        "summary": "Generate Improvement Suggestions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "persist",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Simulation Runs",
+          "Simulation Run Items"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/suite": {
+      "post": {
+        "operationId": "SimulationSuiteController_create",
+        "summary": "Create Simulation Suite",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSimulationSuiteDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationSuite"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Suites"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "SimulationSuiteController_findAll",
+        "summary": "List Simulation Suites",
+        "parameters": [
+          {
+            "name": "name",
+            "required": false,
+            "in": "query",
+            "description": "Search by simulation suite name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
+            "schema": {
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "This is the column to sort by. Defaults to 'createdAt'.",
+            "schema": {
+              "enum": [
+                "createdAt",
+                "duration",
+                "cost"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "This is the maximum number of items to return. Defaults to 100.",
+            "schema": {
+              "minimum": 0,
+              "maximum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "createdAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SimulationSuite"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Suites"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/suite/{id}": {
+      "get": {
+        "operationId": "SimulationSuiteController_findOne",
+        "summary": "Get Simulation Suite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationSuite"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Suites"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "SimulationSuiteController_update",
+        "summary": "Update Simulation Suite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSimulationSuiteDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationSuite"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Suites"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "SimulationSuiteController_remove",
+        "summary": "Delete Simulation Suite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationSuite"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulation Suites"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/scenario/generate": {
+      "post": {
+        "operationId": "SimulationGenerateController_generate",
+        "summary": "Generate Scenarios with AI",
+        "description": "Uses AI to analyze an assistant or squad configuration and generate test scenarios",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateScenariosDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateScenariosResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation": {
+      "post": {
+        "operationId": "SimulationController_create",
+        "summary": "Create Simulation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSimulationDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Simulation"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "SimulationController_findAll",
+        "summary": "List Simulations",
+        "parameters": [
+          {
+            "name": "idAny",
+            "required": false,
+            "in": "query",
+            "description": "Return only simulations matching the provided ids",
+            "schema": {
+              "format": "uuid",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "standaloneOnly",
+            "required": false,
+            "in": "query",
+            "description": "Only include simulations that are not part of a suite",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
+            "schema": {
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "This is the column to sort by. Defaults to 'createdAt'.",
+            "schema": {
+              "enum": [
+                "createdAt",
+                "duration",
+                "cost"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "This is the maximum number of items to return. Defaults to 100.",
+            "schema": {
+              "minimum": 0,
+              "maximum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "createdAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the createdAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLt",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtGe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is greater than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAtLe",
+            "required": false,
+            "in": "query",
+            "description": "This will return items where the updatedAt is less than or equal to the specified value.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Simulation"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/{id}": {
+      "get": {
+        "operationId": "SimulationController_findOne",
+        "summary": "Get Simulation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Simulation"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "SimulationController_update",
+        "summary": "Update Simulation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSimulationDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Simulation"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "SimulationController_remove",
+        "summary": "Delete Simulation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Simulation"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/concurrency": {
+      "get": {
+        "operationId": "SimulationController_getConcurrency",
+        "summary": "Get Simulation Concurrency",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationConcurrencyResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Simulations"
         ],
         "security": [
           {
@@ -7604,12 +10227,79 @@
             "description": "Use VAD to assist with endpointing decisions from the transcriber.\nWhen enabled, transcriber endpointing will be buffered if VAD detects the user is still speaking, preventing premature turn-taking.\nWhen disabled, transcriber endpointing will be used immediately regardless of VAD state, allowing for quicker but more aggressive turn-taking.\nNote: Only used if startSpeakingPlan.smartEndpointingPlan is not set.\n\n@default true",
             "example": true
           },
+          "mode": {
+            "type": "string",
+            "description": "This is the transcription mode used by the `universal-3-5-pro` speech model. Only applies to the `universal-3-5-pro` speech model.\n\n@default 'balanced'",
+            "enum": [
+              "max_accuracy",
+              "min_latency",
+              "balanced"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "description": "This is a prompt that provides additional context to the transcription model. Only applies to the `universal-3-5-pro` speech model.",
+            "maxLength": 1750
+          },
+          "agentContext": {
+            "type": "string",
+            "description": "This is context about the voice agent that guides the transcription model. Only applies to the `universal-3-5-pro` speech model.",
+            "maxLength": 1750
+          },
+          "languageCodes": {
+            "type": "array",
+            "description": "These are language codes used to steer automatic language detection. Only applies to the `universal-3-5-pro` speech model.",
+            "enum": [
+              "en",
+              "es",
+              "fr",
+              "de",
+              "it",
+              "pt",
+              "tr",
+              "nl",
+              "sv",
+              "no",
+              "da",
+              "fi",
+              "hi",
+              "vi",
+              "ar",
+              "he",
+              "ja",
+              "zh"
+            ],
+            "items": {
+              "type": "string",
+              "enum": [
+                "en",
+                "es",
+                "fr",
+                "de",
+                "it",
+                "pt",
+                "tr",
+                "nl",
+                "sv",
+                "no",
+                "da",
+                "fi",
+                "hi",
+                "vi",
+                "ar",
+                "he",
+                "ja",
+                "zh"
+              ]
+            }
+          },
           "speechModel": {
             "type": "string",
-            "description": "This is the speech model used for the streaming session.\nNote: Keyterms prompting is not supported with multilingual streaming.\n@default 'universal-streaming-english'",
+            "description": "This is the speech model used for the streaming session.\nKeyterms prompting is supported on universal-streaming-english and universal-3-5-pro.\nuniversal-3-5-pro is AssemblyAI's most accurate voice-agent model.\n@default 'universal-streaming-english'",
             "enum": [
               "universal-streaming-english",
-              "universal-streaming-multilingual"
+              "universal-streaming-multilingual",
+              "universal-3-5-pro"
             ]
           },
           "realtimeUrl": {
@@ -7625,7 +10315,7 @@
             }
           },
           "keytermsPrompt": {
-            "description": "Keyterms prompting improves recognition accuracy for specific words and phrases.\nCan include up to 100 keyterms, each up to 50 characters.\nCosts an additional $0.04/hour when enabled.",
+            "description": "Keyterms prompting improves recognition accuracy for specific words and phrases.\nCan include up to 100 keyterms, each up to 50 characters.\nCosts an additional $0.04/hour on universal-streaming-english and is included at no extra cost on universal-3-5-pro.",
             "type": "array",
             "items": {
               "type": "string",
@@ -10783,12 +13473,79 @@
             "description": "Use VAD to assist with endpointing decisions from the transcriber.\nWhen enabled, transcriber endpointing will be buffered if VAD detects the user is still speaking, preventing premature turn-taking.\nWhen disabled, transcriber endpointing will be used immediately regardless of VAD state, allowing for quicker but more aggressive turn-taking.\nNote: Only used if startSpeakingPlan.smartEndpointingPlan is not set.\n\n@default true",
             "example": true
           },
+          "mode": {
+            "type": "string",
+            "description": "This is the transcription mode used by the `universal-3-5-pro` speech model. Only applies to the `universal-3-5-pro` speech model.\n\n@default 'balanced'",
+            "enum": [
+              "max_accuracy",
+              "min_latency",
+              "balanced"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "description": "This is a prompt that provides additional context to the transcription model. Only applies to the `universal-3-5-pro` speech model.",
+            "maxLength": 1750
+          },
+          "agentContext": {
+            "type": "string",
+            "description": "This is context about the voice agent that guides the transcription model. Only applies to the `universal-3-5-pro` speech model.",
+            "maxLength": 1750
+          },
+          "languageCodes": {
+            "type": "array",
+            "description": "These are language codes used to steer automatic language detection. Only applies to the `universal-3-5-pro` speech model.",
+            "enum": [
+              "en",
+              "es",
+              "fr",
+              "de",
+              "it",
+              "pt",
+              "tr",
+              "nl",
+              "sv",
+              "no",
+              "da",
+              "fi",
+              "hi",
+              "vi",
+              "ar",
+              "he",
+              "ja",
+              "zh"
+            ],
+            "items": {
+              "type": "string",
+              "enum": [
+                "en",
+                "es",
+                "fr",
+                "de",
+                "it",
+                "pt",
+                "tr",
+                "nl",
+                "sv",
+                "no",
+                "da",
+                "fi",
+                "hi",
+                "vi",
+                "ar",
+                "he",
+                "ja",
+                "zh"
+              ]
+            }
+          },
           "speechModel": {
             "type": "string",
-            "description": "This is the speech model used for the streaming session.\nNote: Keyterms prompting is not supported with multilingual streaming.\n@default 'universal-streaming-english'",
+            "description": "This is the speech model used for the streaming session.\nKeyterms prompting is supported on universal-streaming-english and universal-3-5-pro.\nuniversal-3-5-pro is AssemblyAI's most accurate voice-agent model.\n@default 'universal-streaming-english'",
             "enum": [
               "universal-streaming-english",
-              "universal-streaming-multilingual"
+              "universal-streaming-multilingual",
+              "universal-3-5-pro"
             ]
           },
           "realtimeUrl": {
@@ -10804,7 +13561,7 @@
             }
           },
           "keytermsPrompt": {
-            "description": "Keyterms prompting improves recognition accuracy for specific words and phrases.\nCan include up to 100 keyterms, each up to 50 characters.\nCosts an additional $0.04/hour when enabled.",
+            "description": "Keyterms prompting improves recognition accuracy for specific words and phrases.\nCan include up to 100 keyterms, each up to 50 characters.\nCosts an additional $0.04/hour on universal-streaming-english and is included at no extra cost on universal-3-5-pro.",
             "type": "array",
             "items": {
               "type": "string",
@@ -18784,6 +21541,35 @@
               "gpt-3.5-turbo-1106",
               "gpt-3.5-turbo-16k",
               "gpt-3.5-turbo-0613",
+              "gpt-5.6-luna:westus3",
+              "gpt-5.6-terra:westus3",
+              "gpt-5.6-sol:westus3",
+              "gpt-5.4:eastus2",
+              "gpt-5.4:swedencentral",
+              "gpt-5.4-mini:eastus2",
+              "gpt-5.4-mini:swedencentral",
+              "gpt-5.4-nano:eastus2",
+              "gpt-5.4-nano:swedencentral",
+              "gpt-5.2:eastus2",
+              "gpt-5.2:swedencentral",
+              "gpt-5.1:eastus2",
+              "gpt-5.1:swedencentral",
+              "gpt-5:eastus2",
+              "gpt-5:swedencentral",
+              "gpt-5:canadaeast",
+              "gpt-5:eastus",
+              "gpt-5:westeurope",
+              "gpt-5:germanywestcentral",
+              "gpt-5:polandcentral",
+              "gpt-5:spaincentral",
+              "gpt-5-mini:eastus2",
+              "gpt-5-mini:swedencentral",
+              "gpt-5-mini:westeurope",
+              "gpt-5-mini:germanywestcentral",
+              "gpt-5-mini:polandcentral",
+              "gpt-5-mini:spaincentral",
+              "gpt-5-nano:eastus2",
+              "gpt-5-nano:swedencentral",
               "gpt-4.1-2025-04-14:westus",
               "gpt-4.1-2025-04-14:eastus2",
               "gpt-4.1-2025-04-14:eastus",
@@ -18923,6 +21709,35 @@
                 "gpt-3.5-turbo-1106",
                 "gpt-3.5-turbo-16k",
                 "gpt-3.5-turbo-0613",
+                "gpt-5.6-luna:westus3",
+                "gpt-5.6-terra:westus3",
+                "gpt-5.6-sol:westus3",
+                "gpt-5.4:eastus2",
+                "gpt-5.4:swedencentral",
+                "gpt-5.4-mini:eastus2",
+                "gpt-5.4-mini:swedencentral",
+                "gpt-5.4-nano:eastus2",
+                "gpt-5.4-nano:swedencentral",
+                "gpt-5.2:eastus2",
+                "gpt-5.2:swedencentral",
+                "gpt-5.1:eastus2",
+                "gpt-5.1:swedencentral",
+                "gpt-5:eastus2",
+                "gpt-5:swedencentral",
+                "gpt-5:canadaeast",
+                "gpt-5:eastus",
+                "gpt-5:westeurope",
+                "gpt-5:germanywestcentral",
+                "gpt-5:polandcentral",
+                "gpt-5:spaincentral",
+                "gpt-5-mini:eastus2",
+                "gpt-5-mini:swedencentral",
+                "gpt-5-mini:westeurope",
+                "gpt-5-mini:germanywestcentral",
+                "gpt-5-mini:polandcentral",
+                "gpt-5-mini:spaincentral",
+                "gpt-5-nano:eastus2",
+                "gpt-5-nano:swedencentral",
                 "gpt-4.1-2025-04-14:westus",
                 "gpt-4.1-2025-04-14:eastus2",
                 "gpt-4.1-2025-04-14:eastus",
@@ -19666,6 +22481,35 @@
               "gpt-3.5-turbo-1106",
               "gpt-3.5-turbo-16k",
               "gpt-3.5-turbo-0613",
+              "gpt-5.6-luna:westus3",
+              "gpt-5.6-terra:westus3",
+              "gpt-5.6-sol:westus3",
+              "gpt-5.4:eastus2",
+              "gpt-5.4:swedencentral",
+              "gpt-5.4-mini:eastus2",
+              "gpt-5.4-mini:swedencentral",
+              "gpt-5.4-nano:eastus2",
+              "gpt-5.4-nano:swedencentral",
+              "gpt-5.2:eastus2",
+              "gpt-5.2:swedencentral",
+              "gpt-5.1:eastus2",
+              "gpt-5.1:swedencentral",
+              "gpt-5:eastus2",
+              "gpt-5:swedencentral",
+              "gpt-5:canadaeast",
+              "gpt-5:eastus",
+              "gpt-5:westeurope",
+              "gpt-5:germanywestcentral",
+              "gpt-5:polandcentral",
+              "gpt-5:spaincentral",
+              "gpt-5-mini:eastus2",
+              "gpt-5-mini:swedencentral",
+              "gpt-5-mini:westeurope",
+              "gpt-5-mini:germanywestcentral",
+              "gpt-5-mini:polandcentral",
+              "gpt-5-mini:spaincentral",
+              "gpt-5-nano:eastus2",
+              "gpt-5-nano:swedencentral",
               "gpt-4.1-2025-04-14:westus",
               "gpt-4.1-2025-04-14:eastus2",
               "gpt-4.1-2025-04-14:eastus",
@@ -24330,13 +27174,12 @@
           },
           "versionId": {
             "type": "string",
-            "description": "This is the version ID of the pronunciation dictionary to use.",
+            "description": "This is the version ID of the pronunciation dictionary to use.\n\nOmit to use the dictionary's latest version.",
             "title": "This is the ElevenLabs Pronunciation Dictionary Version ID"
           }
         },
         "required": [
-          "pronunciationDictionaryId",
-          "versionId"
+          "pronunciationDictionaryId"
         ]
       },
       "ElevenLabsVoice": {
@@ -25860,8 +28703,17 @@
           },
           "versionId": {
             "type": "string",
-            "description": "Version ID (only required for ElevenLabs, ignored for Cartesia)",
+            "description": "Version ID (only used by ElevenLabs, ignored for Cartesia)",
             "example": "ver_abc123"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider that hosts this pronunciation dictionary",
+            "enum": [
+              "cartesia",
+              "11labs"
+            ],
+            "example": "11labs"
           }
         },
         "required": [
@@ -25886,39 +28738,8 @@
           },
           "voiceId": {
             "type": "string",
-            "description": "The voices provided by Vapi",
-            "enum": [
-              "Clara",
-              "Godfrey",
-              "Elliot",
-              "Savannah",
-              "Nico",
-              "Kai",
-              "Emma",
-              "Sagar",
-              "Neil",
-              "Layla",
-              "Sid",
-              "Gustavo",
-              "Kylie",
-              "Rohan",
-              "Lily",
-              "Hana",
-              "Neha",
-              "Cole",
-              "Harry",
-              "Paige",
-              "Spencer",
-              "Naina",
-              "Leah",
-              "Tara",
-              "Jess",
-              "Leo",
-              "Dan",
-              "Mia",
-              "Zac",
-              "Zoe"
-            ]
+            "description": "The voice to use: a built-in Vapi voice name, or a cloned voice id (used with version 2).",
+            "example": "Clara"
           },
           "version": {
             "description": "The Vapi voice routing generation. `latest` auto-updates to the newest generation; version 1 uses legacy mappings; version 2 can use xAI-backed voices when available. When omitted, Version 1 is used. Accepts the string channel ('latest', '1', '2'); legacy numeric values (1, 2) are also accepted and coerced to their string form.",
@@ -28470,39 +31291,8 @@
           },
           "voiceId": {
             "type": "string",
-            "description": "The voices provided by Vapi",
-            "enum": [
-              "Clara",
-              "Godfrey",
-              "Elliot",
-              "Savannah",
-              "Nico",
-              "Kai",
-              "Emma",
-              "Sagar",
-              "Neil",
-              "Layla",
-              "Sid",
-              "Gustavo",
-              "Kylie",
-              "Rohan",
-              "Lily",
-              "Hana",
-              "Neha",
-              "Cole",
-              "Harry",
-              "Paige",
-              "Spencer",
-              "Naina",
-              "Leah",
-              "Tara",
-              "Jess",
-              "Leo",
-              "Dan",
-              "Mia",
-              "Zac",
-              "Zoe"
-            ]
+            "description": "The voice to use: a built-in Vapi voice name, or a cloned voice id (used with version 2).",
+            "example": "Clara"
           },
           "version": {
             "description": "The Vapi voice routing generation. `latest` auto-updates to the newest generation; version 1 uses legacy mappings; version 2 can use xAI-backed voices when available. When omitted, Version 1 is used. Accepts the string channel ('latest', '1', '2'); legacy numeric values (1, 2) are also accepted and coerced to their string form.",
@@ -29296,6 +32086,9 @@
           "models": {
             "type": "array",
             "enum": [
+              "gpt-5.6-luna-2026-07-09",
+              "gpt-5.6-terra-2026-07-09",
+              "gpt-5.6-sol-2026-07-09",
               "gpt-5.4",
               "gpt-5.4-mini",
               "gpt-5.4-nano",
@@ -29330,6 +32123,9 @@
             "items": {
               "type": "string",
               "enum": [
+                "gpt-5.6-luna-2026-07-09",
+                "gpt-5.6-terra-2026-07-09",
+                "gpt-5.6-sol-2026-07-09",
                 "gpt-5.4",
                 "gpt-5.4-mini",
                 "gpt-5.4-nano",
@@ -31277,7 +34073,8 @@
               "session.updated",
               "session.deleted",
               "call.deleted",
-              "call.delete.failed"
+              "call.delete.failed",
+              "call.artifact.upload"
             ],
             "example": [
               "conversation-update",
@@ -31322,7 +34119,8 @@
                 "session.updated",
                 "session.deleted",
                 "call.deleted",
-                "call.delete.failed"
+                "call.delete.failed",
+                "call.artifact.upload"
               ]
             }
           },
@@ -32272,7 +35070,8 @@
               "session.updated",
               "session.deleted",
               "call.deleted",
-              "call.delete.failed"
+              "call.delete.failed",
+              "call.artifact.upload"
             ],
             "example": [
               "conversation-update",
@@ -32317,7 +35116,8 @@
                 "session.updated",
                 "session.deleted",
                 "call.deleted",
-                "call.delete.failed"
+                "call.delete.failed",
+                "call.artifact.upload"
               ]
             }
           },
@@ -33164,7 +35964,8 @@
               "session.updated",
               "session.deleted",
               "call.deleted",
-              "call.delete.failed"
+              "call.delete.failed",
+              "call.artifact.upload"
             ],
             "example": [
               "conversation-update",
@@ -33209,7 +36010,8 @@
                 "session.updated",
                 "session.deleted",
                 "call.deleted",
-                "call.delete.failed"
+                "call.delete.failed",
+                "call.artifact.upload"
               ]
             }
           },
@@ -34150,7 +36952,8 @@
               "session.updated",
               "session.deleted",
               "call.deleted",
-              "call.delete.failed"
+              "call.delete.failed",
+              "call.artifact.upload"
             ],
             "example": [
               "conversation-update",
@@ -34195,7 +36998,8 @@
                 "session.updated",
                 "session.deleted",
                 "call.deleted",
-                "call.delete.failed"
+                "call.delete.failed",
+                "call.artifact.upload"
               ]
             }
           },
@@ -35165,7 +37969,8 @@
               "session.updated",
               "session.deleted",
               "call.deleted",
-              "call.delete.failed"
+              "call.delete.failed",
+              "call.artifact.upload"
             ],
             "example": [
               "conversation-update",
@@ -35210,7 +38015,8 @@
                 "session.updated",
                 "session.deleted",
                 "call.deleted",
-                "call.delete.failed"
+                "call.delete.failed",
+                "call.artifact.upload"
               ]
             }
           },
@@ -35636,6 +38442,11 @@
             "type": "string",
             "nullable": true,
             "description": "This is the prior version label (vN-1). Null on v1 or for branch roots."
+          },
+          "restoredFromVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "The version this version was restored from. Null when it was not restored."
           },
           "createdBy": {
             "type": "string",
@@ -36226,7 +39037,8 @@
               "session.updated",
               "session.deleted",
               "call.deleted",
-              "call.delete.failed"
+              "call.delete.failed",
+              "call.artifact.upload"
             ],
             "example": [
               "conversation-update",
@@ -36271,7 +39083,8 @@
                 "session.updated",
                 "session.deleted",
                 "call.deleted",
-                "call.delete.failed"
+                "call.delete.failed",
+                "call.artifact.upload"
               ]
             }
           },
@@ -37142,7 +39955,8 @@
               "session.updated",
               "session.deleted",
               "call.deleted",
-              "call.delete.failed"
+              "call.delete.failed",
+              "call.artifact.upload"
             ],
             "example": [
               "conversation-update",
@@ -37187,7 +40001,8 @@
                 "session.updated",
                 "session.deleted",
                 "call.deleted",
-                "call.delete.failed"
+                "call.delete.failed",
+                "call.artifact.upload"
               ]
             }
           },
@@ -38034,7 +40849,8 @@
               "session.updated",
               "session.deleted",
               "call.deleted",
-              "call.delete.failed"
+              "call.delete.failed",
+              "call.artifact.upload"
             ],
             "example": [
               "conversation-update",
@@ -38079,7 +40895,8 @@
                 "session.updated",
                 "session.deleted",
                 "call.deleted",
-                "call.delete.failed"
+                "call.delete.failed",
+                "call.artifact.upload"
               ]
             }
           },
@@ -41240,6 +44057,42 @@
           "cost"
         ]
       },
+      "StructuredOutputCostBreakdown": {
+        "type": "object",
+        "properties": {
+          "structuredOutputId": {
+            "type": "string",
+            "description": "This is the unique identifier of the structured output that produced this cost."
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the structured output, so this breakdown is readable without looking the id up."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost in USD of evaluating this structured output."
+          },
+          "promptTokens": {
+            "type": "number",
+            "description": "This is the number of prompt tokens used to evaluate this structured output."
+          },
+          "completionTokens": {
+            "type": "number",
+            "description": "This is the number of completion tokens generated for this structured output."
+          },
+          "cachedPromptTokens": {
+            "type": "number",
+            "description": "This is the number of cached prompt tokens used to evaluate this structured output. This is a subset of `promptTokens`, not an addition to it."
+          }
+        },
+        "required": [
+          "structuredOutputId",
+          "name",
+          "cost",
+          "promptTokens",
+          "completionTokens"
+        ]
+      },
       "AnalysisCost": {
         "type": "object",
         "properties": {
@@ -41275,6 +44128,13 @@
           "cachedPromptTokens": {
             "type": "number",
             "description": "This is the number of cached prompt tokens used in the analysis. This is only applicable to certain providers (e.g., OpenAI, Azure OpenAI) that support prompt caching. Cached tokens are billed at a discounted rate."
+          },
+          "structuredOutputBreakdown": {
+            "description": "This is the per-structured-output breakdown of this cost. The `cost`, `promptTokens`, `completionTokens` and `cachedPromptTokens` above are the sums of these rows.\n\nThis is only set when `analysisType` is `structuredOutput`, and it is omitted entirely rather than partially populated, so when it is present the rows always reconcile to the totals above.\n\nA structured output that was skipped, or that extracts via regex, makes no LLM call and so has no row here — this is not a complete list of the call's configured structured outputs. There is one row per evaluation, so a `structuredOutputId` can appear more than once if it was evaluated more than once; sum the rows rather than indexing them by id.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StructuredOutputCostBreakdown"
+            }
           },
           "cost": {
             "type": "number",
@@ -41374,6 +44234,10 @@
             "description": "This determines whether the daily room will be deleted and all participants will be kicked once the user leaves the room.\nIf set to `false`, the room will be kept alive even after the user leaves, allowing clients to reconnect to the same room.\nIf set to `true`, the room will be deleted and reconnection will not be allowed.\n\nDefaults to `true`.",
             "example": true,
             "default": true
+          },
+          "callToken": {
+            "type": "string",
+            "description": "This is the meeting token the web client should join the call with.\nWhen video recording is enabled, joining with this token starts the cloud\nrecording automatically server-side, which is more reliable than the\nclient starting it after joining. Set by the server; only present when\nvideo recording is enabled."
           },
           "callUrl": {
             "type": "string",
@@ -44719,6 +47583,10 @@
             "type": "string",
             "description": "This is the unique identifier for the previous chat to filter by."
           },
+          "idAny": {
+            "type": "string",
+            "description": "Filter by multiple chat IDs. Provide as comma-separated values."
+          },
           "page": {
             "type": "number",
             "description": "This is the page number to return. Defaults to 1.",
@@ -45284,6 +48152,10 @@
           "previousChatId": {
             "type": "string",
             "description": "This is the unique identifier for the previous chat to filter by."
+          },
+          "idAny": {
+            "type": "string",
+            "description": "Filter by multiple chat IDs. Provide as comma-separated values."
           },
           "columns": {
             "type": "string",
@@ -46035,6 +48907,238 @@
           "metadata"
         ]
       },
+      "CampaignContactCounters": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "number"
+          },
+          "dispatched": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "failed": {
+            "type": "number"
+          },
+          "skipped": {
+            "type": "number"
+          },
+          "predialFailed": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "pending",
+          "dispatched",
+          "completed",
+          "failed",
+          "skipped",
+          "predialFailed"
+        ]
+      },
+      "CampaignCallMetrics": {
+        "type": "object",
+        "properties": {
+          "dialed": {
+            "type": "number",
+            "description": "This is the number of contacts a call was actually placed for. Contacts\nthat were skipped, rejected before dialing, or failed to dispatch are not\ncounted — no call existed, so there was nothing to answer."
+          },
+          "connected": {
+            "type": "number",
+            "description": "This is the number of those calls a human picked up. Voicemail does not\ncount. Divide by `dialed` for the pick-up rate."
+          }
+        },
+        "required": [
+          "dialed",
+          "connected"
+        ]
+      },
+      "CampaignSummary": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "This is the status of the campaign.",
+            "enum": [
+              "scheduled",
+              "in-progress",
+              "ended",
+              "cancelled",
+              "archived"
+            ]
+          },
+          "endedReason": {
+            "type": "string",
+            "description": "This is the explanation for how the campaign ended.",
+            "enum": [
+              "campaign.scheduled.ended-by-user",
+              "campaign.in-progress.ended-by-user",
+              "campaign.ended.success"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the campaign. This is just for your own reference.",
+            "example": "Q2 Sales Campaign"
+          },
+          "assistantId": {
+            "type": "string",
+            "description": "This is the assistant ID that will be used for the campaign calls. Note: Only one of assistantId, workflowId, or squadId can be used."
+          },
+          "squadId": {
+            "type": "string",
+            "description": "This is the squad ID that will be used for the campaign calls. Note: Only one of assistantId, workflowId, or squadId can be used."
+          },
+          "phoneNumberId": {
+            "type": "string",
+            "description": "This is the phone number ID that will be used for the campaign calls. Required if dialPlan is not provided. Note: phoneNumberId and dialPlan are mutually exclusive."
+          },
+          "schedulePlan": {
+            "description": "This is the schedule plan for the campaign. Calls will start at startedAt and continue until your organization’s concurrency limit is reached. Any remaining calls will be retried for up to one hour as capacity becomes available. After that hour or after latestAt, whichever comes first, any calls that couldn’t be placed won’t be retried.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SchedulePlan"
+              }
+            ]
+          },
+          "maxConcurrency": {
+            "type": "number",
+            "minimum": 1,
+            "description": "This is the maximum number of concurrent calls that will be made for the campaign. Defaults to 10."
+          },
+          "assistantOverrides": {
+            "description": "These are the overrides for the assistant's settings and template variables for the campaign. Use this when the campaign targets an `assistantId`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
+          },
+          "squadOverrides": {
+            "description": "These are the overrides for the squad and template variables for the campaign. Use this when the campaign targets a `squadId`. Per-contact `squadOverrides` are deep-merged on top of this at dispatch time.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
+          },
+          "server": {
+            "description": "This is the server (URL, auth headers, timeout, etc.) for the campaign webhooks.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Server"
+              }
+            ]
+          },
+          "serverMessages": {
+            "type": "array",
+            "enum": [
+              "campaign.started",
+              "campaign.cancelled",
+              "campaign.ended",
+              "campaign.archived",
+              "campaign.unarchived",
+              "contact.dispatched",
+              "contact.completed",
+              "contact.failed",
+              "contact.skipped",
+              "contact.predial-failed",
+              "campaign.job.continued"
+            ],
+            "example": [
+              "campaign.started",
+              "contact.dispatched"
+            ],
+            "description": "These are the messages that will be sent to your Server URL.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "campaign.started",
+                "campaign.cancelled",
+                "campaign.ended",
+                "campaign.archived",
+                "campaign.unarchived",
+                "contact.dispatched",
+                "contact.completed",
+                "contact.failed",
+                "contact.skipped",
+                "contact.predial-failed",
+                "campaign.job.continued"
+              ]
+            }
+          },
+          "predialPlan": {
+            "description": "This opts the campaign into the blocking `campaign.predial` eligibility webhook. When set, every contact triggers a `campaign.predial` POST to the Server URL before dialing, and the response `{ eligible: boolean }` decides whether the call is placed. Requires `server`. When unset, no pre-dial webhook is sent.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CampaignPredialPlan"
+              }
+            ]
+          },
+          "contactCounters": {
+            "description": "These are the per-status contact counts for this campaign. Sum them for the\ncampaign's total audience; `pending` plus `dispatched` is what is left to\ncomplete.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CampaignContactCounters"
+              }
+            ]
+          },
+          "callMetrics": {
+            "description": "These are the call-level outcomes for this campaign — how many contacts\nwere actually dialed, and how many of those a human picked up.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CampaignCallMetrics"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the campaign."
+          },
+          "orgId": {
+            "type": "string",
+            "description": "This is the unique identifier for the org that this campaign belongs to."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the campaign was created."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the campaign was last updated."
+          }
+        },
+        "required": [
+          "status",
+          "name",
+          "id",
+          "orgId",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CampaignSummaryPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CampaignSummary"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
+        ]
+      },
       "UpdateCampaignDTO": {
         "type": "object",
         "properties": {
@@ -46082,6 +49186,64 @@
             ]
           }
         }
+      },
+      "CampaignContactWithOutcome": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "contact.pending",
+              "contact.dispatched",
+              "contact.completed",
+              "contact.failed",
+              "contact.skipped",
+              "contact.predial-failed"
+            ]
+          },
+          "callId": {
+            "type": "string"
+          },
+          "dispatchedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status"
+        ]
+      },
+      "CampaignContactPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CampaignContactWithOutcome"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
+        ]
       },
       "RelayTargetAssistant": {
         "type": "object",
@@ -46639,6 +49801,10 @@
             "description": "Filter by any of the specified customer phone numbers (comma-separated).",
             "example": "+1234567890,+0987654321"
           },
+          "idAny": {
+            "type": "string",
+            "description": "Filter by multiple session IDs. Provide as comma-separated values."
+          },
           "phoneNumberId": {
             "type": "string",
             "description": "This will return sessions with the specified phoneNumberId."
@@ -46778,6 +49944,10 @@
             "type": "string",
             "description": "Filter by any of the specified customer phone numbers (comma-separated).",
             "example": "+1234567890,+0987654321"
+          },
+          "idAny": {
+            "type": "string",
+            "description": "Filter by multiple session IDs. Provide as comma-separated values."
           },
           "columns": {
             "type": "string",
@@ -49010,6 +52180,123 @@
         },
         "required": [
           "type",
+          "id",
+          "orgId",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "KnowledgeBaseToolFunction": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "This is the the name of the function to be called.\n\nMust be a-z, A-Z, 0-9, or contain underscores and dashes, with a maximum length of 64.",
+            "maxLength": 64,
+            "pattern": "/^[a-zA-Z0-9_-]{1,64}$/"
+          },
+          "strict": {
+            "type": "boolean",
+            "description": "This is a boolean that controls whether to enable strict schema adherence when generating the function call. If set to true, the model will follow the exact schema defined in the parameters field. Only a subset of JSON Schema is supported when strict is true. Learn more about Structured Outputs in the [OpenAI guide](https://openai.com/index/introducing-structured-outputs-in-the-api/).\n\n@default false",
+            "default": false
+          },
+          "description": {
+            "type": "string",
+            "description": "This is the description of what the function does, used by the AI to choose when and how to call the function."
+          },
+          "parameters": {
+            "description": "These are the parameters the functions accepts, described as a JSON Schema object.\n\nSee the [OpenAI guide](https://platform.openai.com/docs/guides/function-calling) for examples, and the [JSON Schema reference](https://json-schema.org/understanding-json-schema) for documentation about the format.\n\nOmitting parameters defines a function with an empty parameter list.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIFunctionParameters"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "parameters"
+        ]
+      },
+      "KnowledgeBaseTool": {
+        "type": "object",
+        "properties": {
+          "latestVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "messages": {
+            "type": "array",
+            "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ToolMessageStart",
+                  "title": "ToolMessageStart"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageComplete",
+                  "title": "ToolMessageComplete"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageFailed",
+                  "title": "ToolMessageFailed"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageDelayed",
+                  "title": "ToolMessageDelayed"
+                }
+              ]
+            }
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "knowledgeBase"
+            ],
+            "description": "A Vapi-hosted knowledge base retrieval tool."
+          },
+          "knowledgeBaseId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "The knowledge base this tool searches. At most one search tool references a knowledge base. Deleting the base also deletes its generated tool; null references are retained only for backward compatibility and are inert."
+          },
+          "function": {
+            "$ref": "#/components/schemas/KnowledgeBaseToolFunction"
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the tool."
+          },
+          "orgId": {
+            "type": "string",
+            "description": "This is the unique identifier for the organization that this tool belongs to."
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the tool was created.",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the tool was last updated.",
+            "format": "date-time"
+          },
+          "rejectionPlan": {
+            "description": "This is the plan to reject a tool call based on the conversation state.\n\n// Example 1: Reject endCall if user didn't say goodbye\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '(?i)\\\\b(bye|goodbye|farewell|see you later|take care)\\\\b',\n    target: { position: -1, role: 'user' },\n    negate: true  // Reject if pattern does NOT match\n  }]\n}\n```\n\n// Example 2: Reject transfer if user is actually asking a question\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '\\\\?',\n    target: { position: -1, role: 'user' }\n  }]\n}\n```\n\n// Example 3: Reject transfer if user didn't mention transfer recently\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 5 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' %}\n{% assign mentioned = false %}\n{% for msg in userMessages %}\n  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'speak to' %}\n    {% assign mentioned = true %}\n    {% break %}\n  {% endif %}\n{% endfor %}\n{% if mentioned %}\n  false\n{% else %}\n  true\n{% endif %}`\n  }]\n}\n```\n\n// Example 4: Reject endCall if the bot is looping and trying to exit\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 6 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' | reverse %}\n{% if userMessages.size < 3 %}\n  false\n{% else %}\n  {% assign msg1 = userMessages[0].content | downcase %}\n  {% assign msg2 = userMessages[1].content | downcase %}\n  {% assign msg3 = userMessages[2].content | downcase %}\n  {% comment %} Check for repetitive messages {% endcomment %}\n  {% if msg1 == msg2 or msg1 == msg3 or msg2 == msg3 %}\n    true\n  {% comment %} Check for common loop phrases {% endcomment %}\n  {% elsif msg1 contains 'cool thanks' or msg2 contains 'cool thanks' or msg3 contains 'cool thanks' %}\n    true\n  {% elsif msg1 contains 'okay thanks' or msg2 contains 'okay thanks' or msg3 contains 'okay thanks' %}\n    true\n  {% elsif msg1 contains 'got it' or msg2 contains 'got it' or msg3 contains 'got it' %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{% endif %}`\n  }]\n}\n```",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ToolRejectionPlan"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "knowledgeBaseId",
+          "function",
           "id",
           "orgId",
           "createdAt",
@@ -51785,6 +55072,59 @@
           }
         }
       },
+      "UpdateKnowledgeBaseToolDTO": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ToolMessageStart",
+                  "title": "ToolMessageStart"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageComplete",
+                  "title": "ToolMessageComplete"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageFailed",
+                  "title": "ToolMessageFailed"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessageDelayed",
+                  "title": "ToolMessageDelayed"
+                }
+              ]
+            }
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "knowledgeBase"
+            ],
+            "description": "A Vapi-hosted knowledge base retrieval tool."
+          },
+          "knowledgeBaseId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "The knowledge base this tool searches. At most one search tool references a knowledge base. Deleting the base also deletes its generated tool; null references are retained only for backward compatibility and are inert."
+          },
+          "function": {
+            "$ref": "#/components/schemas/KnowledgeBaseToolFunction"
+          },
+          "rejectionPlan": {
+            "description": "This is the plan to reject a tool call based on the conversation state.\n\n// Example 1: Reject endCall if user didn't say goodbye\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '(?i)\\\\b(bye|goodbye|farewell|see you later|take care)\\\\b',\n    target: { position: -1, role: 'user' },\n    negate: true  // Reject if pattern does NOT match\n  }]\n}\n```\n\n// Example 2: Reject transfer if user is actually asking a question\n```json\n{\n  conditions: [{\n    type: 'regex',\n    regex: '\\\\?',\n    target: { position: -1, role: 'user' }\n  }]\n}\n```\n\n// Example 3: Reject transfer if user didn't mention transfer recently\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 5 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' %}\n{% assign mentioned = false %}\n{% for msg in userMessages %}\n  {% if msg.content contains 'transfer' or msg.content contains 'connect' or msg.content contains 'speak to' %}\n    {% assign mentioned = true %}\n    {% break %}\n  {% endif %}\n{% endfor %}\n{% if mentioned %}\n  false\n{% else %}\n  true\n{% endif %}`\n  }]\n}\n```\n\n// Example 4: Reject endCall if the bot is looping and trying to exit\n```json\n{\n  conditions: [{\n    type: 'liquid',\n    liquid: `{% assign recentMessages = messages | last: 6 %}\n{% assign userMessages = recentMessages | where: 'role', 'user' | reverse %}\n{% if userMessages.size < 3 %}\n  false\n{% else %}\n  {% assign msg1 = userMessages[0].content | downcase %}\n  {% assign msg2 = userMessages[1].content | downcase %}\n  {% assign msg3 = userMessages[2].content | downcase %}\n  {% comment %} Check for repetitive messages {% endcomment %}\n  {% if msg1 == msg2 or msg1 == msg3 or msg2 == msg3 %}\n    true\n  {% comment %} Check for common loop phrases {% endcomment %}\n  {% elsif msg1 contains 'cool thanks' or msg2 contains 'cool thanks' or msg3 contains 'cool thanks' %}\n    true\n  {% elsif msg1 contains 'okay thanks' or msg2 contains 'okay thanks' or msg3 contains 'okay thanks' %}\n    true\n  {% elsif msg1 contains 'got it' or msg2 contains 'got it' or msg3 contains 'got it' %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{% endif %}`\n  }]\n}\n```",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ToolRejectionPlan"
+              }
+            ]
+          }
+        }
+      },
       "UpdateGhlToolDTO": {
         "type": "object",
         "properties": {
@@ -53201,6 +56541,7 @@
             "enum": [
               "dtmf",
               "endCall",
+              "knowledgeBase",
               "transferCall",
               "transferCancel",
               "transferSuccessful",
@@ -53480,6 +56821,7 @@
             "enum": [
               "dtmf",
               "endCall",
+              "knowledgeBase",
               "transferCall",
               "transferCancel",
               "transferSuccessful",
@@ -53724,6 +57066,7 @@
             "enum": [
               "dtmf",
               "endCall",
+              "knowledgeBase",
               "transferCall",
               "transferCancel",
               "transferSuccessful",
@@ -54048,8 +57391,22 @@
         "properties": {
           "file": {
             "type": "string",
-            "description": "This is the File you want to upload for use with the Knowledge Base.",
+            "description": "The file to upload.",
             "format": "binary"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Optional product flow that owns the uploaded file.",
+            "enum": [
+              "assistant",
+              "composer-attachment",
+              "knowledge-base-v2"
+            ]
+          },
+          "metadata": {
+            "type": "string",
+            "description": "Optional JSON-encoded metadata for multipart uploads.",
+            "maxLength": 4096
           }
         },
         "required": [
@@ -54201,6 +57558,182 @@
             ]
           }
         }
+      },
+      "CreateKnowledgeBaseV2DTO": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "KnowledgeBaseV2": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          },
+          "id": {
+            "type": "string"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "orgId",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "KnowledgeBaseV2File": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "knowledgeBaseV2Id": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mimetype": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "indexing",
+              "ready",
+              "failed"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "knowledgeBaseV2Id",
+          "fileId",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "AttachKnowledgeBaseV2FileDTO": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileId"
+        ]
+      },
+      "UpdateKnowledgeBaseV2DTO": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          }
+        }
+      },
+      "KnowledgeBaseV2WithFiles": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          },
+          "id": {
+            "type": "string"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeBaseV2File"
+            }
+          },
+          "toolId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Id of the tool that searches this knowledge base (at most one per base; provisioned on creation). Attach it to an assistant via model.toolIds. Null when the base has no search tool yet."
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "orgId",
+          "createdAt",
+          "updatedAt",
+          "files",
+          "toolId"
+        ]
       },
       "StructuredOutputRunResult": {
         "type": "object",
@@ -55981,6 +59514,12 @@
             "description": "ID of the simulation suite to run",
             "format": "uuid"
           },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Historical suite name captured when the run was created",
+            "readOnly": true
+          },
           "suiteId": {
             "type": "string",
             "deprecated": true
@@ -56141,6 +59680,14 @@
           "canceled": {
             "type": "number",
             "description": "Number of canceled run items"
+          },
+          "distinctSimulationTotal": {
+            "type": "number",
+            "description": "Number of distinct simulations represented by the run items. Omitted when any item has no simulation ID."
+          },
+          "distinctSimulationFailed": {
+            "type": "number",
+            "description": "Number of distinct simulations with a failed or canceled item. Omitted when any item has no simulation ID."
           }
         },
         "required": [
@@ -56284,6 +59831,36 @@
           "url"
         ]
       },
+      "SimulationRunPaymentRequiredResponse": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "enum": [
+              402
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "wallet_missing",
+              "subscription_frozen",
+              "payment_method_missing",
+              "insufficient_credits",
+              "billing_limit",
+              "initial_payment_missing"
+            ]
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "reason"
+        ]
+      },
       "SimulationRun": {
         "type": "object",
         "properties": {
@@ -56396,6 +59973,196 @@
           "updatedAt",
           "simulations",
           "target"
+        ]
+      },
+      "SimulationRunListSource": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "suite",
+              "simulation",
+              "adHoc",
+              "api"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "linkable": {
+            "type": "boolean"
+          },
+          "simulationIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "linkable",
+          "simulationIds"
+        ]
+      },
+      "SimulationRunListSummary": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SimulationRunListSource"
+          },
+          "targetSnapshotName": {
+            "type": "string"
+          },
+          "simulationCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "source",
+          "simulationCount"
+        ]
+      },
+      "SimulationRunListItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the run",
+            "format": "uuid"
+          },
+          "orgId": {
+            "type": "string",
+            "description": "Organization ID",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "ended"
+            ],
+            "description": "Current status of the run"
+          },
+          "queuedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the run was queued"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the run started"
+          },
+          "endedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the run ended"
+          },
+          "endedReason": {
+            "type": "string",
+            "description": "Reason the run ended"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "ISO 8601 date-time when created"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "ISO 8601 date-time when last updated"
+          },
+          "itemCounts": {
+            "description": "Aggregate counts of run items by status",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SimulationRunItemCounts"
+              }
+            ]
+          },
+          "simulations": {
+            "type": "array",
+            "description": "Array of simulations and/or suites to run",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SimulationRunSimulationEntry",
+                  "title": "Simulation"
+                },
+                {
+                  "$ref": "#/components/schemas/SimulationRunSuiteEntry",
+                  "title": "Suite"
+                }
+              ]
+            }
+          },
+          "target": {
+            "description": "Target to test against",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimulationRunTargetAssistant",
+                "title": "Assistant"
+              },
+              {
+                "$ref": "#/components/schemas/SimulationRunTargetSquad",
+                "title": "Squad"
+              }
+            ]
+          },
+          "iterations": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Number of times to run each simulation (default: 1)",
+            "default": 1
+          },
+          "transport": {
+            "description": "Transport configuration for the simulation runs",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SimulationRunTransportConfiguration"
+              }
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SimulationRunListSummary"
+          }
+        },
+        "required": [
+          "id",
+          "orgId",
+          "status",
+          "queuedAt",
+          "createdAt",
+          "updatedAt",
+          "simulations",
+          "target",
+          "summary"
+        ]
+      },
+      "SimulationRunsPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationRunListItem"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
         ]
       },
       "SimulationRunItemCallMonitor": {
@@ -58631,6 +62398,9 @@
               "assistant.transcriber.clearing",
               "assistant.transcriber.transcriptIgnored",
               "assistant.transcriber.languageSwitched",
+              "assistant.analysis.structuredOutputRequest",
+              "assistant.analysis.structuredOutputResponse",
+              "assistant.analysis.structuredOutputError",
               "assistant.analysis.structuredOutputGenerated",
               "assistant.analysis.structuredOutputSkipped",
               "pipeline.turnStarted",
@@ -60211,6 +63981,35 @@
               "gpt-3.5-turbo-1106",
               "gpt-3.5-turbo-16k",
               "gpt-3.5-turbo-0613",
+              "gpt-5.6-luna:westus3",
+              "gpt-5.6-terra:westus3",
+              "gpt-5.6-sol:westus3",
+              "gpt-5.4:eastus2",
+              "gpt-5.4:swedencentral",
+              "gpt-5.4-mini:eastus2",
+              "gpt-5.4-mini:swedencentral",
+              "gpt-5.4-nano:eastus2",
+              "gpt-5.4-nano:swedencentral",
+              "gpt-5.2:eastus2",
+              "gpt-5.2:swedencentral",
+              "gpt-5.1:eastus2",
+              "gpt-5.1:swedencentral",
+              "gpt-5:eastus2",
+              "gpt-5:swedencentral",
+              "gpt-5:canadaeast",
+              "gpt-5:eastus",
+              "gpt-5:westeurope",
+              "gpt-5:germanywestcentral",
+              "gpt-5:polandcentral",
+              "gpt-5:spaincentral",
+              "gpt-5-mini:eastus2",
+              "gpt-5-mini:swedencentral",
+              "gpt-5-mini:westeurope",
+              "gpt-5-mini:germanywestcentral",
+              "gpt-5-mini:polandcentral",
+              "gpt-5-mini:spaincentral",
+              "gpt-5-nano:eastus2",
+              "gpt-5-nano:swedencentral",
               "gpt-4.1-2025-04-14:westus",
               "gpt-4.1-2025-04-14:eastus2",
               "gpt-4.1-2025-04-14:eastus",
@@ -62603,6 +66402,9 @@
           "models": {
             "type": "array",
             "enum": [
+              "gpt-5.6-luna-2026-07-09",
+              "gpt-5.6-terra-2026-07-09",
+              "gpt-5.6-sol-2026-07-09",
               "gpt-5.4",
               "gpt-5.4-mini",
               "gpt-5.4-nano",
@@ -62637,6 +66439,9 @@
             "items": {
               "type": "string",
               "enum": [
+                "gpt-5.6-luna-2026-07-09",
+                "gpt-5.6-terra-2026-07-09",
+                "gpt-5.6-sol-2026-07-09",
                 "gpt-5.4",
                 "gpt-5.4-mini",
                 "gpt-5.4-nano",
@@ -66157,6 +69962,9 @@
           "models": {
             "type": "array",
             "enum": [
+              "gpt-5.6-luna-2026-07-09",
+              "gpt-5.6-terra-2026-07-09",
+              "gpt-5.6-sol-2026-07-09",
               "gpt-5.4",
               "gpt-5.4-mini",
               "gpt-5.4-nano",
@@ -66191,6 +69999,9 @@
             "items": {
               "type": "string",
               "enum": [
+                "gpt-5.6-luna-2026-07-09",
+                "gpt-5.6-terra-2026-07-09",
+                "gpt-5.6-sol-2026-07-09",
                 "gpt-5.4",
                 "gpt-5.4-mini",
                 "gpt-5.4-nano",
@@ -68685,6 +72496,14 @@
             "format": "date-time",
             "type": "string",
             "description": "The ISO 8601 date-time string of when the voice library was last updated."
+          },
+          "isCloned": {
+            "type": "boolean",
+            "description": "Whether this voice was cloned by the org from their own audio, as opposed\nto a seeded/preset voice. Drives the cloned filter and tag. Backed by a\nNOT NULL DEFAULT false column, so it is always present at read time."
+          },
+          "cloneBackend": {
+            "type": "string",
+            "description": "The provider that produced the clone (e.g. 'xai'). The voice `provider`\nstays 'vapi'; this records the underlying backend. Unset for non-cloned voices."
           }
         },
         "required": [
@@ -68778,6 +72597,19 @@
           "voiceName",
           "transcription"
         ]
+      },
+      "UpdateVoiceLibraryMetadataDTO": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Updated display name for the voice."
+          },
+          "description": {
+            "type": "string",
+            "description": "Updated description for the voice."
+          }
+        }
       },
       "CartesiaPronunciationDictItem": {
         "type": "object",
@@ -69050,6 +72882,31 @@
           },
           "files": {
             "description": "These are the files you want to use to clone your voice. Only Audio files are supported.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "binary"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "files"
+        ]
+      },
+      "VapiVoiceCloneDTO": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the cloned voice."
+          },
+          "language": {
+            "type": "string",
+            "description": "Optional language (ISO-639 / BCP-47). When omitted, xAI infers it from the\nreference audio."
+          },
+          "files": {
+            "description": "Reference audio to clone the voice from (up to 120 seconds). Supported formats: MP3, WAV, OGG/Opus, WebM, AAC, M4A, FLAC, WMA.",
             "type": "array",
             "items": {
               "type": "string",
@@ -69954,6 +73811,14 @@
           "transcript": {
             "type": "string",
             "description": "This is the transcript content."
+          },
+          "assistantId": {
+            "type": "string",
+            "description": "The ID of the assistant that produced this transcript. Present on\nassistant-role events when an active assistant ID is available."
+          },
+          "assistantName": {
+            "type": "string",
+            "description": "The name of the assistant that produced this transcript. Present on\nassistant-role events when an active assistant name is available."
           },
           "isFiltered": {
             "type": "boolean",
@@ -74188,6 +78053,14 @@
             "type": "string",
             "description": "This is the transcript content."
           },
+          "assistantId": {
+            "type": "string",
+            "description": "The ID of the assistant that produced this transcript. Present on\nassistant-role events when an active assistant ID is available."
+          },
+          "assistantName": {
+            "type": "string",
+            "description": "The name of the assistant that produced this transcript. Present on\nassistant-role events when an active assistant name is available."
+          },
           "isFiltered": {
             "type": "boolean",
             "description": "Indicates if the transcript was filtered for security reasons."
@@ -75491,6 +79364,129 @@
           "type"
         ]
       },
+      "CallArtifactUploadItem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The artifact this result refers to.",
+            "enum": [
+              "end-of-call-report",
+              "recording-mono",
+              "recording-stereo",
+              "recording-assistant",
+              "recording-customer",
+              "log",
+              "pcap"
+            ]
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether this artifact was stored successfully in your own configured storage."
+          }
+        },
+        "required": [
+          "type",
+          "success"
+        ]
+      },
+      "ServerMessageCallArtifactUpload": {
+        "type": "object",
+        "properties": {
+          "phoneNumber": {
+            "description": "This is the phone number that the message is associated with.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CreateByoPhoneNumberDTO",
+                "title": "ByoPhoneNumber"
+              },
+              {
+                "$ref": "#/components/schemas/CreateTwilioPhoneNumberDTO",
+                "title": "TwilioPhoneNumber"
+              },
+              {
+                "$ref": "#/components/schemas/CreateVonagePhoneNumberDTO",
+                "title": "VonagePhoneNumber"
+              },
+              {
+                "$ref": "#/components/schemas/CreateVapiPhoneNumberDTO",
+                "title": "VapiPhoneNumber"
+              },
+              {
+                "$ref": "#/components/schemas/CreateTelnyxPhoneNumberDTO",
+                "title": "TelnyxPhoneNumber"
+              }
+            ]
+          },
+          "assistantVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the version label (e.g. `v3`) of the assistant the call was\nconfigured with. `null` for inline assistants, squad/workflow calls,\npre-resolution assistant-request messages, and orgs not on\nassistant versioning."
+          },
+          "type": {
+            "type": "string",
+            "description": "This is the type of the message. \"call.artifact.upload\" is sent after a call\nto report whether each artifact was stored in your own configured storage.",
+            "enum": [
+              "call.artifact.upload"
+            ]
+          },
+          "artifacts": {
+            "description": "One entry per artifact whose write targeted your own configured storage,\neach reporting whether that artifact was stored successfully. Artifacts that\nwere not destined for your own storage (Vapi default storage, or no storage\ncredential configured) are omitted, and this message is sent only when at\nleast one artifact targeted your own storage.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CallArtifactUploadItem"
+            }
+          },
+          "timestamp": {
+            "type": "number",
+            "description": "This is the timestamp of the message."
+          },
+          "artifact": {
+            "description": "This is a live version of the `call.artifact`.\n\nThis matches what is stored on `call.artifact` after the call.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Artifact"
+              }
+            ]
+          },
+          "assistant": {
+            "description": "This is the assistant that the message is associated with.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateAssistantDTO"
+              }
+            ]
+          },
+          "customer": {
+            "description": "This is the customer that the message is associated with.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateCustomerDTO"
+              }
+            ]
+          },
+          "call": {
+            "description": "This is the call that the message is associated with.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Call"
+              }
+            ]
+          },
+          "chat": {
+            "description": "This is the chat object.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Chat"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "artifacts"
+        ]
+      },
       "CampaignContact": {
         "type": "object",
         "properties": {
@@ -75755,6 +79751,10 @@
               {
                 "$ref": "#/components/schemas/ServerMessageCallDeleteFailed",
                 "title": "CallDeleteFailed"
+              },
+              {
+                "$ref": "#/components/schemas/ServerMessageCallArtifactUpload",
+                "title": "CallArtifactUpload"
               },
               {
                 "$ref": "#/components/schemas/ServerMessageCampaignPredial",
