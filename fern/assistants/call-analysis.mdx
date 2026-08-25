@@ -6,12 +6,67 @@ slug: assistants/call-analysis
 
 ## Overview
 
-Call analysis automatically summarizes and evaluates every call for insights and quality control. As soon as a call ends, analysis is triggered in the background and typically completes within a few seconds. The system uses the latest version of Anthropic's Claude Sonnet (with OpenAI GPT-4o as fallback) to:
+Call analysis automatically summarizes and evaluates every call for insights and quality control. As soon as a call ends, analysis is triggered in the background and typically completes within a few seconds. The system uses a large language model to:
 - Summarize the call
 - Extract structured data
 - Evaluate call success
 
 Results are attached to the call record and can be viewed in the call instance dashboard or retrieved via the API. You can customize the analysis using prompts and schemas in your assistant's `analysisPlan`.
+
+## Recommended: use structured outputs
+
+We recommend [structured outputs](/assistants/structured-outputs) over the `analysisPlan` for extracting data, summaries, and evaluations from your calls. They are more flexible and are where new development happens.
+
+The `analysisPlan` configuration described later on this page still works and remains available for existing setups. If you're configuring call analysis for the first time, start with structured outputs.
+
+## Extracting structured outputs
+
+A structured output is a reusable definition you create once and attach to an assistant. After each call, Vapi runs it against the conversation and stores the result in `call.artifact.structuredOutputs`.
+
+To extract structured outputs:
+
+1. **Create a structured output** with a JSON schema describing what to extract.
+2. **Link it to an assistant** through `artifactPlan.structuredOutputIds`.
+3. **Read the results** from `call.artifact.structuredOutputs` after the call ends.
+
+```bash title="Create a structured output"
+curl -X POST https://api.vapi.ai/structured-output \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Info",
+    "type": "ai",
+    "description": "Extract customer contact information",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string", "description": "Customer'\''s first name" },
+        "email": { "type": "string", "format": "email", "description": "Customer'\''s email address" }
+      },
+      "required": ["firstName"]
+    }
+  }'
+```
+
+```json title="Link it to an assistant"
+{
+  "artifactPlan": {
+    "structuredOutputIds": ["<structured-output-id>"]
+  }
+}
+```
+
+For the complete walkthrough, see the [structured outputs quickstart](/assistants/structured-outputs-quickstart). For every field and schema option, see the [structured outputs reference](/assistants/structured-outputs).
+
+## Coming from analysisPlan?
+
+Each part of the `analysisPlan` has a structured outputs equivalent:
+
+| `analysisPlan` (stored in `call.analysis`) | Structured outputs equivalent (stored in `call.artifact.structuredOutputs`) |
+| --- | --- |
+| `summaryPlan` → `summary` | A structured output that summarizes the call |
+| `structuredDataPlan` → `structuredData` | A structured output with your JSON schema |
+| `successEvaluationPlan` → `successEvaluation` | A structured output that evaluates the call, or a [scorecard](/observability/scorecard-quickstart) |
 
 ## Customization
 
