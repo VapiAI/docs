@@ -1,0 +1,119 @@
+---
+title: Campaign voicemail and call screening
+subtitle: Keep outbound calls from stalling on automated systems.
+description: Configure campaign assistants and squads to handle voicemail and automated phone-screening services without premature timeouts.
+slug: outbound-campaigns/voicemail-and-call-screening
+---
+
+Campaigns use the voicemail behavior configured on their assistant or squad. Configure it before launch so calls do not remain connected while the assistant talks to a mailbox or mistakes a device's call-screening service for the recipient.
+
+<Note>
+  The system prompt and voicemail script shown on this page are an example configuration. For a complete, worked version, see the [personalized appointment campaign](/outbound-campaigns/build-personalized-appointment-campaign), then adapt the indicators, wording, and message to your own campaign.
+</Note>
+
+## Choose a voicemail approach
+
+Vapi offers two ways to handle voicemail on a campaign assistant. Configure only one of them per assistant.
+
+- **[Voicemail tool](/tools/voicemail-tool)** (used on this page): the assistant identifies voicemail from transcript cues and invokes a tool that leaves a message or ends the call. Choose it when you want flexibility, per-call personalization through template variables, and lower cost, since the tool only runs when the assistant invokes it.
+- **[Built-in voicemail detection](/calls/voicemail-detection)**: Vapi monitors the call with a detection provider and delivers the assistant's configured voicemail message when it detects a mailbox. Choose it when you want provider-based detection that does not depend on the system prompt.
+
+For a full side-by-side comparison, see [Voicemail tool vs. automatic detection](/tools/voicemail-tool#voicemail-tool-vs-automatic-detection).
+
+<Warning>
+  Do not enable both approaches on the same assistant. Competing detection methods can increase false positives and make call behavior harder to predict.
+</Warning>
+
+## Set up the voicemail tool
+
+Configure the voicemail tool on the assistant used by the campaign. If the campaign uses a squad, configure the assistants that can handle its outbound calls.
+
+Set the assistant's first-message mode to **Assistant waits for user**, then attach the [voicemail tool](/tools/voicemail-tool). Configure a custom script as the tool's `request-start` message, or choose to end without leaving a message.
+
+The tool description helps the model decide when the tool is relevant, while the system prompt supplies the detailed classification rules. Instruct the assistant to invoke the tool once, without speaking before or after the invocation. The tool delivers the configured message and ends the call after it is invoked.
+
+The tool identifies voicemail from transcript cues, so it depends on an accurate transcript. If a greeting is clipped or transcribed incorrectly, the assistant may remain silent until the configured silence timeout instead of leaving a message. Conservative classification avoids treating ambiguous audio, IVR prompts, or live greetings as voicemail, but it can miss some mailboxes.
+
+## Handle automated call screeners
+
+Call screeners can introduce longer pauses and fragmented speech before a person joins. Use [smart endpointing](/customization/speech-configuration) and set [Silence Timeout](/assistants/call-timeout-settings) to 45–60 seconds so the assistant can wait through that handoff without timing out prematurely.
+
+Silence timeout is a fallback, not a voicemail detector. A longer value gives a call screener time to hand the call to the recipient, but it also keeps a missed voicemail detection connected for longer. If the campaign does not need to support call screening, test a shorter timeout with your expected voicemail greetings.
+
+## Prepare the system prompt
+
+When you use the voicemail tool, define the live conversation separately from voicemail classification. Include clear positive and negative examples, tell the assistant to continue listening when uncertain, and limit it to one invocation. For example:
+
+```text
+Listen before speaking. Do not begin the main conversation until you classify
+what answered. When uncertain, remain silent and continue listening.
+
+Treat a natural "hello?", conversational response, or self-introduction as a
+live person.
+
+Immediately invoke the `leave_voicemail_for_appointment` tool when you hear clear voicemail
+language such as:
+
+- "Please leave a message after the beep"
+- "At the tone, please record your message"
+- "You have reached the voicemail of"
+- "The person you called is not available"
+- "Your call has been forwarded to voicemail"
+
+Do not invoke the voicemail tool for:
+
+- "Please hold"
+- "Press 1 for..."
+- "Transferring your call"
+- An automated call screener
+- A natural human greeting
+
+Invoke `leave_voicemail_for_appointment` at most once. Do not speak before or after invoking
+the tool. The tool delivers the complete message and ends the call.
+```
+
+Calls handled as voicemail end with the `voicemail` ended reason. Use it to separate voicemail outcomes from live conversations in campaign reporting.
+
+## Test before scaling
+
+Test the assistant with representative voicemail greetings and screened calls before raising campaign concurrency. Confirm that it:
+
+- Waits for a person before starting the campaign message.
+- Uses the configured voicemail approach instead of continuing an open-ended conversation.
+- Leaves the intended message or ends silently, based on the selected approach.
+- Remains connected long enough for a supported call screener to hand off the call.
+- Waits for the mailbox greeting or beep before beginning the configured message.
+- Ends after leaving the message once instead of waiting for a reply.
+- Remains silent when the transcript is ambiguous instead of invoking the voicemail tool on weak evidence.
+
+For a voicemail test, let the phone ring until its carrier or device voicemail greeting answers naturally. Do not manually answer, decline, or route the call to voicemail during the test. Those actions can produce a different audio path in which Vapi does not receive the complete greeting or beep. Test automated call screening separately by allowing the device's normal screening flow to run.
+
+### Troubleshoot voicemail handling
+
+After the tool leaves its configured message, the call should end with the `voicemail` ended reason. If the message is missing, repeats, or the call remains connected:
+
+1. Review the transcript. If the greeting was clipped or transcribed as unrelated human speech, the assistant may have remained silent and ended on the silence timeout without invoking the tool.
+2. Confirm that **Assistant waits for user** is selected and that the system prompt includes conservative voicemail indicators, exclusions, and the one-invocation limit.
+3. Confirm that the assistant does not have both the voicemail tool and automatic voicemail detection enabled. Choose one approach.
+4. Confirm that the voicemail tool contains the intended `request-start` message. The assistant should invoke the tool without generating a separate voicemail message.
+5. Open the call record and check the transcript, tool invocation, ended reason, and recording. A `voicemail` ended reason confirms that Vapi classified the call as voicemail; it does not by itself confirm that the complete message was recorded.
+6. Test several representative greetings. Add a phrase to the prompt only when it is a reliable voicemail indicator; broad matching can create false positives on people, IVR menus, and call screeners.
+7. If transcript-based classification is insufficient for your greetings, see [automatic voicemail detection](/calls/voicemail-detection) for a provider-based alternative. Do not run it together with the voicemail tool.
+8. If the behavior continues, provide the call ID when reporting the issue so the transcript, tool call, and message playback can be inspected.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configure the voicemail tool" icon="voicemail" href="/tools/voicemail-tool">
+    Choose whether to leave a message or end a voicemail call silently.
+  </Card>
+  <Card title="Configure speech timing" icon="waveform-lines" href="/customization/speech-configuration">
+    Use smart endpointing to handle pauses and fragmented screening audio.
+  </Card>
+  <Card title="Configure call timeouts" icon="clock" href="/assistants/call-timeout-settings">
+    Keep screened calls open long enough for the recipient to join.
+  </Card>
+  <Card title="Review campaign results" icon="chart-line" href="/outbound-campaigns/overview#review-campaign-results">
+    Inspect contact outcomes and open associated call records.
+  </Card>
+</CardGroup>
