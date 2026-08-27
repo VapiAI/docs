@@ -1,0 +1,240 @@
+---
+title: Use API Request Tool response data
+subtitle: Let the model answer from the current result or extract values for later tool calls.
+description: Use API Request Tool JSON responses immediately, extract response fields with schemas or aliases, and pass extracted variables to subsequent tools.
+slug: tools/api-request/response-data
+---
+
+A successful API Request Tool response is available to the model as a tool result. The model can use it immediately without additional response configuration. Configure variable extraction only when later tools or assistants need to reference specific response values through Liquid.
+
+## Prerequisites
+
+- An API Request Tool whose endpoint returns JSON
+- For cURL requests, a [Vapi API key](/security-and-privacy/api-keys) and the tool ID
+
+## Choose how to use the response
+
+| Goal | Configuration |
+| --- | --- |
+| Let the assistant speak values from the current response | None. Instruct the assistant to use the tool result. |
+| Store selected response fields under explicit variable names | Add aliases to `variableExtractionPlan`. |
+| Extract a larger response shape with its existing field names | Add a response schema to `variableExtractionPlan`. |
+| Send an extracted value in a later request | Reference the extracted variable in the later tool's URL, headers, or static body fields. |
+
+The coffee-order quickstart needs only the first option. Its assistant reads `orderId`, `productName`, `quantity`, and `totalDisplay` from the successful tool result, then ends the conversation. Extraction would add configuration without changing that experience.
+
+<Note>
+The tool's **Request Body** defines values the model sends to the API. **Response Body** and **Aliases** extract values returned by the API. They serve different directions of the request.
+</Note>
+
+## Use the immediate tool result
+
+Return concise JSON with descriptive field names and instruct the assistant which fields are authoritative. For the coffee-order assistant, the system prompt includes:
+
+```txt title="Response instructions" wordWrap
+After a successful tool response, confirm the product, quantity, five-digit order number, and server-calculated total. Never read the internal requestId aloud.
+```
+
+No response schema or alias is required for that instruction. The model receives the successful JSON result and can use those values in its next response.
+
+See [Handle responses and errors](/tools/api-request/response-handling) for the coffee endpoint's success and failure contracts.
+
+## Extract selected values with aliases
+
+Aliases copy selected values from a JSON response into the call's variable bag. Use names that describe their source and purpose to avoid collisions with variables created by other tools.
+
+The alias configuration below stores `orderId`, `totalDisplay`, and `productName` from a successful coffee-order response under coffee-order-specific variable names:
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the tool">
+        Open the [Dashboard](https://dashboard.vapi.ai), select **Tools**, then select `createCoffeeOrder`.
+      </Step>
+
+      <Step title="Add aliases">
+        Expand **Aliases**, then add:
+
+        | Original field name | Alias name |
+        | --- | --- |
+        | `orderId` | `coffeeOrderId` |
+        | `totalDisplay` | `coffeeOrderTotal` |
+        | `productName` | `coffeeOrderProduct` |
+
+        <Frame caption="Map response fields to descriptive call-level variables">
+          <img src="/static/images/tools/api-request/07-aliases.png" alt="Vapi Dashboard Aliases mapping orderId, totalDisplay, and productName to coffee-order variable names" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the tool">
+        Select **Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    Set your API key and coffee-order tool ID:
+
+    ```bash
+    export VAPI_API_KEY="YOUR_VAPI_API_KEY"
+    export VAPI_TOOL_ID="YOUR_TOOL_ID"
+    ```
+
+    Add the aliases with the [Update Tool endpoint](/api-reference/tools/update):
+
+    ```bash
+    curl --request PATCH \
+      --url "https://api.vapi.ai/tool/$VAPI_TOOL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "variableExtractionPlan": {
+          "aliases": [
+            {
+              "key": "coffeeOrderId",
+              "value": "{{ $.orderId }}"
+            },
+            {
+              "key": "coffeeOrderTotal",
+              "value": "{{ $.totalDisplay }}"
+            },
+            {
+              "key": "coffeeOrderProduct",
+              "value": "{{ $.productName }}"
+            }
+          ]
+        }
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+After a successful tool call, the values are available as `{{ coffeeOrderId }}`, `{{ coffeeOrderTotal }}`, and `{{ coffeeOrderProduct }}` for the remainder of the call.
+
+## Extract a response shape
+
+Use a response schema when you want to extract several fields under their existing names. For an object response, each property listed in the schema becomes a call-level variable.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Under **Response Body**, add these properties:
+
+    | Property | Type | Required |
+    | --- | --- | --- |
+    | `orderId` | Number | Yes |
+    | `productName` | String | Yes |
+    | `totalDisplay` | String | Yes |
+
+    Publish the tool. After a successful request, the values are available as `{{ orderId }}`, `{{ productName }}`, and `{{ totalDisplay }}`.
+
+    <Frame caption="Define the response fields to extract">
+      <img src="/static/images/tools/api-request/06-response-body.png" alt="Vapi Dashboard Response Body extracting orderId, productName, and totalDisplay" />
+    </Frame>
+  </Tab>
+
+  <Tab title="cURL">
+    Add the response schema with the [Update Tool endpoint](/api-reference/tools/update):
+
+    ```bash
+    curl --request PATCH \
+      --url "https://api.vapi.ai/tool/$VAPI_TOOL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "variableExtractionPlan": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "orderId": {
+                "type": "integer"
+              },
+              "productName": {
+                "type": "string"
+              },
+              "totalDisplay": {
+                "type": "string"
+              }
+            },
+            "required": ["orderId", "productName", "totalDisplay"]
+          }
+        }
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+Prefer aliases when you want unique names, a nested response path, or a Liquid transformation. Prefer a schema when the response already has clear field names and you want to extract several fields together. Do not configure both approaches for the same values unless you intentionally need both variable names.
+
+## Pass a value to a later tool
+
+Reference an extracted value with Liquid in a subsequent tool. Use a static body field when the model should not choose or rewrite the value.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open the later tool. Under **Static Body Fields**, add this field:
+
+    | Key | Type | Value |
+    | --- | --- | --- |
+    | `orderId` | String | `{{ coffeeOrderId }}` |
+
+    The field is merged into the later request when that tool runs. The model does not supply it as an argument.
+  </Tab>
+
+  <Tab title="cURL">
+    Replace `YOUR_FOLLOWUP_TOOL_ID` with the later tool's ID, then update it with the [Update Tool endpoint](/api-reference/tools/update):
+
+    ```bash
+    export VAPI_FOLLOWUP_TOOL_ID="YOUR_FOLLOWUP_TOOL_ID"
+
+    curl --request PATCH \
+      --url "https://api.vapi.ai/tool/$VAPI_FOLLOWUP_TOOL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "parameters": [
+          {
+            "key": "orderId",
+            "value": "{{ coffeeOrderId }}"
+          }
+        ]
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+This passes the extracted value deterministically, without relying on the model to copy the order ID from one tool result into another tool call.
+
+## Verify extracted values
+
+Place a test call that completes the source tool before any tool that consumes its variables.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open [Logs](https://dashboard.vapi.ai/logs), select the call, and confirm that the source tool succeeded before the later tool ran. Inspect the call's messages to confirm the expected response fields were present.
+  </Tab>
+
+  <Tab title="cURL">
+    Retrieve the completed call:
+
+    ```bash
+    export VAPI_CALL_ID="YOUR_CALL_ID"
+
+    curl --request GET \
+      --url "https://api.vapi.ai/call/$VAPI_CALL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY"
+    ```
+
+    Confirm that `artifact.variableValues` contains the alias keys and expected values. See the [Get Call API reference](/api-reference/calls/get) for the full Call schema.
+  </Tab>
+</Tabs>
+
+## Apply extraction safely
+
+- Extraction requires a JSON response. Plain text, HTML, and malformed JSON cannot provide response variables.
+- Extracted values are available only after the source tool succeeds. Do not run a dependent tool first.
+- Variable names are global for the call. Use unique, descriptive names to prevent collisions.
+- Aliases improve deterministic forwarding; they do not hide data from the model. The complete tool response remains in the model's conversation history.
+- Never return a secret in the response body expecting extraction to conceal it. Keep secrets out of model-visible responses.
+- An extracted value is only as trustworthy as its source. Validate caller-controlled values on your server before using them for sensitive actions.
+
+For nested objects, arrays, Liquid transformations, and the full trust model, see [Variable extraction plan (aliases)](/tools/static-variables-and-aliases#variable-extraction-plan-aliases). For static-field behavior, see [Static variables and aliases](/tools/static-variables-and-aliases).
