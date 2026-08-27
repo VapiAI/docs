@@ -1,0 +1,254 @@
+---
+title: Build a personalized appointment campaign
+subtitle: Combine contact variables, voicemail handling, scheduling, and webhooks.
+description: Build a personalized appointment campaign with contact variables, voicemail handling, scheduling, concurrency, and campaign webhooks.
+slug: outbound-campaigns/build-personalized-appointment-campaign
+---
+
+Use this guide after completing the [Campaigns quickstart](/outbound-campaigns/quickstart). It combines several campaign features in one appointment-reminder workflow.
+
+This example pairs an assistant-controlled voicemail tool with contact variables in one campaign. The assistant reminds each recipient about a different appointment and leaves a personalized message when it confidently identifies voicemail.
+
+## Set up and launch the campaign
+
+The flow below creates the voicemail tool, the assistant that uses it, and the campaign that calls your contacts. Follow it in the **Dashboard** or with **cURL**. For a deeper explanation, and for guidance on when to use the tool instead of built-in detection, see [Campaign voicemail and call screening](/outbound-campaigns/voicemail-and-call-screening).
+
+Both flows use the same three pieces of content, shown once here.
+
+**System prompt.** This defines the live conversation and tells the model when to invoke the voicemail tool. The tool name referenced here must match the tool's `function.name`.
+
+```text title="System prompt"
+You make concise appointment-reminder calls. Listen before speaking.
+
+## Live conversation
+
+When a person answers with a natural greeting or response, greet {{name}} and
+remind them about their appointment on {{appointment_date}} at {{location}}.
+Ask whether they can attend. If they cannot attend, tell them that a team
+member will follow up. Do not invent values when contact data is missing.
+
+## Call classification
+
+Do not begin the appointment reminder until you have classified what answered.
+When uncertain, remain silent and continue listening.
+
+Treat a natural "hello?", conversational response, or self-introduction as a
+live person.
+
+## Voicemail detection
+
+Immediately invoke the `leave_voicemail_for_appointment` tool when you hear clear voicemail
+language such as:
+
+- "Please leave a message after the beep"
+- "At the tone, please record your message"
+- "You have reached the voicemail of"
+- "The person you called is not available"
+- "Your call has been forwarded to voicemail"
+
+Do not invoke the voicemail tool for:
+
+- "Please hold"
+- "Press 1 for..."
+- "Transferring your call"
+- An automated call screener
+- A natural human greeting
+
+Invoke `leave_voicemail_for_appointment` at most once. Do not speak before or after invoking
+the tool. The tool delivers the complete voicemail message and ends the call.
+```
+
+**Voicemail script.** This is the message the tool leaves. It supports the same per-contact variables as the prompt.
+
+```text title="Voicemail message"
+Hi {{name}}, this is a reminder about your appointment on {{appointment_date}}
+at {{location}}. Please contact us if you need to reschedule. Thank you.
+```
+
+**Contacts.** One row per recipient. The `number` column tells the campaign whom to call; the other columns become dynamic variables for that row, and their headers must match the variable names used in the prompt.
+
+<Download src="../static/spreadsheets/outbound-campaigns/appointment-reminders.csv">
+  <Button intent="primary">Download appointment-reminders.csv</Button>
+</Download>
+
+```csv
+number,name,appointment_date,location
++14155550100,Ada,August 21 at 10:00 AM,Market Street
++14155550101,Sam,August 22 at 2:30 PM,Mission Street
+```
+
+<Warning>
+  This sample uses reserved fictional phone numbers and placeholder appointment details. They pass format validation but do not reach a real person, so a campaign built from them will fail or place calls you did not intend. Before launching, even for a test, replace every `number` and its variable values with real contacts you have permission to call.
+</Warning>
+
+For more formatting rules and limits, see [Campaign contact data](/outbound-campaigns/contact-data).
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create the voicemail tool">
+        In the [Vapi Dashboard](https://dashboard.vapi.ai), go to **Tools** and select **Create Tool**. Choose **Voicemail**, name it `leave_voicemail_for_appointment`, and add a description. Select **Use custom script** and paste the **voicemail script** above, then save the tool.
+      </Step>
+
+      <Step title="Create the assistant">
+        Go to **Assistants** and create an assistant. Set **First Message Mode** to **Assistant waits for user**, leave the first-message text empty, and paste the **system prompt** above.
+      </Step>
+
+      <Step title="Add the tool and publish">
+        Open the assistant's **Tools** section and add the `leave_voicemail_for_appointment` tool. Keep automatic voicemail detection disabled so the two approaches do not compete, then publish the assistant.
+      </Step>
+
+      <Step title="Configure the campaign caller">
+        Go to **Campaigns** and select **Create campaign**. Enter a name, select an eligible outbound phone number, and choose the assistant you created.
+
+        Vapi Free Numbers cannot be used to launch campaigns. Import a number from a supported provider or configure a BYO SIP trunk number if you do not have an eligible number.
+      </Step>
+
+      <Step title="Set concurrency and upload contacts">
+        Set **Max concurrency** to the maximum number of calls this campaign may have active at once. Start with a low value while testing; the campaign shares your organization's total [call concurrency](/calls/call-concurrency) with other calls.
+
+        On **Contacts**, upload `appointment-reminders.csv`. Confirm that each name and phone number appears in the preview. Additional columns are passed to the assistant even though they are not displayed in the preview.
+      </Step>
+
+      <Step title="Schedule, launch, and test">
+        On **Schedule**, select **Send now** for a controlled test or **Schedule for later** to define a time zone and calling window. Creating the campaign launches it or schedules it; there is no saved draft, and a scheduled campaign cannot be edited before it runs.
+
+        Launch first with phone numbers controlled by your team. Confirm that a live answer receives the correct appointment values and that voicemail receives the configured message, then review each call record before increasing the audience or concurrency.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Create the voicemail tool">
+        Send `POST /tool`. The `function.name` must match the tool name referenced in the system prompt. Save the `id` from the response.
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/tool \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header 'Content-Type: application/json' \
+          --data '{
+            "type": "voicemail",
+            "function": {
+              "name": "leave_voicemail_for_appointment",
+              "description": "Leave an appointment-reminder voicemail only after a clear voicemail greeting. Do not use for an IVR menu, call screening, a transfer or hold message, or a live person."
+            },
+            "messages": [
+              {
+                "type": "request-start",
+                "content": "Hi {{name}}, this is a reminder about your appointment on {{appointment_date}} at {{location}}. Please contact us if you need to reschedule. Thank you."
+              }
+            ]
+          }'
+        ```
+      </Step>
+
+      <Step title="Create the assistant with the tool attached">
+        Send `POST /assistant`. Attach the tool with `model.toolIds`, set `firstMessageMode` to `assistant-waits-for-user`, and include the system prompt as a `system` message. Replace `<tool-id>` with the `id` from the previous step, and `<system prompt>` with the system prompt above as a single JSON string. Save the `id` from the response.
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/assistant \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header 'Content-Type: application/json' \
+          --data '{
+            "name": "Appointment reminders",
+            "firstMessage": "",
+            "firstMessageMode": "assistant-waits-for-user",
+            "model": {
+              "provider": "openai",
+              "model": "gpt-4.1",
+              "toolIds": ["<tool-id>"],
+              "messages": [
+                { "role": "system", "content": "<system prompt>" }
+              ]
+            }
+          }'
+        ```
+      </Step>
+
+      <Step title="Create and launch the campaign">
+        Send `POST /v2/campaign`. Pass the assistant and phone number IDs, and map each contact's variables to `assistantOverrides.variableValues`. Creating the campaign launches or schedules it; there is no separate launch request.
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/v2/campaign \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header 'Content-Type: application/json' \
+          --data '{
+            "name": "Appointment reminders",
+            "assistantId": "<assistant-id>",
+            "phoneNumberId": "<phone-number-id>",
+            "maxConcurrency": 10,
+            "customers": [
+              {
+                "number": "+14155550100",
+                "name": "Ada",
+                "assistantOverrides": {
+                  "variableValues": {
+                    "name": "Ada",
+                    "appointment_date": "August 21 at 10:00 AM",
+                    "location": "Market Street"
+                  }
+                }
+              },
+              {
+                "number": "+14155550101",
+                "name": "Sam",
+                "assistantOverrides": {
+                  "variableValues": {
+                    "name": "Sam",
+                    "appointment_date": "August 22 at 2:30 PM",
+                    "location": "Mission Street"
+                  }
+                }
+              }
+            ]
+          }'
+        ```
+      </Step>
+
+      <Step title="Monitor the campaign">
+        Request the campaign with counters to retrieve its status, contact counters, and call metrics. Replace `<campaign-id>` with the `id` from the previous response.
+
+        ```bash
+        curl --request GET \
+          --url 'https://api.vapi.ai/v2/campaign/<campaign-id>?includeCounters=true' \
+          --header "Authorization: Bearer $VAPI_API_KEY"
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+Keep automatic voicemail detection disabled while using the voicemail tool. This approach intentionally prefers silence over a weak voicemail classification. If a greeting is clipped or transcribed incorrectly, the assistant can remain silent until its configured [silence timeout](/assistants/call-timeout-settings) instead of leaving a message. Verify the transcript, tool invocation, ended reason, and recording in controlled test calls before scaling the campaign.
+
+## Extend the workflow
+
+After the basic flow works, [filter contacts before dialing](/outbound-campaigns/webhooks#filter-contacts-before-dialing) by checking your system immediately before each call. For example, skip a contact whose appointment was canceled after the CSV was exported. You can also [receive campaign events](/outbound-campaigns/webhooks#receive-campaign-events) for campaign and contact lifecycle changes.
+
+## Best practices
+
+- **Comply with calling regulations.** Make sure you are following the consent, quiet-hours, and telemarketing rules that apply to each recipient before launching. See the [TCPA consent guide](/tcpa-consent) and [scheduling best practices](/outbound-campaigns/scheduling-and-lifecycle#scheduling-best-practices).
+- **Test conversations before calling contacts.** Use [Simulations](/observability/simulations-quickstart) to exercise the assistant or squad against realistic scenarios, including confirmations, rescheduling requests, missing variables, and unexpected responses. Use controlled test calls to verify phone-number, voicemail-detection, and call-screening behavior.
+- **Publish tested assistant changes.** Use [assistant versioning](/assistants/versioning) to keep improvements in a draft while the current configuration continues handling calls. Publish after testing, add a meaningful version name and description, and retain a known-good version that you can restore if behavior regresses.
+- **Start with a controlled audience.** Launch the first campaign with phone numbers controlled by your team, verify contact variables and voicemail behavior in the call records, then increase the audience and concurrency.
+- **Recheck scheduled campaigns.** Because campaigns cannot be edited after creation, confirm the caller, phone number, contacts, schedule, concurrency, and webhook settings before launch.
+
+## Related guides
+
+<CardGroup cols={2}>
+  <Card title="Contact data and variables" icon="address-book" href="/outbound-campaigns/contact-data">
+    Format CSV files, add contacts manually, and pass per-contact variables to an assistant or squad.
+  </Card>
+  <Card title="Scheduling and lifecycle" icon="calendar-clock" href="/outbound-campaigns/scheduling-and-lifecycle">
+    Configure calling windows and concurrency, then monitor, cancel, archive, or duplicate campaigns.
+  </Card>
+  <Card title="Voicemail and call screening" icon="voicemail" href="/outbound-campaigns/voicemail-and-call-screening">
+    Prepare the caller to handle voicemail and automated device screeners without stalling.
+  </Card>
+  <Card title="Campaign webhooks" icon="webhook" href="/outbound-campaigns/webhooks">
+    Filter contacts before dialing and receive campaign or contact lifecycle events.
+  </Card>
+</CardGroup>
