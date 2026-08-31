@@ -1,0 +1,161 @@
+---
+title: API Request Tool vs Function Tool
+subtitle: Choose API Request for direct HTTP APIs and Function for Vapi tool-calls webhooks.
+slug: tools/api-request-vs-function
+---
+
+Use an **API Request Tool** when your assistant needs to call an ordinary HTTPS API. Use a **Function Tool** when your server implements Vapi's `tool-calls` webhook protocol, or when the tool must run asynchronously or on the client.
+
+If you are unsure, start with an API Request Tool.
+
+<Note>
+  A modern Function Tool with `type: "function"` is supported. The deprecated feature is the legacy `assistant.model.functions[]` array.
+</Note>
+
+## Choose a tool
+
+| Your integration | Use | Why |
+| --- | --- | --- |
+| Calls an existing REST API | **API Request Tool** | Vapi builds and sends a direct HTTP request. |
+| Needs a configurable URL, method, headers, or JSON body | **API Request Tool** | These are available fields on the tool. |
+| Uses fixed values or Liquid variables in the request | **API Request Tool** | Put trusted values in static parameters and reference variables in the URL, headers, or static body fields. |
+| Returns JSON that the assistant should use immediately | **API Request Tool** | The successful JSON response becomes the tool result. |
+| Receives Vapi call, assistant, artifact, and tool-call context | **Function Tool** | Vapi sends a `tool-calls` webhook envelope to your server. |
+| Routes several custom tools through one webhook | **Function Tool** | Your server can dispatch calls by tool name and correlate results with `toolCallId`. |
+| Runs without waiting for a result | **Function Tool** | Function Tools support top-level `async: true`. |
+| Triggers a browser-side action through the Web SDK | **Function Tool** | A Function Tool without a server URL can emit a client-side `tool-calls` event. |
+| Must translate Vapi tool calls into XML, multipart data, or another custom protocol | **Function Tool with an adapter** | Your webhook can transform the Vapi request before calling the downstream service. |
+| Uses live call control | **Function Tool** | The webhook includes call context and `message.call.monitor.controlUrl`, allowing your server to transfer, hand off, end, speak into, or add messages to the active call.|
+
+
+## Compare how they work
+
+| Behavior | API Request Tool | Function Tool |
+| --- | --- | --- |
+| Tool type | `apiRequest` | `function` |
+| Destination | A required HTTPS `url` configured directly on the tool | For server-side execution, a Vapi-aware webhook selected in this order: tool, assistant, phone number, then organization server URL |
+| What receives the call | The destination API receives a direct HTTP request | A server receives an HTTP POST containing a Vapi `tool-calls` message with tool and call context; a client-side tool emits a Web SDK `tool-calls` event instead |
+| HTTP method | Choose `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` | Vapi sends a `POST` request to your Function webhook |
+| Model-generated input schema | Top-level `body` | `function.parameters` |
+| Static values | `parameters` are added to the request body and override model-generated values. | `parameters` are added to the function arguments and override model-generated values |
+| Authentication | Top-level `credentialId` | The credential on the selected server configuration, such as `tool.server.credentialId` |
+| Successful response | A 2xx response containing valid JSON | For synchronous tools, HTTP 200 with a string `result` matched to each `toolCallId` |
+| Failure response | A non-2xx response or invalid JSON fails the request | For synchronous tool-specific failures, return HTTP 200 with a string in the matching `results[].error` |
+| Execution | Synchronous; the assistant waits for the destination API | Synchronous by default; with top-level `async: true`, the assistant continues without waiting for the webhook response |
+| Web SDK calls | Supported; Vapi executes the API request | Supported; Vapi can call a server webhook or emit a client-side event |
+| Performs custom, server-driven Live Call Control | **Function Tool** | The webhook includes call context and `message.call.monitor.controlUrl`, allowing your server to control the active call. |
+
+Both tool types let the model decide when to call the tool and which model-generated arguments to supply. Validate caller-controlled values at the destination before using them for sensitive actions.
+
+## API Request Tool example
+
+This tool sends a direct request to an existing order API:
+
+```json
+{
+  "type": "apiRequest",
+  "name": "createOrder",
+  "description": "Creates an order only after the caller confirms the product and quantity.",
+  "method": "POST",
+  "url": "https://api.example.com/orders",
+  "credentialId": "550e8400-e29b-41d4-a716-446655440000",
+  "body": {
+    "type": "object",
+    "properties": {
+      "productId": {
+        "type": "string",
+        "description": "The product confirmed by the caller."
+      },
+      "quantity": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "The confirmed quantity."
+      }
+    },
+    "required": ["productId", "quantity"],
+    "additionalProperties": false
+  },
+  "parameters": [
+    {
+      "key": "source",
+      "value": "voice-assistant"
+    }
+  ],
+  "timeoutSeconds": 10
+}
+```
+
+The destination receives a JSON body:
+
+```json
+{
+  "productId": "coffee-beans",
+  "quantity": 2,
+  "source": "voice-assistant"
+}
+```
+
+It can return the result directly:
+
+```json
+{
+  "success": true,
+  "orderId": "ord_123",
+  "totalDisplay": "$36.00"
+}
+```
+
+## Function Tool example
+
+This tool sends a Vapi webhook to infrastructure that you control:
+
+```json
+{
+  "type": "function",
+  "async": false,
+  "function": {
+    "name": "lookupCustomer",
+    "description": "Looks up a customer after confirming their email address.",
+    "strict": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "The confirmed customer email address."
+        }
+      },
+      "required": ["email"],
+      "additionalProperties": false
+    }
+  },
+  "server": {
+    "url": "https://example.com/vapi/tools",
+    "credentialId": "0000000-0000-0000-0000-00000000000",
+    "timeoutSeconds": 10
+  }
+}
+```
+
+Vapi sends a `tool-calls` message that includes the tool call and call context. Your server must return a result associated with the incoming tool-call ID:
+
+```json
+{
+  "results": [
+    {
+      "toolCallId": "call_abc123",
+      "result": "{\"found\":true,\"customerId\":\"cus_456\"}"
+    }
+  ]
+}
+```
+
+## Related documentation
+
+- [API Request Tool](/tools/api-request)
+- [Configure API Request Tool requests](/tools/api-request/configuration)
+- [Handle API Request Tool responses and errors](/tools/api-request/response-handling)
+- [Custom (Function) Tools](/tools/custom-tools)
+- [Client-side tools](/tools/client-side-websdk)
+- [Static variables and aliases](/tools/static-variables-and-aliases)
+- [Create Tool API reference](/api-reference/tools/create)
