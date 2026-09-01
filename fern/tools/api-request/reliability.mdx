@@ -1,0 +1,186 @@
+---
+title: Handle API Request Tool latency and retries
+subtitle: Set request timeouts, keep callers informed, and retry only requests that are safe to repeat.
+description: Configure API Request Tool timeouts, retry backoff, excluded status codes, and caller messages for slow or failed HTTP requests with practical cURL examples.
+slug: tools/api-request/reliability
+---
+
+API Request Tools wait for the destination API to respond before the assistant continues. Configure a timeout for every tool, use messages to keep the caller informed, and enable retries only when repeating the request cannot create an unwanted side effect.
+
+## Prerequisites
+
+- An existing API Request Tool
+- For cURL requests, a [Vapi API key](/security-and-privacy/api-keys) and the tool ID
+
+## Choose a timeout
+
+`timeoutSeconds` controls how long the tool waits for an API request. It defaults to 20 seconds and accepts values from 1 to 300 seconds.
+
+Choose a timeout that accommodates the API's normal response time without leaving the caller waiting unnecessarily. A longer timeout does not fix an unreliable endpoint, and retries can increase the time before the tool returns a final result.
+
+<Note>
+The Dashboard currently exposes tool messages but not `timeoutSeconds` or `backoffPlan`. Use the API to change timeout or retry behavior. If these fields are omitted, the timeout defaults to 20 seconds and the request is not retried.
+</Note>
+
+To observe timeout, delayed-message, and retry behavior before production, use a non-production endpoint you control that can intentionally delay responses or return selected failure statuses. Do not test retries against an endpoint that creates real orders or other side effects.
+
+## Protect the coffee-order request
+
+Creating an order changes server state. Keep automatic retries disabled unless the order API supports an idempotency key or another form of duplicate protection.
+
+The following configuration applies a 20-second timeout to the [coffee-order quickstart](/tools/api-request/quickstart), explicitly disables retries, and adds messages for the caller.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the tool">
+        Open the [Dashboard](https://dashboard.vapi.ai), select **Tools**, then select `createCoffeeOrder`.
+      </Step>
+
+      <Step title="Configure tool messages">
+        Expand **Messages**. Set **Request Start** to **Custom**, then add the remaining message stages with **Add Message**:
+
+        | Stage | Configuration |
+        | --- | --- |
+        | **Request Start** | `Let me submit that order.` |
+        | **Request Response Delayed** | After `5000` milliseconds: `The order system is taking a little longer than expected.` |
+        | **Request Failed** | Enable **AI-generated message (content is used as a prompt for the model)**, then enter: `The order request failed. Apologize, explain that the order was not confirmed, and offer to try again only after the caller agrees.` |
+
+        Do not add **Request Complete**. The model can then use the API response to read the server-calculated total and order number to the caller.
+
+        <Frame caption="Acknowledge the order when the request starts">
+          <img src="/static/images/tools/api-request/05a-message-start.png" alt="Vapi Dashboard Request Start message set to Let me submit that order" />
+        </Frame>
+
+        <Frame caption="Keep the caller informed when the response is delayed">
+          <img src="/static/images/tools/api-request/05c-message-delayed.png" alt="Vapi Dashboard Request Response Delayed message configured to play after 5000 milliseconds" />
+        </Frame>
+
+        <Frame caption="Guide the model when the request fails">
+          <img src="/static/images/tools/api-request/05b-message-failed.png" alt="Vapi Dashboard Request Failed system message with recovery instructions" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the tool">
+        Select **Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    Set your API key and the ID of the tool created in the quickstart:
+
+    ```bash
+    export VAPI_API_KEY="YOUR_VAPI_API_KEY"
+    export VAPI_TOOL_ID="YOUR_TOOL_ID"
+    ```
+
+    Update the tool with the [Update Tool endpoint](/api-reference/tools/update):
+
+    ```bash
+    curl --request PATCH \
+      --url "https://api.vapi.ai/tool/$VAPI_TOOL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "timeoutSeconds": 20,
+        "backoffPlan": {
+          "type": "fixed",
+          "maxRetries": 0,
+          "baseDelaySeconds": 1
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "Let me submit that order.",
+            "blocking": false
+          },
+          {
+            "type": "request-response-delayed",
+            "timingMilliseconds": 5000,
+            "content": "The order system is taking a little longer than expected."
+          },
+          {
+            "type": "request-failed",
+            "role": "system",
+            "content": "The order request failed. Apologize, explain that the order was not confirmed, and offer to try again only after the caller agrees."
+          }
+        ]
+      }'
+    ```
+
+    This explicitly keeps retries disabled for the order-creation request. Retrying this `POST` could create two orders when the first request succeeds but its response is lost or delayed.
+  </Tab>
+</Tabs>
+
+<Note>
+If you omit `backoffPlan`, the request is not retried. Setting `maxRetries` to `0` makes that choice explicit in the example.
+</Note>
+
+## Decide whether to retry
+
+Retries are most useful for temporary failures on requests that are safe to repeat.
+
+| Scenario | Retry guidance |
+| --- | --- |
+| Read data with `GET` | Retry transient failures when a slightly longer wait is acceptable. |
+| Replace an existing resource with an idempotent `PUT` | Retry only when the destination API guarantees that repeating the same request has the same effect. |
+| Create an order, charge a card, send a message, or book an appointment | Do not retry unless the destination API provides idempotency or duplicate protection. |
+| `400`, `401`, `403`, or `404` response | Do not retry automatically. The request, credentials, permissions, or resource must change first. |
+| Rate limit or temporary server failure | Consider a small retry limit with exponential backoff for a safe request. |
+
+<Warning>
+Do not enable retries only because an endpoint sometimes fails. First decide whether repeating the request can duplicate work or create another side effect.
+</Warning>
+
+## Configure retries for a safe request
+
+A backoff plan controls how Vapi spaces retry attempts after a non-success response:
+
+- `fixed` waits the same amount between attempts.
+- `exponential` increases the delay after each attempt.
+- `maxRetries` is the number of retries after the original request and accepts values from 0 to 10.
+- `baseDelaySeconds` accepts values from 0 to 10 seconds.
+- `excludedStatusCodes` lists response codes that must not be retried. Without exclusions, non-2xx responses are retryable.
+
+The cURL request below uses the [Create Tool endpoint](/api-reference/tools/create) to create a separate `checkServiceStatus` `GET` tool. It makes one original request and allows at most two retries. Replace `https://api.example.com/status` with a status endpoint you control.
+
+The Dashboard can configure this tool's name, description, URL, and method, but not its backoff plan. The following cURL request creates the complete tool through the API:
+
+```bash
+curl --request POST \
+  --url https://api.vapi.ai/tool \
+  --header "Authorization: Bearer $VAPI_API_KEY" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "type": "apiRequest",
+    "name": "checkServiceStatus",
+    "description": "Checks the current service status. Use when the caller asks whether the service is available.",
+    "method": "GET",
+    "url": "https://api.example.com/status",
+    "timeoutSeconds": 10,
+    "backoffPlan": {
+      "type": "exponential",
+      "maxRetries": 2,
+      "baseDelaySeconds": 1,
+      "excludedStatusCodes": [400, 401, 403, 404]
+    }
+  }'
+```
+
+Keep the retry limit small for voice calls. Every additional attempt can extend the silence or filler time before the assistant receives a final result.
+
+## Keep the caller informed
+
+Tool messages control what the caller hears while a request is running and after it finishes.
+
+| Message type | When it runs | Recommended use |
+| --- | --- | --- |
+| `request-start` | When the tool starts | Acknowledge the action. If omitted, Vapi uses a default filler message. |
+| `request-response-delayed` | When the configured delay is reached | Explain that the request is still running. Use different timings for staged updates. |
+| `request-complete` | When the request succeeds | Use a fixed assistant message only when it does not need response data. Use the system role to guide a model-generated response. |
+| `request-failed` | When the request fails | State what the caller should do next, or use the system role to guide an error-aware response. |
+
+For `request-complete` and `request-failed`, the default assistant role speaks the configured content instead of asking the model to respond. Use the system role when the response should account for tool results or conversation context.
+
+For the complete field definitions, see the [Create Tool](/api-reference/tools/create) and [Update Tool](/api-reference/tools/update) API references. To diagnose failed tool calls, see [Custom tools troubleshooting](/tools/custom-tools-troubleshooting).

@@ -1,0 +1,192 @@
+---
+title: Handle API Request Tool responses and errors
+subtitle: Design response contracts, recover from failures, and inspect tool results without misleading the caller.
+description: Handle successful and failed API Request Tool responses, test structured errors, guide assistant recovery, and inspect call results in the Dashboard or with cURL.
+slug: tools/api-request/response-handling
+---
+
+An API Request Tool should return enough structured information for the assistant to distinguish a completed action from a rejected or failed request. Use HTTP status codes for success and failure, return JSON consistently, and give each error a stable code and actionable message.
+
+## Design the response contract
+
+Return a 2xx status only when the requested action succeeds. The [coffee-order quickstart](/tools/api-request/quickstart) endpoint returns `201 Created` with the server-calculated total and a mock order number:
+
+```json
+{
+  "success": true,
+  "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "orderId": 47730,
+  "productName": "House coffee beans",
+  "quantity": 2,
+  "totalCents": 3600,
+  "totalDisplay": "$36.00",
+  "message": "Your mock order for 2 House coffee beans was accepted for $36.00."
+}
+```
+
+Return a non-2xx status when the action does not complete. Keep the error body machine-readable and consistent:
+
+```json
+{
+  "success": false,
+  "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request body failed validation.",
+    "details": [
+      {
+        "field": "productId",
+        "code": "INVALID_ENUM_VALUE",
+        "message": "productId must be one of: coffee-beans, tea-sampler, ceramic-mug."
+      }
+    ]
+  }
+}
+```
+
+The API Request Tool treats a non-2xx response as a failed request. If a backoff plan is configured, the status code also determines whether the request is eligible for a retry. See [Handle latency and retries](/tools/api-request/reliability) before enabling retries.
+
+<Note>
+Calculate prices, availability, permissions, and other authoritative values on your server. Do not ask the model to calculate or invent them.
+</Note>
+
+## Test successful and failed responses
+
+Test the destination API directly before involving an assistant. This separates endpoint behavior from tool selection, schema, prompting, and voice-call behavior.
+
+<Tabs>
+  <Tab title="Successful order">
+    ```bash
+    curl --request POST \
+      --url https://vapi-docs-orders.val.run/ \
+      --header "Content-Type: application/json" \
+      --include \
+      --data '{
+        "customerName": "Alex",
+        "productId": "coffee-beans",
+        "quantity": 2
+      }'
+    ```
+
+    Expect HTTP `201`, `success: true`, a five-digit `orderId`, and a server-calculated `totalDisplay` of `$36.00`.
+  </Tab>
+
+  <Tab title="Invalid product">
+    ```bash
+    curl --request POST \
+      --url https://vapi-docs-orders.val.run/ \
+      --header "Content-Type: application/json" \
+      --include \
+      --data '{
+        "customerName": "Alex",
+        "productId": "espresso-machine",
+        "quantity": 1
+      }'
+    ```
+
+    Expect HTTP `422`, error code `VALIDATION_ERROR`, and a `details` entry for `productId`.
+  </Tab>
+
+  <Tab title="Invalid quantity">
+    ```bash
+    curl --request POST \
+      --url https://vapi-docs-orders.val.run/ \
+      --header "Content-Type: application/json" \
+      --include \
+      --data '{
+        "customerName": "Alex",
+        "productId": "coffee-beans",
+        "quantity": 11
+      }'
+    ```
+
+    Expect HTTP `422` and a `details` entry explaining that `quantity` must be between 1 and 10.
+  </Tab>
+
+  <Tab title="Malformed JSON">
+    ```bash
+    curl --request POST \
+      --url https://vapi-docs-orders.val.run/ \
+      --header "Content-Type: application/json" \
+      --include \
+      --data '{not-json}'
+    ```
+
+    Expect HTTP `400` and error code `INVALID_JSON`. This checks the endpoint's defensive behavior; a correctly configured API Request Tool constructs valid JSON.
+  </Tab>
+</Tabs>
+
+<Note>
+These errors are successful tests because the endpoint rejects bad input with the expected status and structured response.
+</Note>
+
+## Decide how the assistant should recover
+
+Add explicit failure behavior to the assistant's system prompt. The assistant must not claim that an order succeeded unless the tool returned a successful response.
+
+```txt title="Failure-handling instructions" wordWrap
+When createCoffeeOrder fails, do not say that the order was accepted and do not invent an order number or total.
+
+If the error identifies an invalid field, explain the allowed value in plain language, collect the corrected value, read the complete order back, and get confirmation before calling createCoffeeOrder again.
+
+For a timeout, connection failure, or server error, apologize and explain that the order was not confirmed. Offer to try again, but call createCoffeeOrder again only after the caller agrees.
+```
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open the coffee-order assistant in the [Dashboard](https://dashboard.vapi.ai), add the instructions above to its **System Prompt**, then publish the assistant.
+  </Tab>
+
+  <Tab title="cURL">
+    Add the same instructions to the system message in `model.messages` with the [Update Assistant endpoint](/api-reference/assistants/update). The [coffee-order quickstart](/tools/api-request/quickstart#3-create-the-assistant) contains the complete assistant request, including its existing ordering and end-call instructions.
+  </Tab>
+</Tabs>
+
+Use a system-role `request-failed` message when the model should adapt its response to the returned error and conversation context. Use an assistant-role message only when the same fixed sentence is appropriate for every failure. See [Keep the caller informed](/tools/api-request/reliability#keep-the-caller-informed) for message configuration.
+
+## Inspect a call
+
+After a test call, inspect the tool arguments and result before changing the schema or prompt.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open [Logs](https://dashboard.vapi.ai/logs), select the call, and inspect its messages and tool-call entries. Confirm:
+
+    - The assistant called the expected tool.
+    - The model-generated arguments contain the confirmed customer name, product ID, and quantity.
+    - The tool result contains either the accepted order or the structured error.
+    - The assistant did not claim success after a failed request.
+  </Tab>
+
+  <Tab title="cURL">
+    Set your API key and call ID, then retrieve the Call object:
+
+    ```bash
+    export VAPI_API_KEY="YOUR_VAPI_API_KEY"
+    export VAPI_CALL_ID="YOUR_CALL_ID"
+
+    curl --request GET \
+      --url "https://api.vapi.ai/call/$VAPI_CALL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY"
+    ```
+
+    Inspect the call artifact's messages for the tool name, model-generated arguments, tool result, and assistant response. See the [Get Call API reference](/api-reference/calls/get) for the complete response schema.
+  </Tab>
+</Tabs>
+
+The call artifact does not show the final HTTP request after Vapi resolves Liquid values and merges static fields. Use logs from the destination API to inspect final headers and body values. Correlate the coffee endpoint's `requestId` with its `X-Request-Id` response header and server logs when investigating a specific request.
+
+## Diagnose common failures
+
+| Symptom | Check first |
+| --- | --- |
+| Tool is not called | Confirm the exact tool name appears in the prompt, its description states when to use it, and it is attached to the assistant. |
+| Tool arguments are missing or incorrect | Check property descriptions, types, required fields, enums, and the confirmation instructions. |
+| Endpoint returns `400` or `415` | Check the body shape, JSON encoding, method, and `Content-Type`. |
+| Endpoint returns `401` or `403` | Check the selected credential and destination permissions. Do not add a second manual `Authorization` header. |
+| Endpoint returns `422` | Read the structured field details, correct the caller-provided value, and reconfirm before another tool call. |
+| Endpoint returns `429` or `5xx` | Treat it as a transient or server-side failure. Retry only if the operation is safe to repeat. |
+| Tool succeeds but the assistant gives the wrong result | Make the response fields unambiguous, instruct the assistant to use server-calculated values, and inspect the tool result in the call. |
+| Request times out | Compare the configured timeout with destination latency and add a delayed message. Do not use a longer timeout to hide an unreliable API. |
+
+For broader issues with tool selection, schemas, and model-visible responses, see [Custom tools troubleshooting](/tools/custom-tools-troubleshooting). For call-level failures, see [Troubleshoot call errors](/calls/troubleshoot-call-errors).

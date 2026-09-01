@@ -1,0 +1,257 @@
+---
+title: Customize API Request Tool requests
+subtitle: Add headers, static fields, Liquid values, and authentication while keeping model-generated and server-resolved data separate.
+description: Configure an API Request Tool's URL, method, model-generated body, request headers, static body fields, and Liquid values with Dashboard and cURL examples.
+slug: tools/api-request/configuration
+---
+
+Now that your coffee-order assistant can submit a basic order, you can add the information your API needs to process the customer's order. In this guide, you'll add HTTP headers, fixed application metadata, call-time Liquid values, and authentication while keeping customer-provided values in the model-generated request body. Separating these values makes requests more predictable, prevents the model from inventing trusted application data, and gives your server the context it needs to validate and route each request.
+
+## Prerequisites
+
+- An existing API Request Tool
+- An HTTPS endpoint that returns JSON
+- For cURL requests, a [Vapi API key](/security-and-privacy/api-keys) and the tool ID
+
+## Choose where each value comes from
+
+Use the request body schema for values the caller provides or the model infers. Use static body fields for values your application or the call already knows.
+
+| Value source | Configuration | Model can supply or change it | Example |
+| --- | --- | --- | --- |
+| Caller statement or conversation context | **Request Body** in the Dashboard; `body` in the API | Yes | Product, quantity, appointment date |
+| Fixed application value | **Static Body Fields** in the Dashboard; `parameters` in the API | No | Order source, API version, organization ID |
+| Call-level Liquid value | **Static Body Fields** in the Dashboard; `parameters` in the API | No | Call type, current time, custom per-call value |
+| HTTP metadata | **Request Headers** in the Dashboard; `headers` in the API | No when configured with a value | Client version, content preference |
+| Path or query value | **Request URL** in the Dashboard; `url` in the API | Depends on the referenced value | Order ID in an endpoint path |
+
+For the full static-parameter behavior, supported value types, and trust model, see [Static variables and aliases](/tools/static-variables-and-aliases#static-variables-parameters).
+
+<Warning>
+Do not put access tokens or other secrets in plain-text request headers or body fields. Use a Vapi credential for authentication.
+</Warning>
+
+## Configure the request
+
+The configuration below updates `createCoffeeOrder` with the `X-Docs-Example` and `X-Docs-Call-Type` headers and the `source` and `requestTimestamp` static body fields. The endpoint continues to receive `customerName`, `productId`, and `quantity` from the model.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the tool">
+        Open the [Dashboard](https://dashboard.vapi.ai), select **Tools**, then select `createCoffeeOrder`.
+      </Step>
+
+      <Step title="Configure the endpoint">
+        Under **Base Configuration**, set **Request URL** to `https://vapi-docs-orders.val.run/` and **Request HTTP Method** to **POST**.
+
+        Set the HTTP method explicitly. API Request Tools support `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`. See the [Create Tool API reference](/api-reference/tools/create) for the complete API Request Tool schema.
+      </Step>
+
+      <Step title="Define the model-generated body">
+        Under **Request Body**, add these required properties:
+
+        | Property | Type | Configuration |
+        | --- | --- | --- |
+        | `customerName` | String | Description: `Customer name for the order.` |
+        | `productId` | String | Allowed values: `coffee-beans`, `tea-sampler`, `ceramic-mug` |
+        | `quantity` | Integer | Minimum: `1`; description: `The confirmed quantity.` |
+
+        Set the `productId` description to `The product the customer confirmed.` Then enable **Lock schema (no additional properties)**.
+      </Step>
+
+      <Step title="Add request headers">
+        Expand **Request Headers**, then add these string headers:
+
+        | Header | Value |
+        | --- | --- |
+        | `X-Docs-Example` | `coffee-order` |
+        | `X-Docs-Call-Type` | `{{ call.type }}` |
+
+        Use request headers for non-sensitive HTTP metadata. The `call.type` Liquid value resolves when the tool runs.
+
+        <Frame caption="Add static and Liquid-rendered request headers">
+          <img src="/static/images/tools/api-request/03-request-headers.png" alt="Vapi Dashboard Request Headers with X-Docs-Example and X-Docs-Call-Type" />
+        </Frame>
+      </Step>
+
+      <Step title="Add static body fields">
+        Under **Static Body Fields**, select **Add Field** and add these fields:
+
+        | Key | Type | Value |
+        | --- | --- | --- |
+        | `source` | String | `inbound-phone` |
+        | `requestTimestamp` | String | `{{ "now" \| date: "%Y-%m-%dT%H:%M:%SZ", "UTC" }}` |
+
+        Vapi merges these fields into the request body after the model generates its values. A static body field overrides a model-generated field with the same key.
+
+        <Frame caption="Add fixed and Liquid-rendered static body fields">
+          <img src="/static/images/tools/api-request/04-static-body-fields.png" alt="Vapi Dashboard Static Body Fields with source and requestTimestamp" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the tool">
+        Select **Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Set the API key and tool ID">
+        ```bash
+        export VAPI_API_KEY="YOUR_VAPI_API_KEY"
+        export VAPI_TOOL_ID="YOUR_TOOL_ID"
+        ```
+      </Step>
+
+      <Step title="Update the tool">
+        Send the request to the [Update Tool endpoint](/api-reference/tools/update).
+
+        ```bash
+        curl --request PATCH \
+          --url "https://api.vapi.ai/tool/$VAPI_TOOL_ID" \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "method": "POST",
+            "url": "https://vapi-docs-orders.val.run/",
+            "headers": {
+              "type": "object",
+              "properties": {
+                "X-Docs-Example": {
+                  "type": "string",
+                  "value": "coffee-order"
+                },
+                "X-Docs-Call-Type": {
+                  "type": "string",
+                  "value": "{{ call.type }}"
+                }
+              }
+            },
+            "body": {
+              "type": "object",
+              "properties": {
+                "customerName": {
+                  "type": "string",
+                  "description": "Customer name for the order."
+                },
+                "productId": {
+                  "type": "string",
+                  "enum": ["coffee-beans", "tea-sampler", "ceramic-mug"],
+                  "description": "The product the customer confirmed."
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "The confirmed quantity."
+                }
+              },
+              "required": ["customerName", "productId", "quantity"],
+              "additionalProperties": false
+            },
+            "parameters": [
+              {
+                "key": "source",
+                "value": "inbound-phone"
+              },
+              {
+                "key": "requestTimestamp",
+                "value": "{{ \"now\" | date: \"%Y-%m-%dT%H:%M:%SZ\", \"UTC\" }}"
+              }
+            ]
+          }'
+        ```
+      </Step>
+
+      <Step title="Read the saved configuration">
+        Retrieve the saved tool with the [Get Tool endpoint](/api-reference/tools/get).
+
+        ```bash
+        curl --request GET \
+          --url "https://api.vapi.ai/tool/$VAPI_TOOL_ID" \
+          --header "Authorization: Bearer $VAPI_API_KEY"
+        ```
+
+        Confirm that the response contains the expected `url`, `method`, `headers`, `body`, and `parameters` fields.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Define model-generated request values
+
+The `body` JSON Schema is the source of truth for the arguments the model can generate. For requests with a JSON body, Vapi uses those arguments to construct the body sent to the endpoint.
+
+Write a specific description for every property. Add required properties to `required`, and constrain known values with `enum`, a format, or another supported schema rule.
+
+<Note>
+Do not define a separate `function.parameters` schema for an API Request Tool. Vapi derives the model-facing arguments from `body`, so a separate `function.parameters` schema is not used at runtime. The API can still store that schema without returning an error.
+</Note>
+
+## Use Liquid values at request time
+
+Liquid values resolve when the API Request Tool runs. You can use them in the request URL, request header values, and static body field values.
+
+In the request configuration above, `X-Docs-Call-Type` uses `{{ call.type }}` for direct substitution, while `requestTimestamp` uses the LiquidJS `date` filter to generate an ISO-8601 UTC timestamp. See [Default variables](/assistants/dynamic-variables#default-variables) for the complete runtime-variable list and [Advanced date and time usage](/assistants/dynamic-variables#advanced-date-and-time-usage) for formatting syntax.
+
+## Authenticate requests
+
+An API Request Tool can reference a reusable Custom Credential through its `credentialId`. This endpoint credential is separate from the Vapi API key used to create or update the tool.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Expand **Authorization**, then choose an existing option from **Credential**. To create or manage credentials, see [Server authentication](/server-url/server-authentication).
+  </Tab>
+
+  <Tab title="cURL">
+    Attach an existing credential to the tool:
+
+    ```bash
+    curl --request PATCH \
+      --url "https://api.vapi.ai/tool/$VAPI_TOOL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "credentialId": "YOUR_CREDENTIAL_ID"
+      }'
+    ```
+
+    The [Update Tool API reference](/api-reference/tools/update) documents the `credentialId` field used by this request.
+  </Tab>
+</Tabs>
+
+<Warning>
+Do not place endpoint tokens in the tool description, prompt, request schema, static body fields, or plain-text headers. When you set `credentialId`, do not also configure an `Authorization` request header.
+</Warning>
+
+The public coffee-order endpoint does not require authentication. Attach a credential only when configuring a protected endpoint that you control.
+
+## Verify the request
+
+Place an inbound test call after publishing the tool. The public endpoint returns a sanitized `requestContext` object when it detects any advanced configuration field:
+
+```json
+{
+  "requestContext": {
+    "advancedConfigurationDetected": true,
+    "headers": {
+      "docsExampleReceived": true,
+      "docsExampleMatchesExpectedValue": true,
+      "callTypeResolved": true,
+      "callTypeSupported": true
+    },
+    "staticBodyFields": {
+      "sourceReceived": true,
+      "sourceMatchesExpectedValue": true,
+      "requestTimestampResolved": true,
+      "requestTimestampValid": true,
+      "requestTimestampRecent": true
+    }
+  }
+}
+```
+
+Each value should be `true`. The endpoint validates the call type and request timestamp without returning a call identifier or caller phone number.
+
+If the request fails, compare the saved tool configuration with the endpoint's expected HTTP method, URL, headers, and JSON body. The endpoint must return JSON for a successful response. For broader tool-call issues, see [Custom tools troubleshooting](/tools/custom-tools-troubleshooting).

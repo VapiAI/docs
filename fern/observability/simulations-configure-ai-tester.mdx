@@ -1,0 +1,190 @@
+---
+title: Configure an AI tester
+subtitle: Define the AI tester's goal and control how it behaves, reasons, listens, and speaks.
+description: "Configure what a simulation AI tester should accomplish and how it behaves, including its model, transcriber, voice, turn-taking, and fallbacks."
+slug: observability/simulations-configure-ai-tester
+---
+
+Configure the scenario and personality together to control an AI tester. The scenario defines what the tester should accomplish, while the personality defines how it behaves and communicates.
+
+## Scenario and personality roles
+
+Each simulation pairs one scenario with one personality. Keep their responsibilities separate so you can reuse the same customer behavior across different test cases:
+
+| Configuration | What it controls | Example |
+| -- | -- | -- |
+| **Scenario** | The AI tester's goal, relevant context, actions, and stopping condition | Dispute an unexpected charge, provide an account ID when asked, and end after receiving a resolution |
+| **Personality** | The AI tester's behavior, tone, conversation timing, model, transcriber, and voice | Act impatient, interrupt long answers, and ask for concise explanations |
+
+Write the scenario as instructions for the AI tester, not as the expected outcome. Define pass or fail conditions separately under **Success criteria**.
+
+## Dashboard and API settings
+
+The available settings depend on whether you configure the AI tester in the Dashboard or through the API:
+
+| Area | Dashboard settings | Additional API settings |
+| -- | -- | -- |
+| **Scenario** | Name and intent | Overrides for the assistant or squad under test, webhook destinations, transcript and message inclusion, and recording inclusion |
+| **Behavior** | Behavior and who starts first | First message, start-speaking plan, stop-speaking plan, duration limit, background sound, and background-speech denoising |
+| **Model** | Provider and model | Temperature, maximum tokens, fallback models, tools, prompt caching, knowledge base, and model-specific reasoning |
+| **Transcriber** | Provider, model, and language | Language detection and hints, endpoint delay, vocabulary, contextual hints, and fallback transcribers |
+| **Voice** | Provider and voice ID | Speed, version, language, pronunciation dictionaries, chunking, formatting, and caching |
+
+In the Dashboard, Scenario settings are on the **Scenario** tab, and the Behavior, Model, Transcriber, and Voice settings are on the **Personality** tab.
+
+Chat simulations ignore transcriber and voice settings. Behavior, model, and turn-taking settings still apply.
+
+## Configure the AI tester
+
+<Tabs>
+<Tab title="Dashboard">
+
+<Steps>
+  <Step title="Open the simulation">
+    Open **Simulations**, select **Suites**, and create or edit a suite. Select the simulation you want to configure.
+  </Step>
+
+  <Step title="Define the scenario">
+    On the **Scenario** tab, enter a scenario name and intent (the scenario's `instructions` field in the API). Include the AI tester's goal, information it can provide, actions it should take, and when it should end the conversation.
+
+    Keep behavioral traits such as tone, patience, and interruption style out of the scenario. Configure those traits in the personality so you can reuse them with other scenarios.
+  </Step>
+
+  <Step title="Set the behavior">
+    Open the **Personality** tab. Enter the instructions that define how the AI tester should act. Under **Who starts first?**, select **AI tester** or **Assistant or squad**.
+  </Step>
+
+  <Step title="Configure the model">
+    Expand **Advanced settings**. Under **Model**, select the provider and model that control how the AI tester reasons.
+  </Step>
+
+  <Step title="Configure voice settings">
+    For a voice simulation, configure these optional settings:
+
+    - Under **Transcriber**, select the speech-to-text provider, language, and model.
+    - Under **Voice**, select the provider and voice, or enter a custom voice ID.
+  </Step>
+
+  <Step title="Continue configuring the suite">
+    Select **Next**, configure the success criteria and other advanced simulation options, then save or run the suite.
+  </Step>
+</Steps>
+
+</Tab>
+<Tab title="cURL">
+
+Update the scenario's `instructions` to define what the AI tester should accomplish:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Dispute an unexpected charge",
+    "instructions": "You are calling about an unexpected $40 charge. Provide account ID ACCT-1234 when asked. Ask the assistant to explain the charge and remove it if it is invalid. End the conversation after the assistant provides a resolution or next step."
+  }'
+```
+
+The `instructions` field sets the AI tester's goal and test conditions. Configure success criteria, overrides for the assistant or squad under test, tool mocks, and lifecycle hooks on the same scenario. See [**Update Scenario**](/api-reference/simulation-scenarios/scenario-controller-update) for the complete schema.
+
+A personality's `assistant` field defines how the AI tester behaves. First, retrieve the existing personality so you can preserve its current assistant fields and check whether it is built in:
+
+```bash
+curl -sS -X GET "https://api.vapi.ai/eval/simulation/personality/<personality-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -o personality.json
+
+jq '{ id, orgId, name }' personality.json
+```
+
+If `orgId` is `null`, the personality is built in and cannot be updated with `PATCH`. Create an organization-owned copy, then use the returned `id` for subsequent updates:
+
+```bash
+jq '{ name: "Custom impatient customer", assistant: .assistant }' \
+  personality.json > personality-copy.json
+
+curl -X POST "https://api.vapi.ai/eval/simulation/personality" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data @personality-copy.json
+```
+
+If `orgId` contains your organization ID, update the existing personality. The following request shows representative settings for the model, Soniox transcriber, Vapi Voice, and conversation behavior:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/eval/simulation/personality/<personality-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "assistant": {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4.1",
+        "messages": [
+          {
+            "role": "system",
+            "content": "Act as an impatient customer who wants a concise answer."
+          }
+        ],
+        "temperature": 0.2,
+        "maxTokens": 500,
+        "fallbackModels": ["gpt-4.1-mini"]
+      },
+      "transcriber": {
+        "provider": "soniox",
+        "model": "stt-rt-v5",
+        "languages": ["en", "es"],
+        "languageHintsStrict": false,
+        "maxEndpointDelayMs": 800,
+        "customVocabulary": ["Vapi", "Acme"]
+      },
+      "voice": {
+        "provider": "vapi",
+        "voiceId": "Clara",
+        "version": "2",
+        "speed": 1.05,
+        "language": "en-US",
+        "cachingEnabled": true
+      },
+      "firstMessage": "I need help with an unexpected charge.",
+      "firstMessageMode": "assistant-speaks-first",
+      "startSpeakingPlan": {
+        "waitSeconds": 0.6
+      },
+      "stopSpeakingPlan": {
+        "numWords": 2,
+        "backoffSeconds": 1
+      },
+      "maxDurationSeconds": 600,
+      "backgroundSound": "office"
+    }
+  }'
+```
+
+Within a personality's `assistant` configuration, `assistant-speaks-first` means the AI tester starts the conversation. Use `assistant-waits-for-user` when the assistant or squad under test should start.
+
+In `stopSpeakingPlan`, `voiceSeconds` only applies when `numWords` is `0`. When `numWords` is greater than `0`, the AI tester waits for that number of transcribed words instead. See [**Stop speaking plan**](/customization/voice-pipeline-configuration#stop-speaking-plan) for details.
+
+The available fields vary by provider. See [**Update Personality**](/api-reference/simulation-personalities/personality-controller-update) for the complete schema.
+
+<Warning>
+  The `assistant` field is a full nested configuration. Include every existing assistant field you want to preserve when you update a personality.
+</Warning>
+
+</Tab>
+</Tabs>
+
+<Note>
+  Editing a built-in **(Default)** personality in the Dashboard saves it as a new personality you own. The built-in personality remains unchanged.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Simulations advanced" icon="flask" href="/observability/simulations-advanced">
+    Configure variables, tool mocks, webhooks, and reusable structured outputs.
+  </Card>
+  <Card title="Manage simulations" icon="gear" href="/observability/simulations-manage">
+    Edit suites, review and rerun results, and maintain test coverage.
+  </Card>
+</CardGroup>
