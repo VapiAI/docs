@@ -1,0 +1,293 @@
+---
+title: API Request Tool quickstart
+subtitle: Create a coffee-order assistant that calls an HTTP API during an inbound phone call.
+description: Build a coffee-order assistant that sends confirmed orders to a public endpoint and reads the server-calculated total and order number back to the caller.
+slug: tools/api-request/quickstart
+---
+
+In this quickstart, you'll create a coffee-order assistant and place a test order in about 10 minutes. The assistant collects order details, calls a public endpoint, and reads the server-calculated result to the caller.
+
+## What you'll build
+
+- An API Request Tool that sends a confirmed coffee order to an HTTP endpoint
+- An assistant that collects and confirms the order before calling the tool
+- An inbound phone experience that reads back the server-calculated total and order number
+
+## Prerequisites
+
+- [A Vapi account](https://dashboard.vapi.ai)
+- [A Vapi phone number](/free-telephony)
+- For the cURL method, a [Vapi API key](/security-and-privacy/api-keys)
+
+## 1. Test the order endpoint
+
+Send a coffee order directly to the public test endpoint.
+
+```bash
+curl --request POST \
+  --url https://vapi-docs-orders.val.run/ \
+  --header "Content-Type: application/json" \
+  --data '{
+    "customerName": "Alex",
+    "productId": "coffee-beans",
+    "quantity": 2
+  }'
+```
+
+The endpoint returns an HTTP `201` response. The `requestId` and five-digit `orderId` change with every request.
+
+```json
+{
+  "success": true,
+  "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "orderId": 47730,
+  "mock": true,
+  "customerName": "Alex",
+  "productId": "coffee-beans",
+  "productName": "House coffee beans",
+  "quantity": 2,
+  "totalCents": 3600,
+  "totalDisplay": "$36.00",
+  "message": "Your mock order for 2 House coffee beans was accepted for $36.00."
+}
+```
+
+## 2. Create the API Request Tool
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create an API Request Tool">
+        Open the [Dashboard](https://dashboard.vapi.ai), select **Tools**, select **Create Tool**, then choose **API Request**.
+      </Step>
+
+      <Step title="Configure the request">
+        Enter the following values under **Base Configuration**:
+
+        | Field | Value |
+        | --- | --- |
+        | **Tool Name** | `createCoffeeOrder` |
+        | **Description** | `Creates a mock coffee shop order. Use only after the caller confirms their name, product, and quantity. If the request is rejected, explain the error and help the caller correct the order.` |
+        | **Request URL** | `https://vapi-docs-orders.val.run/` |
+        | **Request HTTP Method** | `POST` |
+
+        Under **Authorization**, keep **No authentication** selected. This public endpoint is for testing only.
+
+        <Frame caption="Configure the API Request Tool name, description, endpoint, and HTTP method">
+          <img src="/static/images/tools/api-request/01-base-configuration.png" alt="Vapi Dashboard Base Configuration for the createCoffeeOrder API Request Tool" />
+        </Frame>
+      </Step>
+
+      <Step title="Define the request body">
+        Under **Request Body**, select **Add Property** and add these properties:
+
+        | Property | Type | Required | Configuration |
+        | --- | --- | --- | --- |
+        | `customerName` | String | Yes | Description: `Customer name for the order.` |
+        | `productId` | String | Yes | Allowed values: `coffee-beans`, `tea-sampler`, `ceramic-mug` |
+        | `quantity` | Integer | Yes | Minimum: `1` |
+
+        Set the `productId` description to `The product the customer confirmed.` and the `quantity` description to `The confirmed quantity.` Then enable **Lock schema (no additional properties)**.
+
+        <Frame caption="Define the three model-generated request body properties">
+          <img src="/static/images/tools/api-request/02-request-body.png" alt="Vapi Dashboard Request Body with customerName, productId, and quantity as required properties" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the tool">
+        Select **Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Set your API key">
+        Export your Vapi API key as an environment variable.
+
+        ```bash
+        export VAPI_API_KEY="YOUR_VAPI_API_KEY"
+        ```
+      </Step>
+
+      <Step title="Create the tool">
+        Send the request to the [Create Tool endpoint](/api-reference/tools/create).
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/tool \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "type": "apiRequest",
+            "name": "createCoffeeOrder",
+            "description": "Creates a mock coffee shop order. Use only after the caller confirms their name, product, and quantity. If the request is rejected, explain the error and help the caller correct the order.",
+            "method": "POST",
+            "url": "https://vapi-docs-orders.val.run/",
+            "timeoutSeconds": 20,
+            "body": {
+              "type": "object",
+              "properties": {
+                "customerName": {
+                  "type": "string",
+                  "description": "Customer name for the order."
+                },
+                "productId": {
+                  "type": "string",
+                  "enum": ["coffee-beans", "tea-sampler", "ceramic-mug"],
+                  "description": "The product the customer confirmed."
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "The confirmed quantity."
+                }
+              },
+              "required": ["customerName", "productId", "quantity"],
+              "additionalProperties": false
+            }
+          }'
+        ```
+
+        Copy the `id` from the response. You will use it as `YOUR_TOOL_ID` when you create the assistant.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## 3. Create the assistant
+
+Use this system prompt in either method:
+
+```txt title="System prompt" wordWrap
+You are a friendly coffee shop order assistant.
+
+Available products:
+- House coffee beans: productId coffee-beans, $18 each
+- Tea sampler: productId tea-sampler, $14 each
+- Ceramic mug: productId ceramic-mug, $12 each
+
+Help the caller place one order. Collect their name, product, and positive whole-number quantity. Read the complete order back and get explicit confirmation before calling createCoffeeOrder. Never invent a productId and never call the tool before confirmation.
+
+After a successful tool response, confirm the product, quantity, five-digit order number, and server-calculated total. Never read the internal requestId aloud.
+
+After confirming a successful order, ask whether the caller needs anything else. If they do not, say "Thanks for your order. Goodbye." Do not continue speaking after that closing sentence.
+```
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create a blank assistant">
+        Select **Assistants**, then select **Create Assistant**.
+      </Step>
+
+      <Step title="Configure the assistant">
+        Set **Name** to `Docs Coffee Order Hello World` and **First Message** to:
+
+        ```txt title="First message" wordWrap
+        Thanks for calling the Vapi coffee shop. What would you like to order?
+        ```
+
+        Select OpenAI **GPT-4o Mini Cluster** as the model and Vapi **Clara v2** as the voice. Replace **System Prompt** with the prompt above.
+
+        <Frame caption="Add the first message and coffee-order system prompt">
+          <img src="/static/images/tools/api-request/08-assistant-prompt.png" alt="Vapi Dashboard assistant editor with the coffee-order first message and system prompt" />
+        </Frame>
+      </Step>
+
+      <Step title="Attach the tool">
+        In the assistant's **Tools** section, add `createCoffeeOrder`.
+
+        <Frame caption="Attach createCoffeeOrder to the assistant">
+          <img src="/static/images/tools/api-request/09-attached-tool.png" alt="Vapi Dashboard assistant Tools section with createCoffeeOrder attached" />
+        </Frame>
+      </Step>
+
+      <Step title="Configure how the call ends">
+        In the assistant editor, set **End Call Message** to `Thanks for your order. Goodbye.` Then add `Thanks for your order` to **End Call Phrases**.
+
+        Only the assistant's speech triggers an end call phrase. The phrase omits punctuation so it still matches the closing sentence in the system prompt.
+
+        <Frame caption="Set the assistant's closing message and end call phrase">
+          <img src="/static/images/tools/api-request/10-end-call-settings.png" alt="Vapi Dashboard End Call Message and End Call Phrases configured for the coffee-order assistant" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the assistant">
+        Select **Publish**, review the changes, then select **Quick Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Create the assistant">
+        Replace `YOUR_TOOL_ID` with the tool ID returned in the previous section, then send the request to the [Create Assistant endpoint](/api-reference/assistants/create).
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/assistant \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "name": "Docs Coffee Order Hello World",
+            "firstMessage": "Thanks for calling the Vapi coffee shop. What would you like to order?",
+            "model": {
+              "provider": "openai",
+              "model": "gpt-4o-mini",
+              "toolIds": ["YOUR_TOOL_ID"],
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "You are a friendly coffee shop order assistant.\n\nAvailable products:\n- House coffee beans: productId coffee-beans, $18 each\n- Tea sampler: productId tea-sampler, $14 each\n- Ceramic mug: productId ceramic-mug, $12 each\n\nHelp the caller place one order. Collect their name, product, and positive whole-number quantity. Read the complete order back and get explicit confirmation before calling createCoffeeOrder. Never invent a productId and never call the tool before confirmation.\n\nAfter a successful tool response, confirm the product, quantity, five-digit order number, and server-calculated total. Never read the internal requestId aloud.\n\nAfter confirming a successful order, ask whether the caller needs anything else. If they do not, say \"Thanks for your order. Goodbye.\" Do not continue speaking after that closing sentence."
+                }
+              ],
+              "temperature": 0.2
+            },
+            "voice": {
+              "provider": "vapi",
+              "voiceId": "Clara",
+              "version": "latest"
+            },
+            "endCallMessage": "Thanks for your order. Goodbye.",
+            "endCallPhrases": ["Thanks for your order"]
+          }'
+        ```
+
+        Copy the `id` from the response. You will use it as `YOUR_ASSISTANT_ID` when you connect the phone number.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## 4. Connect the phone number
+
+Open **Phone Numbers** in the [Dashboard](https://dashboard.vapi.ai), then select your existing phone number. Find **Inbound Settings**, choose `Docs Coffee Order Hello World` from the **Assistant** menu, then select **Save**.
+
+If you do not have a number, [request a free Vapi phone number](/free-telephony) before continuing.
+
+## 5. Place a coffee order
+
+Call the phone number and order two bags of house coffee beans. Give the assistant your name, then confirm the complete order when it reads the details back.
+
+The assistant should call the API only after confirmation. It should then read a five-digit order number and the server-calculated total of `$36.00`. When it asks whether you need anything else, say no. The assistant should say its closing sentence and end the call.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configure requests" icon="sliders" href="/tools/api-request/configuration">
+    Add headers, static fields, Liquid values, and authentication.
+  </Card>
+  <Card title="Handle latency and retries" icon="clock" href="/tools/api-request/reliability">
+    Configure timeouts, caller messages, and safe retry behavior.
+  </Card>
+  <Card title="Handle responses and errors" icon="circle-exclamation" href="/tools/api-request/response-handling">
+    Design response contracts and help the assistant recover from failures.
+  </Card>
+  <Card title="Use response data" icon="arrow-right-arrow-left" href="/tools/api-request/response-data">
+    Extract response values and pass them to later tools.
+  </Card>
+  <Card title="End call phrases" icon="phone-slash" href="/assistants/end-call-phrases">
+    Learn how spoken phrases end an assistant's call.
+  </Card>
+</CardGroup>
