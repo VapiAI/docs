@@ -21,10 +21,12 @@ Monitoring is Vapi's automated quality and effectiveness system for voice AI. Yo
 
 ### Monitor categories
 
-- **Technical** tracks system-level failures like API errors, provider outages, and timeouts
-- **Infrastructure** tracks resource utilization, latency, and capacity issues
-- **Effectiveness** tracks assistant performance metrics like task completion and user satisfaction
-- **Compliance** tracks regulatory and policy adherence across conversations
+Categories help you organize and route monitors. Technical and Infrastructure monitors currently share the same trigger options, so the metric either category evaluates is defined by the Insight attached to its trigger. Effectiveness and Compliance monitors use a separate evaluation flow based on call transcripts and structured outputs.
+
+- **Technical** groups issues in your own integrations and configuration, such as API errors, provider outages, and timeouts
+- **Infrastructure** groups platform-level issues, such as capacity and resource limits
+- **Effectiveness** groups assistant performance metrics like task completion and user satisfaction
+- **Compliance** groups regulatory and policy adherence across conversations
 
 ### What you'll build
 
@@ -75,6 +77,12 @@ In this quickstart, you will create a monitor that tracks error rates across you
   assistants have processed calls.
 </Note>
 
+<Warning>
+  Monitoring currently requires retained call data. Organizations using Zero
+  Data Retention (ZDR) do not receive monitor evaluations because the required
+  call logs are not retained.
+</Warning>
+
 ## Step 1: Set up notifiers
 
 Notifiers are alert channels (email, Slack, or webhook) that send notifications when issues are detected. You configure them as credentials in the Dashboard.
@@ -114,6 +122,73 @@ Notifiers are managed as credentials in the Dashboard. Navigate to **Notifiers**
 Once created, each notifier has a credential ID that you reference in your monitor trigger's `alert.credentialIds` array.
   </Tab>
 </Tabs>
+
+## Webhook payload
+
+When a webhook notifier is attached to a trigger, Vapi sends a single `POST` request the moment an issue is created. The body is the same envelope every time, wrapped in a `message` object:
+
+<Tip>
+  Your endpoint should verify that each request actually came from Vapi. Configure authentication directly on the webhook notifier. The Dashboard supports OAuth 2.0 and bearer-token authentication for webhook notifiers.
+</Tip>
+
+```json title="Webhook payload"
+{
+  "message": {
+    "type": "issue.created",
+    "timestamp": 1752574205000,
+    "orgId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "issue": {
+      "id": "e5f6a7b8-c9d0-1234-efab-567890123456",
+      "status": "created",
+      "totalCalls": 150,
+      "failingCalls": 12,
+      "evaluationStartAt": "2025-07-15T09:30:00.000Z",
+      "createdAt": "2025-07-15T10:30:00.000Z"
+    },
+    "monitor": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Error Rate Monitor",
+      "description": "Tracks API and provider errors across all assistants",
+      "category": "technical",
+      "trigger": {
+        "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        "threshold": { "type": "number", "comparator": "gt", "value": 5 },
+        "severity": "error",
+        "insight": {
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "name": "Error count",
+          "type": "text"
+        }
+      }
+    }
+  }
+}
+```
+
+### Field reference
+
+| Field | Meaning |
+| --- | --- |
+| `message.type` | Always `issue.created`. This is the only monitoring event Vapi emits (see [below](#one-webhook-per-issue)). |
+| `message.timestamp` | When the alert was sent, in milliseconds since the Unix epoch. |
+| `message.orgId` | The organization that owns the monitor and issue. |
+| `message.issue.totalCalls` | Calls evaluated in the window. |
+| `message.issue.failingCalls` | Calls that matched the Insight during the evaluation that created the issue. Your failure rate for that evaluation is `failingCalls / totalCalls`. The `callsCount` returned by `GET /monitoring/issue/:id` can increase as later evaluations add affected calls to the active issue. |
+| `message.issue.evaluationStartAt` | Start of the evaluation window. |
+| `message.monitor.category` | `technical`, `infrastructure`, `effectiveness`, or `compliance`. The payload shape is identical across categories, so this field is how you tell them apart. |
+| `message.monitor.trigger.insight.name` | Human-readable name of the metric that breached, for display. |
+| `message.monitor.trigger.insight.id` | Stable ID of the configured Insight. Match on this rather than `name` for routing logic. |
+| `message.monitor.trigger.threshold` | The comparator and value that were exceeded. |
+
+<Note>
+  The webhook reports **only** the breach counts (`totalCalls` and `failingCalls`). It does not include per-call latency (such as p50 or p95), remaining concurrency, or the list of affected calls. To get the individual call IDs behind an issue, call `GET /monitoring/issue/:id` and read the `calls` array (see [Step 3](#step-3-view-issues)).
+</Note>
+
+### One webhook per issue
+
+Vapi sends the webhook once, when the issue is first created. There are no `issue.updated` or `issue.resolved` webhooks. If the problem persists across evaluation windows, Vapi updates the same non-resolved issue with newly affected calls and does not send another webhook. After that issue is resolved, a later threshold breach creates a new issue and sends a new `issue.created` webhook. Acknowledging or resolving an issue happens in the Dashboard or via `PATCH /monitoring/issue/:id` and does not emit a webhook.
+
+By default, delivery is attempted once per notifier. If a backoff plan is configured for the webhook notifier's server, failed requests can be retried. The final delivery result is recorded in the issue's `alerts` array, so a `"failure"` status there means the notification could not be delivered (see [Troubleshooting](#troubleshooting)).
 
 ## Step 2: Create a monitor
 
@@ -584,7 +659,7 @@ curl -X PATCH "https://api.vapi.ai/monitoring/issue/e5f6a7b8-c9d0-1234-efab-5678
 | Analysis returns an error | Ensure the issue has associated calls. Analysis requires call data to identify patterns. |
 | Monitor not evaluating | Check that the `insightId` references a valid Insight. Verify the trigger interval is at least 1 minute. |
 | Wrong calls detected | Review the Insight query that the trigger references. Ensure the monitor targets the correct assistants. |
-| Duplicate issues | Triggers create new issues per evaluation window. This is expected behavior when a problem persists across multiple evaluation periods. |
+| A repeated breach does not create a new issue | A trigger updates the same non-resolved issue across evaluation windows. After you resolve that issue, a later threshold breach can create a new issue. |
 
 <Warning>
   If an alert shows a `"failure"` status in the issue's alerts array, the
