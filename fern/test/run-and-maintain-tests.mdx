@@ -1,0 +1,149 @@
+---
+title: Run and maintain tests
+subtitle: Learn to run tests on a useful cadence, investigate failures, and keep coverage current.
+description: Build a repeatable release and incident workflow with Evals, Simulations, call review, and production monitoring.
+slug: /test/run-and-maintain-tests
+---
+
+## Overview
+
+Tests reduce risk only when your team runs them regularly, investigates failures, and keeps them aligned with the current assistant. Treat your tests as a living record of the decisions and outcomes customers should be able to expect.
+
+## Separate improvement tests from regression tests
+
+Use **improvement tests** to explore difficult behavior the agent cannot handle
+reliably yet. These tests show where to improve, so they do not all need to pass
+before every release.
+
+Use **regression tests** to protect behavior the agent already needs to perform.
+These tests should remain consistently passing. When the agent becomes reliable
+on an improvement test that matters in production, keep it as regression
+coverage.
+
+## Use a repeatable cadence
+
+Run the smallest useful set while you work, then increase coverage as a change gets closer to customers.
+
+| When | What to run | What good looks like |
+| --- | --- | --- |
+| While designing or changing the assistant | Run affected Evals for quick feedback. Follow with Chat Simulations for the journeys the change could affect. | The intended decision works and related conversations still reach the right outcome. |
+| Before a release | Run every test for your critical journeys. Repeat Simulations and include Voice Simulations for customer-facing voice paths. | Results are consistent, with no unexplained failure on a release-blocking requirement. |
+| Immediately after a release | Place a small set of controlled calls through the real phone and tool path. Review their artifacts. | The deployed version behaves as tested, including its audio and integrations. |
+| In production | Review a sample of real calls, respond to [monitoring alerts](/observability/monitoring-quickstart), and add new customer patterns to coverage. | New failures become regression tests instead of recurring incidents. |
+
+Rerun affected tests whenever you change prompts, tools, models, voices, transcribers, call settings, or business rules. A result from an older assistant version doesn't validate the current version.
+
+## Repeat critical tests
+
+AI conversations can take different paths from the same starting point. One passing Simulation shows that one path worked, not that the journey is reliable.
+
+- Use one iteration while you build or debug a Simulation.
+- Repeat release checks based on the impact of failure and how much the result has varied before.
+- Use more iterations for critical journeys and intermittent failures when the extra evidence justifies the time and cost.
+
+Compare the iterations instead of averaging them away. If any iteration violates a critical requirement, treat the behavior as unstable until you understand why. See [reviewing and rerunning Simulation results](/observability/simulations-manage#review-run-results).
+
+Evals use a fixed conversation context, but the assistant's response can still
+vary between runs. An AI judge can vary too. Exact match and regex apply a
+consistent rule to each response, but they don't make the response itself
+consistent. Rerun critical or surprising Evals as separate runs before drawing
+a conclusion.
+
+## Review more than the pass or fail label
+
+Review every failure and sample some passes. An automated evaluator can miss a problem you didn't include in its success criteria.
+
+| Review | Look for |
+| --- | --- |
+| Transcript | The first unexpected decision, a missing question, an incorrect tool call, a confusing response, or a conversation that reached the wrong outcome. |
+| Recording | Misheard words, poor pronunciation, clipped speech, awkward pauses, interruption handling, and turn-taking problems. |
+
+For a Voice Simulation or controlled call, read the transcript and listen to the recording when it's available. The transcript helps you inspect what the assistant decided. The recording tells you what the caller actually experienced. Learn how to [view call transcripts and recordings](/assistants/call-recording#accessing-artifacts).
+
+Periodically check automated criteria and AI judges against conversations that
+informed reviewers agree should pass or fail. If the automated result disagrees,
+revise the criterion or judge before changing the agent.
+
+## Triage failures consistently
+
+Start with the first point where the test and expected behavior diverge. A later error is often only a symptom.
+
+<Steps>
+  <Step title="Confirm the test is still correct">
+    Check that the scenario is realistic, the expected behavior hasn't changed,
+    and the success criteria measure something observable.
+  </Step>
+  <Step title="Find the first divergence">
+    Inspect the transcript, evaluation result, tool activity, and recording when
+    audio is involved.
+  </Step>
+  <Step title="Assign the failure to the right layer">
+    Use the signals below to choose the next owner and test.
+  </Step>
+  <Step title="Verify the fix">
+    Rerun the failing test, then run nearby tests that could be affected by the
+    same change.
+  </Step>
+</Steps>
+
+| Signal | Likely next step |
+| --- | --- |
+| Wrong reply, next action, tool choice, or tool arguments at a known point | Isolate the decision with an Eval. Check the prompt, tool definition, and conversation state. |
+| The conversation takes an unexpected route or misses its final goal | Reproduce the full journey with a Simulation. Check the scenario, assistant instructions, and tool behavior. |
+| The transcript doesn't match what was spoken | Use a Voice Simulation and recording to investigate the transcriber and audio input. |
+| Speech is clipped, slow, hard to understand, or handles interruptions poorly | Use a Voice Simulation, then verify with a controlled real call. Check voice and turn-taking settings. |
+| A request errors or times out | Inspect the call and tool logs. Follow the [debugging guide](/debugging) before changing the test. |
+
+Don't loosen a success criterion or rerun until you get a pass without explaining the failure. Record intermittent failures so the team can track whether a change made them better or worse.
+
+## Turn production issues into regression tests
+
+After you fix a production issue, add the smallest test that would have caught it before release.
+
+| Production issue | Regression coverage |
+| --- | --- |
+| The assistant made the wrong decision at a specific point | Create an [Eval](/observability/evals-quickstart) with the relevant conversation state and expected next response or tool call. |
+| The call failed to reach the right result across several turns | Create a [Simulation](/observability/simulations-quickstart) for that goal and customer behavior. |
+| The problem depended on speech, interruptions, or the phone path | Add a Voice Simulation and keep a controlled real-call check. Monitor the issue in production if automation can't reproduce it reliably. |
+
+Remove personal information from production examples. Use synthetic values and safe test accounts. Mock or disable any tool action that could charge a card, contact a real customer, or make another irreversible change.
+
+## Give every critical journey an owner
+
+Assign one person to each business-critical journey. That owner keeps the expected outcome current and reviews failures. In your team tracker, also record:
+
+- which tests cover the journey
+- when those tests must run
+- which failures block a release
+- who investigates assistant, tool, or platform problems
+
+Update the tests in the same change whenever the business requirement changes. If your team accepts a known failure, document who approved it, why it is safe, and when it will be reviewed again.
+
+## Keep real-call checks and monitoring
+
+Automated tests can't reproduce every carrier route, device, background sound, speaking style, live dependency, or real customer reaction. They also judge only the requirements you define.
+
+Before launch, and after meaningful voice or telephony changes, place controlled calls through the number and integrations customers will use. Use test data, verify inbound and outbound paths that matter, and follow your recording consent and data-handling requirements.
+
+After launch, use [Monitoring](/observability/monitoring-quickstart) to detect changes across real calls and inspect [call artifacts](/assistants/retrieve-call-artifacts) when you investigate. Automated tests show what could work before release. Real-call review and monitoring show what is working now.
+
+<Warning>
+  Don't let a controlled test call trigger production payments, messages, bookings, or other irreversible actions. Use sandbox integrations or dedicated test records.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Plan test coverage" icon="list-check" href="/test/plan-test-coverage">
+    Prioritize customer outcomes, critical decisions, and high-risk behavior.
+  </Card>
+  <Card title="Manage simulations" icon="flask-vial" href="/observability/simulations-manage">
+    Review results, rerun suites, and update Simulation coverage.
+  </Card>
+  <Card title="Evals quickstart" icon="clipboard-check" href="/observability/evals-quickstart">
+    Create and run focused decision checks.
+  </Card>
+  <Card title="Monitoring quickstart" icon="bell" href="/observability/monitoring-quickstart">
+    Detect changes and failures across production calls.
+  </Card>
+</CardGroup>

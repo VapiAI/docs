@@ -1,0 +1,160 @@
+---
+title: Test decisions with Evals
+subtitle: Learn to check the next decision your voice agent makes at a specific point in a conversation.
+description: "Learn how to choose Eval checkpoints, cover decision boundaries, and select the right judge for each voice agent behavior."
+slug: /test/evals-best-practices
+---
+
+## Overview
+
+Evals answer: **At this exact moment, does the agent make the right next decision?**
+
+An Eval provides a mock conversation state, lets your assistant or squad respond at selected checkpoints, and judges the result. Use Evals for decisions such as whether to ask a question, call a tool, transfer a caller, refuse a request, or give a specific kind of answer.
+
+Evals are path dependent: the messages before a checkpoint establish the exact situation being tested. Use [**Test outcomes with Simulations**](/test/simulations-best-practices) when you care about the result of a complete conversation and want the caller and agent to reach it through different valid paths.
+
+<Note>
+  Evals run mock conversations at the text and model layer. They do not test the voice, transcriber, audio quality, or turn-taking behavior. Use a voice Simulation for those checks.
+</Note>
+
+## Test decisions that matter
+
+Prioritize decisions that are frequent, hard to reverse, or costly when wrong:
+
+- **Act or ask:** Does the agent have enough information to complete the task, or should it ask a follow-up question?
+- **Choose a tool:** Does the agent select the right tool and send the right values?
+- **Proceed or stop:** Does the agent meet identity, consent, eligibility, or policy requirements before acting?
+- **Handle a result:** Does the agent react correctly when a tool succeeds, returns no options, or fails?
+- **Transfer or continue:** Does the agent route the caller at the right time and to the right destination?
+- **Say or withhold:** Does the agent provide allowed information and avoid unsupported or restricted claims?
+
+Start with a narrow question. "Does the agent handle appointment booking?" is too broad for one checkpoint. "After the caller provides all required details, does the agent call the booking tool with the agreed time?" is specific enough to diagnose.
+
+## Provide only the context the decision needs
+
+Build the mock conversation up to the moment just before the decision. Include relevant user, assistant, system, and tool messages so the agent sees the same facts and constraints it would have at that point in a real call.
+
+Include:
+
+- Facts already provided by the caller.
+- Questions the agent already asked.
+- Applicable policy or system instructions.
+- Tool results the agent must interpret.
+- Any unresolved ambiguity that should affect the next action.
+
+Remove unrelated turns. Extra context makes the reason for a failure harder to understand and can accidentally change the behavior under test.
+
+## Test both sides of the boundary
+
+For every important action, test when it **should** happen and when it **should not**. This prevents a prompt change from fixing missed actions by triggering the action everywhere.
+
+For an appointment-booking agent, a useful group of Evals looks like this:
+
+| Conversation state | Expected next decision |
+| --- | --- |
+| Identity, date, time, and timezone are known; the slot is available. | Call the booking tool with the agreed details. |
+| The caller gave a date and time but no timezone. | Ask for the timezone; do not book yet. |
+| The caller has not passed required identity verification. | Request verification; do not book yet. |
+| The booking tool reports success with a confirmation number. | Confirm the booking and share the final details. |
+| The booking tool reports an error. | Explain that the booking is not confirmed and offer a safe next step. |
+
+Add cases close to the boundary, not only obvious examples. Ambiguous dates, partial account details, similar tool names, and conflicting requests often reveal more than another straightforward happy path.
+
+## Choose the simplest judge that fits
+
+Evals support exact matching, pattern matching with regular expressions (regex),
+and AI judges. Exact checks can also validate tool calls and their arguments.
+
+| Judge | Use it when | Avoid it when |
+| --- | --- | --- |
+| **Exact match** | The precise tool name, number of calls, argument keys, and values matter. | Several different responses would all be valid. |
+| **Pattern match (regex)** | A response must contain a stable phrase, identifier, or format but other wording may vary. | You need to judge meaning, correctness, or tone. |
+| **AI judge** | The decision can be expressed in several valid ways or requires semantic judgment. | A tool-call or format check can prove the requirement. |
+
+Use exact response text only when the wording itself is a requirement, such as a mandated disclosure. For most customer-facing replies, judge the meaning so harmless wording changes do not break the test.
+
+Give an AI judge one clear pass/fail question. For example:
+
+```text title="AI judge criterion" wordWrap
+Pass only if the assistant says the appointment is not yet confirmed and gives
+the caller a clear next step. Fail if it implies that the booking succeeded.
+```
+
+Avoid broad criteria such as "The response was good." If you care about correctness, policy compliance, and tone, use separate checkpoints or checks so the failure remains actionable.
+
+Test an AI judge against responses that informed reviewers agree should pass and
+fail. If the judge disagrees, refine its criterion before using it as a release
+check.
+
+## Keep each Eval focused
+
+A mock conversation can contain more than one checkpoint, but each checkpoint should test one decision. Give the Eval a name that states the condition and expected behavior, such as:
+
+- `asks for timezone before booking`
+- `does not refund an ineligible order`
+- `transfers urgent safety concern to specialist`
+- `does not confirm after booking tool error`
+
+Focused Evals are easier to review, reuse, and update. They also make it clear whether a change improved one decision while breaking another.
+
+## Turn real failures into regression tests
+
+When a production call contains a wrong decision, use the relevant messages to create an Eval. End the mock context immediately before the mistake, then define the correct next action.
+
+After the first Eval reproduces the failure:
+
+<Steps>
+  <Step title="Add the opposite case">
+    Add a nearby case where the opposite decision is correct.
+  </Step>
+  <Step title="Check the judge">
+    Confirm the judge accepts a known-good response.
+  </Step>
+  <Step title="Fix and retest">
+    Fix the assistant and rerun both cases.
+  </Step>
+  <Step title="Keep the regression coverage">
+    Keep the Evals so the same issue cannot return unnoticed.
+  </Step>
+</Steps>
+
+Do not copy the entire call unless every turn is needed. Preserve the facts that caused the decision and remove customer data that the test does not require.
+
+## Review failures before changing the agent
+
+A failed Eval can mean the agent made the wrong decision, but it can also mean the mock context was incomplete or the judge was too strict. Review the actual response and ask:
+
+- Did the agent have all the information needed to pass?
+- Would two reviewers agree with the expected decision?
+- Did an exact or regex check reject a valid response?
+- Does the AI judge describe one objective clearly?
+
+Fix the test when it does not represent the intended situation. Fix the agent when the failure is fair. Keep the expected decision stable unless the product or policy requirement changes.
+
+## Avoid common pitfalls
+
+| Pitfall | Better approach |
+| --- | --- |
+| Using an Eval to prescribe an entire successful conversation | Use a Simulation for the end-to-end outcome. |
+| Testing only when an action should happen | Add a paired case where the agent must wait, ask, refuse, or choose another action. |
+| Exact-matching ordinary conversation | Use regex for stable formats or an AI judge for meaning. |
+| Giving an AI judge several vague goals | Use one explicit, binary criterion at a time. |
+| Omitting prior tool results or caller details | Provide the state that makes the expected decision possible. |
+| Treating a passing Eval as proof of voice quality | Validate the same critical flow with a voice Simulation. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Evals quickstart" icon="rocket" href="/observability/evals-quickstart">
+    Create mock conversations, checkpoints, and judges.
+  </Card>
+  <Card title="Advanced eval testing" icon="flask" href="/observability/evals-advanced">
+    Explore complex messages, tools, runs, and automation.
+  </Card>
+  <Card title="Plan test coverage" icon="list-check" href="/test/plan-test-coverage">
+    Prioritize customer outcomes, critical decisions, and high-risk behavior.
+  </Card>
+  <Card title="Run and maintain tests" icon="arrows-rotate" href="/test/run-and-maintain-tests">
+    Turn failures into regression coverage and keep tests current.
+  </Card>
+</CardGroup>
