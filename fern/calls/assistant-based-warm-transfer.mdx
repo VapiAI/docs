@@ -1,6 +1,6 @@
 ---
 title: Configure assistant-based warm transfer
-subtitle: Let an AI assistant introduce a caller before connecting a transfer.
+subtitle: Let an AI assistant introduce a caller before connecting a transfer
 description: Configure an assistant-based warm transfer in the Vapi Dashboard or API, including operator prompts, fallback behavior, summaries, custom audio, and testing.
 slug: calls/assistant-based-warm-transfer
 ---
@@ -15,7 +15,7 @@ Before you configure the transfer, prepare:
 
 - A Vapi assistant that handles phone calls
 - A destination phone number in E.164 format, for example, `+14155550100`
-- A private Vapi API key for the curl method
+- A [private Vapi API key](/security-and-privacy/api-keys) for the curl method
 - A publicly accessible MP3 or WAV file if you want custom hold or completion audio
 
 ## How assistant-based warm transfer works
@@ -58,7 +58,7 @@ Create a reusable transfer call tool, configure a phone-number destination, and 
       </Step>
     </Steps>
 
-    The Dashboard exposes the transfer mode, operator message, fallback plan, and summary plan. Use the API to configure a custom transfer-assistant model, prompt, timeouts, voice, hold audio, or completion audio.
+    The Dashboard exposes the transfer mode, operator message, fallback plan, and summary plan. Use the API to configure a custom transfer-assistant [model](/providers/model/overview), prompt, timeouts, voice, hold audio, or completion audio.
   </Tab>
 
   <Tab title="curl">
@@ -144,7 +144,7 @@ Create a reusable transfer call tool, configure a phone-number destination, and 
 
 ## Configure transfer behavior
 
-Use these fields to control the transfer assistant and the two call legs.
+Use these fields to control the transfer assistant and the two call legs. See the [Create Tool API reference](/api-reference/tools/create) for complete field definitions and configuration options.
 
 | Field | Controls | Default or constraint |
 | --- | --- | --- |
@@ -156,6 +156,7 @@ Use these fields to control the transfer assistant and the two call legs.
 | `holdAudioUrl` | MP3 or WAV audio played to the customer while on hold | Default hold audio |
 | `transferCompleteAudioUrl` | MP3 or WAV audio played to the destination after the introduction | No custom completion audio |
 | `fallbackPlan` | Customer message and end-call behavior when the transfer fails | Default fallback behavior when omitted |
+| `summaryPlan` | Operator summary content and generation timeout | Configure with `enabled`, `messages`, and `timeoutSeconds` |
 | `contextEngineeringPlan` | Conversation context provided to the transfer assistant | All previous messages |
 
 `firstMessageMode` also accepts `assistant-waits-for-user` and `assistant-speaks-first-with-model-generated-message`. Use the model-generated option when the introduction should adapt to the preceding conversation.
@@ -165,9 +166,15 @@ Use these fields to control the transfer assistant and the two call legs.
 Keep the transfer assistant's system message focused on the operator conversation. Define when to use each built-in tool:
 
 - Call `transferSuccessful` after a human operator confirms that they will take the call
-- Call `transferCancel` for voicemail, a busy signal, no answer, or an operator who declines
+- Call `transferCancel` for voicemail, a busy signal, no answer, an IVR or automated hold queue, or an operator who declines
 - Answer questions about the transfer or give a brief customer summary
 - Avoid unrelated conversation and complete the decision before `maxDurationSeconds`
+
+For example:
+
+```text title="System prompt"
+Call transferCancel if the destination plays an IVR message, automated queue announcement, or hold message. Call transferSuccessful only after a live operator responds and accepts the call.
+```
 
 The transfer assistant receives the previous conversation by default. Set `contextEngineeringPlan.type` to `none` when the operator must not receive that context, or use `lastNMessages` to limit it.
 
@@ -180,7 +187,7 @@ Place a test call and trigger the transfer. Confirm that:
 3. Accepting the call connects the customer and operator.
 4. Declining the call or reaching voicemail returns the customer to the original assistant or ends the call according to `fallbackPlan`.
 
-In **Logs → Call Logs**, inspect the original call, destination call leg, transcript, and ended reason. An `assistant-forwarded-call` ended reason confirms that the transfer was initiated; it does not confirm that the destination answered.
+In **Logs → Call Logs**, inspect the original call, destination call leg, transcript, and ended reason. To retrieve these details through the API, see the [Get Call API reference](/api-reference/calls/get). An `assistant-forwarded-call` ended reason confirms that the transfer was initiated; it does not confirm that the destination answered.
 
 ## Troubleshooting
 
@@ -189,7 +196,8 @@ In **Logs → Call Logs**, inspect the original call, destination call leg, tran
 | The customer is transferred without an operator conversation | The destination uses a blind or non-assistant warm-transfer mode | Set `transferPlan.mode` to `warm-transfer-experimental`. |
 | The transfer assistant never speaks | `firstMessage` is omitted or `firstMessageMode` waits for the operator | Set `firstMessage` and use `assistant-speaks-first`, or let the operator speak first. |
 | The transfer assistant talks but never connects the parties | The prompt does not require `transferSuccessful` | Tell the transfer assistant to call `transferSuccessful` immediately after the operator accepts. |
-| Voicemail or a declined transfer connects anyway | The prompt does not define cancellation conditions | Require `transferCancel` for voicemail, busy signals, no answer, and declined transfers. |
+| Voicemail, an IVR, a hold queue, or a declined transfer connects anyway | The prompt does not define cancellation conditions | Require `transferCancel` for non-human destinations, busy signals, no answer, and declined transfers. |
+| The customer hears summary text instead of the fallback message | The transfer produced unexpected `warm-transfer-experimental` behavior | Record the affected call ID, the message the customer heard, whether `summaryPlan` was enabled, and the `endedReason`, then contact support. |
 | The customer hears the wrong audio | Hold audio was configured as a tool message | Put customer hold audio in `transferPlan.holdAudioUrl`. Use `transferCompleteAudioUrl` for audio played to the destination after the introduction. |
 | The customer cannot continue after a failed transfer | `fallbackPlan.endCallEnabled` is `true` | Set it to `false` so the original assistant remains on the call. |
 | The transfer ends during a long operator interaction | A duration or silence timeout is too short | Increase `maxDurationSeconds` or `silenceTimeoutSeconds` within the supported ranges. |
@@ -198,7 +206,7 @@ Check **Logs → API Logs** for validation and transfer errors. If Vapi initiate
 
 ## API reference
 
-The [Create Tool API reference](/api-reference/tools/create) documents the public transfer call destination and transfer-plan fields. This guide shows the additional transfer-assistant configuration used with `warm-transfer-experimental`.
+The [Create Tool API reference](/api-reference/tools/create) documents transfer destinations and transfer-plan fields. This guide shows the additional transfer-assistant configuration used with `warm-transfer-experimental`.
 
 ## Related guides
 
