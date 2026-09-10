@@ -7,7 +7,9 @@ description: Set up automated Vapi Evals to test assistants and squads with mock
 
 ## Overview
 
-This quickstart guide will help you set up automated testing for your AI assistants and squads. In just a few minutes, you'll create mock conversations, define expected behaviors, and validate your agents work correctly before production.
+This quickstart shows how to check an assistant or squad's next decision using a mock conversation. You'll define the context, choose a judge, and inspect the result.
+
+Evals run at the text and model layer. They don't test speech recognition, audio quality, or turn-taking. Use [Simulations](/test/simulations-best-practices) for complete conversations, then controlled real calls for the phone path and live integrations.
 
 For operator-focused guidance on choosing checkpoints and writing durable
 checks, see [test decisions with Evals](/test/evals-best-practices).
@@ -37,13 +39,15 @@ Evals help you maintain quality and catch issues early:
 
 ### What you'll build
 
-An evaluation suite for an appointment booking assistant that tests:
+Focused Evals for an appointment-booking assistant that test:
 
-- Greeting and initial response validation
-- Tool call execution with specific arguments
+- Asking for missing information
+- Tool call requests with specific arguments
 - Response pattern matching with regex
 - Semantic validation using AI judges
-- Multi-turn conversation flows
+- Decisions at selected conversation checkpoints
+
+These are separate saved Evals, not a native Eval suite. Group and run them yourself or use [custom automation](/observability/evals-advanced#cicd-integration).
 
 ## Prerequisites
 
@@ -63,7 +67,7 @@ An evaluation suite for an appointment booking assistant that tests:
 
 ## Step 1: Create your first evaluation
 
-Define a mock conversation to test your assistant's greeting behavior.
+Start with a booking assistant whose policy requires a timezone before booking. This example checks whether it asks for the missing timezone. Include prior messages establishing any other prerequisites, such as verified identity, so asking for the timezone is the appropriate next decision. Choose an equivalent decision from your own assistant's requirements if it doesn't handle bookings.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -75,26 +79,26 @@ Define a mock conversation to test your assistant's greeting behavior.
       </Step>
 
       <Step title="Configure basic settings">
-        1. **Name**: Enter "Greeting Test"
-        2. **Description**: Add "Verify assistant greets users appropriately"
+        1. **Name**: Enter "Asks for missing timezone"
+        2. **Description**: Add "Ask for the timezone before booking"
         3. **Type**: Automatically set to "chat.mockConversation"
       </Step>
 
       <Step title="Add conversation turns">
         1. Click **Add Message**
         2. Select **User** message type
-        3. Enter content: "Hello"
+        3. Enter content: "I want to book for January 20, 2027 at 2pm."
         4. Click **Add Message** again
         5. Select **Assistant** message type
         6. Click **Enable Evaluation** toggle
-        7. Select **Exact Match** as judge type
-        8. Enter expected content: "Hello! How can I help you today?"
+        7. Select **AI Judge**, then choose OpenAI and `gpt-4.1`
+        8. Enter: `Context: {{messages}}. Evaluate the last assistant message. Pass only if it asks the caller to specify their timezone before proceeding. Fail if it assumes a timezone or proceeds to book. Respond only with pass or fail.`
         9. Click **Save Evaluation**
       </Step>
     </Steps>
 
     <Tip>
-    Your evaluation is now saved. You can run it against any assistant or squad.
+    Run this Eval against assistants or squads with the same booking requirement. Before relying on the judge, check that it accepts a response asking for the timezone and rejects one that chooses a timezone without asking.
     </Tip>
 
   </Tab>
@@ -105,19 +109,26 @@ curl -X POST "https://api.vapi.ai/eval" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Greeting Test",
-    "description": "Verify assistant greets users appropriately",
+    "name": "Asks for missing timezone",
+    "description": "Ask for the timezone before booking",
     "type": "chat.mockConversation",
     "messages": [
       {
         "role": "user",
-        "content": "Hello"
+        "content": "I want to book for January 20, 2027 at 2pm."
       },
       {
         "role": "assistant",
         "judgePlan": {
-          "type": "exact",
-          "content": "Hello! How can I help you today?"
+          "type": "ai",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4.1",
+            "messages": [{
+              "role": "system",
+              "content": "Context: {{messages}}. Evaluate the last assistant message. Pass only if it asks the caller to specify their timezone before proceeding. Fail if it assumes a timezone or proceeds to book. Respond only with pass or fail."
+            }]
+          }
         }
       }
     ]
@@ -131,8 +142,8 @@ curl -X POST "https://api.vapi.ai/eval" \
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "orgId": "org-123",
   "type": "chat.mockConversation",
-  "name": "Greeting Test",
-  "description": "Verify assistant greets users appropriately",
+  "name": "Asks for missing timezone",
+  "description": "Ask for the timezone before booking",
   "messages": [...],
   "createdAt": "2024-01-15T09:30:00Z",
   "updatedAt": "2024-01-15T09:30:00Z"
@@ -160,7 +171,7 @@ Execute the evaluation against your assistant or squad.
     <Steps>
       <Step title="Open your evaluation">
         1. Navigate to **Evals** in the sidebar
-        2. Click on "Greeting Test" from your evaluations list
+        2. Click on "Asks for missing timezone" from your evaluations list
       </Step>
 
       <Step title="Select target and run">
@@ -189,6 +200,7 @@ curl -X POST "https://api.vapi.ai/eval/run" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
+    "type": "eval",
     "evalId": "550e8400-e29b-41d4-a716-446655440000",
     "target": {
       "type": "assistant",
@@ -219,6 +231,8 @@ curl -X GET "https://api.vapi.ai/eval/run/eval-run-123" \
 
 For complete API details, see [Create Eval Run](/api-reference/eval/run) and [Get Eval Run](/api-reference/eval/get-run).
 
+The POST response confirms submission, not success. Poll the GET endpoint until `status` is `ended`, with a deadline. Then check `endedReason` and the results. See the [complete CI example](/observability/evals-advanced#cicd-integration).
+
   </Tab>
 </Tabs>
 
@@ -247,11 +261,11 @@ When all checks pass, you'll see:
       "messages": [
         {
           "role": "user",
-          "content": "Hello"
+          "content": "I want to book for January 20, 2027 at 2pm."
         },
         {
           "role": "assistant",
-          "content": "Hello! How can I help you today?",
+          "content": "What timezone should I use for your appointment?",
           "judge": {
             "status": "pass"
           }
@@ -283,14 +297,14 @@ When validation fails, you'll see details:
       "messages": [
         {
           "role": "user",
-          "content": "Hello"
+          "content": "I want to book for January 20, 2027 at 2pm."
         },
         {
           "role": "assistant",
-          "content": "Hi there! What can I do for you?",
+          "content": "I will use Pacific time and book that now.",
           "judge": {
             "status": "fail",
-            "failureReason": "Expected exact match: 'Hello! How can I help you today?' but got: 'Hi there! What can I do for you?'"
+            "failureReason": "The assistant assumed a timezone instead of asking."
           }
         }
       ]
@@ -317,23 +331,23 @@ Validate that your assistant calls functions with correct arguments.
 
 ### Basic tool call validation
 
-Test appointment booking with exact argument matching:
+Test appointment booking with exact argument matching. This fixture uses an explicit date and an assistant configured to use `America/Los_Angeles` for bookings. Its `bookAppointment` tool accepts `date` and `time`. Supply any other required identity, availability, or policy context for your assistant before the checkpoint. Use a date your test environment accepts and keep the request and expected arguments in sync.
 
 <Tabs>
   <Tab title="Dashboard">
     1. Create new evaluation: "Appointment Booking Test"
-    2. Add user message: "Book me an appointment for next Monday at 2pm"
+    2. Add user message: "Book me an appointment for January 20, 2027 at 2pm Pacific time"
     3. Add assistant message with evaluation enabled
     4. Select **Exact Match** judge type
     5. Click **Add Tool Call**
     6. Enter function name: "bookAppointment"
     7. Add arguments:
-       - `date`: "2025-01-20"
+       - `date`: "2027-01-20"
        - `time`: "14:00"
     8. Add tool response message:
        - Type: **Tool**
        - Content: `{"status": "success", "confirmationId": "APT-12345"}`
-    9. Add final assistant message to verify confirmation
+    9. Add a final assistant message with the AI judge below to check how it reports the mocked success
     10. Save evaluation
   </Tab>
 
@@ -348,7 +362,7 @@ curl -X POST "https://api.vapi.ai/eval" \
     "messages": [
       {
         "role": "user",
-        "content": "Book me an appointment for next Monday at 2pm"
+        "content": "Book me an appointment for January 20, 2027 at 2pm Pacific time"
       },
       {
         "role": "assistant",
@@ -357,7 +371,7 @@ curl -X POST "https://api.vapi.ai/eval" \
           "toolCalls": [{
             "name": "bookAppointment",
             "arguments": {
-              "date": "2025-01-20",
+              "date": "2027-01-20",
               "time": "14:00"
             }
           }]
@@ -370,8 +384,15 @@ curl -X POST "https://api.vapi.ai/eval" \
       {
         "role": "assistant",
         "judgePlan": {
-          "type": "regex",
-          "content": ".*confirmed.*APT-12345.*"
+          "type": "ai",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4.1",
+            "messages": [{
+              "role": "system",
+              "content": "Context: {{messages}}. Pass only if the last assistant message accurately reports the successful tool result and shares confirmation ID APT-12345. Otherwise fail. Respond only with pass or fail."
+            }]
+          }
         }
       }
     ]
@@ -385,6 +406,8 @@ For API details, see [Create Eval](/api-reference/eval/eval-controller-create).
 
 ### Tool call validation modes
 
+The mock response doesn't create an appointment. Verify external calendar state separately using a sandbox integration. Add a paired Eval where the tool returns an error and the assistant must not claim success, plus a case where missing information should prevent the tool call.
+
 **Exact match - Full validation:**
 
 ```json
@@ -395,7 +418,7 @@ For API details, see [Create Eval](/api-reference/eval/eval-controller-create).
       {
         "name": "bookAppointment",
         "arguments": {
-          "date": "2025-01-20",
+          "date": "2027-01-20",
           "time": "14:00"
         }
       }
@@ -421,7 +444,7 @@ Validates both function name AND all argument values exactly.
 }
 ```
 
-Validates only that the function was called (arguments can vary).
+Validates only that the function was called (arguments can vary). Use this only when the name alone is the requirement. Keep argument checks when a wrong date, account ID, or other value would make the action incorrect.
 
 **Multiple tool calls:**
 
@@ -432,11 +455,11 @@ Validates only that the function was called (arguments can vary).
     "toolCalls": [
       {
         "name": "checkAvailability",
-        "arguments": { "date": "2025-01-20" }
+        "arguments": { "date": "2027-01-20" }
       },
       {
         "name": "bookAppointment",
-        "arguments": { "date": "2025-01-20", "time": "14:00" }
+        "arguments": { "date": "2027-01-20", "time": "14:00" }
       }
     ]
   }
@@ -480,7 +503,7 @@ Matches: "Hello, I can help...", "Hi I'll help...", "Hey let me help..."
 }
 ```
 
-Matches any confirmation message with appointment ID format.
+This checks a format, not booking success. It also matches "Your appointment is not confirmed. Failed request reference APT-12345." Use an AI judge to check meaning and tool checks to validate the requested action.
 
 **Date patterns:**
 
@@ -608,7 +631,7 @@ Output format: respond with exactly one word: pass or fail
 - `{{messages[-1]}}` - The last assistant message only
 </Note>
 
-### Example: Evaluate helpfulness and tone
+### Example: Check for a clarifying question
 
 <Tabs>
   <Tab title="Dashboard">
@@ -626,7 +649,7 @@ curl -X POST "https://api.vapi.ai/eval" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Helpfulness Test",
+    "name": "Asks what account help is needed",
     "type": "chat.mockConversation",
     "messages": [
       {
@@ -642,7 +665,7 @@ curl -X POST "https://api.vapi.ai/eval" \
             "model": "gpt-4o",
             "messages": [{
               "role": "system",
-              "content": "You are an LLM-Judge. Evaluate ONLY the last assistant message: {{messages[-1]}}.\n\nInclude context: {{messages}}\n\nDecision rule:\n- PASS if ALL pass criteria are met AND NO fail criteria are triggered.\n- Otherwise FAIL.\n\nPass criteria:\n- Response acknowledges the user request\n- Response offers specific help or next steps\n- Tone is professional and friendly\n\nFail criteria (any triggers FAIL):\n- Response is rude or dismissive\n- Response ignores the user request\n- Response provides no actionable information\n\nOutput format: respond with exactly one word: pass or fail"
+              "content": "Context: {{messages}}. Evaluate only the last assistant message: {{messages[-1]}}. Pass if it asks what account issue the caller needs help with. Fail if it assumes a specific issue without clarification. Respond only with pass or fail."
             }]
           }
         }
@@ -757,6 +780,8 @@ Provide fallback responses to continue testing even when validation fails:
 
 ### Example: Multi-step with exit control
 
+This example assumes the assistant is required to say "This call may be recorded." exactly. Don't exact-match ordinary conversational wording. The later override supplies context for debugging; it doesn't turn a failed checkpoint into a pass or prove that the booking happened.
+
 <Tabs>
   <Tab title="Dashboard">
     1. Create evaluation with multiple conversation turns
@@ -784,7 +809,7 @@ curl -X POST "https://api.vapi.ai/eval" \
         "role": "assistant",
         "judgePlan": {
           "type": "exact",
-          "content": "I can help you book an appointment."
+          "content": "This call may be recorded."
         },
         "continuePlan": {
           "exitOnFailureEnabled": true
@@ -792,7 +817,7 @@ curl -X POST "https://api.vapi.ai/eval" \
       },
       {
         "role": "user",
-        "content": "Monday at 2pm"
+        "content": "January 20, 2027 at 2pm Pacific time"
       },
       {
         "role": "assistant",
@@ -802,10 +827,10 @@ curl -X POST "https://api.vapi.ai/eval" \
         },
         "continuePlan": {
           "exitOnFailureEnabled": false,
-          "contentOverride": "Booking confirmed for Monday at 2pm.",
+          "contentOverride": "Booking confirmed for January 20, 2027 at 2pm Pacific time.",
           "toolCallsOverride": [{
             "name": "bookAppointment",
-            "arguments": {"date": "2025-01-20", "time": "14:00"}
+            "arguments": {"date": "2027-01-20", "time": "14:00"}
           }]
         }
       }
@@ -825,25 +850,27 @@ curl -X POST "https://api.vapi.ai/eval" \
 
 Validate multi-turn interactions that simulate real user conversations.
 
-### Complete booking flow example
+### Fixed-path booking checkpoints
+
+This example checks selected decisions along a supplied path. It isn't an end-to-end booking test. Use a Simulation to explore different paths to the outcome. Use the tool and timezone setup from Step 4, and supply the caller's test email in the mock context before expecting `sendEmail`.
 
 <Tabs>
   <Tab title="Dashboard">
-    Create a comprehensive test:
+    Check each selected decision:
     
     1. **Turn 1 - Initial request:**
        - User: "I need to schedule an appointment"
        - Assistant evaluation: AI judge checking acknowledgment
     
     2. **Turn 2 - Provide details:**
-       - User: "Next Monday at 2pm"
+       - User: "January 20, 2027 at 2pm Pacific time"
        - Assistant evaluation: Exact match on tool call `bookAppointment`
     
     3. **Turn 3 - Tool response:**
        - Tool: `{"status": "success", "confirmationId": "APT-12345"}`
     
     4. **Turn 4 - Confirmation:**
-       - Assistant evaluation: Regex matching confirmation with ID
+       - Assistant evaluation: AI judge checking that the reply accurately reports the tool result and confirmation ID
     
     5. **Turn 5 - Follow-up:**
        - User: "Can I get that via email?"
@@ -856,8 +883,8 @@ curl -X POST "https://api.vapi.ai/eval" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Complete Booking Flow",
-    "description": "Test full appointment booking conversation",
+    "name": "Booking checkpoints",
+    "description": "Check decisions along a fixed booking path",
     "type": "chat.mockConversation",
     "messages": [
       {
@@ -880,7 +907,7 @@ curl -X POST "https://api.vapi.ai/eval" \
       },
       {
         "role": "user",
-        "content": "Next Monday at 2pm"
+        "content": "January 20, 2027 at 2pm Pacific time"
       },
       {
         "role": "assistant",
@@ -889,7 +916,7 @@ curl -X POST "https://api.vapi.ai/eval" \
           "toolCalls": [{
             "name": "bookAppointment",
             "arguments": {
-              "date": "2025-01-20",
+              "date": "2027-01-20",
               "time": "14:00"
             }
           }]
@@ -902,8 +929,15 @@ curl -X POST "https://api.vapi.ai/eval" \
       {
         "role": "assistant",
         "judgePlan": {
-          "type": "regex",
-          "content": ".*confirmed.*APT-12345.*"
+          "type": "ai",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4.1",
+            "messages": [{
+              "role": "system",
+              "content": "Context: {{messages}}. Pass only if the last assistant message accurately reports the successful tool result and shares confirmation ID APT-12345. Otherwise fail. Respond only with pass or fail."
+            }]
+          }
         }
       },
       {
@@ -975,15 +1009,12 @@ Inject system prompts mid-conversation to test dynamic behavior changes:
 ```
 
 <Tip>
-  **Multi-turn testing tips:** - Keep conversations focused (5-10 turns for most
-  tests) - Use exit-on-failure for early turns to save time - Test one primary
-  flow per evaluation - Mix judge types (exact, regex, AI) for comprehensive
-  validation - Include tool responses to simulate real interactions
+  Keep only the context needed for each decision and choose the simplest judge that proves its requirement. Include relevant tool results. Use exit-on-failure when later checkpoints depend on an earlier one passing. Use a Simulation for the complete conversation outcome.
 </Tip>
 
 ## Step 9: Manage evaluations
 
-List, update, and organize your evaluation suite.
+List and update individual Evals. Organize groups in your own tracker or automation.
 
 ### List all evaluations
 
@@ -1185,7 +1216,7 @@ For API details, see [List Eval Runs](/api-reference/eval/list-runs).
       "messages": [
         {
           "role": "user",
-          "content": "Book an appointment for Monday at 2pm"
+          "content": "Book an appointment for January 20, 2027 at 2pm Pacific time"
         },
         {
           "role": "assistant",
@@ -1194,7 +1225,7 @@ For API details, see [List Eval Runs](/api-reference/eval/list-runs).
             {
               "name": "bookAppointment",
               "arguments": {
-                "date": "2025-01-20",
+                "date": "2027-01-20",
                 "time": "2:00 PM"
               }
             }
@@ -1225,56 +1256,7 @@ For API details, see [List Eval Runs](/api-reference/eval/list-runs).
 
 ### Multiple validation types in one eval
 
-Combine exact, regex, and AI judges for comprehensive testing:
-
-```json
-{
-  "messages": [
-    {
-      "role": "user",
-      "content": "Hello"
-    },
-    {
-      "role": "assistant",
-      "judgePlan": {
-        "type": "exact",
-        "content": "Hello! How can I help you?"
-      }
-    },
-    {
-      "role": "user",
-      "content": "Book appointment for Monday"
-    },
-    {
-      "role": "assistant",
-      "judgePlan": {
-        "type": "regex",
-        "content": ".*(Monday|next week).*"
-      }
-    },
-    {
-      "role": "user",
-      "content": "Thanks for your help"
-    },
-    {
-      "role": "assistant",
-      "judgePlan": {
-        "type": "ai",
-        "model": {
-          "provider": "openai",
-          "model": "gpt-4o",
-          "messages": [
-            {
-              "role": "system",
-              "content": "PASS if response is polite and acknowledges thanks. Output: pass or fail"
-            }
-          ]
-        }
-      }
-    }
-  ]
-}
-```
+Choose a judge for each checkpoint's requirement, not to include every judge type in one test. Use exact matching for required tool arguments or mandated wording, regex for a stable format, and an AI judge for a decision's meaning. Split independent questions into separate checks so a failure is easy to explain. Use a Simulation when you want to test a complete journey through different valid paths.
 
 ### Test squad handoffs
 
