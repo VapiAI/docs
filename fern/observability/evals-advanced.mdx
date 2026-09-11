@@ -75,6 +75,8 @@ Ensure fixes and updates don't break existing functionality.
 
 **Purpose:** Validate that known issues stay fixed and features keep working.
 
+Supply the context that makes the expected action valid. The minimal date example below assumes a date-only booking tool with no other prerequisites. For relative dates, fix the reference date and timezone in the mock context. Add a paired case where missing or ambiguous information requires clarification instead of a tool call.
+
 <Tabs>
   <Tab title="Dashboard">
     1. Create evaluation named with "Regression: " prefix
@@ -84,7 +86,7 @@ Ensure fixes and updates don't break existing functionality.
     
     Example:
     - Name: "Regression: Date Parsing Bug #1234"
-    - Description: "Verify dates like '3/15' parse correctly after bug fix"
+    - Description: "Verify an explicitly dated request uses the correct booking date"
   </Tab>
 
   <Tab title="cURL">
@@ -94,12 +96,12 @@ curl -X POST "https://api.vapi.ai/eval" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Regression: Date Parsing Bug #1234",
-    "description": "Verify dates like 3/15 are parsed correctly after fix",
+    "description": "Verify an explicitly dated request uses the correct booking date",
     "type": "chat.mockConversation",
     "messages": [
       {
         "role": "user",
-        "content": "Book me for 3/15"
+        "content": "Book me for March 15, 2027"
       },
       {
         "role": "assistant",
@@ -108,7 +110,7 @@ curl -X POST "https://api.vapi.ai/eval" \
           "toolCalls": [{
             "name": "bookAppointment",
             "arguments": {
-              "date": "2025-03-15"
+              "date": "2027-03-15"
             }
           }]
         }
@@ -260,8 +262,10 @@ Test boundary conditions and unusual inputs.
 
 - **Input boundaries:** Empty, maximum length, special characters
 - **Data formats:** Invalid dates, malformed phone numbers, unusual names
-- **Conversation patterns:** Interruptions, topic changes, contradictions
-- **Timing:** Very fast responses, long pauses, timeout scenarios
+- **Conversation decisions:** Topic changes, contradictions, requests to stop
+- **Mock tool results:** Error or timeout messages and the next safe response
+
+Evals don't exercise audio or elapsed-time behavior. A mocked timeout message tests the assistant's response to that message, not a real timeout. Use Voice Simulations and recordings to investigate speech and turn-taking, then controlled calls to verify the real phone path. Synthetic callers don't reproduce every interruption, silence, or background-noise condition reliably.
 
 ## Testing patterns
 
@@ -306,7 +310,7 @@ Validate ideal user journeys where everything works correctly.
     },
     {
       "role": "user",
-      "content": "Next Monday at 2pm please"
+      "content": "January 20, 2027 at 2pm Pacific time please"
     },
     {
       "role": "assistant",
@@ -316,7 +320,7 @@ Validate ideal user journeys where everything works correctly.
           {
             "name": "bookAppointment",
             "arguments": {
-              "date": "2025-01-20",
+              "date": "2027-01-20",
               "time": "14:00"
             }
           }
@@ -330,8 +334,15 @@ Validate ideal user journeys where everything works correctly.
     {
       "role": "assistant",
       "judgePlan": {
-        "type": "regex",
-        "content": ".*(confirmed|booked).*APT-12345.*"
+        "type": "ai",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4.1",
+          "messages": [{
+            "role": "system",
+            "content": "Context: {{messages}}. Pass only if the last assistant message accurately reports the successful tool result and shares confirmation ID APT-12345. Otherwise fail. Respond only with pass or fail."
+          }]
+        }
       }
     }
   ]
@@ -420,7 +431,7 @@ Test how your assistant handles failures gracefully.
 }
 ```
 
-**API timeout simulation:**
+**Response to a mocked timeout message:**
 
 ```json
 {
@@ -584,7 +595,7 @@ Test behavior at or near rate limits:
 </Card>
 
   <Card title="Maintainable complexity" icon="layer-group">
-    Keep evaluations focused (5-10 turns max).
+    Include only the context and checkpoints needed to test the decision.
     
     Split complex scenarios into multiple targeted tests.
   </Card>
@@ -600,14 +611,14 @@ Choose the right judge type for each scenario:
     - Critical business data (confirmation IDs, totals, dates)
     - Tool call validation with specific arguments
     - Compliance-required exact wording
-    - Success/failure status messages
+    - Fixed response text required by your policy
     
-    **Example:** Booking confirmation ID must be exact
+    **Example:** A policy requires this exact disclosure
     ```json
     {
       "judgePlan": {
         "type": "exact",
-        "content": "Your confirmation ID is APT-12345"
+        "content": "This call may be recorded."
       }
     }
     ```
@@ -636,10 +647,9 @@ Choose the right judge type for each scenario:
     - Semantic meaning validation
     - Tone and sentiment evaluation
     - Contextual appropriateness
-    - Complex multi-factor criteria
-    - Helpfulness assessment
+    - One clearly defined decision with several valid phrasings
     
-    **Example:** Validate polite rejection
+    **Example:** Check rejection of an unsupported request
     ```json
     {
       "judgePlan": {
@@ -649,7 +659,7 @@ Choose the right judge type for each scenario:
           "model": "gpt-4o",
           "messages": [{
             "role": "system",
-            "content": "PASS if response politely declines without being rude and offers alternative. Output: pass or fail"
+            "content": "Context: {{messages}}. Pass if the last assistant message declines the unsupported request. Fail if it agrees to carry it out. Output only pass or fail."
           }]
         }
       }
@@ -692,7 +702,7 @@ other Evals run; your own automation must handle that decision.
    either manually or in your own automation.
 
 3. **Keep conversations focused:**
-   Aim for 5-10 turns maximum. Split longer scenarios into multiple tests.
+   Keep only the context needed for the decision. Use separate Evals for independent decisions and Simulations for complete conversation outcomes.
 
 4. **Batch related tests:**
    If you need to run a group in sequence, keep the Eval IDs in your own script
@@ -773,111 +783,76 @@ Don't delete tests immediately when features change:
 
 ### CI/CD integration
 
-Automate evaluation runs in your deployment pipeline.
+This workflow runs saved Evals against an existing staging assistant. Add it to your own repository, not to your production deployment until you have verified its results.
 
-**Basic workflow:**
+Set the repository secret `VAPI_API_KEY` and repository variables `STAGING_ASSISTANT_ID` and `REQUIRED_EVAL_IDS` (space-separated Eval IDs). Deploy the intended assistant configuration to staging before running it. This example checks saved staging state; it does not deploy a pull request's prompt changes.
+
+To make this a release gate, run the job after your staging update and require it to pass before promoting the same configuration to production.
 
 ```yaml
 # .github/workflows/test-assistant.yml
-name: Test Assistant Changes
+name: Check required Evals
 
 on:
-  pull_request:
-    paths:
-      - "assistants/**"
-      - "prompts/**"
+  workflow_dispatch:
 
 jobs:
   run-evals:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VAPI_API_KEY: ${{ secrets.VAPI_API_KEY }}
+      STAGING_ASSISTANT_ID: ${{ vars.STAGING_ASSISTANT_ID }}
+      REQUIRED_EVAL_IDS: ${{ vars.REQUIRED_EVAL_IDS }}
     steps:
-      - name: Run critical evals
+      - name: Run and check required Evals
+        shell: bash
         run: |
-          # Run smoke tests
-          curl -X POST "https://api.vapi.ai/eval/run" \
-            -H "Authorization: Bearer ${{ secrets.VAPI_API_KEY }}" \
-            -d '{"evalId": "$SMOKE_TEST_ID", "target": {...}}'
+          set -euo pipefail
+          : "${VAPI_API_KEY:?Set VAPI_API_KEY}"
+          : "${STAGING_ASSISTANT_ID:?Set STAGING_ASSISTANT_ID}"
+          : "${REQUIRED_EVAL_IDS:?Set REQUIRED_EVAL_IDS}"
+          read -r -a eval_ids <<< "$REQUIRED_EVAL_IDS"
+          (("${#eval_ids[@]}" > 0))
 
-          # Check results
-          # Fail build if tests fail
+          for eval_id in "${eval_ids[@]}"; do
+            payload=$(jq -n --arg id "$eval_id" --arg target "$STAGING_ASSISTANT_ID" \
+              '{type:"eval", evalId:$id, target:{type:"assistant", assistantId:$target}}')
+            run=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 30 \
+              -H "Authorization: Bearer $VAPI_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$payload" https://api.vapi.ai/eval/run)
+            run_id=$(jq -er '.id | select(type == "string" and length > 0)' <<< "$run")
+            deadline=$((SECONDS + 300))
+
+            while [[ $(jq -r '.status' <<< "$run") != ended ]]; do
+              if ((SECONDS >= deadline)); then
+                echo "Timed out waiting for Eval $eval_id (run $run_id)"
+                exit 1
+              fi
+              sleep 2
+              run=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 30 \
+                -H "Authorization: Bearer $VAPI_API_KEY" \
+                "https://api.vapi.ai/eval/run/$run_id")
+            done
+
+            if ! jq -e '
+              .endedReason == "mockConversation.done" and
+              (.results | type == "array" and length > 0 and
+                all(.[]; .status == "pass"))
+            ' <<< "$run" > /dev/null; then
+              echo "Required Eval $eval_id failed or ended abnormally (run $run_id)"
+              exit 1
+            fi
+            echo "Required Eval $eval_id passed (run $run_id)"
+          done
 ```
 
-**Advanced patterns:**
+The example waits up to five minutes per Eval, plus any in-flight HTTP request. Adjust the deadlines for your workload. A timeout is a failed check, not a pass; inspect the run before retrying. The workflow doesn't cancel a remote run when it stops waiting.
 
-<AccordionGroup>
-  <Accordion title="Staging environment validation">
-    Run full eval suite against staging before production deploy:
-    
-    ```bash
-    # Run all evals against staging assistant
-    for eval_id in $EVAL_IDS; do
-      run_result=$(curl -X POST "https://api.vapi.ai/eval/run" \
-        -H "Authorization: Bearer $VAPI_API_KEY" \
-        -d "{\"evalId\": \"$eval_id\", \"target\": {\"type\": \"assistant\", \"assistantId\": \"$STAGING_ASSISTANT_ID\"}}")
-      
-      # Check if passed
-      status=$(echo $run_result | jq -r '.results[0].status')
-      if [ "$status" != "pass" ]; then
-        echo "Eval $eval_id failed!"
-        exit 1
-      fi
-    done
-    ```
-  </Accordion>
+Keep required regression Evals separate from improvement tests. Block release on any unexplained failure in a required check, including execution errors. Report improvement results separately so they don't dilute critical failures in an overall pass rate.
 
-  <Accordion title="Parallel test execution">
-    Run multiple evals concurrently to speed up CI:
-    
-    ```bash
-    # Run evals in parallel
-    for eval_id in $EVAL_IDS; do
-      (curl -X POST "https://api.vapi.ai/eval/run" \
-        -H "Authorization: Bearer $VAPI_API_KEY" \
-        -d "{\"evalId\": \"$eval_id\", ...}" > results_$eval_id.json) &
-    done
-    wait
-    
-    # Aggregate results
-    for result_file in results_*.json; do
-      # Check each result
-    done
-    ```
-  </Accordion>
-
-{" "}
-
-<Accordion title="Quality gates">
-  Block deployment if test pass rate falls below threshold: ```bash # Calculate
-  pass rate total_tests=10 passed_tests=$(grep -c '"status":"pass"'
-  all_results.json) pass_rate=$((passed_tests * 100 / total_tests)) if [
-  $pass_rate -lt 95 ]; then echo "Pass rate $pass_rate% below threshold 95%"
-  exit 1 fi ```
-</Accordion>
-
-  <Accordion title="Scheduled regression runs">
-    Run full regression suite nightly:
-    
-    ```yaml
-    # .github/workflows/nightly-regression.yml
-    on:
-      schedule:
-        - cron: '0 2 * * *'  # 2 AM daily
-    
-    jobs:
-      regression-suite:
-        runs-on: ubuntu-latest
-        steps:
-          - name: Run regression tests
-            run: ./scripts/run-regression-suite.sh
-          
-          - name: Notify on failures
-            if: failure()
-            run: |
-              # Send Slack notification
-              # Create GitHub issue
-    ```
-  </Accordion>
-</AccordionGroup>
+One passing run isn't proof of reliability. Repeat critical or surprising Evals and investigate variation. For scheduled or parallel execution, retain the same completion and result checks for every run. Grouping, scheduling, and repetitions are your automation's responsibility, not a native Eval-suite feature. Add repeated Simulations and controlled calls to your [release checks](/test/run-and-maintain-tests).
 
 ## Advanced troubleshooting
 
@@ -950,19 +925,13 @@ jobs:
 {" "}
 
 <Accordion title="Tool calls don't match">
-  **Problem:** Arguments have different types or extra fields **Solutions:** -
-  Check argument types: `"14:00"` (string) vs `14` (number) - Use partial
-  matching: omit `arguments` to match only function name - Normalize data
-  formats in tool implementation
+  Check whether the expected arguments match the tool's contract and the facts in the conversation. For example, `"14:00"` and `14` aren't interchangeable if the tool expects a time string. Fix the assistant when its arguments are wrong; fix the test when its expectation is wrong. Omit `arguments` only when the tool name alone is the requirement. Don't drop checks for dates, account IDs, or other important values just to get a pass.
 </Accordion>
 
 {" "}
 
 <Accordion title="AI judge inconsistent results">
-  **Problem:** Same response sometimes passes, sometimes fails **Solutions:** -
-  Make criteria more specific and binary - Add explicit examples of pass/fail
-  cases in prompt - Use temperature=0 for deterministic evaluation - Switch to
-  regex if pattern-based validation works
+  Give the judge one explicit pass/fail question and calibrate it against responses that reviewers agree should pass or fail. Lower temperature may reduce variation, but doesn't guarantee identical results. Rerun critical or surprising checks and review disagreements. Use exact matching or regex only when a fixed value or format proves the requirement; use separate checks for independent requirements such as correctness and tone.
 </Accordion>
 
 {" "}
@@ -1015,18 +984,7 @@ When tests fail inconsistently:
 
 **Progressive validation:**
 
-Build up complexity gradually:
-
-```json
-// Step 1: Verify basic response
-{"judgePlan": {"type": "regex", "content": ".+"}}
-
-// Step 2: Verify contains keyword
-{"judgePlan": {"type": "regex", "content": ".*appointment.*"}}
-
-// Step 3: Verify exact format
-{"judgePlan": {"type": "exact", "content": "Appointment confirmed"}}
-```
+Use a non-empty-response check only to diagnose basic setup. Then restore the check that proves the requirement: the correct tool arguments, the response to a tool error, or another intended decision. Keywords or the phrase "Appointment confirmed" don't prove a booking succeeded. Don't use weakened diagnostic checks as release gates.
 
 ## Troubleshooting reference
 
@@ -1045,7 +1003,7 @@ Build up complexity gradually:
 <Note>
   **When an eval fails, check:** - [ ] `endedReason` is "mockConversation.done"
   - [ ] Assistant works correctly in manual testing - [ ] Tool endpoints are
-  accessible - [ ] Validation criteria match actual behavior - [ ] Regex
+  accessible - [ ] Validation criteria match intended requirements - [ ] Regex
   patterns are properly escaped - [ ] AI judge prompts are specific and binary -
   [ ] Arguments match expected types (string vs number) - [ ] API keys and
   permissions are valid - [ ] No rate limits or quota issues
@@ -1120,7 +1078,7 @@ Build up complexity gradually:
     **Performance:**
 
     - Exit early on critical failures
-    - Keep conversations focused (5-10 turns)
+    - Keep only the context needed for each decision
     - Batch related tests together
 
     **Maintenance:**
