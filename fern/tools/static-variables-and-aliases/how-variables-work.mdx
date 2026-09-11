@@ -1,0 +1,85 @@
+---
+title: How tool variables work
+subtitle: Understand the two parameters fields and the trust tiers that classify where a value came from
+description: Compare a tool's function.parameters schema against its top-level parameters array, and classify every variable source with Vapi's three-tier trust model.
+slug: tools/static-variables-and-aliases/how-variables-work
+---
+
+A tool has two different fields called parameters, and they do close to opposite things. This page explains which is which, then classifies every value that can reach a tool call by how much you can trust where it came from.
+
+## The naming distinction that matters most
+
+Tools have **two** fields called "parameters." They look similar and mean opposite things:
+
+| Field | Who fills it | Visible to the LLM? | Use for |
+|-------|--------------|---------------------|---------|
+| `function.parameters` (JSON Schema) | The LLM at runtime | **Yes** -- shipped to the model in the tools list | Values the model should infer or that the caller will say (intent, name, item to order) |
+| `parameters` (top-level array on the tool) | You at config time, resolved server-side at fulfill time | **No** -- never sent to the model | Values your backend or Vapi's signaling layer already knows (caller-ID, called number, account ID, call ID, timestamps) |
+
+The decision rule:
+
+> **Could a malicious caller speak a value that ends up here?** If the answer is "yes if I rely on the LLM to fill it," the field belongs in the top-level `parameters` array, not in `function.parameters`.
+
+If you find yourself adding a field under `function.parameters.properties` in order to "tell the LLM about" something your backend already knows, stop -- you're exposing that field to the model. Move it to the top-level `parameters` array instead. The LLM cannot see, name, or override values defined there.
+
+## The variable bag
+
+Liquid templates in static parameters and other tool fields resolve against a **variable bag** -- a key/value object the platform builds at call start and updates during the call. Not every entry in the bag is equally trustworthy. Use this table to decide which variables are safe to use as a security boundary.
+
+### Tier 1 -- Server-trusted (safe for static `parameters`)
+
+Populated from signaling, config, the validated API call that initiated the call, or the server clock. The LLM has no write path to any of these during the conversation.
+
+| Variable | Source |
+|----------|--------|
+| `{{ customer.number }}` | SIP From / Twilio From (inbound); validated outbound API payload |
+| `{{ customer.sipUri }}` | SIP signaling |
+| `{{ customer.name }}`, `{{ customer.email }}`, `{{ customer.extension }}` | Validated outbound API payload (only if you set them server-side) |
+| `{{ phoneNumber.number }}` | The Vapi number that received or placed the call |
+| `{{ phoneNumber.id }}`, `{{ phoneNumber.provider }}`, `{{ phoneNumber.name }}` | DB record |
+| `{{ transport.callSid }}`, `{{ transport.provider }}` | Twilio / Vonage / Vapi transport layer |
+| `{{ call.id }}` | Server-generated UUID at call start |
+| `{{ call.type }}`, `{{ call.status }}`, `{{ call.startedAt }}`, `{{ call.assistantId }}` | Server-set call state |
+| `{{ assistant.id }}`, `{{ assistant.name }}` | Active assistant binding (immutable mid-call for the running assistant) |
+| `{{ now }}`, `{{ currentDateTime }}`, `{{ date }}`, `{{ time }}`, `{{ year }}`, `{{ month }}`, `{{ day }}` | Server clock at fulfill time |
+| Any custom key set in `assistantOverrides.variableValues` at call start | Validated API call payload that initiated the call |
+
+### Tier 2 -- Conversation-derived (DO NOT use as a security boundary)
+
+These are present in the bag for templating convenience but contain user speech.
+
+| Variable | Why unsafe |
+|----------|------------|
+| `{{ messages }}` | Includes user transcripts verbatim |
+| `{{ transcript }}` | Same |
+| `{{ prompt }}` | Trusted at call start, but if you interpolate user input into it, the resolved prompt is no longer trusted |
+
+### Tier 3 -- LLM- or conversation-derived (NEVER use as a security boundary)
+
+| Variable | Why unsafe |
+|----------|------------|
+| Variables produced by `variableExtractionPlan` aliases | Only as trusted as the tool that produced them. Aliases extracted from a server-trusted apiRequest tool keyed on `{{ customer.number }}` are safe. Aliases extracted from a tool whose response was shaped by user-spoken input are not. |
+| Handoff-tool-extracted variables (`variableExtractionPlan.schema` on a handoff destination) | Run by a dedicated LLM extraction pass against the conversation transcript -- LLM-derived by construction |
+| Handoff arguments (`function.parameters` filled by the LLM at handoff time) | Filled by the model from the conversation -- LLM-derived |
+
+### Setting trusted custom data at call start
+
+If you have server-known data that isn't signaling-derived -- for example, an account ID you looked up by reverse-lookup before initiating an outbound call -- inject it once at call creation time:
+
+```http title="Inject server-trusted custom data at call start"
+POST /call
+{
+  "phoneNumberId": "...",
+  "customer": { "number": "+15551234567" },
+  "assistantId": "...",
+  "assistantOverrides": {
+    "variableValues": {
+      "accountId":         "acct_abc123",
+      "loyaltyTier":       "platinum",
+      "verifiedAtBackend": true
+    }
+  }
+}
+```
+
+These keys are now in Tier 1 of the bag for the entire call. Reference them as `{{ accountId }}`, `{{ loyaltyTier }}`, etc. in any tool's static `parameters`. They are server-trusted because *your backend*, not the LLM, set them.

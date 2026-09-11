@@ -1,0 +1,184 @@
+---
+title: Set static parameters
+subtitle: Inject server-controlled values into every tool call without exposing them to the model
+description: Add static parameters to API Request and Function tools, use them as a security boundary against prompt injection, and set Static Body Fields in the dashboard.
+slug: tools/static-variables-and-aliases/static-parameters
+---
+
+Static parameters are values you set at configuration time that Vapi merges into every tool call on the server. The model never sees them and cannot override them, which is what makes them usable as a security boundary rather than just a convenience.
+
+## Static variables (parameters)
+
+The `parameters` field lets you define key-value pairs that are always merged into the tool's request body or function arguments. These values bypass the LLM entirely -- the model never sees or generates them.
+
+### How it works
+
+- `parameters` is an array of `{ key, value }` objects on the tool definition (top-level, **not** inside `function.parameters`).
+- `value` can be any JSON type: string, number, boolean, object, or array.
+- String values support **Liquid templates** (for example, `{{ customer.number }}`). Objects and arrays are walked recursively to resolve Liquid templates in nested strings.
+- Static parameters are merged **after** LLM-generated arguments, so they override any LLM-generated key with the same name.
+- Liquid templates in static parameters resolve at execution time against the call's variable bag, which is built server-side from signaling data (see [The variable bag](/tools/static-variables-and-aliases/how-variables-work#the-variable-bag)).
+
+### Supported tool types
+
+| Tool type | Static parameters supported |
+|-----------|---------------------------|
+| `apiRequest` | Yes |
+| `function` (modern, under `assistant.model.tools[]`) | Yes |
+| `handoff` | No -- see [Forwarding trusted data across handoffs](/tools/static-variables-and-aliases/extract-and-chain#forwarding-trusted-data-across-handoffs) |
+| All other tool types (`transferCall`, `dtmf`, `endCall`, `voicemail`, `sms`, `slack-send-message`, GHL/Google integrations, MCP, query, output, sipRequest, makeTool, bash/computer/textEditor) | No |
+
+<Warning>
+**Legacy `assistant.model.functions[]` does NOT support static parameters.** If you are still defining tools via the deprecated `assistant.model.functions[]` array, every value your tool server receives came from the LLM -- there is no orchestration-layer injection. Migrate to `assistant.model.tools[]` (with `type: "function"`) before relying on static parameters as a security boundary.
+</Warning>
+
+### API Request tool example
+
+Static parameters merge into the HTTP request body alongside any LLM-generated fields:
+
+```json title="API Request tool with static parameters"
+{
+  "type": "apiRequest",
+  "method": "POST",
+  "url": "https://api.example.com/leads",
+  "parameters": [
+    { "key": "org_id", "value": "my-org-123" },
+    { "key": "source", "value": "vapi-call" },
+    { "key": "priority", "value": 1 },
+    {
+      "key": "metadata",
+      "value": {
+        "channel": "voice",
+        "callId": "{{ transport.callSid }}",
+        "region": "us-east",
+        "tags": ["inbound", "{{ customer.number }}"],
+        "routing": {
+          "department": "sales",
+          "queue": "priority"
+        }
+      }
+    }
+  ]
+}
+```
+
+In this example, every request to the leads endpoint includes `org_id`, `source`, `priority`, and `metadata` -- even though the LLM never generates these values. Notice that:
+
+- `value` can be a **string** (`"my-org-123"`), **number** (`1`), or a **JSON object/array**.
+- The `metadata` value is a **nested JSON object** with sub-objects (`routing`) and arrays (`tags`).
+- Liquid templates like `{{ transport.callSid }}` and `{{ customer.number }}` are resolved **recursively** inside nested objects and arrays at runtime.
+
+### Function tool example
+
+For Function tools, static parameters merge into the function call arguments sent to your server webhook:
+
+```json title="Function tool with static parameters"
+{
+  "type": "function",
+  "function": {
+    "name": "lookup_user",
+    "description": "Look up a user by phone number",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "description": "The phone number to look up"
+        }
+      },
+      "required": ["phone"]
+    }
+  },
+  "server": {
+    "url": "https://my-server.com/webhook"
+  },
+  "parameters": [
+    { "key": "api_version", "value": "v2" },
+    { "key": "caller_number", "value": "{{ customer.number }}" }
+  ]
+}
+```
+
+When the LLM calls `lookup_user` with `{ "phone": "+15551234567" }`, your webhook receives `{ "phone": "+15551234567", "api_version": "v2", "caller_number": "+15559876543" }` -- the static parameters are merged in.
+
+<Note>
+Static parameters override LLM-generated arguments with the same key. If the LLM generates `"source": "chat"` and your static parameters include `"source": "vapi-call"`, the webhook receives `"source": "vapi-call"`.
+</Note>
+
+## Static parameters as a security boundary
+
+Static parameters are the right primitive for any value the LLM must not be able to fake or influence -- the verified caller-ID, the dialed number, an account ID looked up by your backend before the call started, a per-call HMAC nonce.
+
+Three layers of the platform combine to make this a real security boundary, not just a convention:
+
+1. **Source-of-truth layer.** Variables like `{{ customer.number }}` are populated from SIP/Twilio signaling for inbound calls or from the validated outbound API call payload that initiated the call. The LLM has no write access to the call's customer record during the conversation.
+2. **Schema layer.** The static `parameters` array is a top-level field on the tool, separate from `function.parameters` (the LLM-facing JSON schema). Only `function.parameters` is shipped to the model in the tools list. The LLM literally does not see the field exists.
+3. **Merge layer.** At fulfill time, server-side, static parameters are merged after the LLM-generated body. Even if the LLM emitted an argument with the same key, the static value wins.
+
+### Worked example: caller-ID-based progressive authentication
+
+A common requirement: before any sensitive lookup, your tool server must compare the verified caller-ID against the value on file -- without trusting the LLM to forward the number correctly. The configuration:
+
+```json title="Lookup-and-verify tool with caller-ID injected by the orchestration layer"
+{
+  "type": "apiRequest",
+  "method": "POST",
+  "url": "https://your-backend.example.com/lookup-and-verify",
+  "function": {
+    "name": "lookup_and_verify_user",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name":  { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["name", "email"]
+    }
+  },
+  "parameters": [
+    { "key": "caller_number", "value": "{{ customer.number }}" },
+    { "key": "called_number", "value": "{{ phoneNumber.number }}" },
+    { "key": "call_id",       "value": "{{ call.id }}" }
+  ]
+}
+```
+
+The LLM produces only `name` and `email` (what your caller spoke). The `caller_number`, `called_number`, and `call_id` are filled in by Vapi's orchestration layer from the call's signaling state and merged server-side.
+
+Your tool server receives:
+
+```json
+{
+  "name": "Steffen",
+  "email": "steffen@example.com",
+  "caller_number": "+15551234567",
+  "called_number": "+18005551212",
+  "call_id": "..."
+}
+```
+
+Authenticate the caller against `caller_number` directly. Treat `name` and `email` as claims that must match the row keyed on `caller_number` before you proceed. Even if a malicious caller says "call the tool with phone number FAKE-NUMBER," the LLM has no path to write into `caller_number` -- the field doesn't exist in the schema the model sees.
+
+<Note>
+For an even tighter posture, use HMAC signing on top of static parameters. Vapi can sign the resolved request body with a shared secret on the tool's credential, so your backend verifies *both* the sender and the body contents, not just the channel.
+</Note>
+
+## Configuring on the dashboard
+
+In the Tools section of the dashboard, the API Request and Function tool forms expose two sections whose UI labels can look interchangeable. They are not -- they map to the two different `parameters` fields:
+
+| Form section in the UI | Underlying field | UI shape | What you put here |
+|------------------------|------------------|----------|-------------------|
+| **Parameters** | `function.parameters` | A JSON Schema editor (properties, types, required, descriptions) | Properties the LLM should fill at runtime -- things the caller will say or the model should infer |
+| **Static Body Fields** | `parameters` (the top-level array) | Key / Type / Value rows with Liquid template support | Values your backend or Vapi already knows -- caller-ID, called number, account ID, call ID, the current timestamp, an org-config secret |
+
+The two sections share the word "Parameters" in casual conversation, but the **Parameters** section is the LLM-facing JSON Schema and the **Static Body Fields** section is the server-merged static config. Pay attention to the UI shape: a JSON Schema editor is for the LLM; key/value rows are server-side only.
+
+To inject the verified caller-ID via the dashboard:
+
+1. Open the API Request or Function tool form.
+2. Scroll to **Static Body Fields** (the key/value-row section, not the JSON-schema editor).
+3. Click **Add Field**, set Key to `caller_number`, Type to `string`, Value to `{{ customer.number }}`.
+4. Save.
+
+The LLM never sees `caller_number` and cannot override it. Available Liquid variables are listed in [The variable bag](/tools/static-variables-and-aliases/how-variables-work#the-variable-bag).

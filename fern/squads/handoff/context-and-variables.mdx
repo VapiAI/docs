@@ -1,0 +1,261 @@
+---
+title: Pass context and variables
+subtitle: Control which conversation history and extracted variables reach the next assistant
+description: Choose how much conversation history the receiving assistant sees, and extract variables so structured data follows the caller into the next assistant.
+slug: squads/handoff/context-and-variables
+---
+
+When a call moves to another assistant, you control what travels with it. Context engineering decides how much conversation history the receiving assistant can see, and variable extraction captures specific values and forwards them explicitly.
+
+## Context engineering
+
+Control what conversation history transfers to the next assistant or squad. Set **contextEngineeringPlan** on any destination.
+
+### All messages (default)
+
+Transfers the entire conversation history:
+
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "all"
+  }
+}
+```
+
+### Last N messages
+
+Transfers only the most recent N messages. Use this to limit context size for performance:
+
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "lastNMessages",
+    "maxMessages": 10
+  }
+}
+```
+
+### User and assistant messages only
+
+Transfers only user and assistant messages, filtering out system messages, tool calls, and tool results. This gives the next assistant a clean view of the conversation without internal implementation details:
+
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "userAndAssistantMessages"
+  }
+}
+```
+
+<Tip>
+Use `userAndAssistantMessages` when the destination assistant does not need to see tool call history or system prompts from the previous assistant. This produces a cleaner context and reduces token usage.
+</Tip>
+
+### Previous assistant messages
+
+Transfers only the conversation history from **before** the current assistant's session. This excludes the current assistant's own messages, tool calls, and tool results entirely, forwarding only the context that existed when the current assistant first received the call.
+
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "previousAssistantMessages"
+  }
+}
+```
+
+This mode is particularly useful when the current assistant handles sensitive data (such as payment card numbers in a PCI-compliant flow). By excluding the current assistant's session from the forwarded context, you prevent sensitive tool call results from reaching the next assistant.
+
+<Tip>
+Use `previousAssistantMessages` when handing off from a sensitive assistant (e.g., one collecting payment data) to a non-sensitive assistant. It preserves useful conversation context from earlier in the call while ensuring the sensitive assistant's tool call data is not forwarded. See the [PCI Compliance - Handoff Context Configuration](/security-and-privacy/pci#handoff-context-configuration) guide for a complete walkthrough.
+</Tip>
+
+### No context
+
+Starts the next assistant with a blank conversation:
+
+```json
+{
+  "contextEngineeringPlan": {
+    "type": "none"
+  }
+}
+```
+
+## Variable extraction
+
+Extract and pass structured data during handoff. Variables extracted by the Handoff tool are available to all subsequent assistants in the conversation chain. When a handoff extracts a variable with the same name as an existing one, the new value replaces the previous value.
+
+### Extraction via `variableExtractionPlan` in destinations
+
+This extraction method makes an OpenAI structured output request to extract variables. Use this when you have multiple destinations, each with different variables that need to be extracted.
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantName": "order-processing-assistant",
+          "description": "customer is ready to place an order",
+          "variableExtractionPlan": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "customerName": {
+                  "type": "string",
+                  "description": "Full name of the customer"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email",
+                  "description": "Customer's email address"
+                },
+                "productIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "List of product IDs customer wants to order"
+                },
+                "shippingAddress": {
+                  "type": "object",
+                  "properties": {
+                    "street": { "type": "string" },
+                    "city": { "type": "string" },
+                    "state": { "type": "string" },
+                    "zipCode": { "type": "string" }
+                  }
+                }
+              },
+              "required": ["customerName", "productIds"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Variable access patterns
+
+Once extracted, variables are accessible using Liquid template syntax (`{{variableName}}`). The access pattern depends on the schema structure:
+
+| Schema type | Access pattern | Example |
+|-------------|---------------|---------|
+| Simple property | `{{propertyName}}` | `{{customerName}}` |
+| Nested object | `{{object.property}}` | `{{name.first}}`, `{{name.last}}` |
+| Array item | `{{array[index]}}` | `{{zipCodes[0]}}`, `{{zipCodes[1]}}` |
+| Array of objects | `{{array[index].property}}` | `{{people[0].name}}`, `{{people[0].age}}` |
+| Nested array | `{{array[index].nestedArray[index]}}` | `{{people[0].zipCodes[1]}}` |
+
+<Note>
+Top-level object properties are extracted as direct global variables. For example, a schema with properties `name` and `age` produces `{{name}}` and `{{age}}` -- not `{{root.name}}`.
+</Note>
+
+### Variable aliases
+
+Use **aliases** to create additional variables derived from extracted values. Aliases support Liquid template syntax for transformations and compositions.
+
+```json
+{
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "Customer's first name"
+        },
+        "lastName": {
+          "type": "string",
+          "description": "Customer's last name"
+        },
+        "company": {
+          "type": "string",
+          "description": "Customer's company name"
+        }
+      }
+    },
+    "aliases": [
+      {
+        "key": "fullName",
+        "value": "{{firstName}} {{lastName}}"
+      },
+      {
+        "key": "greeting",
+        "value": "Hello {{firstName}}, welcome to {{company}}!"
+      },
+      {
+        "key": "customerCity",
+        "value": "{{addresses[0].city}}"
+      }
+    ]
+  }
+}
+```
+
+Each alias creates a new variable accessible as `{{key}}` during the call and stored in `call.artifact.variableValues` after the call. Alias keys must start with a letter and contain only letters, numbers, or underscores (max 40 characters).
+
+### Extraction via `tool.function`
+
+You can also extract variables through the LLM tool call parameters (in addition to sending these parameters to your server in a `handoff-destination-request` for dynamic handoffs). Include the **destination** parameter with the assistant names or IDs in `enum` -- Vapi uses this to determine where to hand off the call. The `destination` parameter itself is not extracted as a variable. Add `destination` and all other required variables to the schema's `required` array.
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantName": "order-processing-assistant",
+          "description": "customer is ready to place an order"
+        }
+      ],
+      "function": {
+        "name": "handoff_to_order_processing_assistant",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "type": "string",
+              "description": "The destination to handoff the call to.",
+              "enum": ["order-processing-assistant"]
+            },
+            "customerName": {
+              "type": "string",
+              "description": "Full name of the customer"
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Customer's email address"
+            },
+            "productIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of product IDs customer wants to order"
+            },
+            "shippingAddress": {
+              "type": "object",
+              "properties": {
+                "street": { "type": "string" },
+                "city": { "type": "string" },
+                "state": { "type": "string" },
+                "zipCode": { "type": "string" }
+              }
+            }
+          },
+          "required": ["destination", "customerName", "email"]
+        }
+      }
+    }
+  ]
+}
+```
