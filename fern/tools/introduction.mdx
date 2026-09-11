@@ -1,115 +1,65 @@
 ---
-title: Introduction to Tools
-subtitle: Extend your assistant's capabilities with powerful function calling tools
+title: Tools
+subtitle: Give an assistant the ability to act during a call, from transferring to looking up data
+description: Learn what a Vapi tool is, how a tool call flows between the model, Vapi, and your server, which tool types exist, and the configuration every tool shares.
 slug: tools
-description: Extend Vapi assistants with tools that transfer calls, fetch external data, and trigger actions, using built-in default tools or custom tools you create.
 ---
 
-[**Tools**](/api-reference/tools/create) allow your assistant to take actions beyond just conversation. They enable your assistant to perform tasks like transferring calls, accessing external data, or triggering actions in your application. Tools can be either built-in default tools provided by Vapi or custom tools that you create. Tools are also [versioned](/assistants/versioning). When you configure an assistant, you choose whether it uses a specific version of a tool or always the latest.
+A tool is a capability an assistant can invoke during a conversation to do something beyond talking: transfer the call, look up a customer record, book an appointment, or end the call. You define the tools an assistant is allowed to use, and the model decides when to use them.
 
-There are three types of tools available:
+Tools are configured in an assistant's `tools` array, either in the Dashboard's Tools section or through the API. A tool created in the Dashboard can be reused across multiple assistants, and tools are [versioned](/assistants/versioning), so an assistant can pin a specific version or always track the latest.
 
-1. **Default Tools**: Built-in functions provided by Vapi for common operations like call transfers and control.
-2. **Custom Tools**: Your own functions that can be called by the assistant to interact with your systems via webhooks.
-3. **Integration Tools**: Pre-built integrations with platforms like [Make](https://www.make.com/en/integrations/vapi) and GoHighLevel (GHL) that let you trigger automated workflows via voice.
+## How a tool call works
 
-<Info>
-  Tools are configured as part of your assistant's model configuration. You can find the complete API reference [here](/api-reference/tools/create-tool).
-</Info>
+Every tool call follows the same four steps, whatever the tool type:
 
-## Available Tools
+1. **The model decides.** Based on the conversation and the tool's name and description, the model chooses to call a tool and generates the arguments defined by its input schema.
+2. **Vapi resolves the call.** Vapi merges in any [static parameters](/tools/static-variables-and-aliases) you configured, which the model never sees and cannot override, then checks the [rejection plan](/tools/tool-rejection-plan) to confirm the call is allowed.
+3. **The tool executes.** What happens here depends on the type. Vapi may send an HTTP request directly, POST a `tool-calls` webhook to your server, emit an event to the browser, or perform a built-in action such as transferring the call.
+4. **The result returns.** The assistant receives the result and can speak it to the caller. Tools can also be configured to run asynchronously, so the assistant continues without waiting.
 
-<CardGroup cols={2}>
-  <Card 
-    title="Default Tools" 
-    icon="gear" 
-    href="/tools/default-tools"
-  >
-    Built-in tools for call control, transfers, and basic operations
-  </Card>
-  <Card 
-    title="Custom Tools" 
-    icon="screwdriver-wrench" 
-    href="/tools/custom-tools"
-  >
-    Create your own webhook-based tools to extend assistant capabilities
-  </Card>
-  <Card 
-    title="Make & GHL Tools" 
-    icon="puzzle-piece" 
-    href="/tools/GHL"
-  >
-    Import Make scenarios and GHL workflows as voice-activated tools
-  </Card>
-</CardGroup>
+Because the model controls both *when* a tool runs and the arguments it receives, validate any caller-influenced value at the destination before using it for a sensitive action.
 
-## Integration Tools
+## Tool types
 
-With Make and GHL integrations, you can:
-- Import existing Make scenarios and GHL workflows directly into Vapi
-- Trigger automated workflows using voice commands
-- Connect your voice AI to hundreds of apps and services
-- Automate complex business processes through voice interaction
+| Type | What it does |
+| --- | --- |
+| [Built-in tools](/tools/default-tools) | Actions Vapi provides out of the box: transfer a call, end a call, send an SMS, dial keypad digits, or make an API request |
+| [API Request tool](/tools/api-request) | Calls an ordinary HTTPS endpoint directly, with a configurable URL, method, headers, and JSON body |
+| [Function tools](/tools/custom-tools) | Sends Vapi's `tool-calls` webhook to a server you control, so your code decides what happens |
+| [Transfer Call tool](/tools/transfer-call) | Routes a live call to a phone number or SIP URI |
+| [Handoff tool](/squads/handoff) | Moves a call from one assistant to another, carrying context and extracted variables |
+| [Voicemail tool](/tools/voicemail-tool) | Lets the assistant decide what to do when it reaches a voicemail system |
+| [Client-side tools](/tools/client-side-websdk) | Runs in the browser through the Web SDK, with no server URL |
+| [Query tool](/knowledge-base/using-query-tool) | Searches a [knowledge base](/knowledge-base) and returns matching content |
+| [MCP tools](/tools/mcp) | Connects to an MCP server so the assistant can use tools resolved at runtime |
+| [Integrations](/tools/integrations) | Prebuilt connections to Google Calendar, Google Sheets, Slack, and GoHighLevel |
 
-Common use cases include:
-- Booking appointments via voice
-- Updating CRM records during calls
-- Triggering email or SMS follow-ups
-- Processing orders and payments
-- Managing customer support tickets
+If you are deciding between calling an API directly and running your own logic, see [When to use API Request or Function tools](/tools/api-request-vs-function).
 
-## Key Features
+## Configuration shared by every tool
+
+Most tool settings are specific to the type, but several apply across all of them:
+
+- **Name and description.** The model reads both when deciding whether to call the tool, so describe the action, when it applies, and what to do with the result.
+- **Parameters.** The model-facing input schema defines what the model generates. Separately, [static parameters](/tools/static-variables-and-aliases) inject server-controlled values that the model never sees.
+- **Messages.** Configure what the assistant says at each phase of the call, so a caller is not left in silence while a request is in flight.
+- **Rejection plan.** Block a tool call based on conversation state with a [tool rejection plan](/tools/tool-rejection-plan).
+- **Argument encryption.** Encrypt sensitive fields before they reach your server with [argument encryption](/tools/encryption).
+
+## Next steps
 
 <CardGroup cols={2}>
-  <Card 
-    title="Function Calling" 
-    icon="square-terminal"
-  >
-    Assistants can trigger functions based on conversation context
+  <Card title="When to use API Request or Function tools" icon="code-compare" href="/tools/api-request-vs-function">
+    Decide whether to call an HTTPS API directly or route the call through your own server.
   </Card>
-  <Card 
-    title="Async Support" 
-    icon="clock"
-  >
-    Tools can run synchronously or asynchronously
+  <Card title="API Request tool quickstart" icon="mug-hot" href="/tools/api-request/quickstart">
+    Build a working tool end to end, from an inbound call to a server-calculated result.
   </Card>
-  <Card 
-    title="Server Integration" 
-    icon="server"
-  >
-    Connect tools to your backend via webhooks
+  <Card title="Static variables and aliases" icon="arrow-right-arrow-left" href="/tools/static-variables-and-aliases">
+    Inject trusted values into tool calls and pass data from one tool to the next.
   </Card>
-  <Card 
-    title="Error Handling" 
-    icon="triangle-exclamation"
-  >
-    Built-in error handling and fallback options
-  </Card>
-</CardGroup>
-
-## Learn More
-
-<CardGroup cols={2}>
-  <Card
-    title="Make & GHL Integration Guide"
-    icon="puzzle-piece"
-    href="/tools/GHL"
-  >
-    Learn how to import and use Make scenarios and GHL workflows as voice-activated tools
-  </Card>
-  <Card
-    title="Join Our Discord"
-    icon="fa-brands fa-discord"
-    color="#5A65EA"
-    href="https://discord.gg/pUFNcf2WmH"
-  >
-    Get help with tool integrations from our community
-  </Card>
-  <Card
-    title="Versioning"
-    icon="clock-rotate-left"
-    href="/assistants/versioning"
-  >
-    Version, publish, and restore your tools and the assistants that use them.
+  <Card title="Troubleshoot tools" icon="wrench" href="/tools/custom-tools-troubleshooting">
+    Diagnose tools that never fire, return nothing, or have their results ignored.
   </Card>
 </CardGroup>

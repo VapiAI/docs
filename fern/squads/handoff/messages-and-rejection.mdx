@@ -1,0 +1,180 @@
+---
+title: Configure messages and rejection rules
+subtitle: Set what the caller hears during a handoff and when a handoff attempt is blocked
+description: Set the messages an assistant speaks at each phase of a handoff, and block handoff attempts using regex, Liquid, or grouped conditions on conversation state.
+slug: squads/handoff/messages-and-rejection
+---
+
+Two settings shape how a handoff feels to the caller: the tool messages the assistant speaks while the transfer happens, and the rejection conditions that decide whether the handoff proceeds at all.
+
+## Tool messages
+
+Configure what the assistant says during each phase of the handoff. Add a **messages** array to the Handoff tool to control the spoken responses.
+
+### Message types
+
+| Type | Trigger | Default behavior |
+|------|---------|-----------------|
+| `request-start` | Handoff begins executing | Says a random filler: "Hold on a sec", "One moment", etc. |
+| `request-complete` | Handoff completes successfully | Model generates a response |
+| `request-failed` | Handoff fails | Model generates a response |
+| `request-response-delayed` | Server is slow or user speaks during processing | Says "Sorry, a few more seconds." |
+
+### Example configuration
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "messages": [
+        {
+          "type": "request-start",
+          "content": "Let me transfer you now. One moment please."
+        },
+        {
+          "type": "request-complete",
+          "content": "You're now connected. How can the next specialist help you?"
+        },
+        {
+          "type": "request-failed",
+          "content": "I'm sorry, I wasn't able to complete the transfer. Let me try to help you directly."
+        },
+        {
+          "type": "request-response-delayed",
+          "content": "Still working on the transfer, thank you for your patience.",
+          "timingMilliseconds": 3000
+        }
+      ],
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "your-assistant-id",
+          "description": "transfer to specialist"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Message properties
+
+**request-start**
+- **content** (string) -- The text the assistant speaks when the handoff begins.
+- **blocking** (boolean, default: `false`) -- When `true`, the tool call waits until the message finishes speaking before executing.
+- **conditions** (array) -- Optional conditions that must match for this message to trigger.
+- **contents** (array) -- Multilingual variants of the content. Overrides `content` when provided.
+
+**request-complete**
+- **content** (string) -- The text the assistant speaks when the handoff completes.
+- **role** (`"assistant"` | `"system"`, default: `"assistant"`) -- When `"assistant"`, the content is spoken aloud. When `"system"`, the content is passed as a system message hint to the model.
+- **endCallAfterSpokenEnabled** (boolean, default: `false`) -- When `true`, the call ends after this message is spoken.
+- **conditions** (array) -- Optional conditions for triggering this message.
+- **contents** (array) -- Multilingual variants.
+
+**request-failed**
+- **content** (string) -- The text the assistant speaks when the handoff fails.
+- **endCallAfterSpokenEnabled** (boolean, default: `false`) -- When `true`, the call ends after this message.
+- **conditions** (array) -- Optional conditions for triggering.
+- **contents** (array) -- Multilingual variants.
+
+**request-response-delayed**
+- **content** (string) -- The text the assistant speaks when the handoff is taking longer than expected.
+- **timingMilliseconds** (number, 100-120000) -- Milliseconds to wait before triggering this message.
+- **conditions** (array) -- Optional conditions for triggering.
+- **contents** (array) -- Multilingual variants.
+
+For the full schema, see the [API reference](/api-reference/tools/create#request.body.HandoffTool.messages).
+
+## Rejection plan
+
+Use **rejectionPlan** to prevent a handoff from executing based on conversation state. When all conditions in the plan match, the tool call is rejected and the rejection message is added to the conversation.
+
+### Regex condition
+
+Match against message content using regular expressions:
+
+```json
+{
+  "tools": [
+    {
+      "type": "handoff",
+      "rejectionPlan": {
+        "conditions": [
+          {
+            "type": "regex",
+            "regex": "(?i)\\b(cancel|stop|nevermind)\\b",
+            "target": {
+              "role": "user",
+              "position": -1
+            }
+          }
+        ]
+      },
+      "destinations": [
+        {
+          "type": "assistant",
+          "assistantId": "your-assistant-id",
+          "description": "transfer to billing"
+        }
+      ]
+    }
+  ]
+}
+```
+
+This rejects the handoff if the user's most recent message contains "cancel", "stop", or "nevermind" (case-insensitive).
+
+### Liquid condition
+
+Use Liquid templates for more complex logic. The template must return exactly `"true"` or `"false"`:
+
+```json
+{
+  "rejectionPlan": {
+    "conditions": [
+      {
+        "type": "liquid",
+        "liquid": "{% assign userMsgs = messages | where: 'role', 'user' %}{% if userMsgs.size < 3 %}true{% else %}false{% endif %}"
+      }
+    ]
+  }
+}
+```
+
+This rejects the handoff if fewer than 3 user messages exist in the conversation. Available Liquid variables include `messages` (array of recent messages), `now` (current timestamp), and any assistant variable values.
+
+### Group condition
+
+Combine multiple conditions with `AND` or `OR` logic:
+
+```json
+{
+  "rejectionPlan": {
+    "conditions": [
+      {
+        "type": "group",
+        "operator": "OR",
+        "conditions": [
+          {
+            "type": "regex",
+            "regex": "(?i)\\b(cancel|stop)\\b",
+            "target": { "role": "user" }
+          },
+          {
+            "type": "liquid",
+            "liquid": "{% assign userMsgs = messages | where: 'role', 'user' %}{% if userMsgs.size < 2 %}true{% else %}false{% endif %}"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+<Warning>
+By default, all top-level conditions in the `conditions` array use AND logic -- all must match for the rejection to trigger. Use a group condition with `operator: "OR"` to reject when any single condition matches.
+</Warning>
+
+For the full schema, see the [API reference](/api-reference/tools/create#request.body.HandoffTool.rejectionPlan).
