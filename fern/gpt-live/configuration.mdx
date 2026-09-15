@@ -1,32 +1,254 @@
 ---
-title: GPT-Live configuration and compatibility reference
-subtitle: Look up supported fields, transports, and feature restrictions
-description: Look up GPT-Live model settings, defaults, voice configuration, call transports, tools, greetings, recording behavior, and unsupported Vapi features.
+title: Configure GPT-Live
+subtitle: Create an assistant, choose its voice, and connect your tools
+description: Configure a GPT-Live assistant in Vapi using the dashboard or API, with speaker and reasoner settings, voice samples, tools, call connections, and analysis.
 slug: gpt-live/configuration
 ---
 
-Configure GPT-Live through a Vapi assistant with `model.provider: "openai"`, `model.model: "gpt-live-1"`, and an OpenAI voice. The tables below describe this integration's supported behavior.
+Create an assistant that checks appointment availability and reads back the results. You'll configure the speaker and reasoner, connect a lookup tool, and make a test call.
 
-## Model and voice fields
+For help deciding what to put in each prompt, read [Design your assistant](/gpt-live/design). For feature restrictions, use [Limitations and FAQs](/gpt-live/limitations).
 
-These fields belong to the assistant configuration. See [Create Assistant](/api-reference/assistants/create) for the complete generated schema.
+**Jump to:** [Create an assistant](#create-an-assistant) · [Model settings](#model-settings) · [Personality](#personality-and-language) · [Voices](#voices) · [Tools](#connect-your-tools) · [Calls](#connect-a-call) · [Analysis](#review-and-monitor-calls)
+
+## Before you start
+
+- Enable GPT-Live for your Vapi organization.
+- Have a browser and microphone ready for a test call.
+- For API requests, use a Vapi private API key on your server or local machine.
+- If you bring an OpenAI key, it needs access to GPT-Live and the reasoner you select.
+- Prepare an HTTPS availability endpoint using the [tool response contract](#connect-your-tools).
+
+The example uses a placeholder endpoint. Replace it with your handler before testing a lookup. It returns availability only. Booking requires a separate tool.
+
+## Create an assistant
+
+Choose the dashboard or API. Both paths create an assistant with an availability lookup and an end-call tool.
+
+<Tabs>
+<Tab title="Dashboard">
+<Steps>
+<Step title="Create the assistant">
+Open [Assistants](https://dashboard.vapi.ai/assistants), select **Create Assistant**, and choose **GPT-Live**. Choose Marin as the voice.
+</Step>
+<Step title="Set the speaker and reasoner prompts">
+In **Speaker**, enter:
+
+```text title="Speaker instructions"
+Help callers check appointment availability. Speak warmly and briefly.
+Ask for an explicit date and time zone, then delegate the lookup.
+If the caller changes the request, use the updated details.
+Explain the returned slots. Booking isn't connected yet.
+Delegate requests to end the call.
+```
+
+In **Reasoner**, enter:
+
+```text title="Reasoner instructions"
+Use lookupAvailability after the caller provides an explicit date
+and time zone. Ask for clarification if either is missing or ambiguous.
+Return only slots from the current lookup. Explain failures without
+inventing results. No booking tool is available.
+Call endCall when the caller asks to finish.
+```
+</Step>
+<Step title="Add the tools">
+Create a function tool named `lookupAvailability` with the description “Check available appointment slots. Does not reserve or book a slot.” Add these required arguments:
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `date` | String | Requested calendar date in YYYY-MM-DD format |
+| `timeZone` | String | IANA time zone, for example `America/New_York` |
+
+Set the tool's Server URL to your HTTPS handler.
+
+Attach the function tool and an `endCall` tool to the assistant. You can also create a saved tool through [Create Tool](/api-reference/tools/create) and select it in the dashboard.
+</Step>
+<Step title="Set the greeting and publish">
+Set the first message to “Hello. I can check appointment availability. What date and time zone should I check?” and configure the assistant to speak first.
+
+Select **Publish**, review the changes, and complete the publication flow. Keep the assistant ID for API calls.
+</Step>
+</Steps>
+</Tab>
+<Tab title="API" language="bash">
+<Steps>
+<Step title="Save the assistant configuration">
+Save the following as `availability-assistant.json`:
+
+```json title="availability-assistant.json"
+{
+  "name": "Appointment availability assistant",
+  "model": {
+    "provider": "openai",
+    "model": "gpt-live-1",
+    "speaker": {
+      "instructions": "You help callers check appointment availability. Speak briefly. Collect an explicit calendar date and time zone, then delegate availability checks to the reasoner. If the caller corrects the date, delegate the corrected request and do not present old results as current. Report only confirmed lookup results. Availability does not reserve a slot. Booking is not connected. Delegate requests to end the call."
+    },
+    "reasoner": {
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "low",
+      "instructions": "Use lookupAvailability only after the caller supplies an explicit calendar date and time zone. Ask for clarification if either is missing or ambiguous. Report only slots returned for the current request. Ignore superseded lookup results. A successful lookup does not reserve or book anything. Explain lookup failures without inventing slots. No booking tool is available. Call endCall when the caller asks to finish."
+    },
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "lookupAvailability",
+          "description": "Check available appointment slots. Does not reserve or book a slot.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "description": "Requested calendar date in YYYY-MM-DD format."
+              },
+              "timeZone": {
+                "type": "string",
+                "description": "IANA time zone, such as America/New_York."
+              }
+            },
+            "required": [
+              "date",
+              "timeZone"
+            ]
+          }
+        },
+        "server": {
+          "url": "https://api.example.com/vapi/tools"
+        }
+      },
+      {
+        "type": "endCall"
+      }
+    ]
+  },
+  "voice": {
+    "provider": "openai",
+    "voiceId": "marin"
+  },
+  "firstMessageMode": "assistant-speaks-first",
+  "firstMessage": "Hello. I can check appointment availability. What date and time zone should I check?",
+  "maxDurationSeconds": 600
+}
+```
+
+</Step>
+<Step title="Create the assistant">
+Set `VAPI_PRIVATE_API_KEY` to your Vapi private API key, then create the assistant:
+
+```bash
+curl --fail-with-body https://api.vapi.ai/assistant \
+  -H "Authorization: Bearer $VAPI_PRIVATE_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data-binary @availability-assistant.json
+```
+
+Keep the returned `id`. To change an existing assistant, use [Update Assistant](/api-reference/assistants/update), preserving its other tools and settings.
+</Step>
+</Steps>
+</Tab>
+</Tabs>
+
+### Make a test call
+
+Open the saved assistant in the dashboard and select **Talk**. Allow microphone access, then ask for availability on an explicit date in a specific time zone.
+
+Check that your handler receives the right values and the assistant reads back the returned slots. Ask to book a time. It should explain that booking isn't connected. Finish with “Please end the call” and confirm that the call ends.
+
+## Model settings
+
+These fields belong to the assistant object. See [Create Assistant](/api-reference/assistants/create) for the full schema.
 
 | Field | Values or behavior |
 | --- | --- |
 | `model.provider` | `openai` |
 | `model.model` | `gpt-live-1` |
-| `model.speaker.instructions` | Speaker prompt; see [instruction precedence](/gpt-live/prompts#understand-instruction-precedence). |
+| `model.speaker.instructions` | Speaker prompt. See [prompt behavior](/gpt-live/configuration#prompt-defaults-and-overrides). |
 | `model.speaker.personalityPacks` | Array of `eager-listener`, `idle-hummer`, `bouncy`, and `unhurried`. |
-| `model.reasoner.provider` | `openai`; defaults to OpenAI when omitted. |
-| `model.reasoner.model` | `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`; defaults to `gpt-5.6-terra`. |
-| `model.reasoner.reasoningEffort` | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; defaults to `low`. |
-| `model.reasoner.instructions` | Custom reasoner prompt; omission uses Vapi's default. |
+| `model.reasoner.provider` | `openai`. Defaults to OpenAI when omitted. |
+| `model.reasoner.model` | `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`. Defaults to `gpt-5.6-terra`. |
+| `model.reasoner.reasoningEffort` | `none`, `low`, `medium`, `high`, `xhigh`, or `max`. Defaults to `low`. |
+| `model.reasoner.instructions` | Custom reasoner prompt. Omission uses Vapi's default. |
 | `model.tools` | Inline supported tool definitions. |
 | `model.toolIds` | IDs of saved tools to resolve for the assistant. |
 | `voice.provider` | `openai` |
-| `voice.voiceId` | One of the [22 supported voices](/gpt-live/voices). |
+| `voice.voiceId` | One of the [22 supported voices](/gpt-live/configuration#voices). |
 
-A custom prompt replaces the corresponding fallback prompt. An explicit empty string is preserved. See [Configure the speaker and reasoner](/gpt-live/prompts) before overriding defaults.
+## Prompt defaults and overrides
+
+Set `model.speaker.instructions` for the spoken conversation and `model.reasoner.instructions` for task procedures.
+
+- Explicit speaker instructions take precedence over `model.systemPrompt` and system messages in `model.messages`. If you omit the speaker instructions, Vapi uses that legacy configuration.
+- Omitting reasoner instructions uses Vapi's default reasoner prompt. Custom instructions replace that prompt entirely.
+- An explicit empty string stays empty. Updating one prompt doesn't update the other.
+
+Personality packs append guidance to the speaker prompt. Set `model.speaker.personalityPacks` to an array of the IDs above and test one pack at a time.
+
+## Personality and language
+
+Personality packs append speaking-style guidance to your speaker prompt. Add this inside the assistant's `model` object:
+
+```json
+{
+  "speaker": {
+    "instructions": "Speak warmly and briefly. Slow down for appointment dates and times. Follow requests to speed up or explain more. Delegate requests that need tools.",
+    "personalityPacks": ["unhurried"]
+  }
+}
+```
+
+Available IDs are `eager-listener`, `idle-hummer`, `bouncy`, and `unhurried`. See [Speaking style](/gpt-live/design#speaking-style) for what each pack encourages and how to combine personality with pacing. These are prompt instructions, not fixed speed controls.
+
+Write the speaker prompt and `firstMessage` in the language you want the assistant to use. For Bossa or Tempo, you can include:
+
+```text
+Fale em português do Brasil, com respostas curtas e claras.
+Faça uma pergunta por vez. Só confirme um agendamento
+quando a ferramenta confirmar que ele foi realizado.
+```
+
+Keep tool and delegation instructions in the prompt too. Try names, dates, and product terms in real calls, and add pronunciation guidance where needed.
+
+## Voices
+
+Choose any of these 22 voices with `voice.provider: "openai"` and `voice.voiceId`. Save the assistant and start a new call to change voices. In-call voice changes aren't supported.
+
+### Voices with regional tags
+
+Use the tags to narrow your choices, then listen to the samples. Bossa and Tempo previews are in Brazilian Portuguese. The other previews are in English. Test your preferred voice with your own prompts to hear how it handles the accent and vocabulary you need.
+
+| Voice | API ID | Language | Regional influence | Presentation | Source | Preview |
+| --- | --- | --- | --- | --- | --- | --- |
+| Quartz | `quartz` | English | Australian | Feminine | Generated | [Listen to Quartz](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/quartz.mp3) |
+| Ripple | `ripple` | English | Australian | Masculine | Natural | [Listen to Ripple](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/ripple.mp3) |
+| Vesper | `vesper` | English | British | Masculine | Natural | [Listen to Vesper](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/vesper.mp3) |
+| Willow | `willow` | English | Irish | Feminine | Natural | [Listen to Willow](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/willow.mp3) |
+| Stone | `stone` | English | Irish | Masculine | Natural | [Listen to Stone](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/stone.mp3) |
+| Gleam | `gleam` | English | North American | Feminine | Natural | [Listen to Gleam](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/gleam.mp3) |
+| Meridian | `meridian` | English | North American | Masculine | Natural | [Listen to Meridian](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/meridian.mp3) |
+| Bossa | `bossa` | Portuguese | Brazilian | Feminine | Natural | [Listen to Bossa](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/bossa.mp3) |
+| Tempo | `tempo` | Portuguese | Brazilian | Masculine | Natural | [Listen to Tempo](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/tempo.mp3) |
+| Beacon | `beacon` | English | Filipino | Masculine | Generated | [Listen to Beacon](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/beacon.mp3) |
+| Delta | `delta` | English | Southern U.S. | Feminine | Generated | [Listen to Delta](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/delta.mp3) |
+| Cinder | `cinder` | English | Southern U.S. | Masculine | Generated | [Listen to Cinder](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/cinder.mp3) |
+
+### More voices
+
+You can also choose any of these voices. Select a preview to listen.
+
+| Voice | API ID | Preview |
+| --- | --- | --- |
+| Alloy | `alloy` | [Listen to Alloy](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/alloy.mp3) |
+| Ash | `ash` | [Listen to Ash](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/ash.mp3) |
+| Ballad | `ballad` | [Listen to Ballad](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/ballad.mp3) |
+| Cedar | `cedar` | [Listen to Cedar](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/cedar.mp3) |
+| Coral | `coral` | [Listen to Coral](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/coral.mp3) |
+| Echo | `echo` | [Listen to Echo](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/echo.mp3) |
+| Marin | `marin` | [Listen to Marin](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/marin.mp3) |
+| Sage | `sage` | [Listen to Sage](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/sage.mp3) |
+| Shimmer | `shimmer` | [Listen to Shimmer](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/shimmer.mp3) |
+| Verse | `verse` | [Listen to Verse](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/verse.mp3) |
 
 ## Greetings and duration
 
@@ -36,24 +258,64 @@ Use a text greeting if the assistant should begin the conversation.
 | --- | --- |
 | `firstMessageMode: "assistant-speaks-first"` | Speaks the configured text greeting. |
 | `firstMessageMode: "assistant-waits-for-user"` | Waits for the caller. |
-| `firstMessage` | Text greeting; without usable text, the assistant waits. |
+| `firstMessage` | Text greeting. Without usable text, the assistant waits. |
 | `maxDurationSeconds` | Maximum call duration in seconds. |
-| Audio URL greeting | Unsupported; not played as a greeting. |
-| Generated-message first-message mode | Unsupported; the assistant waits for the caller. |
+| Audio URL greeting | Unsupported. Not played as a greeting. |
+| Generated-message first-message mode | Unsupported. The assistant waits for the caller. |
 
 Generated speech may vary from the supplied greeting. A text greeting is not a guarantee of exact prerecorded playback.
 
-## Call transports
+## Connect your tools
 
-Use the [Create Call endpoint](/api-reference/calls/create) or the dashboard's web-call interface.
+Handle Vapi's [`tool-calls` server message](/server-url/events) at your HTTPS endpoint. Read `message.toolCallList`, validate each function's arguments, and query your availability service.
 
-| Transport | Support | Requirements |
-| --- | --- | --- |
-| WebRTC web call | Supported | Dashboard **Talk** or Vapi web-call interface. |
-| `vapi.websocket` | Supported with restrictions | Raw, mono PCM16 audio at 24 kHz. |
-| `vapi.sip` | Supported | Vapi SIP transport configuration. |
-| Native Twilio | Supported | A configured Twilio phone number and call transport. |
-| Native Telnyx or Vonage | Unsupported | Choose a supported transport. |
+Return a result for each request using its actual `toolCallId`:
+
+```json
+{
+  "results": [
+    {
+      "name": "lookupAvailability",
+      "toolCallId": "TOOL_CALL_ID_FROM_REQUEST",
+      "result": "There are openings at 2 PM and 4 PM on the requested date in the requested time zone. No appointment has been booked."
+    }
+  ]
+}
+```
+
+Replace the sample result with your service's data. If the lookup fails, return the failure so the assistant can explain it. See [Server authentication](/server-url/server-authentication) to protect the endpoint.
+
+Supported tool types are `function`, `apiRequest`, `endCall`, `dtmf`, and `transferCall`. Give tools unique resolved function names. Save reusable tools and attach them through `model.toolIds`, or include definitions in `model.tools`.
+
+Use function or API request tools to connect external data sources. For phone actions, check [transfer and keypad support](/gpt-live/limitations#transfers-and-keypad-input).
+
+### Slow and asynchronous requests
+
+A synchronous function waits for your handler's result. Set `async: true` on a function tool to let the conversation continue while that request completes. Return the final result through the original request, using the matching `toolCallId`.
+
+If your handler returns “queued” before the work finishes, add a status lookup tool. Tell the reasoner when to check it. A later callback doesn't automatically update the conversation.
+
+Tools can run concurrently. Keep dependent actions in order: check availability, confirm the caller's choice, then book. Your service should validate those requirements too.
+
+## Connect a call
+
+Start with dashboard **Talk**, then connect your intended call channel. GPT-Live supports browser WebRTC, native Twilio, Vapi SIP, and raw WebSocket audio. See [connection limits](/gpt-live/limitations#calls-and-voice) before changing an existing setup.
+
+### Phone calls
+
+For inbound Twilio calls, [import a Twilio phone number](/phone-numbers/import-twilio) and assign your assistant to it. For SIP, follow the [SIP guide](/advanced/sip).
+
+For an outbound Twilio test, send this body to [Create Call](/api-reference/calls/create):
+
+```json
+{
+  "assistantId": "YOUR_ASSISTANT_ID",
+  "phoneNumberId": "YOUR_TWILIO_PHONE_NUMBER_ID",
+  "customer": {"number": "+14155550100"}
+}
+```
+
+Replace the customer phone number with one you control. `phoneNumberId` is the Vapi ID of the imported Twilio phone number.
 
 ### WebSocket configuration
 
@@ -75,71 +337,36 @@ Send this body to `POST https://api.vapi.ai/call` with your Vapi private API key
 
 Connect to `transport.websocketCallUrl` in the response. Send and receive binary audio frames containing signed 16-bit little-endian samples at 24 kHz. Convert your microphone audio to that format before sending it.
 
-The default WebSocket sample rate is not sufficient for GPT-Live; set `24000` explicitly. This audio requirement applies to the Vapi WebSocket transport, not to browser-negotiated WebRTC audio or carrier audio.
+Set `24000` explicitly. The default WebSocket rate is too low for GPT-Live. Browser WebRTC and phone connections negotiate their own audio formats.
 
 Close the WebSocket to end the call, or have the assistant invoke `endCall`. Incoming JSON call-control commands are not supported by this GPT-Live connection. See [WebSocket transport](/calls/websocket-transport) for the general transport, applying the restrictions above.
 
-## Tool and transfer compatibility
+## Review and monitor calls
 
-The supported tool types are `function`, `apiRequest`, `endCall`, `dtmf`, and `transferCall`. All other tool types are rejected.
+Completed GPT-Live calls use Vapi's shared post-call processing. Configure the features you need, then inspect the results after a test call finishes.
 
-| Feature | Support or restriction |
+| Feature | Setup and results |
 | --- | --- |
-| Function tools | Synchronous and asynchronous functions. |
-| API request tools | Configured HTTP requests. |
-| Outgoing DTMF | Supported on SIP using RTP DTMF. Use digits as a string, such as `"0011*#"`; native Twilio, web calls, and raw WebSocket calls do not support this tool. |
-| SIP INFO DTMF | Unsupported; use RTP DTMF on SIP. |
-| Incoming keypad collection | Rejected when `keypadInputPlan.enabled` is true. |
-| Blind transfer | Supported on native Twilio and Vapi SIP to configured phone or SIP destinations. |
-| Warm transfer or generated transfer summary | Rejected. |
-| Transfer fallback plans or SIP `bye` verb | Rejected. |
-| SIP transfer with extension dialing | Unsupported; use a direct destination. |
-| Squads and assistant handoffs | Unsupported. |
+| [Structured outputs](/assistants/structured-outputs-quickstart) | Create output definitions, attach their IDs through `artifactPlan.structuredOutputIds`, and read `call.artifact.structuredOutputs`. Keep existing IDs and artifact settings when updating. |
+| [Call analysis](/assistants/call-analysis) | Existing `analysisPlan` configurations work. Prefer structured outputs for new setups. |
+| [Scorecards](/observability/scorecard-quickstart) | Grade boolean or numeric outputs and attach the scorecard to your assistant. Read `call.artifact.scorecards`. |
+| [Boards](/observability/boards-quickstart) | Track available call metrics and outcome trends for your assistant. Classic transcriber and text-to-speech timing fields don't describe GPT-Live. |
+| [Monitoring](/observability/monitoring-quickstart) | Configure supported conditions, thresholds, evaluation windows, and notification destinations. Requires retained data. Unavailable with Zero Data Retention. |
+| [End-of-call reports](/server-url/events) | Configure a Server URL and the `end-of-call-report` server message. [Authenticate your endpoint](/server-url/server-authentication) and handle repeated delivery by call ID. |
 
-A configured transfer tool does not make every transport transfer-capable. Web calls and raw WebSocket calls do not gain phone transfer support by adding the tool. Carrier acceptance of a transfer does not confirm that the destination answered.
+Keep transcript collection enabled for transcript-based checks. Audio-based checks require a recording. See [recording and data restrictions](/gpt-live/limitations#recordings-and-post-call-data) before relying on those artifacts.
 
-## Settings that do not apply
+Retrieve a completed call with your private API key:
 
-GPT-Live handles speech directly. Classic transcriber selection, text-to-speech controls, and start/stop-speaking plans do not configure this audio conversation.
+```bash
+curl --fail-with-body "https://api.vapi.ai/call/$CALL_ID" \
+  -H "Authorization: Bearer $VAPI_PRIVATE_API_KEY"
+```
 
-General model fields such as `temperature` and `maxTokens` do not tune this integration. Use the speaker prompt for conversational behavior and `model.reasoner.reasoningEffort` for reasoning effort.
+Review the transcript and recording alongside tool results. A missing analysis result isn't a pass. Check attached output IDs, processing, and available artifacts. Creating a scorecard doesn't automatically configure a monitor.
 
-## Unsupported features and artifact behavior
+When testing a migration, keep the previous assistant available so you can route new calls back. End test calls through the call interface, `endCall`, or by closing your WebSocket. Check any external work still running. Ending the call doesn't undo it.
 
-Check these restrictions before moving an existing assistant:
+## Cost
 
-| Feature | Behavior |
-| --- | --- |
-| Model fallbacks | Rejected. GPT-Live also cannot be a fallback model. |
-| Voice fallbacks | Rejected. |
-| Non-OpenAI or custom voice IDs | Rejected unless included in the supported Vapi voice catalog. |
-| Live message injection and call-control commands | Unsupported for this integration. |
-| Listen or monitor sockets | Unsupported. |
-| Reconnecting to an existing GPT-Live session | Unsupported. Start a new call and reconcile pending work in your service. |
-| Recording disabled in the assistant | No recording is created. |
-| Recording-consent plan configured | GPT-Live recording is disabled because this integration does not collect that consent. |
-
-Call artifacts and analysis are separate from your service's authoritative operation records. A transcript cannot by itself establish that a booking succeeded. See [Migrate and test GPT-Live](/gpt-live/testing).
-
-## Post-call analysis and observability
-
-Completed GPT-Live calls use Vapi's shared post-call processing. Configure analysis and observability on the assistant and inspect the resulting call data after processing finishes.
-
-| Capability | Configuration or result | Requirement |
-| --- | --- | --- |
-| Structured outputs | Attach IDs through `artifactPlan.structuredOutputIds`; read `call.artifact.structuredOutputs`. | Create the output definitions and retain the conversation data needed for extraction. |
-| Legacy call analysis | Configure `analysisPlan`. | Existing configurations remain supported; prefer structured outputs for new extraction and evaluation setups. |
-| Scorecards | Grade structured output values; read `call.artifact.scorecards`. | Configure a scorecard and its required structured outputs. |
-| Boards | Query call data and plot outcomes. | Choose metrics available on your calls; classic pipeline timing fields do not describe GPT-Live's architecture. |
-| Monitoring | Configure monitors, thresholds, and notifiers. | Retained call data is required; monitoring is unavailable with Zero Data Retention. |
-| End-of-call reports | Receive configured `end-of-call-report` server messages. | Configure the assistant's Server URL and requested server messages. |
-
-See [Call analysis](/assistants/call-analysis), [Scorecards](/observability/scorecard-quickstart), and [Monitoring](/observability/monitoring-quickstart) for setup. These are post-call capabilities; they do not imply access to live listen sockets or message injection.
-
-An extracted statement such as “booking confirmed” describes the conversation. Verify the booking in your service when measuring actual task success. Analysis results do not replace the authoritative operation record.
-
-## Credentials and cost
-
-If you bring your own OpenAI key, it needs access to GPT-Live and the selected reasoner. Organization access to the Vapi feature is a separate prerequisite.
-
-Review Vapi call costs for your configuration. OpenAI's [model pricing](https://developers.openai.com/api/docs/models/gpt-live-1) describes direct provider charges; it is not a quote for your complete Vapi call. Reasoning, tools, and telephony can contribute additional cost.
+Review Vapi call costs for your configuration. Reasoning, tools, and telephony can contribute to the total. OpenAI's [model pricing](https://developers.openai.com/api/docs/models/gpt-live-1) describes provider charges rather than the complete cost of a Vapi call.

@@ -1,0 +1,117 @@
+---
+title: GPT-Live limitations and FAQs
+subtitle: Check compatibility before you build or migrate
+description: Check GPT-Live support for squads, call control, commentary injection, transfers, simulations, voices, fallbacks, recordings, and post-call data in Vapi.
+slug: gpt-live/limitations
+---
+
+GPT-Live has a different set of supported features from Vapi's other voice architectures. Use this page to check the requirements of your application before migrating.
+
+These limits describe **Vapi's GPT-Live integration**. A capability in OpenAI's direct API isn't necessarily exposed through Vapi.
+
+**Jump to:** [Calls and voices](#calls-and-voice) · [Transfers](#transfers-and-keypad-input) · [Squads](#can-i-use-an-existing-squad) · [Live control](#can-i-inject-commentary-or-control-speech-during-a-call) · [Testing](#can-i-run-simulations-and-evals) · [Recordings](#recordings-and-post-call-data)
+
+## Calls and voice
+
+| Feature | Support |
+| --- | --- |
+| Browser WebRTC, native Twilio, and Vapi SIP | Supported |
+| Raw WebSocket | Supported with mono, signed 16-bit little-endian PCM at 24 kHz. Set the rate explicitly |
+| Native Telnyx or Vonage | Unsupported |
+| 22 preset OpenAI voices | Supported. See [voice previews](/gpt-live/configuration#voices) |
+| Custom or cloned voices, or other voice providers | Unsupported |
+| Changing voice during a call | Unsupported. Save the assistant and start a new call |
+| Model and voice fallbacks | Unsupported. GPT-Live also cannot be a fallback model |
+| Reconnecting to an existing GPT-Live session | Unsupported. Start a new call and check the status of pending work |
+
+See [Connect a call](/gpt-live/configuration#connect-a-call) for working connection examples.
+
+## Transfers and keypad input
+
+Function tools, API request tools, and `endCall` are supported. The other supported tool types, `transferCall` and `dtmf`, depend on the call connection:
+
+| Feature | Support |
+| --- | --- |
+| Blind transfer | Supported on native Twilio and Vapi SIP to configured phone or SIP destinations |
+| Transfer on browser or raw WebSocket calls | Unsupported |
+| Warm transfer or generated transfer summary | Unsupported |
+| Transfer fallback plans or SIP `bye` verb | Unsupported |
+| SIP transfer with extension dialing | Unsupported. Use a direct destination |
+| Outgoing DTMF | Supported on SIP using RTP DTMF. Pass digits as a string, for example `"0011*#"` |
+| Outgoing DTMF on Twilio, browser, or raw WebSocket calls | Unsupported |
+| SIP INFO DTMF | Unsupported |
+| Incoming keypad collection | Unsupported. Leave `keypadInputPlan.enabled` disabled |
+
+Other tool types are unsupported. Expose external lookups through a function or API request tool. Carrier acceptance of a transfer doesn't establish that the destination answered.
+
+## Can I use an existing squad?
+
+Squads and assistant handoffs are currently unsupported. GPT-Live's speaker and reasoner work within one assistant. Delegation doesn't switch the caller to another assistant.
+
+Early testing suggests some use cases no longer need the same divisions between assistants. See [Start with one assistant](/gpt-live/design#start-with-one-assistant) for how to rethink the architecture while keeping your business requirements.
+
+## Can I inject commentary or control speech during a call?
+
+Customer-initiated commentary injection, live message injection, and live call-control commands are currently unsupported. Incoming text commands on the raw WebSocket connection are ignored.
+
+Vapi uses OpenAI's commentary mechanism internally to pass reasoner results to the speaker. That doesn't expose `session.commentary.append` as a customer API. Use the supported [tool response flow](/gpt-live/configuration#connect-your-tools) to return results for requested work.
+
+A caller can ask the assistant to slow down or explain differently, and you can prompt it to respond to those requests. That conversational behavior is separate from an application sending a control command.
+
+## Can I guarantee exact speech or a fixed pause?
+
+GPT-Live generates speech and may paraphrase supplied text. Speaker instructions and personality packs guide delivery. They don't provide exact playback, a fixed speaking rate, or a programmatic pause while work completes.
+
+Audio URL greetings and the generated-message first-message mode are unsupported. Use a text `firstMessage` with `assistant-speaks-first`, or let the assistant wait for the caller. Without usable greeting text, it waits.
+
+If exact prerecorded wording or strict control of every spoken step is essential, choose an architecture with those controls. See [voice design](/gpt-live/design#speaking-style) for the choices available through prompting.
+
+## Which existing settings no longer apply?
+
+Classic transcriber selection, text-to-speech controls, and start/stop-speaking plans don't configure the GPT-Live conversation. General model fields such as `temperature` and `maxTokens` don't tune this integration.
+
+Use the speaker prompt for conversation behavior and the reasoner settings for task reasoning. The reasoner currently supports only the OpenAI models listed in [Model settings](/gpt-live/configuration#model-settings).
+
+## Does an interruption cancel a tool call?
+
+No. Interrupting speech changes the conversation, not an action already submitted to your service. Your application needs to check whether that action is pending, completed, or cancellable.
+
+If the caller corrects a date during a lookup, use the result that matches the updated request. For an example, see [When callers change the request](/gpt-live/design#when-callers-change-the-request).
+
+## Can I run Simulations and Evals?
+
+Voice Simulations are currently incompatible with GPT-Live. The simulation bridge uses 16 kHz audio and listen sockets. GPT-Live's raw WebSocket connection requires 24 kHz and doesn't provide listen sockets.
+
+Run voice scenarios through a [supported call connection](/gpt-live/configuration#connect-a-call). [Evals](/observability/evals-quickstart) can supplement testing of supported model decisions, but they don't establish GPT-Live's audio quality, timing, or interruption behavior.
+
+## Recordings and post-call data
+
+GPT-Live supports shared post-call analysis, structured outputs, scorecards, Boards, and Monitoring. Availability depends on your configuration and retained call data:
+
+| Setting or feature | Behavior |
+| --- | --- |
+| Recording disabled in the assistant | No recording is created |
+| Recording-consent plan configured | Recording is disabled because GPT-Live doesn't collect that consent |
+| Transcript-based analysis | Requires the relevant conversation data |
+| Audio-based analysis | Requires an available recording |
+| Monitoring with Zero Data Retention | Unsupported |
+| Live listen or monitor sockets | Unsupported. Post-call Monitoring doesn't provide a live audio connection |
+
+See [Review and monitor calls](/gpt-live/configuration#review-and-monitor-calls) for setup and result fields.
+
+## Troubleshooting
+
+Use the symptom to find the setting or handler to check:
+
+| Symptom | Check | Fix |
+| --- | --- | --- |
+| GPT-Live is unavailable | Organization feature access | Contact Vapi to enable access. |
+| Voice unsupported | `voice.provider` and `voice.voiceId` | Use OpenAI and a [supported voice ID](/gpt-live/configuration#voices). |
+| Tool configuration unsupported | Tool type and resolved names | Use supported types and unique names. Inspect saved tools too. |
+| Call fails on WebSocket startup | Audio format and sample rate | Set raw `pcm_s16le` at `24000` Hz explicitly. |
+| WebSocket audio sounds distorted | Sample encoding, rate, and channels | Convert the source to mono, signed 16-bit little-endian PCM at 24 kHz. |
+| Assistant never greets | First-message mode and usable text | Set `assistant-speaks-first` and a text `firstMessage`. |
+| Assistant promises a lookup but no tool runs | Both prompts and attached tools | Add a concrete delegation rule and make the tool available to the reasoner. |
+| Tool result never reaches the conversation | Handler response and matching ID | Return the actual `toolCallId`. Return the final async result through the original handler request. |
+| Transfer fails | Transport and configured destination | Use a supported blind transfer. Check carrier requirements and destination restrictions. |
+| No recording | Recording settings and consent plan | Check the documented recording behavior before the test. |
