@@ -1,0 +1,98 @@
+---
+title: Configure the GPT-Live speaker and reasoner
+subtitle: Give each model clear instructions for its part of the task
+description: Configure GPT-Live speaker and reasoner prompts in Vapi, define delegation conditions, select reasoning effort, and apply optional personality packs.
+slug: gpt-live/prompts
+---
+
+Set conversation behavior in `model.speaker.instructions`. Set task procedures and tool-use rules in `model.reasoner.instructions`. Keeping these responsibilities clear makes it easier to diagnose a missed delegation or incorrect action.
+
+## Assign instructions to the right model
+
+| Instruction | Place it in |
+| --- | --- |
+| Role, tone, response length, and spoken language | Speaker |
+| When to ask a clarification | Speaker |
+| Which requests need backend work | Speaker |
+| Required inputs and business procedures | Reasoner |
+| Tool selection and handling failed results | Reasoner |
+| Authorization, validation, and duplicate prevention | Your service, with corresponding reasoner guidance |
+
+The reasoner receives conversation context for delegated work. It does not replace validation in your tool implementation.
+
+## Write the speaker prompt
+
+Describe only capabilities your configured tools provide. For an assistant with availability and booking tools, use a short prompt like this:
+
+```text title="Speaker instructions"
+You help callers schedule appointments. Speak clearly and use short replies.
+Ask one brief question when the request is unclear.
+
+The backend can check availability and book a confirmed appointment.
+Delegate requests for availability, booking, changes to a pending request,
+and requests to end the call.
+Handle greetings and requests to repeat a confirmed result directly.
+
+When the caller corrects a date or time, acknowledge the correction and
+use the revised request. Do not announce a booking before the backend
+confirms it. Explain uncertainty when the outcome is unknown.
+```
+
+Add booking to this prompt only after you implement the booking tool. The [quickstart](/gpt-live/quickstart) deliberately starts without it.
+
+OpenAI's [GPT-Live prompting guide](https://developers.openai.com/api/docs/guides/live-prompting) recommends concise instructions with concrete delegation conditions. Apply those principles through Vapi's speaker field; direct OpenAI session fields are not Vapi assistant fields.
+
+## Write the reasoner prompt
+
+Name the required inputs, tool boundaries, and what counts as success. Adapt this example to your tool names:
+
+```text title="Reasoner instructions"
+Use the current conversation to resolve delegated appointment requests.
+Check the requested date and time zone before looking up availability.
+Use lookupAvailability for available slots. Availability is not a booking.
+
+Use the booking tool only after the caller confirms a specific slot.
+If the caller changes the date or time, obtain confirmation again.
+Follow the service's validation and operation-status results.
+
+Return a short factual result for the speaker. Distinguish pending,
+confirmed, failed, and unknown outcomes. Do not invent a successful action.
+When the caller asks to finish the conversation, call endCall.
+```
+
+Your service must still reject unauthorized or invalid requests. A prompt is guidance to the model, not an enforcement boundary.
+
+## Understand instruction precedence
+
+Explicit `model.speaker.instructions` takes precedence over legacy `model.systemPrompt` and system messages in `model.messages`. If you omit the speaker field, Vapi uses that legacy prompt configuration.
+
+Omitting `model.reasoner.instructions` uses Vapi's default reasoner instructions. A custom reasoner prompt replaces those defaults; Vapi does not append the default behavioral instructions. An explicit empty string remains empty.
+
+The prompts are independent. Changing the speaker prompt does not also configure the reasoner. Personality packs add guidance to the speaker instructions when selected.
+
+## Choose reasoning effort
+
+Start with the default reasoner, `gpt-5.6-terra`, at `low` effort. Increase effort when task evaluations show that additional reasoning helps. Higher effort can increase the time before a useful result reaches the caller.
+
+Supported model and effort values are listed in the [configuration reference](/gpt-live/configuration). General assistant model fields such as `temperature` and `maxTokens` do not configure this reasoner path.
+
+## Add personality packs deliberately
+
+Set `model.speaker.personalityPacks` to an array containing any of these IDs: `eager-listener`, `idle-hummer`, `bouncy`, or `unhurried`.
+
+```json
+{
+  "speaker": {
+    "instructions": "Speak clearly and ask one question at a time.",
+    "personalityPacks": ["unhurried"]
+  }
+}
+```
+
+This is a fragment of the `model` object. Test each pack with your actual callers and tasks. Avoid piling on style instructions that conflict with one another.
+
+## Diagnose prompt problems
+
+If the assistant talks about doing work but no tool runs, inspect the speaker's delegation instructions and the reasoner's tool access. If a tool runs with wrong inputs, inspect the reasoner procedure and your service validation.
+
+For language-specific prompts and audio examples, see [Voices and languages](/gpt-live/voices).

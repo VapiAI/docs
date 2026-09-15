@@ -1,0 +1,125 @@
+---
+title: Connect tools to GPT-Live
+subtitle: Connect an availability lookup and return confirmed results
+description: Add Vapi function and API request tools to GPT-Live, configure delegation, return matching tool results, and handle pending work and restricted call tools.
+slug: gpt-live/tools
+---
+
+Add tools to give the reasoner access to your services. This guide extends the [quickstart assistant](/gpt-live/quickstart) with an availability lookup. The lookup returns slots; it does not book an appointment.
+
+## Prerequisites
+
+- A saved GPT-Live assistant.
+- A reachable HTTPS service for the lookup.
+- A Vapi private API key to update the assistant.
+
+Your service owns appointment data and validates requests. Use fictional availability while testing.
+
+## Add an availability function
+
+<Steps>
+<Step title="Implement the lookup handler">
+Handle Vapi's [`tool-calls` server message](/server-url/events). Read the function name and arguments from `message.toolCallList`, validate the date and time zone, and query your availability service.
+
+For each call, return its matching `toolCallId`. This example response uses a placeholder ID; your handler must echo the real ID from the request:
+
+```json
+{
+  "results": [
+    {
+      "name": "lookupAvailability",
+      "toolCallId": "TOOL_CALL_ID_FROM_REQUEST",
+      "result": "There are openings at 2 PM and 4 PM on the requested date in the requested time zone. No appointment has been booked."
+    }
+  ]
+}
+```
+
+Return a factual failure when the lookup fails. Do not return sample slots as a successful response to a production request.
+</Step>
+<Step title="Configure the tool">
+Add this definition to `model.tools`, keeping the quickstart's `endCall` tool. Replace the example Server URL with your handler:
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "lookupAvailability",
+    "description": "Check available appointment slots. Does not reserve or book a slot.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "description": "Requested calendar date in YYYY-MM-DD format."
+        },
+        "timeZone": {
+          "type": "string",
+          "description": "IANA time zone, such as America/New_York."
+        }
+      },
+      "required": ["date", "timeZone"]
+    }
+  },
+  "server": {
+    "url": "https://api.example.com/vapi/tools"
+  }
+}
+```
+
+You can also create a saved tool and reference its ID through `model.toolIds`. See [Create Tool](/api-reference/tools/create).
+</Step>
+<Step title="Update both prompts">
+In the speaker prompt, explain that availability checks are now supported and delegate those requests. Keep booking explicitly unavailable.
+
+In the reasoner prompt, require a date and time zone, call `lookupAvailability`, and report only returned slots. Explain that availability does not reserve a slot.
+</Step>
+<Step title="Save the assistant">
+Publish the updated assistant in the dashboard, or update it with the [Update Assistant endpoint](/api-reference/assistants/update). Preserve its other tools and model settings when preparing the update.
+</Step>
+<Step title="Verify a lookup">
+Ask for availability with an explicit date and time zone. Confirm that your service receives the request, the returned tool-call ID matches, and the spoken answer agrees with the returned slots.
+
+Then ask to book a slot. The assistant must explain that booking is not connected. Verify that no appointment record was created.
+</Step>
+</Steps>
+
+## Choose a supported tool type
+
+The reasoner can use these Vapi tool types:
+
+| Type | Use |
+| --- | --- |
+| `function` | Call your Server URL with a `tool-calls` message. |
+| `apiRequest` | Execute a configured HTTP request. |
+| `endCall` | End the conversation on request. |
+| `dtmf` | Send outgoing RTP keypad tones on SIP. |
+| `transferCall` | Submit a supported blind transfer to a configured destination. |
+
+Give function tools unique `function.name` values and API request tools unique `name` values. Vapi validates the resolved tool set, including saved tools and tools derived from legacy assistant fields.
+
+Other tool types are rejected for GPT-Live. To query an external knowledge source, expose the lookup through a supported function or API request tool. See [Configuration and compatibility](/gpt-live/configuration) for transport and transfer restrictions.
+
+## Handle slow or asynchronous work
+
+A function may be synchronous or asynchronous. For asynchronous functions, follow Vapi's [function tool contract](/tools/custom-tools); accepting work is not a final result. Keep operation status in your service until completion.
+
+Return concise, unambiguous information: the requested operation, its status, and the verified outcome. A queued booking should return a pending status, not a booking confirmation.
+
+Tools may execute concurrently. Make dependent actions explicit: availability, caller confirmation, and booking have prerequisites even when unrelated reads can overlap. Your service should enforce those prerequisites.
+
+## Add booking safely
+
+Keep lookup and booking as separate operations. The booking service should validate the selected slot, caller authorization, and current confirmation before creating the record.
+
+Use an operation identifier to make retries safe. If a request times out, query its status before creating another booking. Report an unknown outcome until your service can establish success or failure.
+
+A spoken correction is new conversational information. Your backend must determine whether a pending operation can be cancelled, changed, or reconciled. See [Design GPT-Live conversations](/gpt-live/conversation-design).
+
+## End or transfer the call
+
+Include `endCall` when the assistant should hang up. Tell the speaker to delegate that request and the reasoner to use the tool.
+
+For `transferCall`, configure allowed destinations. Carrier acceptance does not prove the destination answered. Avoid describing a transfer as a completed conversation with the recipient until you have evidence of that outcome.
+
+For background on separating voice interaction from task execution, see OpenAI's [delegation guide](https://developers.openai.com/api/docs/guides/live-delegation). Use Vapi tool definitions for this integration, rather than copying OpenAI session event examples.

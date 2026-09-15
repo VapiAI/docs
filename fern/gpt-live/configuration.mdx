@@ -1,0 +1,145 @@
+---
+title: GPT-Live configuration and compatibility reference
+subtitle: Look up supported fields, transports, and feature restrictions
+description: Look up GPT-Live model settings, defaults, voice configuration, call transports, tools, greetings, recording behavior, and unsupported Vapi features.
+slug: gpt-live/configuration
+---
+
+Configure GPT-Live through a Vapi assistant with `model.provider: "openai"`, `model.model: "gpt-live-1"`, and an OpenAI voice. The tables below describe this integration's supported behavior.
+
+## Model and voice fields
+
+These fields belong to the assistant configuration. See [Create Assistant](/api-reference/assistants/create) for the complete generated schema.
+
+| Field | Values or behavior |
+| --- | --- |
+| `model.provider` | `openai` |
+| `model.model` | `gpt-live-1` |
+| `model.speaker.instructions` | Speaker prompt; see [instruction precedence](/gpt-live/prompts#understand-instruction-precedence). |
+| `model.speaker.personalityPacks` | Array of `eager-listener`, `idle-hummer`, `bouncy`, and `unhurried`. |
+| `model.reasoner.provider` | `openai`; defaults to OpenAI when omitted. |
+| `model.reasoner.model` | `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`; defaults to `gpt-5.6-terra`. |
+| `model.reasoner.reasoningEffort` | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; defaults to `low`. |
+| `model.reasoner.instructions` | Custom reasoner prompt; omission uses Vapi's default. |
+| `model.tools` | Inline supported tool definitions. |
+| `model.toolIds` | IDs of saved tools to resolve for the assistant. |
+| `voice.provider` | `openai` |
+| `voice.voiceId` | One of the [22 supported voices](/gpt-live/voices). |
+
+A custom prompt replaces the corresponding fallback prompt. An explicit empty string is preserved. See [Configure the speaker and reasoner](/gpt-live/prompts) before overriding defaults.
+
+## Greetings and duration
+
+Use a text greeting if the assistant should begin the conversation.
+
+| Field or feature | Behavior |
+| --- | --- |
+| `firstMessageMode: "assistant-speaks-first"` | Speaks the configured text greeting. |
+| `firstMessageMode: "assistant-waits-for-user"` | Waits for the caller. |
+| `firstMessage` | Text greeting; without usable text, the assistant waits. |
+| `maxDurationSeconds` | Maximum call duration in seconds. |
+| Audio URL greeting | Unsupported; not played as a greeting. |
+| Generated-message first-message mode | Unsupported; the assistant waits for the caller. |
+
+Generated speech may vary from the supplied greeting. A text greeting is not a guarantee of exact prerecorded playback.
+
+## Call transports
+
+Use the [Create Call endpoint](/api-reference/calls/create) or the dashboard's web-call interface.
+
+| Transport | Support | Requirements |
+| --- | --- | --- |
+| WebRTC web call | Supported | Dashboard **Talk** or Vapi web-call interface. |
+| `vapi.websocket` | Supported with restrictions | Raw, mono PCM16 audio at 24 kHz. |
+| `vapi.sip` | Supported | Vapi SIP transport configuration. |
+| Native Twilio | Supported | A configured Twilio phone number and call transport. |
+| Native Telnyx or Vonage | Unsupported | Choose a supported transport. |
+
+### WebSocket configuration
+
+Send this body to `POST https://api.vapi.ai/call` with your Vapi private API key:
+
+```json
+{
+  "assistantId": "YOUR_ASSISTANT_ID",
+  "transport": {
+    "provider": "vapi.websocket",
+    "audioFormat": {
+      "format": "pcm_s16le",
+      "container": "raw",
+      "sampleRate": 24000
+    }
+  }
+}
+```
+
+Connect to `transport.websocketCallUrl` in the response. Send and receive binary audio frames containing signed 16-bit little-endian samples at 24 kHz. Convert your microphone audio to that format before sending it.
+
+The default WebSocket sample rate is not sufficient for GPT-Live; set `24000` explicitly. This audio requirement applies to the Vapi WebSocket transport, not to browser-negotiated WebRTC audio or carrier audio.
+
+Close the WebSocket to end the call, or have the assistant invoke `endCall`. Incoming JSON call-control commands are not supported by this GPT-Live connection. See [WebSocket transport](/calls/websocket-transport) for the general transport, applying the restrictions above.
+
+## Tool and transfer compatibility
+
+The supported tool types are `function`, `apiRequest`, `endCall`, `dtmf`, and `transferCall`. All other tool types are rejected.
+
+| Feature | Support or restriction |
+| --- | --- |
+| Function tools | Synchronous and asynchronous functions. |
+| API request tools | Configured HTTP requests. |
+| Outgoing DTMF | Supported on SIP using RTP DTMF. Use digits as a string, such as `"0011*#"`; native Twilio, web calls, and raw WebSocket calls do not support this tool. |
+| SIP INFO DTMF | Unsupported; use RTP DTMF on SIP. |
+| Incoming keypad collection | Rejected when `keypadInputPlan.enabled` is true. |
+| Blind transfer | Supported on native Twilio and Vapi SIP to configured phone or SIP destinations. |
+| Warm transfer or generated transfer summary | Rejected. |
+| Transfer fallback plans or SIP `bye` verb | Rejected. |
+| SIP transfer with extension dialing | Unsupported; use a direct destination. |
+| Squads and assistant handoffs | Unsupported. |
+
+A configured transfer tool does not make every transport transfer-capable. Web calls and raw WebSocket calls do not gain phone transfer support by adding the tool. Carrier acceptance of a transfer does not confirm that the destination answered.
+
+## Settings that do not apply
+
+GPT-Live handles speech directly. Classic transcriber selection, text-to-speech controls, and start/stop-speaking plans do not configure this audio conversation.
+
+General model fields such as `temperature` and `maxTokens` do not tune this integration. Use the speaker prompt for conversational behavior and `model.reasoner.reasoningEffort` for reasoning effort.
+
+## Unsupported features and artifact behavior
+
+Check these restrictions before moving an existing assistant:
+
+| Feature | Behavior |
+| --- | --- |
+| Model fallbacks | Rejected. GPT-Live also cannot be a fallback model. |
+| Voice fallbacks | Rejected. |
+| Non-OpenAI or custom voice IDs | Rejected unless included in the supported Vapi voice catalog. |
+| Live message injection and call-control commands | Unsupported for this integration. |
+| Listen or monitor sockets | Unsupported. |
+| Reconnecting to an existing GPT-Live session | Unsupported. Start a new call and reconcile pending work in your service. |
+| Recording disabled in the assistant | No recording is created. |
+| Recording-consent plan configured | GPT-Live recording is disabled because this integration does not collect that consent. |
+
+Call artifacts and analysis are separate from your service's authoritative operation records. A transcript cannot by itself establish that a booking succeeded. See [Migrate and test GPT-Live](/gpt-live/testing).
+
+## Post-call analysis and observability
+
+Completed GPT-Live calls use Vapi's shared post-call processing. Configure analysis and observability on the assistant and inspect the resulting call data after processing finishes.
+
+| Capability | Configuration or result | Requirement |
+| --- | --- | --- |
+| Structured outputs | Attach IDs through `artifactPlan.structuredOutputIds`; read `call.artifact.structuredOutputs`. | Create the output definitions and retain the conversation data needed for extraction. |
+| Legacy call analysis | Configure `analysisPlan`. | Existing configurations remain supported; prefer structured outputs for new extraction and evaluation setups. |
+| Scorecards | Grade structured output values; read `call.artifact.scorecards`. | Configure a scorecard and its required structured outputs. |
+| Boards | Query call data and plot outcomes. | Choose metrics available on your calls; classic pipeline timing fields do not describe GPT-Live's architecture. |
+| Monitoring | Configure monitors, thresholds, and notifiers. | Retained call data is required; monitoring is unavailable with Zero Data Retention. |
+| End-of-call reports | Receive configured `end-of-call-report` server messages. | Configure the assistant's Server URL and requested server messages. |
+
+See [Call analysis](/assistants/call-analysis), [Scorecards](/observability/scorecard-quickstart), and [Monitoring](/observability/monitoring-quickstart) for setup. These are post-call capabilities; they do not imply access to live listen sockets or message injection.
+
+An extracted statement such as “booking confirmed” describes the conversation. Verify the booking in your service when measuring actual task success. Analysis results do not replace the authoritative operation record.
+
+## Credentials and cost
+
+If you bring your own OpenAI key, it needs access to GPT-Live and the selected reasoner. Organization access to the Vapi feature is a separate prerequisite.
+
+Review Vapi call costs for your configuration. OpenAI's [model pricing](https://developers.openai.com/api/docs/models/gpt-live-1) describes direct provider charges; it is not a quote for your complete Vapi call. Reasoning, tools, and telephony can contribute additional cost.
