@@ -18,11 +18,13 @@ function createExampleCache({ directory, namespace }) {
       spec, settings, generationLanguage, smartCasing, namespace: apiNamespace,
       exampleGenerationArgs, authOverrides, environmentOverrides,
       globalHeaderOverrides, enableUniqueErrorsPerEndpoint, generateV1Examples,
+      documentBaseDir,
     } = context;
     key = digest(JSON.stringify({
       spec, settings, generationLanguage, smartCasing, namespace: apiNamespace,
       exampleGenerationArgs, authOverrides, environmentOverrides,
       globalHeaderOverrides, enableUniqueErrorsPerEndpoint, generateV1Examples,
+      documentBaseDir,
     }));
     contexts.set(context, key);
     return key;

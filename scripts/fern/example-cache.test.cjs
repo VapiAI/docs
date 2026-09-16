@@ -40,6 +40,7 @@ test('schemas, parser settings, property inputs, and namespaces invalidate entri
     { ...args.context, settings: { changed: true } },
     { ...args.context, generationLanguage: 'python' },
     { ...args.context, smartCasing: true },
+    { ...args.context, documentBaseDir: '/different-reference-base' },
   ]) assert.equal(cache.run({ ...args, context }, () => 'new'), 'new');
   assert.equal(cache.run({ ...args, propertySchema: { type: 'number' } }, () => 'new'), 'new');
   assert.equal(createExampleCache({ directory, namespace: 'new-version' }).run(args, () => 'new'), 'new');
