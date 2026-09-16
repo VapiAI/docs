@@ -14,6 +14,9 @@ function inputDigest(root) {
   function visit(relative) {
     const absolute = path.join(root, relative);
     for (const entry of fs.readdirSync(absolute, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      // Fern writes these build outputs itself. The resolved spec is also in
+      // each entry key, including any examples actually applied as overrides.
+      if (entry.name === '.definition' || entry.name === 'ai_examples_override.yml') continue;
       const child = path.join(relative, entry.name);
       if (entry.isDirectory()) visit(child);
       else if (entry.isFile()) inputs.push([child, digest(fs.readFileSync(path.join(root, child)))]);
@@ -24,6 +27,7 @@ function inputDigest(root) {
   inputs.push(['fern/fern.config.json', digest(fs.readFileSync(path.join(root, 'fern/fern.config.json')))]);
   inputs.push(['runtime', VERSION, CLI_SHA256, process.versions.node, process.versions.v8, process.platform, process.arch]);
   inputs.push(['cache-code', digest(fs.readFileSync(path.join(__dirname, 'example-cache.cjs')))]);
+  inputs.push(['adapter-code', digest(fs.readFileSync(__filename))]);
   return digest(JSON.stringify(inputs));
 }
 

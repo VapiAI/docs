@@ -99,6 +99,8 @@ test('all local API inputs invalidate the cache but prose does not', (t) => {
   const before = inputDigest(directory);
   fs.writeFileSync(path.join(directory, 'fern/overview.mdx'), 'new prose');
   assert.equal(inputDigest(directory), before);
+  fs.writeFileSync(path.join(directory, 'fern/apis/api/ai_examples_override.yml'), 'generated output');
+  assert.equal(inputDigest(directory), before);
   fs.writeFileSync(path.join(directory, 'fern/apis/api/overrides.yml'), 'new schema override');
   assert.notEqual(inputDigest(directory), before);
 });

@@ -19,11 +19,13 @@ snippets, or change the API playground. Changes are confined to this docs repo.
 - Any call that reports a diagnostic through Fern's error collector is not
   cached. Exceptions still fail the build. Unreadable or corrupt entries are
   regenerated normally.
-- The cache namespace includes every file under `fern/apis`, the Fern config,
+- The cache namespace includes API source files under `fern/apis`, the Fern config,
   adapter implementation, exact CLI checksum, Node/V8 versions, OS, and CPU
   architecture. Each entry also includes the resolved API spec, parser settings,
   example settings, schema, property ID, and breadcrumbs. Markdown changes do
-  not invalidate API examples.
+  not invalidate API examples. Fern's generated `.definition` directories and
+  `ai_examples_override.yml` files do not invalidate the source fingerprint.
+  Actual resolved examples and overrides remain part of each entry key.
 - GitHub Actions restores only caches with the same API/tooling fingerprint.
   Each successful run saves a new snapshot, so additional examples generated
   during publishing can extend the validation cache. It never falls back to
@@ -62,3 +64,10 @@ in docs validation setup. A fresh process using the cache took 6.9 seconds,
 with 2,266 hits and zero misses. Both complete local checks reported zero errors
 and 11 warnings, with identical warning text. The cached full check took about
 15 seconds. This measures validation, not end-to-end publication.
+
+Two complete preview publications took approximately 47 and 49 seconds, with
+4,532 cache hits and zero misses each. Both used the normal publishing flags,
+including dynamic SDK snippets. Browser checks covered the guide, API reference,
+request examples, and API Explorer form. These are local timings, not CI timings.
+A first build after API or tooling changes still pays the original generation
+cost before populating the cache.
