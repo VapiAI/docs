@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createExampleCache } = require('./example-cache.cjs');
+const { createExampleCache, fingerprint } = require('./example-cache.cjs');
 const { inputDigest } = require('./run.cjs');
 
 function fixture(t) {
@@ -63,6 +63,24 @@ test('generation errors propagate and do not poison the cache', (t) => {
   assert.throws(() => cache.run(args, () => { throw new Error('invalid schema'); }), /invalid schema/);
   assert.equal(context.errorCollector.collect, original);
   assert.equal(cache.run(args, () => 'recovered'), 'recovered');
+});
+
+test('cache keys preserve null, undefined, and non-JSON numeric values', (t) => {
+  const { args, cache } = fixture(t);
+  for (const example of [null, undefined, NaN, Infinity]) {
+    const inputs = { ...args, mediaExampleArgs: { example } };
+    assert.deepEqual(cache.run(inputs, () => ({ example })), { example });
+    assert.deepEqual(cache.run(inputs, () => assert.fail()), { example });
+  }
+  assert.equal(cache.stats.misses, 4);
+  assert.equal(cache.stats.hits, 4);
+});
+
+test('fingerprints are stable across key order and shared object identities', () => {
+  const shared = { text: 'hello', number: 3 };
+  assert.equal(fingerprint({ a: shared, b: shared }), fingerprint({ b: { number: 3, text: 'hello' }, a: { text: 'hello', number: 3 } }));
+  assert.notEqual(fingerprint([undefined]), fingerprint(Array(1)));
+  assert.notEqual(fingerprint(NaN), fingerprint(['number', 'NaN']));
 });
 
 test('corrupt entries fall back to original generation', (t) => {

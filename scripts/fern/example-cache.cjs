@@ -5,7 +5,31 @@ const v8 = require('node:v8');
 
 const digest = (value) => crypto.createHash('sha256').update(value).digest('hex');
 
-// Cache only the return value of Fern's property-example generator. API parsing,
+// V8 serialization preserves values but is not a canonical encoding for keys.
+// Tag every value so undefined, null, NaN, and user-authored objects cannot collide.
+function fingerprint(value) {
+  const ancestors = new Set();
+  function encode(value) {
+    if (value === null) return ['null'];
+    if (value === undefined) return ['undefined'];
+    if (typeof value === 'string' || typeof value === 'boolean') return [typeof value, value];
+    if (typeof value === 'number') return ['number', Object.is(value, -0) ? '-0' : String(value)];
+    if (typeof value !== 'object') throw new Error('Unsupported cache input');
+    if (value instanceof Date) return ['date', value.toISOString()];
+    if (ancestors.has(value)) throw new Error('Cyclic cache input');
+    ancestors.add(value);
+    try {
+      if (Array.isArray(value)) return ['array', Array.from({ length: value.length }, (_, i) => Object.hasOwn(value, i) ? encode(value[i]) : ['hole'])];
+      if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new Error('Unsupported cache input prototype');
+      return ['object', Object.keys(value).sort().map((key) => [key, encode(value[key])])];
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+  return digest(JSON.stringify(encode(value)));
+}
+
+// Cache only return values of Fern's property and request/response example generators. API parsing,
 // schema validation, markdown validation, and deployment still run normally.
 function createExampleCache({ directory, namespace }) {
   const contexts = new WeakMap();
@@ -20,19 +44,25 @@ function createExampleCache({ directory, namespace }) {
       globalHeaderOverrides, enableUniqueErrorsPerEndpoint, generateV1Examples,
       documentBaseDir,
     } = context;
-    key = digest(JSON.stringify({
+    key = fingerprint({
       spec, settings, generationLanguage, smartCasing, namespace: apiNamespace,
       exampleGenerationArgs, authOverrides, environmentOverrides,
       globalHeaderOverrides, enableUniqueErrorsPerEndpoint, generateV1Examples,
       documentBaseDir,
-    }));
+    });
     contexts.set(context, key);
     return key;
   }
 
   function run(args, generate) {
     const { context, ...inputs } = args;
-    const file = path.join(directory, namespace, contextKey(context), `${digest(JSON.stringify(inputs))}.bin`);
+    let file;
+    try {
+      file = path.join(directory, namespace, contextKey(context), `${fingerprint(inputs)}.bin`);
+    } catch {
+      stats.skipped++;
+      return generate();
+    }
     try {
       const entry = fs.readFileSync(file);
       const payload = entry.subarray(65);
@@ -80,4 +110,4 @@ function createExampleCache({ directory, namespace }) {
   return { run, stats };
 }
 
-module.exports = { createExampleCache, digest };
+module.exports = { createExampleCache, digest, fingerprint };

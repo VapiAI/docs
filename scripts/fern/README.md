@@ -5,7 +5,8 @@ validation and publication. The GPT-Live docs publish spent about 24 minutes
 preparing validation and another 25 minutes building the API navigation. Its
 final deployment took six seconds.
 
-This adapter caches the exact return values of Fern's property-example generator.
+This adapter caches the exact return values of Fern's property and request/response
+example generators.
 It does not remove fields, shorten examples, skip schema checks, disable SDK
 snippets, or change the API playground. Changes are confined to this docs repo.
 
@@ -32,7 +33,7 @@ snippets, or change the API playground. Changes are confined to this docs repo.
 
 This is a small, version-specific adapter to Fern's bundled CLI, not a public
 Fern extension API. `run.cjs` verifies the complete official CLI SHA-256 and the
-single expected function signature before adding the wrapper. An unexpected
+two expected function signatures before adding the wrappers. An unexpected
 version or bundle fails before publishing. Upgrading Fern requires reviewing the
 adapter and repeating the output and timing checks.
 
@@ -53,3 +54,11 @@ node scripts/fern/run.cjs generate --docs --preview --log-level debug
 Only use `--preview` for verification. Production publishing remains in the
 existing main-branch workflow. Logs print cache hits, misses, and uncached
 diagnostic-producing calls at exit.
+
+## Measured validation results
+
+On the same machine and API inputs, the original generators took 697 seconds
+in docs validation setup. A fresh process using the cache took 6.9 seconds,
+with 2,266 hits and zero misses. Both complete local checks reported zero errors
+and 11 warnings, with identical warning text. The cached full check took about
+15 seconds. This measures validation, not end-to-end publication.
