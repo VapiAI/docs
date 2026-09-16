@@ -58,7 +58,7 @@ This replaces the previous inline authentication approach and provides better se
 </Steps>
 
 <Warning>
-Credentials configured for your org are attached only when the server URL also comes from your org configuration (a saved assistant, phone number, tool, or your org's server settings). When the server URL is included in the API request itself, then Vapi will send the webhook **without** your org's configured credential. See [When credentials are not attached](#when-credentials-are-not-attached).
+Vapi attaches your org's credential only when the server URL also comes from your org configuration: a saved assistant, phone number, tool, or **Server Configuration**. When the server URL comes from the API request itself, Vapi sends the webhook **without** that credential. See [When credentials are not attached](#when-credentials-are-not-attached).
 </Warning>
 
 ## Creating Custom Credentials
@@ -386,38 +386,38 @@ const tool = await client.tools.create({
 
 ### When credentials are not attached
 
-Vapi attaches your org's credential only to webhook server URLs **in your org configuration**. A server URL supplied in the API request itself has the webhook sent to it without your configured org credential (no `credentialId` lookup, no `X-Vapi-Secret` header, no `Authorization` header).
+Vapi attaches your org's credential only to webhook server URLs **in your org configuration**. When the server URL comes from the API request itself, Vapi sends the webhook without your org credential: no `credentialId` lookup, no `X-Vapi-Secret` header, no `Authorization` header.
 
-This applies when the API request server URL comes from:
+This applies when the server URL in the API request comes from:
 
 - a transient `assistant` passed inline to `POST /call`, `POST /chat`, or `POST /session`
 - `assistantOverrides` on a call, chat, or session
 
-It does **not** apply to a saved assistant, phone number, or tool, or to your org's Server Configuration - those keep their credentials.
+It does **not** apply to a saved assistant, phone number, tool, or your org's **Server Configuration**. Those keep their credentials.
 
 <Warning>
-These rules apply to all new organizations - those created on or after 2026-09-23 (UTC). To minimize disruption to legacy organizations created before that date, we are applying this change as a phased rollout. For legacy orgs, your org's credential will still be included with server URLs supplied in the request until the rollout reaches your org.
+These rules apply to organizations created on or after 2026-09-23 (UTC). Vapi is rolling the change out in phases to limit disruption to organizations created before that date. Until the rollout reaches your organization, Vapi still includes your credential with server URLs supplied in the request.
 </Warning>
 
 <Warning>
-If you supply the server URL in your API request, your endpoint receiving the webhook must enforce your own authentication. Either include the credential in your API request's `server.headers` parameters, or configure the URL on a saved resource instead, so that your org credential can be sent with it in the webhook.
+If you supply the server URL in your API request, your endpoint must authenticate the request itself. Either include the credential in the request's `server.headers` field, or configure the URL on a saved resource so Vapi can attach your org credential.
 </Warning>
 
-Webhooks sent to a server URL supplied in the API request also have credential fields stripped from the payload. Any `apiKey`, `secret`, `password`, `authToken`, or similar field on the embedded `assistant`, `session`, or `chat` object arrives as the string `"[REDACTED]"` rather than its real value. The rest of the payload is unchanged.
+For webhooks sent to a server URL supplied in the API request, Vapi also strips credential fields from the payload. Any `apiKey`, `secret`, `password`, `authToken`, or similar field on the embedded `assistant`, `session`, or `chat` object arrives as the string `"[REDACTED]"` rather than its real value. The rest of the payload is unchanged.
 
 #### Confirming a withheld send in your logs
 
 When Vapi withholds credentials, it also writes an entry to the call's webhook logs:
 
-```
+```text
 Assistant credentials withheld from <messageType>: this server url came from an
 assistant this request supplied, not from your org configuration
 ```
 
-The entry is written **once per message type, not once per send**. It is suppressed for the high-volume message types - `model-output`, `speech-update`, `status-update`, `transcript`, `transcript[transcriptType="final"]`, `voice-input`, and `voice-request`.
+The entry is written **once per message type, not once per send**. Vapi suppresses it for high-volume message types: `model-output`, `speech-update`, `status-update`, `transcript`, `transcript[transcriptType="final"]`, `voice-input`, and `voice-request`.
 
 <Warning>
-Absence of the webhook call log entry on a suppressed type does **not** mean credentials were sent. Credential withholding always happens on this path; only the log entry is suppressed. Check `end-of-call-report`, `call.artifact.upload`, or the session and chat webhooks - at least one of these is logged on every affected call.
+A missing log entry on a suppressed type does **not** mean credentials were sent. Credential withholding always happens on this path; only the log entry is suppressed. Check `end-of-call-report`, `call.artifact.upload`, or the session and chat webhooks. At least one of these is logged on every affected call.
 </Warning>
 
 ## Credential Management
