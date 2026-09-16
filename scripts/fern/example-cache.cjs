@@ -29,6 +29,35 @@ function fingerprint(value) {
   return digest(JSON.stringify(encode(value)));
 }
 
+// Match the pinned Fern resolver, including its ~1-only pointer decoding.
+// Walk every reference in the inputs and their transitive dependencies. Keep
+// missing targets in the key so adding a formerly missing type invalidates it.
+function dependencyFingerprint(spec, inputs) {
+  const references = new Map();
+  const visited = new WeakSet();
+  function visit(value) {
+    if (value === null || typeof value !== 'object' || visited.has(value)) return;
+    visited.add(value);
+    if (Object.hasOwn(value, '$ref')) {
+      const ref = value.$ref;
+      if (typeof ref !== 'string' || !ref.startsWith('#/')) {
+        throw new Error('Non-local reference requires uncached generation');
+      }
+      if (!references.has(ref)) {
+        let target = spec;
+        for (const key of ref.slice(2).split('/').map((part) => part.replace(/~1/g, '/'))) {
+          target = target != null && typeof target === 'object' ? target[key] : undefined;
+        }
+        references.set(ref, target);
+        visit(target);
+      }
+    }
+    for (const child of Object.values(value)) visit(child);
+  }
+  visit(inputs);
+  return fingerprint([...references].sort(([a], [b]) => a.localeCompare(b)));
+}
+
 // Cache only return values of Fern's property and request/response example generators. API parsing,
 // schema validation, markdown validation, and deployment still run normally.
 function createExampleCache({ directory, namespace }) {
@@ -39,13 +68,13 @@ function createExampleCache({ directory, namespace }) {
     let key = contexts.get(context);
     if (key !== undefined) return key;
     const {
-      spec, settings, generationLanguage, smartCasing, namespace: apiNamespace,
+      settings, generationLanguage, smartCasing, namespace: apiNamespace,
       exampleGenerationArgs, authOverrides, environmentOverrides,
       globalHeaderOverrides, enableUniqueErrorsPerEndpoint, generateV1Examples,
       documentBaseDir,
     } = context;
     key = fingerprint({
-      spec, settings, generationLanguage, smartCasing, namespace: apiNamespace,
+      settings, generationLanguage, smartCasing, namespace: apiNamespace,
       exampleGenerationArgs, authOverrides, environmentOverrides,
       globalHeaderOverrides, enableUniqueErrorsPerEndpoint, generateV1Examples,
       documentBaseDir,
@@ -58,7 +87,7 @@ function createExampleCache({ directory, namespace }) {
     const { context, ...inputs } = args;
     let file;
     try {
-      file = path.join(directory, namespace, contextKey(context), `${fingerprint(inputs)}.bin`);
+      file = path.join(directory, namespace, contextKey(context), `${fingerprint(inputs)}-${dependencyFingerprint(context.spec, inputs)}.bin`);
     } catch {
       stats.skipped++;
       return generate();
@@ -110,4 +139,4 @@ function createExampleCache({ directory, namespace }) {
   return { run, stats };
 }
 
-module.exports = { createExampleCache, digest, fingerprint };
+module.exports = { createExampleCache, digest, fingerprint, dependencyFingerprint };
