@@ -1,22 +1,27 @@
 ---
 title: MCP integration
-description: Turn your IDE into a Vapi expert with Model Context Protocol
+description: Give your IDE's AI assistant access to the Vapi documentation with the Model Context Protocol
 slug: cli/mcp
 ---
 
 ## Overview
 
-The Model Context Protocol (MCP) integration transforms your IDE's AI assistant into a Vapi expert. Once configured, your IDE gains complete, accurate knowledge of Vapi's APIs, features, and best practices - eliminating AI hallucinations and outdated information.
+`vapi mcp setup` configures your IDE's AI assistant to read the Vapi documentation through the Model Context Protocol (MCP). Your assistant can then look up current Vapi APIs, features, and guides while you work, instead of relying on what it memorized during training.
 
 **In this guide, you'll learn to:**
-- Set up MCP in supported IDEs
-- Understand what knowledge is provided
-- Use your enhanced IDE effectively
-- Troubleshoot common issues
+- Set up documentation access in supported IDEs
+- Understand what the setup writes and where
+- Troubleshoot a connection that isn't working
+
+<Note>
+This is the Vapi **documentation** server — it provides reference material and needs no API key. It cannot create assistants, place calls, or change anything in your Vapi account.
+
+To let an agent perform Vapi operations, use the [Vapi MCP server](/sdk/mcp-server), which is a different server with a different package and requires authentication.
+</Note>
 
 ## Quick start
 
-Run the setup command to auto-configure all supported IDEs:
+Detect your installed IDEs and configure each one:
 
 ```bash
 vapi mcp setup
@@ -26,82 +31,49 @@ Or configure a specific IDE:
 
 ```bash
 vapi mcp setup cursor   # For Cursor
-vapi mcp setup windsurf # For Windsurf  
-vapi mcp setup vscode   # For VSCode with Copilot
+vapi mcp setup windsurf # For Windsurf
+vapi mcp setup vscode   # For VS Code
 ```
 
-## What is MCP?
-
-Model Context Protocol is a standard that allows AI assistants to access structured knowledge and tools. When you set up MCP for Vapi:
-
-- Your IDE's AI gains access to complete Vapi documentation
-- Code suggestions become accurate and up-to-date
-- Examples use real, working Vapi patterns
-- API hallucinations are eliminated
+Restart your IDE afterwards so it picks up the new configuration.
 
 ## Supported IDEs
 
-<CardGroup cols={3}>
-  <Card title="Cursor" icon="code" href="https://cursor.sh">
-    AI-first code editor with deep MCP integration
-    
-    **Setup:** Creates `.cursor/mcp.json`
-  </Card>
-  <Card title="Windsurf" icon="wind" href="https://codeium.com/windsurf">
-    Codeium's AI-powered IDE
-    
-    **Setup:** Creates `.windsurf/mcp.json`
-  </Card>
-  <Card title="VSCode" icon="brands microsoft" href="https://code.visualstudio.com">
-    With GitHub Copilot extension
-    
-    **Setup:** Configures Copilot settings
-  </Card>
-</CardGroup>
+| IDE | Configuration file |
+| --- | --- |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| VS Code | `~/.vscode/mcp.json` |
 
-## How it works
+<Note>
+These paths are in your home directory, so the configuration applies to every project on your machine. You do not need to run `vapi mcp setup` per project, and there is nothing to commit to your repository.
+</Note>
 
-### What gets configured
+## What gets configured
 
-The MCP setup creates configuration files that connect your IDE to the Vapi MCP server:
+The setup adds a server named `vapi` that runs the documentation server through `npx`. If the file already exists, your other MCP servers are preserved. An existing file containing invalid JSON is backed up before being replaced.
 
 <Tabs>
-  <Tab title="Cursor">
-    **File:** `.cursor/mcp.json`
+  <Tab title="Cursor and Windsurf">
     ```json
     {
-      "servers": {
-        "vapi-docs": {
+      "mcpServers": {
+        "vapi": {
           "command": "npx",
-          "args": ["@vapi-ai/mcp-server"]
+          "args": ["-y", "@vapi-ai/mcp-docs-server"]
         }
       }
     }
     ```
   </Tab>
-  <Tab title="Windsurf">
-    **File:** `.windsurf/mcp.json`
+  <Tab title="VS Code">
     ```json
     {
       "servers": {
-        "vapi-docs": {
+        "vapi": {
           "command": "npx",
-          "args": ["@vapi-ai/mcp-server"]
-        }
-      }
-    }
-    ```
-  </Tab>
-  <Tab title="VSCode">
-    **Settings:** Updates workspace settings
-    ```json
-    {
-      "github.copilot.advanced": {
-        "mcp.servers": {
-          "vapi-docs": {
-            "command": "npx",
-            "args": ["@vapi-ai/mcp-server"]
-          }
+          "args": ["-y", "@vapi-ai/mcp-docs-server"],
+          "type": "stdio"
         }
       }
     }
@@ -109,286 +81,64 @@ The MCP setup creates configuration files that connect your IDE to the Vapi MCP 
   </Tab>
 </Tabs>
 
-### What knowledge is provided
+Because the command uses `npx -y`, the latest published version is fetched on each run. There is no global package to install or update.
 
-Your IDE gains access to:
+## What your assistant can look up
 
-- **Complete API Reference** - Every endpoint, parameter, and response
-- **Code Examples** - Working samples for all features
-- **Integration Guides** - Step-by-step implementation patterns
-- **Best Practices** - Recommended approaches and patterns
-- **Latest Features** - Always up-to-date with new releases
-- **Troubleshooting** - Common issues and solutions
+Once connected, your assistant can search the Vapi documentation for:
 
-## Using your enhanced IDE
+- API reference details, including endpoints, parameters, and responses
+- Configuration guidance for assistants, tools, and phone numbers
+- Integration and implementation guides
+- Troubleshooting material
 
-### Example prompts
+Ask specific questions, and name the SDK you're using when it matters. Your assistant retrieves documentation, so results are only as current as the published docs — always check generated code against the [API reference](/api-reference).
 
-Once MCP is configured, try these prompts in your IDE:
+## Check status
 
-<AccordionGroup>
-  <Accordion title="Creating assistants">
-    **Prompt:** "How do I create a voice assistant with Vapi?"
-    
-    Your IDE will provide accurate code like:
-    ```typescript
-    import { VapiClient } from "@vapi-ai/server-sdk";
-    
-    const client = new VapiClient({ token: process.env.VAPI_API_KEY });
-    
-    const assistant = await client.assistants.create({
-      name: "Customer Support",
-      model: {
-        provider: "openai",
-        model: "gpt-4",
-        systemPrompt: "You are a helpful customer support agent..."
-      },
-      voice: {
-        provider: "11labs",
-        voiceId: "rachel"
-      }
-    });
-    ```
-  </Accordion>
-  
-  <Accordion title="Webhook handling">
-    **Prompt:** "Show me how to handle Vapi webhooks"
-    
-    Get complete webhook examples:
-    ```typescript
-    app.post('/webhook', async (req, res) => {
-      const { type, call, assistant } = req.body;
-      
-      switch (type) {
-        case 'call-started':
-          console.log(`Call ${call.id} started`);
-          break;
-        case 'speech-update':
-          console.log(`User said: ${req.body.transcript}`);
-          break;
-        case 'function-call':
-          // Handle tool calls
-          const { functionName, parameters } = req.body.functionCall;
-          const result = await handleFunction(functionName, parameters);
-          res.json({ result });
-          return;
-      }
-      
-      res.status(200).send();
-    });
-    ```
-  </Accordion>
-  
-  <Accordion title="Advanced features">
-    **Prompt:** "How do I set up call recording with custom storage?"
-    
-    Get detailed implementation:
-    ```typescript
-    const assistant = await client.assistants.create({
-      name: "Recorded Assistant",
-      recordingEnabled: true,
-      artifactPlan: {
-        recordingEnabled: true,
-        videoRecordingEnabled: false,
-        recordingPath: "s3://my-bucket/recordings/{call_id}"
-      },
-      credentialIds: ["aws-s3-credential-id"]
-    });
-    ```
-  </Accordion>
-</AccordionGroup>
-
-### Best practices
-
-<Steps>
-  <Step title="Be specific">
-    Ask detailed questions about Vapi features:
-    - ✅ "How do I transfer calls to a human agent in Vapi?"
-    - ❌ "How do I transfer calls?"
-  </Step>
-  
-  <Step title="Request examples">
-    Ask for working code samples:
-    - "Show me a complete example of..."
-    - "Generate a working implementation of..."
-  </Step>
-  
-  <Step title="Check versions">
-    Specify SDK versions when needed:
-    - "Using @vapi-ai/web v2.0, how do I..."
-    - "What's the latest way to..."
-  </Step>
-</Steps>
-
-## Configuration options
-
-### Check status
-
-View current MCP configuration:
+See which IDEs are currently configured:
 
 ```bash
 vapi mcp status
 ```
 
-Output:
-```
-MCP Configuration Status:
-✓ Cursor: Configured (.cursor/mcp.json)
-✗ Windsurf: Not configured
-✓ VSCode: Configured (workspace settings)
+This reports each supported IDE and whether a Vapi entry was found in its configuration file.
 
-Vapi MCP Server: v1.2.3 (latest)
-```
+## Remove the configuration
 
-### Update server
-
-Keep the MCP server updated:
-
-```bash
-# Update to latest version
-npm update -g @vapi-ai/mcp-server
-
-# Or reinstall
-npm install -g @vapi-ai/mcp-server@latest
-```
-
-### Remove configuration
-
-Remove MCP configuration:
-
-```bash
-# Remove from all IDEs
-vapi mcp remove
-
-# Remove from specific IDE
-vapi mcp remove cursor
-```
-
-## How MCP tools work
-
-The Vapi MCP server provides these tools to your IDE:
-
-<CardGroup cols={2}>
-  <Card title="Search Documentation" icon="magnifying-glass">
-    Semantic search across all Vapi docs
-    
-    **Example:** "How to handle voicemail detection"
-  </Card>
-  <Card title="Get Examples" icon="code">
-    Retrieve code samples for any feature
-    
-    **Example:** "WebSocket connection example"
-  </Card>
-  <Card title="API Reference" icon="book">
-    Get detailed API endpoint information
-    
-    **Example:** "POST /assistant parameters"
-  </Card>
-  <Card title="Implementation Guides" icon="map">
-    Step-by-step guides for complex features
-    
-    **Example:** "Custom tool implementation guide"
-  </Card>
-</CardGroup>
+There is no CLI command to remove the integration. Delete the `vapi` entry from the configuration file for your IDE, then restart it. Removing the whole file will also remove any other MCP servers you have configured, so edit the entry rather than deleting the file.
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="MCP not working in IDE">
-    If your IDE isn't using the MCP knowledge:
-    
-    1. **Restart your IDE** after configuration
-    2. **Check the logs** in your IDE's output panel
-    3. **Verify npm is accessible** from your IDE
-    4. **Ensure MCP server is installed** globally
-    
-    ```bash
-    # Verify installation
-    npm list -g @vapi-ai/mcp-server
-    ```
+  <Accordion title="The assistant isn't using Vapi documentation">
+    1. **Restart your IDE.** MCP servers are started when the IDE loads.
+    2. **Confirm the file exists** at the path listed above for your IDE, and that it contains a `vapi` entry.
+    3. **Check your IDE's MCP or output panel** for connection errors.
+    4. **Verify `npx` is on the PATH your IDE uses.** IDEs launched from the Dock or Start menu may not inherit the shell PATH where Node is installed. Launching the IDE from a terminal is a quick way to test this.
   </Accordion>
-  
-  <Accordion title="Permission errors">
-    For permission issues:
-    
+
+  <Accordion title="The server fails to start">
+    Confirm Node.js and `npx` are installed and working:
+
     ```bash
-    # Install with proper permissions
-    sudo npm install -g @vapi-ai/mcp-server
-    
-    # Or use a Node version manager
-    nvm use 18
-    npm install -g @vapi-ai/mcp-server
+    npx -y @vapi-ai/mcp-docs-server
     ```
+
+    The server communicates over stdio, so it will start and wait for input rather than printing a ready message. Press `Ctrl+C` to exit. If this command fails, fix your Node installation before retrying the IDE setup.
   </Accordion>
-  
-  <Accordion title="Outdated information">
-    If you're getting old API information:
-    
-    1. Update the MCP server:
-    ```bash
-    npm update -g @vapi-ai/mcp-server
-    ```
-    
-    2. Clear your IDE's cache
-    3. Restart the IDE
+
+  <Accordion title="The information seems out of date">
+    The server queries the published documentation, so restarting the IDE picks up the current content. If a specific page looks wrong, check it at [docs.vapi.ai](https://docs.vapi.ai) and report the discrepancy.
   </Accordion>
-  
-  <Accordion title="Multiple workspaces">
-    For different projects needing different configs:
-    
-    - MCP configuration is per-workspace
-    - Run `vapi mcp setup` in each project
-    - Configuration won't conflict between projects
+
+  <Accordion title="Setup replaced my configuration file">
+    If the file contained invalid JSON, setup backs it up to `<filename>.backup.<timestamp>` in the same directory and writes a new one. Recover your other servers from that backup.
   </Accordion>
 </AccordionGroup>
 
-## Advanced usage
-
-### Custom MCP configuration
-
-Modify the generated MCP configuration for advanced needs:
-
-```json
-{
-  "servers": {
-    "vapi-docs": {
-      "command": "npx",
-      "args": ["@vapi-ai/mcp-server"],
-      "env": {
-        "VAPI_MCP_LOG_LEVEL": "debug"
-      }
-    }
-  }
-}
-```
-
-### Using with teams
-
-Share MCP configuration with your team:
-
-1. **Commit the config files** (`.cursor/mcp.json`, etc.)
-2. **Document the setup** in your README
-3. **Include in onboarding** for new developers
-
-Example README section:
-```markdown
-## Development Setup
-
-This project uses Vapi MCP for enhanced IDE support:
-
-1. Install Vapi CLI: `curl -sSL https://vapi.ai/install.sh | bash`
-2. Set up MCP: `vapi mcp setup`
-3. Restart your IDE
-```
-
 ## Next steps
-
-Now that MCP is configured:
 
 - **[Create assistants](/quickstart/phone):** Build your first voice AI
 - **[Test webhooks locally](/cli/webhook):** Debug webhooks with tunneling services
-- **[Manage resources](/cli#common-commands):** Use CLI commands
-
----
-
-**Pro tip:** After setting up MCP, try asking your IDE to "Create a complete Vapi voice assistant with error handling and logging" - watch it generate production-ready code with all the right patterns!
+- **[Vapi MCP server](/sdk/mcp-server):** Let an agent perform Vapi operations, not just read documentation
