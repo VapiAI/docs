@@ -1,0 +1,49 @@
+---
+title: Dynamic tool messages
+subtitle: Let the model speak a tailored line before a tool runs, using bot_say
+---
+
+## Overview
+
+A tool's start message is normally static, configured in the tool's `messages` array. If you want the spoken acknowledgment to adapt to the conversation, for example to match the caller's language or the moment, add a reserved `bot_say` string to the tool's model-facing schema. The model fills it in the same turn it calls the tool, so there is no extra model request and no added latency.
+
+Vapi speaks `bot_say` before the tool runs, the caller cannot interrupt it, and Vapi removes `bot_say` from the arguments before your server or endpoint receives them.
+
+## Set it up
+
+1. Add a `bot_say` string property to the schema the model generates against, and add it to `required`. For function, handoff, and knowledge base (query) tools, that schema is `function.parameters`. Mark it required, or the model can skip it and nothing is spoken.
+2. Put your guidance in the property `description`. That text drives the wording, so tone, length, language, and any script rules belong there.
+3. Clear any static start message on the same tool by setting its `messages` to a single `request-start` with an empty `content`. If you leave a static start message in place, the caller hears both.
+4. In your system prompt, instruct the model to populate `bot_say` whenever it calls the tool, and not to speak a separate acknowledgment.
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "lookup_order",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "order_id": { "type": "string" },
+        "bot_say": {
+          "type": "string",
+          "description": "One brief acknowledgment before the lookup, in the caller's current language. No trailing punctuation."
+        }
+      },
+      "required": ["order_id", "bot_say"]
+    }
+  },
+  "messages": [{ "type": "request-start", "content": "" }]
+}
+```
+
+## Behavior and limits
+
+- `bot_say` is spoken before the tool executes, and the caller cannot interrupt it.
+- Vapi removes `bot_say` from the arguments before the destination receives them, so it does not interfere with anything else the tool takes.
+- If several tools are called in the same turn, their `bot_say` lines are joined into one message.
+- An empty string is not spoken. It is also not removed from the arguments, so avoid emitting an empty `bot_say`.
+
+## Related
+
+- [Static variables and aliases](/tools/static-variables-and-aliases) for server-trusted values the model never sees.
