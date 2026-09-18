@@ -1,0 +1,83 @@
+name: Test - Discord Product News
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/test-discord-product-news.yml
+      - scripts/discord/**
+      - fern/changelog/**
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview the payload or send it to the test Discord server
+        required: true
+        type: choice
+        default: preview
+        options:
+          - preview
+          - send-test
+      changelog_file:
+        description: Optional fern/changelog/YYYY-MM-DD.mdx path; blank uses latest
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.event_name == 'pull_request' || inputs.mode == 'preview'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run tests
+        run: node --test scripts/discord/product-news.test.mjs
+
+      - name: Preview Discord payload
+        env:
+          CHANGELOG_FILE: ${{ inputs.changelog_file }}
+        run: |
+          args=(--prefix "[TEST]" --dry-run)
+          if [[ -n "$CHANGELOG_FILE" ]]; then
+            args+=(--file "$CHANGELOG_FILE")
+          fi
+          node scripts/discord/post-whats-new.mjs "${args[@]}"
+
+  send-test:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'send-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: discord-product-news-test
+    concurrency:
+      group: discord-product-news-test
+      cancel-in-progress: false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run tests
+        run: node --test scripts/discord/product-news.test.mjs
+
+      - name: Post to test Discord server
+        env:
+          CHANGELOG_FILE: ${{ inputs.changelog_file }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          args=(--prefix "[TEST]")
+          if [[ -n "$CHANGELOG_FILE" ]]; then
+            args+=(--file "$CHANGELOG_FILE")
+          fi
+          node scripts/discord/post-whats-new.mjs "${args[@]}"
