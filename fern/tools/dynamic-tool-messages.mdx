@@ -1,30 +1,82 @@
 ---
 title: Dynamic tool messages
-subtitle: Let the model speak a tailored line before a tool runs, using bot_say
+subtitle: Generate a context-aware message before a tool runs with bot_say
+slug: tools/dynamic-tool-messages
+description: Configure bot_say for Function and Handoff tools so an assistant speaks a context-aware message before execution and handles multiple tool calls correctly.
 ---
 
-## Overview
+`bot_say` is a reserved tool-call argument that lets the model generate a context-aware message in the same response that calls a tool. Vapi speaks the message before the tool runs, without making an additional model request.
 
-A tool's start message is normally static, configured in the tool's `messages` array. If you want the spoken acknowledgment to adapt to the conversation, for example to match the caller's language or the moment, add a reserved `bot_say` string to the tool's model-facing schema. The model fills it in the same turn it calls the tool, so there is no extra model request and no added latency.
+When `bot_say` is a non-empty string, Vapi trims and speaks it before the tool runs. Vapi waits for the message to finish, the caller cannot interrupt it, and Vapi removes the property from the tool-call arguments before execution.
 
-Vapi speaks `bot_say` before the tool runs, the caller cannot interrupt it, and Vapi removes `bot_say` from the arguments before your server or endpoint receives them.
+<Note>
+  Define `bot_say` inside `function.parameters`. It is not a top-level tool
+  field, so it does not appear as a named field in the [Create Tool API
+  reference](/api-reference/tools/create).
+</Note>
 
-## Set it up
+## Supported tools
 
-1. Add a `bot_say` string property to the schema the model generates against, and add it to `required`. For function, handoff, and knowledge base (query) tools, that schema is `function.parameters`. Mark it required, or the model can skip it and nothing is spoken.
-2. Put your guidance in the property `description`. That text drives the wording, so tone, length, language, and any script rules belong there.
-3. Clear any static start message on the same tool by setting its `messages` to a single `request-start` with an empty `content`. If you leave a static start message in place, the caller hears both.
-4. In your system prompt, instruct the model to populate `bot_say` whenever it calls the tool, and not to speak a separate acknowledgment.
+| Tool | Add `bot_say` to | Configuration note |
+| --- | --- | --- |
+| Function | `function.parameters.properties` | Add it to the tool's existing JSON Schema. |
+| Handoff | `function.parameters.properties` | Preserve the generated `destination` property and its required entry. |
+
+## Configure `bot_say`
+
+<Steps>
+  <Step title="Add bot_say to the tool schema">
+    Add a `bot_say` property with `type` set to `string` inside
+    `function.parameters.properties`. Include `bot_say` in
+    `function.parameters.required` so the schema requires the model to provide
+    it.
+
+    Add the property to the existing schema without removing other properties
+    or required entries.
+  </Step>
+
+  <Step title="Describe what the assistant should say">
+    Use the property's `description` to specify the message's purpose, tone,
+    length, language, and script rules. Ask for a non-empty value without
+    trailing punctuation.
+  </Step>
+
+  <Step title="Suppress the static start message">
+    For a tool that normally plays a static or default `request-start` message,
+    add one `request-start` entry with an empty `content` value. Replace any
+    existing `request-start` entries, but keep entries for other message types.
+
+    The empty entry prevents a second acknowledgment. Without it, Vapi can
+    select a default filler message. If you configure a non-empty static start
+    message, the caller can hear both the dynamic and static messages.
+  </Step>
+
+  <Step title="Update the assistant prompt">
+    Tell the model to populate `bot_say` whenever it calls the tool and not to
+    speak a separate acknowledgment.
+
+    ```text
+    Whenever you call lookup_order, set bot_say to one brief acknowledgment in
+    the caller's current language. Do not speak a separate acknowledgment.
+    ```
+  </Step>
+</Steps>
+
+## Function tool example
 
 ```json
 {
   "type": "function",
   "function": {
     "name": "lookup_order",
+    "description": "Look up an order by its ID",
     "parameters": {
       "type": "object",
       "properties": {
-        "order_id": { "type": "string" },
+        "order_id": {
+          "type": "string",
+          "description": "The order ID to look up"
+        },
         "bot_say": {
           "type": "string",
           "description": "One brief acknowledgment before the lookup, in the caller's current language. No trailing punctuation."
@@ -33,17 +85,36 @@ Vapi speaks `bot_say` before the tool runs, the caller cannot interrupt it, and 
       "required": ["order_id", "bot_say"]
     }
   },
-  "messages": [{ "type": "request-start", "content": "" }]
+  "server": {
+    "url": "https://example.com/vapi/tools"
+  },
+  "messages": [
+    {
+      "type": "request-start",
+      "content": ""
+    }
+  ]
 }
 ```
 
 ## Behavior and limits
 
-- `bot_say` is spoken before the tool executes, and the caller cannot interrupt it.
-- Vapi removes `bot_say` from the arguments before the destination receives them, so it does not interfere with anything else the tool takes.
-- If several tools are called in the same turn, their `bot_say` lines are joined into one message.
-- An empty string is not spoken. It is also not removed from the arguments, so avoid emitting an empty `bot_say`.
+- Vapi trims leading and trailing whitespace from a non-empty `bot_say` value before speaking it.
+- An empty or whitespace-only value is neither spoken nor removed, so it remains in the tool-call arguments.
+- If several tools are called in the same turn, Vapi joins their non-empty values with `. ` and speaks one combined message.
+- If `bot_say` is missing, Vapi does not speak a dynamic tool message.
+
+## Verify the behavior
+
+Make a test call that triggers the Function tool, then inspect the request received by your server. Confirm that:
+
+- The assistant finishes the dynamic message before the request arrives.
+- The caller cannot interrupt the message.
+- The caller hears no second start message.
+- The received tool-call arguments contain `order_id` but not `bot_say`.
 
 ## Related
 
-- [Static variables and aliases](/tools/static-variables-and-aliases) for server-trusted values the model never sees.
+- [Function tools](/tools/custom-tools)
+- [Handoff arguments](/squads/passing-data-between-assistants#approach-1-handoff-arguments)
+- [Static variables and aliases](/tools/static-variables-and-aliases) for server-controlled values the model does not generate.
