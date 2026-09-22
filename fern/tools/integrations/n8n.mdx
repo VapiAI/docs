@@ -1,0 +1,105 @@
+---
+title: n8n
+subtitle: Connect an assistant to an n8n workflow through an API Request tool
+description: Connect Vapi to n8n with an API Request tool and a published Webhook workflow. Run the business-hours starter, verify JSON responses, and diagnose setup issues.
+slug: tools/integrations/n8n
+---
+
+Use an [API Request tool](/tools/api-request) when an assistant needs a result from an n8n workflow during a conversation. Vapi calls the workflow's production Webhook URL and gives its JSON response to the assistant.
+
+## What is n8n
+
+n8n is a workflow automation platform that connects services and processes data. Its [Webhook node](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/) can receive an HTTP request, run a workflow, and return data to Vapi. This pattern does not require a Vapi-specific request or response envelope.
+
+## Connect n8n
+
+The [Vapi + n8n starter](https://github.com/VapiAI/vapi-labs/tree/main/projects/vapi-n8n-api-request-starter) demonstrates a three-node request-response workflow: Webhook → Code → [Respond to Webhook](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.respondtowebhook/). It checks an editable business-hours schedule and returns whether the example business is open now.
+
+### Prerequisites
+
+- A Vapi account and a [private API key](/security-and-privacy/api-keys)
+- An n8n instance that can publish a workflow with an HTTPS Webhook URL
+- Node.js 20.6 or newer to run the starter
+
+<Steps>
+  <Step title="Get the starter">
+    Clone the [Vapi Labs repository](https://github.com/VapiAI/vapi-labs), then open the starter directory:
+
+    ```bash
+    git clone https://github.com/VapiAI/vapi-labs.git
+    cd vapi-labs/projects/vapi-n8n-api-request-starter
+    ```
+  </Step>
+
+  <Step title="Import the workflow">
+    In the n8n workflow editor, open the top-right three-dot menu, select **Import from File**, and choose `workflows/vapi-business-hours.json` from the starter directory.
+  </Step>
+
+  <Step title="Set the example schedule">
+    Open **Check business hours** and set `timeZone`, `openDays`, `opensAt`, and `closesAt` for your example business. The imported workflow uses Monday through Friday, 09:00–17:00 in `America/Los_Angeles`.
+  </Step>
+
+  <Step title="Publish the workflow">
+    Select **Publish**. Open **Receive Vapi request**, select **Production URL**, and copy the HTTPS URL. The **Test URL** works only while n8n is listening for a test event; use the production URL for the Vapi tool.
+  </Step>
+
+  <Step title="Configure the starter">
+    From `projects/vapi-n8n-api-request-starter`, copy `.env.example` to `.env.local`. Set `VAPI_API_KEY` to your Vapi private API key and `N8N_WEBHOOK_URL` to the n8n production URL. Keep `.env.local` private.
+
+    ```bash
+    cp .env.example .env.local
+    ```
+  </Step>
+
+  <Step title="Run the starter">
+    From the same directory, run:
+
+    ```bash
+    node --env-file=.env.local scripts/run.mjs
+    ```
+
+    The runner uses a transient assistant and an inline API Request tool. You do not need to create a saved tool or assistant in the Vapi Dashboard.
+  </Step>
+</Steps>
+
+### Verify the result
+
+A successful run prints `n8n webhook OK`, `Vapi API Request confirmed`, and a Vapi answer based on the returned hours. The open or closed result depends on the current time and the schedule you set. In n8n, open the workflow's **Executions** tab to inspect production requests.
+
+The response includes `openNow`, `localTime`, `timeZone`, the regular schedule, and `checkedAt`. The example does not account for holidays or appointment availability.
+
+## Settings reference
+
+| Setting | Starter value | Why it matters |
+| --- | --- | --- |
+| n8n Webhook **HTTP Method** | `GET` | Must match the API Request tool's `method`. |
+| n8n Webhook **Respond** | **Using 'Respond to Webhook' Node** | Returns the workflow's JSON result instead of an immediate acknowledgment. |
+| n8n Respond to Webhook **Respond With** | **JSON** | Makes the business-hours fields available to the assistant. |
+| Vapi API Request tool `url` | n8n **Production URL** | The runner inserts this URL from `N8N_WEBHOOK_URL`. |
+| Vapi API Request tool `timeoutSeconds` | `10` | The workflow must return before the tool times out. |
+
+## Choose another pattern
+
+| Need | Vapi pattern | n8n behavior |
+| --- | --- | --- |
+| Use workflow data or an action result during the conversation | [API Request tool](/tools/api-request) | Receive the request and return JSON in the same HTTP response. |
+| Send call events or an end-of-call report to n8n | [Server URL](/server-url/events) | Receive Vapi events with a Webhook node; an informational event does not return a tool result to the assistant. |
+| Receive Vapi's `tool-calls` payload or use asynchronous tool execution | [Function tool](/tools/custom-tools) | Parse the Vapi payload and return the Function tool's required response when synchronous. |
+
+## Authenticate private workflows
+
+The starter uses an unauthenticated webhook for public example hours. For private data or actions, configure [n8n Webhook Header Auth](https://docs.n8n.io/integrations/builtin/credentials/webhook/#using-header-auth) and a [Vapi Custom Credential](/tools/api-request/configuration#authenticate-requests) with a matching header name and value. Set the inline API Request tool's `credentialId` to the credential ID. If n8n expects the raw header value, disable the credential's Bearer prefix.
+
+The starter does not test this authenticated variant. Its preflight GET sends no authentication header, so the unchanged runner will fail against a protected webhook. Add the same header to the preflight request when testing this variant. Keep the secret out of exported workflow JSON and model-visible tool fields.
+
+## Troubleshoot the connection
+
+| Symptom | Check first |
+| --- | --- |
+| n8n returns `404` or the webhook is not registered | Publish the workflow and use its **Production URL**, not the **Test URL**. |
+| Vapi receives an acknowledgment instead of business-hours fields | Set the Webhook node to respond using **Respond to Webhook**, and return JSON from that node. |
+| Vapi reports a failed request | Check the n8n execution for an error or non-2xx response. See [API Request response handling](/tools/api-request/response-handling). |
+| The assistant waits too long | Check n8n execution time against `timeoutSeconds`. See [API Request latency and retries](/tools/api-request/reliability). |
+| The assistant does not call the tool | Check that the assistant prompt asks it to use the tool for current hours. See [Troubleshoot tools](/tools/custom-tools-troubleshooting). |
+
+When you finish testing, unpublish the n8n workflow to stop accepting production webhook requests. The starter creates no saved Vapi resources.
