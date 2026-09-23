@@ -19,17 +19,20 @@ snippets, or change the API playground. Changes are confined to this docs repo.
 - Any call that reports a diagnostic through Fern's error collector is not
   cached. Exceptions still fail the build. Unreadable or corrupt entries are
   regenerated normally.
-- The cache namespace includes API source files under `fern/apis`, the Fern config,
-  adapter implementation, exact CLI checksum, Node/V8 versions, OS, and CPU
-  architecture. Each entry also includes the resolved API spec, parser settings,
-  example settings, schema, property ID, and breadcrumbs. Markdown changes do
-  not invalidate API examples. Fern's generated `.definition` directories and
-  `ai_examples_override.yml` files do not invalidate the source fingerprint.
-  Actual resolved examples and overrides remain part of each entry key.
-- GitHub Actions restores only caches with the same API/tooling fingerprint.
-  Each successful run saves a new snapshot, so additional examples generated
-  during publishing can extend the validation cache. It never falls back to
-  different API inputs. The first build for new inputs fills the cache.
+- The cache namespace includes the Fern config, adapter implementation, exact CLI
+  checksum, Node/V8 versions, OS, and CPU architecture. API source edits and
+  Markdown changes do not invalidate the namespace.
+- Each entry includes the example inputs, parser and example settings, reference
+  base directory, and the complete contents of every transitively referenced
+  schema or example. Editing an unrelated endpoint or type preserves the entry.
+  Editing a shared type invalidates every example that depends on it. Added or
+  removed reference targets also invalidate affected entries, including cycles.
+- Reference traversal matches the pinned Fern resolver. Non-local references
+  bypass caching because their contents cannot be proven unchanged from the
+  resolved local specification. Diagnostics and exceptions retain normal behavior.
+- GitHub Actions restores caches with the same tooling fingerprint and saves a
+  new snapshot on each successful run. New or changed examples extend the cache.
+  The first build with a new tooling fingerprint fills a fresh cache.
 
 ## Maintenance and escape hatch
 
@@ -69,5 +72,7 @@ Two complete preview publications took approximately 47 and 49 seconds, with
 4,532 cache hits and zero misses each. Both used the normal publishing flags,
 including dynamic SDK snippets. Browser checks covered the guide, API reference,
 request examples, and API Explorer form. These are local timings, not CI timings.
-A first build after API or tooling changes still pays the original generation
-cost before populating the cache.
+A first build after tooling changes still pays the original generation cost.
+API edits regenerate only entries whose inputs or transitive references changed.
+The measurements above are from the original whole-spec cache. Granular-cache
+measurements are recorded separately when verified.
