@@ -1,10 +1,15 @@
 ---
-title: Custom Tools
-subtitle: Learn how to create and configure Custom Tools for use by your Vapi assistants.
+title: Function tools
+subtitle: Connect an assistant to your own server logic with a Function tool
 slug: tools/custom-tools
+description: Create custom tools, including Function tools, for Vapi assistants using the dashboard's visual Tools section or the API to connect to your server-side logic.
 ---
 
-This guide shows you how to create custom tools for your Vapi assistants. We recommend using the Vapi dashboard's dedicated Tools section, which provides a visual interface for creating and managing tools that can be reused across multiple assistants. For advanced users, API configuration is also available.
+This guide shows you how to create Function tools for your Vapi assistants. The dashboard picker labels this tool type **Custom Tool**, but the created tool and the API both identify it as `function`. We recommend using the Vapi dashboard's dedicated Tools section, which provides a visual interface for creating and managing tools that can be reused across multiple assistants. For advanced users, API configuration is also available.
+
+<Note>
+  Not sure which tool type to use? See [When to use API Request or Function tools](/tools/api-request-vs-function) before configuring your integration.
+</Note>
 
 ## Creating Tools in the Dashboard (Recommended)
 
@@ -18,7 +23,7 @@ This guide shows you how to create custom tools for your Vapi assistants. We rec
 
 The dashboard provides a user-friendly interface to configure your tool:
 
-1. **Tool Type**: Select "Function" for custom API integrations
+1. **Tool Type**: Select **Custom Tool** for custom API integrations
 2. **Tool Name**: Give your tool a descriptive name (e.g., "Weather Lookup")
 3. **Description**: Explain what your tool does
 4. **Tool Configuration**:
@@ -76,14 +81,6 @@ Once created, your tools can be easily added to any assistant:
 3. Click **Add Tool** and select your custom tool from the dropdown
 4. Save your assistant configuration
 
-### In Workflows
-
-Tools created in the Tools section are automatically available in the workflow builder:
-
-1. Add a **Tool Node** to your workflow
-2. Select your custom tool from the **Tool** dropdown
-3. Configure any node-specific settings
-
 ### Using the Vapi CLI
 
 Manage your custom tools directly from the terminal:
@@ -127,9 +124,8 @@ Custom function tools are not the only tool type where you can define an LLM-fac
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `function` (custom)                                                                                                                                                      | Yes — the entire purpose of this tool type.                                                                                                                                                            |
 | `apiRequest`                                                                                                                                                             | Yes — drives both the LLM-supplied arguments and the request body construction.                                                                                                                        |
-| `code`                                                                                                                                                                   | Yes — the parameters become inputs to your TypeScript code.                                                                                                                                            |
 | `handoff`                                                                                                                                                                | Yes — fills handoff-time arguments inline. See [Approach 1 in the squads guide](/squads/passing-data-between-assistants#approach-1-handoff-arguments).                                                  |
-| `transferCall`, `endCall`, `dtmf`, `voicemail`, `sms`, `slack-send-message`, GHL/Google integrations, `mcp`, `make`, Anthropic-native (`bash`, `computer`, `textEditor`) | No — the schema is Vapi-controlled or auto-derived from the underlying integration; you do not define it directly.                                                                                     |
+| `transferCall`, `endCall`, `dtmf`, `voicemail`, `sms`, `slack-send-message`, GHL/Google integrations, `mcp`, Anthropic-native (`bash`, `computer`, `textEditor`) | No — the schema is Vapi-controlled or auto-derived from the underlying integration; you do not define it directly.                                                                                     |
 
 For tool types that accept customer-defined `function.parameters`, you can also pair them with **static parameters** -- a separate top-level `parameters` array on the tool that merges server-trusted values into the body without the LLM ever seeing them. See [Static variables and aliases](/tools/static-variables-and-aliases) for the full pattern, including when to use static parameters as a security boundary.
 
@@ -289,6 +285,49 @@ Let's revisit the weather tool example from before. If the tool successfully ret
 }
 ```
 
+### Returning an error instead of a result
+
+If your logic fails, return an `error` field in place of `result` for that tool call — and still respond with **HTTP 200**. Any non-200 status code is ignored entirely, so the assistant hears nothing back and reports "no result returned."
+
+```json
+{
+  "results": [
+    {
+      "toolCallId": "call_VaJOd8ZeZgWCEHDYomyCPfwN",
+      "error": "Weather service is unavailable right now."
+    }
+  ]
+}
+```
+
+Both `result` and `error` must be **single-line strings**. Line breaks (`\n`) cause parsing errors and the response is dropped, so join multi-line output into one line (for example, `"Temperature: 72°F, Condition: Sunny, Humidity: 45%"`).
+
+### Responding to more than one tool call
+
+A single request can contain several tool calls in `toolCallList`. Return one entry in `results` for **every** call, in the same order they were sent, and set each `toolCallId` to exactly match the ID from the request. Individual calls can succeed or fail independently:
+
+```json
+{
+  "results": [
+    { "toolCallId": "call_1", "result": "First tool success" },
+    { "toolCallId": "call_2", "error": "Second tool failed" },
+    { "toolCallId": "call_3", "result": "Third tool success" }
+  ]
+}
+```
+
+Return HTTP 200 for the whole response even when an individual tool errors — handle per-call failures with the `error` field, not the status code.
+
+<Note>
+  Response coming back empty, ignored, or truncated? See [Troubleshoot tools](/tools/custom-tools-troubleshooting) for the full checklist: response-format rules, tool-call-ID matching, the HTTP 200 requirement, and token limits.
+</Note>
+
+### Response format depends on the tool type
+
+The `results` array shown above is the response contract for **Function tools**. Other server-backed tool types can expect a different response shape — a [Query tool](/knowledge-base/using-query-tool) backed by a knowledge base does not necessarily use the `toolCallId`/`result` structure. Follow the guide for the specific tool type you are building rather than assuming the Function-tool format applies everywhere.
+
+{/* TODO(maintainers): a short per-tool-type response-shape table (Function vs Query/Knowledge Base vs Custom TTS/Transcriber) would fully close this gap — "which JSON do I return?" is the single largest Custom Tools confusion in Ask AI. Confirm exact shapes before adding. */}
+
 **Some Key Points:**
 
 - Pay attention to the required parameters and response format of your functions.
@@ -296,16 +335,3 @@ Let's revisit the weather tool example from before. If the tool successfully ret
 - Make sure to add "Tools Calls" in both the Server and Client messages and remove the function calling from it.
 
 By following these guidelines and adapting the sample payload, you can easily configure a variety of tools to expand your Vapi assistant's capabilities and provide a richer, more interactive user experience.
-
-
-**Video Tutorial:**
-<iframe
-        src="https://www.youtube.com/embed/124iAuIiwr8?si=-gJjfdCUoZaYuDQx"
-        title="YouTube video player"
-        frameborder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        referrerpolicy="strict-origin-when-cross-origin"
-        width="100%"
-        height="400px"
-        allowfullscreen
-/>
