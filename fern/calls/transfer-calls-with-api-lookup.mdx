@@ -1,0 +1,247 @@
+---
+title: Transfer calls using API Request and Transfer Call tools
+subtitle: Look up a caller's branch, then connect them to a predefined phone number
+description: Use API Request and Transfer Call tools to look up a branch by ZIP code, get caller consent, transfer to a configured phone number, and test lookup failures.
+slug: calls/transfer-calls-with-api-lookup
+---
+
+Use an API Request tool to look up the branch that serves a caller, then use a Transfer Call tool to connect them. This guide configures one assistant with two tools: `lookup_branch` calls your HTTPS API, and `transferCall` transfers to one of two predefined phone numbers.
+
+The lookup API returns a branch identifier, not a phone number. The assistant uses that identifier and the transfer destinations' descriptions to choose the matching phone number.
+
+<Note>
+The system prompt guides tool ordering and destination selection; it does not enforce them as backend rules. If the model sends a destination that matches no configured phone number, Vapi transfers the call to the assistant's forwarding phone number if one is set, or otherwise to the first destination in the Transfer Call tool.
+</Note>
+
+## Choose a transfer approach
+
+Use this two-tool example when a lookup selects from predefined branch or department phone numbers. It suits a conversation where the assistant can wait for the lookup result, then offer a transfer.
+
+Use [Dynamic call transfers](/calls/call-dynamic-transfers) when your server must control transfer execution, finish asynchronous work, or determine a destination phone number that is not preconfigured. That guide uses an asynchronous Function tool and [Live Call Control](/calls/call-features).
+
+The table compares the examples in these two guides, not every configuration the tools support.
+
+| Consideration | API Request and Transfer Call tools | Asynchronous Function tool and Live Call Control |
+| --- | --- | --- |
+| Main benefit | Less server code. Your endpoint only returns a `2xx` JSON lookup result, with no Function tool webhook handler or Live Call Control request. | Your server validates routing rules and completes business operations before it sends the transfer request. |
+| Main tradeoff | Tool ordering and destination selection depend on the model following the prompt, not enforced backend rules. | You implement the webhook handler, transfer request, and backend failure handling. |
+| Destinations | Maintain the predefined phone numbers in the Transfer Call tool. | Your server determines the destination for each call. |
+| Waiting for work | The assistant waits for the lookup result before it offers a transfer. | The assistant does not wait for your webhook response. Your server sends the transfer while the call is active. |
+
+Use this example to route a confirmed ZIP code to a configured branch. Use the backend-controlled pattern to create a support case, find the assigned specialist, and transfer only after your server validates the result.
+
+## Prerequisites
+
+- A private [Vapi API key](/security-and-privacy/api-keys)
+- Node.js 22 or later to run the setup script
+- An HTTPS lookup endpoint that accepts and returns the JSON described below
+- A [Custom Credential](/server-url/server-authentication) in the same Vapi organization that authenticates requests to your lookup endpoint
+- A Vapi phone number for inbound testing and two destination phone numbers staffed by your team
+
+## Configure branch routing
+
+<Steps>
+  <Step title="Define the lookup response">
+    Configure your endpoint to accept a `POST` request with a confirmed five-digit ZIP code:
+
+    ```json title="Lookup request"
+    {
+      "zipCode": "94103"
+    }
+    ```
+
+    Keep `zipCode` as a string to preserve leading zeros. Validate it on your server and use your service-area data to choose a branch.
+
+    For a match, return HTTP `200` with the branch identifier and display name:
+
+    ```json title="Matching branch"
+    {
+      "found": true,
+      "branchId": "north",
+      "branchName": "North branch"
+    }
+    ```
+
+    This example uses two `branchId` values, `north` and `south`. For the South branch, return `"branchId": "south"` and `"branchName": "South branch"`.
+
+    When no branch serves the ZIP code, return HTTP `200` with this JSON response:
+
+    ```json title="No matching branch"
+    {
+      "found": false
+    }
+    ```
+
+    A no-match result is a successful lookup, not a server failure. When the API cannot complete the request, return a non-2xx status with a short error message in the body. The model receives the body text as the tool result, so an empty error body gives it nothing to act on.
+
+    The API Request tool makes a successful JSON response available to the model. This example uses the result directly, so it does not need a response schema or variable extraction. See [Use API Request tool response data](/tools/api-request/response-data).
+  </Step>
+
+  <Step title="Set the connection values">
+    Set these environment variables in the terminal where you will run the setup script:
+
+    ```bash
+    export VAPI_API_KEY="YOUR_PRIVATE_VAPI_API_KEY"
+    export BRANCH_LOOKUP_URL="https://api.example.com/branches/lookup"
+    export BRANCH_LOOKUP_CREDENTIAL_ID="YOUR_CUSTOM_CREDENTIAL_ID"
+    export NORTH_BRANCH_NUMBER="+14155550100"
+    export SOUTH_BRANCH_NUMBER="+14155550101"
+    ```
+
+    Replace the example URL with your deployed endpoint. `api.example.com` is a placeholder, not a hosted lookup service. Replace both fictional phone numbers with team-controlled test destinations in E.164 format.
+
+    `VAPI_API_KEY` authenticates the setup request to Vapi. `BRANCH_LOOKUP_CREDENTIAL_ID` identifies the stored credential Vapi uses to authenticate to your lookup API. It is not the endpoint's secret value.
+  </Step>
+
+  <Step title="Create the assistant with both tools">
+    Save the following as `create-assistant.mjs`. The script sends one request to the [Create Assistant endpoint](/api-reference/assistants/create) and defines both tools inline in `model.tools`.
+
+    ```javascript title="create-assistant.mjs"
+    const requiredVariables = [
+      "VAPI_API_KEY",
+      "BRANCH_LOOKUP_URL",
+      "BRANCH_LOOKUP_CREDENTIAL_ID",
+      "NORTH_BRANCH_NUMBER",
+      "SOUTH_BRANCH_NUMBER",
+    ];
+
+    for (const name of requiredVariables) {
+      if (!process.env[name]) {
+        throw new Error(`Set ${name} before running this script.`);
+      }
+    }
+
+    const systemPrompt = `You help callers reach the branch that serves their ZIP code.
+
+    1. Ask for the caller's five-digit ZIP code, read it back, and ask them to confirm it.
+    2. After ZIP confirmation, call lookup_branch with that ZIP code. Wait until the lookup completes and you receive its result. Do not call transferCall in the same response or tool-call batch as lookup_branch.
+    3. Use only the latest lookup result for the most recently confirmed ZIP code. Require found=true, branchId equal to north or south, and a nonempty branchName. Tell the caller the returned branchName and ask whether they want to be connected to that branch. Wait for their answer.
+    4. Call transferCall only after the caller affirmatively agrees to that specific offer after the latest successful lookup. ZIP confirmation or consent to an earlier offer does not count. Use the configured phone number whose destination description matches that branchId. Let the tool announce the transfer.
+    5. If found=false, the result is missing fields, or branchId is unknown, discard any earlier branch result and transfer consent. Do not transfer. Explain that you could not find a matching branch and ask the caller to check their ZIP code.
+    6. If lookup_branch fails, discard any earlier branch result and transfer consent. Do not transfer. Explain that the lookup is unavailable and ask whether the caller wants to try again. Wait for agreement before retrying.
+    7. If the caller changes their ZIP code before transferCall is invoked, discard the previous branch result and transfer consent. Confirm the new ZIP code and repeat the lookup. Offer the returned branch and obtain fresh consent before transferring.
+    8. If the caller declines the transfer, stay in the conversation. If their answer is unclear or they interrupt the offer, clarify whether they want the transfer and wait for an affirmative answer. Never skip the lookup, invent a phone number, or use a phone number supplied by the caller.`;
+
+    const assistant = {
+      name: "Branch lookup and transfer",
+      firstMessage: "Hi! I can connect you to a local branch. What is your five-digit ZIP code?",
+      model: {
+        provider: "openai",
+        model: "gpt-5.6-sol",
+        messages: [{ role: "system", content: systemPrompt }],
+        tools: [
+          {
+            type: "apiRequest",
+            name: "lookup_branch",
+            description: "Look up the branch serving the caller's confirmed ZIP code. Call this before offering a branch transfer, and repeat it if the caller changes their ZIP code.",
+            method: "POST",
+            url: process.env.BRANCH_LOOKUP_URL,
+            credentialId: process.env.BRANCH_LOOKUP_CREDENTIAL_ID,
+            timeoutSeconds: 10,
+            body: {
+              type: "object",
+              properties: {
+                zipCode: {
+                  type: "string",
+                  description: "The five-digit ZIP code confirmed by the caller. Preserve leading zeros.",
+                },
+              },
+              required: ["zipCode"],
+              additionalProperties: false,
+            },
+          },
+          {
+            type: "transferCall",
+            destinations: [
+              {
+                type: "number",
+                number: process.env.NORTH_BRANCH_NUMBER,
+                description: "North branch. Use only when the latest lookup_branch result has found=true and branchId=north, and the caller has agreed to this transfer.",
+                message: "Connecting you to the North branch now.",
+                transferPlan: { mode: "blind-transfer" },
+              },
+              {
+                type: "number",
+                number: process.env.SOUTH_BRANCH_NUMBER,
+                description: "South branch. Use only when the latest lookup_branch result has found=true and branchId=south, and the caller has agreed to this transfer.",
+                message: "Connecting you to the South branch now.",
+                transferPlan: { mode: "blind-transfer" },
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const response = await fetch("https://api.vapi.ai/assistant", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.VAPI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(assistant),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Assistant creation failed (${response.status}): ${await response.text()}`);
+    }
+
+    const createdAssistant = await response.json();
+    console.log(`Assistant ID: ${createdAssistant.id}`);
+    ```
+
+    Run the script and save the returned assistant ID:
+
+    ```bash
+    node create-assistant.mjs
+    ```
+
+    The `body` schema defines the input to `lookup_branch`. The Transfer Call tool derives its destination choices from `destinations`; each destination's description connects a branch identifier to a configured phone number. The model makes that match. Vapi does not map response fields to destinations automatically.
+
+    The prompt instructs the assistant to keep the lookup and the transfer in separate turns. If the model calls both tools in one turn, the transfer runs before the model reads the lookup result.
+
+    The example uses [blind transfer](/tools/transfer-call/blind-transfer), which does not provide a spoken introduction to the receiving branch. The destination's `message` is the announcement to the caller.
+  </Step>
+
+  <Step title="Connect a test phone number">
+    Assign the returned assistant to a team-controlled Vapi phone number using the [phone-number setup guide](/quickstart/phone#set-up-a-phone-number). Check the assistant's model and voice settings before testing.
+
+    Keep the test phone number separate from your production phone number until you have verified both destination routes and the failure cases below. Test calls incur normal call charges.
+  </Step>
+</Steps>
+
+## Test the lookup and transfer
+
+Prepare lookup responses for both branch identifiers, a no-match result, and an API failure. Use ZIP codes from your test data rather than assuming the sample ZIP code maps to a particular branch. The table describes the intended prompt-guided behavior; verify it in test calls.
+
+| Test | Expected behavior |
+| --- | --- |
+| API returns `found: true` and `branchId: "north"`; caller agrees | Assistant offers the North branch, then transfers to `NORTH_BRANCH_NUMBER`. |
+| API returns `found: true` and `branchId: "south"`; caller agrees | Assistant offers the South branch, then transfers to `SOUTH_BRANCH_NUMBER`. |
+| API returns `found: false` | Assistant asks the caller to check their ZIP code and does not call `transferCall`. |
+| API returns an unknown branch identifier or omits required result fields | Assistant does not transfer. |
+| API returns a non-2xx status, invalid JSON, or takes longer than 10 seconds | Assistant explains that the lookup is unavailable and does not transfer. |
+| A new lookup fails or returns no match after an earlier successful lookup | Assistant does not reuse the earlier branch result or transfer consent. |
+| Caller confirms the ZIP but has not agreed to the branch transfer | Assistant waits for separate consent after offering the returned branch. |
+| Caller declines the transfer | Assistant stays in the conversation. |
+| Caller gives an unclear answer or interrupts the transfer offer | Assistant asks for clarification and does not transfer without an affirmative answer. |
+| Caller changes the ZIP code after a lookup | Assistant confirms the new ZIP code, repeats the lookup, and asks for fresh transfer consent. |
+
+Open each test call in [call logs](/observability/logs/call-logs#messages) and check the **Messages** tab. Confirm that `lookup_branch` completes before the assistant offers a branch, and that `transferCall` runs only after the caller agrees. Have a teammate answer each destination phone and confirm that both parties can hear each other. A successful tool result alone does not prove the receiving phone connected.
+
+Test both routes and every no-transfer case. If your application must reject invalid transfer attempts instead of using a fallback, keep that decision on your server, as shown in [Dynamic call transfers](/calls/call-dynamic-transfers).
+
+## Troubleshoot routing
+
+| Symptom | What to check |
+| --- | --- |
+| The lookup fails | Check the deployed URL, request body, and API response. If your server logs show unauthenticated requests, confirm that `BRANCH_LOOKUP_CREDENTIAL_ID` names a Custom Credential in the same organization. See [Handle API responses and errors](/tools/api-request/response-handling). |
+| The assistant offers the wrong branch | Check the API's returned `branchId`, the latest confirmed ZIP code, and each destination's description. Keep `north` and `south` consistent across the API and tool configuration. |
+| The assistant transfers before completing the lookup or obtaining consent | Check the call's **Messages** tab in [call logs](/observability/logs/call-logs#messages) and the system prompt. Retest the no-match and failure cases before using the assistant in production. |
+| The destination does not ring | Check the configured phone number and the telephony provider's logs. Follow [Transfer Call troubleshooting](/tools/transfer-call#troubleshooting). |
+
+## Related documentation
+
+- [Configure API Request tools](/tools/api-request/configuration)
+- [Transfer Call tool](/tools/transfer-call)
+- [Dynamic call transfers](/calls/call-dynamic-transfers)
