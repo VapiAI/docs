@@ -1,0 +1,66 @@
+---
+title: The Grid
+subtitle: Use The Grid instruments in Vapi through the custom-llm provider
+description: Wire The Grid, an OpenAI-compatible inference marketplace, into Vapi with the custom-llm provider and Custom Credentials.
+slug: customization/custom-llm/thegrid
+---
+
+The Grid is an inference marketplace that serves models from several labs behind one OpenAI-compatible API. You address capabilities rather than a specific lab's model name: `text-standard`, `code-prime` and `agent-max` each route to a current model for that tier, so an assistant keeps working when the underlying model is replaced.
+
+Because The Grid implements the OpenAI chat completions contract, it plugs into Vapi as a [custom LLM](/customization/custom-llm/fine-tuned-openai-models) — the same path used for OpenRouter or Together AI. Streaming and tool calling both work over that path.
+
+<Note>A The Grid account and API key are required. Keys are created in the dashboard at [thegrid.ai](https://thegrid.ai).</Note>
+
+## Add your credential
+
+POST your key to the `/credential` endpoint with the `custom-llm` provider:
+
+```json
+{
+  "provider": "custom-llm",
+  "apiKey": "<YOUR THE GRID API KEY>"
+}
+```
+
+## Create the assistant
+
+Point `url` at The Grid's base URL and set `model` to the instrument you want:
+
+```json
+{
+  "name": "My Assistant",
+  "model": {
+    "provider": "custom-llm",
+    "url": "https://api.thegrid.ai/v1",
+    "model": "text-standard",
+    "maxTokens": 600,
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a helpful voice assistant. Keep replies short."
+      }
+    ]
+  }
+}
+```
+
+## Choosing an instrument
+
+`GET https://api.thegrid.ai/v1/models` returns the current list with context window, pricing and capability flags for each entry. The tiers most relevant to voice are:
+
+| Instrument | Use it for |
+| --- | --- |
+| `text-standard` | General conversation. The usual starting point. |
+| `text-prime`, `text-max` | Harder reasoning, at higher latency and cost. |
+| `agent-standard`, `agent-max` | Multi-step tool use. |
+| `code-standard`, `code-prime` | Assistants that read or write code. |
+
+## Set maxTokens above the default
+
+Vapi's `maxTokens` defaults to **250**, and on The Grid that budget is shared with reasoning tokens, which are billed and counted but never spoken. Several instruments reason before answering, so a 250-token cap can truncate the spoken reply mid-sentence.
+
+Measured on a single short prompt: `text-standard` spent 114 of 250 tokens on reasoning, and `agent-max` reached the cap and stopped with `finish_reason: "length"`. Setting `maxTokens` to 600 or higher leaves room for the spoken turn. Keep the system prompt explicit about brevity — that shortens replies more reliably than a low token cap, and without the risk of cutting one off.
+
+## Tool calling
+
+Tools work over the standard OpenAI function-calling fields, so the [tool calling integration guide](/customization/custom-llm/tool-calling-integration) applies unchanged. `agent-standard` and `agent-max` are tuned for multi-step tool use.
