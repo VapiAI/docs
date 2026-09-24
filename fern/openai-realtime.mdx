@@ -17,10 +17,6 @@ OpenAI’s Realtime API enables developers to use a native speech-to-speech mode
 
 ## Available models
 
-<Tip>
-  The `gpt-realtime-2025-08-28` model is production-ready.
-</Tip>
-
 OpenAI offers three realtime models, each with different capabilities and cost/performance trade-offs:
 
 | Model | Status | Best For | Key Features |
@@ -53,12 +49,20 @@ Realtime models support a specific set of OpenAI voices optimized for speech-to-
 
 ## Configuration
 
-### Basic setup
+### Configure an API Request tool
 
-Configure a realtime assistant with function calling:
+Use an [API Request tool](/tools/api-request) to fetch current weather directly from [WeatherAPI](https://www.weatherapi.com/docs/). You don't need a custom server or a `tool-calls` webhook handler.
+
+Create a WeatherAPI account, get an API key, and replace `YOUR_WEATHERAPI_KEY` in the tool's `url` field below. For the TypeScript and Python examples, set `VAPI_API_KEY` to your Vapi private API key and run the code on your server.
+
+<Warning>
+  WeatherAPI authenticates through a URL query parameter. Do not expose the configured URL or your WeatherAPI key in public repositories or browser code. Redact the WeatherAPI key from request logs.
+</Warning>
+
+The tool's `body` schema defines the `location` argument the model supplies. For this `GET` request, Vapi inserts that argument into the URL and sends no HTTP request body. The `url_encode` filter encodes spaces and other special characters in the city name.
 
 <CodeBlocks>
-```json title="Assistant Configuration"
+```json title="Assistant configuration"
 {
   "model": {
     "provider": "openai",
@@ -66,27 +70,28 @@ Configure a realtime assistant with function calling:
     "messages": [
       {
         "role": "system",
-        "content": "You are a helpful assistant. Be concise and friendly."
+        "content": "You are a concise, friendly weather assistant. If the caller has not provided a location, ask for one. If the city is ambiguous, ask for the missing region or country before using getWeather. Call getWeather for each new current-weather request, including a request for another city. Pass the complete location, preserving any region/state and country the caller supplied. Use only the latest successful result for the requested location and report the returned location with the weather. If the returned city, region, or country conflicts with the request, clarify before reporting weather. Differences in spelling or formatting alone are not a location mismatch. If the lookup fails or current-weather data is missing, explain that current weather is unavailable. Do not invent weather or reuse an earlier result after a failed lookup."
       }
     ],
     "temperature": 0.7,
     "maxTokens": 250,
     "tools": [
       {
-        "type": "function",
-        "function": {
-          "name": "getWeather",
-          "description": "Get the current weather",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "location": {
-                "type": "string",
-                "description": "The city name"
-              }
-            },
-            "required": ["location"]
-          }
+        "type": "apiRequest",
+        "name": "getWeather",
+        "description": "Get current weather for the caller's complete requested location. Call getWeather for every request for current weather, and use the returned location to confirm that the result matches the request.",
+        "method": "GET",
+        "url": "https://api.weatherapi.com/v1/current.json?key=YOUR_WEATHERAPI_KEY&q={{location|url_encode}}",
+        "timeoutSeconds": 10,
+        "body": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "The complete location requested by the caller, preserving the city and any supplied region/state and country; for example, Springfield, Illinois, USA."
+            }
+          },
+          "required": ["location"]
         }
       }
     ]
@@ -98,9 +103,11 @@ Configure a realtime assistant with function calling:
 }
 ```
 ```typescript title="TypeScript SDK"
-import { Vapi } from '@vapi-ai/server-sdk';
+import { VapiClient } from "@vapi-ai/server-sdk";
 
-const vapi = new Vapi({ token: process.env.VAPI_API_KEY });
+const apiKey = process.env.VAPI_API_KEY;
+if (!apiKey) throw new Error("Set VAPI_API_KEY to your Vapi private API key");
+const vapi = new VapiClient({ token: apiKey });
 
 const assistant = await vapi.assistants.create({
   model: {
@@ -108,25 +115,26 @@ const assistant = await vapi.assistants.create({
     model: "gpt-realtime-2025-08-28",
     messages: [{
       role: "system",
-      content: "You are a helpful assistant. Be concise and friendly."
+      content: "You are a concise, friendly weather assistant. If the caller has not provided a location, ask for one. If the city is ambiguous, ask for the missing region or country before using getWeather. Call getWeather for each new current-weather request, including a request for another city. Pass the complete location, preserving any region/state and country the caller supplied. Use only the latest successful result for the requested location and report the returned location with the weather. If the returned city, region, or country conflicts with the request, clarify before reporting weather. Differences in spelling or formatting alone are not a location mismatch. If the lookup fails or current-weather data is missing, explain that current weather is unavailable. Do not invent weather or reuse an earlier result after a failed lookup."
     }],
     temperature: 0.7,
     maxTokens: 250,
     tools: [{
-      type: "function",
-      function: {
-        name: "getWeather",
-        description: "Get the current weather",
-        parameters: {
-          type: "object",
-          properties: {
-            location: {
-              type: "string",
-              description: "The city name"
-            }
-          },
-          required: ["location"]
-        }
+      type: "apiRequest",
+      name: "getWeather",
+      description: "Get current weather for the caller's complete requested location. Call getWeather for every request for current weather, and use the returned location to confirm that the result matches the request.",
+      method: "GET",
+      url: "https://api.weatherapi.com/v1/current.json?key=YOUR_WEATHERAPI_KEY&q={{location|url_encode}}",
+      timeoutSeconds: 10,
+      body: {
+        type: "object",
+        properties: {
+          location: {
+            type: "string",
+            description: "The complete location requested by the caller, preserving the city and any supplied region/state and country; for example, Springfield, Illinois, USA."
+          }
+        },
+        required: ["location"]
       }
     }]
   },
@@ -137,6 +145,8 @@ const assistant = await vapi.assistants.create({
 });
 ```
 ```python title="Python SDK"
+import os
+
 from vapi import Vapi
 
 vapi = Vapi(token=os.getenv("VAPI_API_KEY"))
@@ -147,25 +157,26 @@ assistant = vapi.assistants.create(
         "model": "gpt-realtime-2025-08-28",
         "messages": [{
             "role": "system",
-            "content": "You are a helpful assistant. Be concise and friendly."
+            "content": "You are a concise, friendly weather assistant. If the caller has not provided a location, ask for one. If the city is ambiguous, ask for the missing region or country before using getWeather. Call getWeather for each new current-weather request, including a request for another city. Pass the complete location, preserving any region/state and country the caller supplied. Use only the latest successful result for the requested location and report the returned location with the weather. If the returned city, region, or country conflicts with the request, clarify before reporting weather. Differences in spelling or formatting alone are not a location mismatch. If the lookup fails or current-weather data is missing, explain that current weather is unavailable. Do not invent weather or reuse an earlier result after a failed lookup."
         }],
         "temperature": 0.7,
         "maxTokens": 250,
         "tools": [{
-            "type": "function",
-            "function": {
-                "name": "getWeather",
-                "description": "Get the current weather",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city name"
-                        }
-                    },
-                    "required": ["location"]
-                }
+            "type": "apiRequest",
+            "name": "getWeather",
+            "description": "Get current weather for the caller's complete requested location. Call getWeather for every request for current weather, and use the returned location to confirm that the result matches the request.",
+            "method": "GET",
+            "url": "https://api.weatherapi.com/v1/current.json?key=YOUR_WEATHERAPI_KEY&q={{location|url_encode}}",
+            "timeoutSeconds": 10,
+            "body": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The complete location requested by the caller, preserving the city and any supplied region/state and country; for example, Springfield, Illinois, USA."
+                    }
+                },
+                "required": ["location"]
             }
         }]
     },
@@ -176,6 +187,15 @@ assistant = vapi.assistants.create(
 )
 ```
 </CodeBlocks>
+
+#### Test the weather tool
+
+After you create the assistant, test these cases:
+
+- Ask for the current weather in a city and include its region or country. Confirm that `getWeather` receives the complete location and the spoken answer matches the returned location and weather.
+- Ask about another city during the same call. Confirm that `getWeather` runs again and the answer uses the new result.
+- Ask about an ambiguous city. Confirm that the assistant requests the missing region or country before calling `getWeather`.
+- Trigger a failed lookup after a successful one. Confirm that the assistant explains the failure without guessing or reusing the earlier weather.
 
 ### Using realtime-exclusive voices
 
