@@ -91,7 +91,7 @@ test('corrupt entries fall back to original generation', (t) => {
   assert.equal(cache.run(args, () => 'regenerated'), 'regenerated');
 });
 
-test('all local API inputs invalidate the cache but prose does not', (t) => {
+test('API and prose edits preserve the namespace while tooling changes invalidate it', (t) => {
   const { directory } = fixture(t);
   fs.mkdirSync(path.join(directory, 'fern/apis/api'), { recursive: true });
   fs.writeFileSync(path.join(directory, 'fern/fern.config.json'), '{"version":"5.112.0"}');
@@ -102,5 +102,71 @@ test('all local API inputs invalidate the cache but prose does not', (t) => {
   fs.writeFileSync(path.join(directory, 'fern/apis/api/ai_examples_override.yml'), 'generated output');
   assert.equal(inputDigest(directory), before);
   fs.writeFileSync(path.join(directory, 'fern/apis/api/overrides.yml'), 'new schema override');
+  assert.equal(inputDigest(directory), before);
+  fs.writeFileSync(path.join(directory, 'fern/fern.config.json'), '{"version":"different"}');
   assert.notEqual(inputDigest(directory), before);
+});
+
+test('unrelated API edits reuse entries across fresh processes', (t) => {
+  const { directory, args, cache } = fixture(t);
+  cache.run(args, () => 'original');
+  const spec = structuredClone(args.context.spec);
+  spec.components.schemas.Unrelated = { type: 'number' };
+  spec.paths = { '/unrelated': { get: { summary: 'New endpoint' } } };
+  const next = createExampleCache({ directory, namespace: 'test' });
+  assert.equal(next.run({ ...args, context: { ...args.context, spec } }, () => assert.fail('unrelated edit missed')), 'original');
+  assert.equal(next.stats.hits, 1);
+});
+
+test('transitive dependencies, cycles, and same-context mutations invalidate affected entries', (t) => {
+  const { args, cache } = fixture(t);
+  const schemas = args.context.spec.components.schemas;
+  schemas.Voice = { type: 'object', properties: { style: { $ref: '#/components/schemas/Style' } } };
+  schemas.Style = { enum: ['warm'], parent: { $ref: '#/components/schemas/Voice' } };
+  cache.run(args, () => 'warm');
+  assert.equal(cache.run(args, () => assert.fail()), 'warm');
+  schemas.Style.enum = ['bright'];
+  assert.equal(cache.run(args, () => 'bright'), 'bright');
+  delete schemas.Style;
+  assert.equal(cache.run(args, () => 'missing'), 'missing');
+  schemas.Style = { enum: ['soft'] };
+  assert.equal(cache.run(args, () => 'soft'), 'soft');
+});
+
+test('referenced examples and all union branches contribute dependencies', (t) => {
+  const { args, cache } = fixture(t);
+  const spec = args.context.spec;
+  spec.components.examples = { greeting: { value: 'hello' } };
+  spec.components.schemas.Voice = { oneOf: [{ $ref: '#/components/schemas/Other' }], example: { $ref: '#/components/examples/greeting' } };
+  spec.components.schemas.Other = { type: 'string' };
+  cache.run(args, () => 'first');
+  spec.components.examples.greeting.value = 'hi';
+  assert.equal(cache.run(args, () => 'second'), 'second');
+  spec.components.schemas.Other.type = 'number';
+  assert.equal(cache.run(args, () => 'third'), 'third');
+});
+
+test('pointer escaping matches the pinned Fern resolver', (t) => {
+  const { args, cache } = fixture(t);
+  args.propertySchema = { $ref: '#/components/schemas/a~1b~0c' };
+  args.context.spec.components.schemas['a/b~0c'] = { type: 'string' };
+  cache.run(args, () => 'first');
+  args.context.spec.components.schemas['a/b~0c'].type = 'number';
+  assert.equal(cache.run(args, () => 'second'), 'second');
+});
+
+test('external references bypass caching instead of risking stale content', (t) => {
+  const { args, cache } = fixture(t);
+  args.context.spec.components.schemas.Voice = { $ref: 'https://example.com/types.json#/Voice' };
+  assert.equal(cache.run(args, () => 'first'), 'first');
+  assert.equal(cache.run(args, () => 'second'), 'second');
+  assert.equal(cache.stats.skipped, 2);
+});
+
+test('media request and response examples include their referenced schemas', (t) => {
+  const { args, cache } = fixture(t);
+  const media = { context: args.context, breadcrumbs: ['response'], mediaExampleArgs: { schema: args.propertySchema, example: undefined } };
+  cache.run(media, () => 'marin');
+  args.context.spec.components.schemas.Voice.enum = ['cedar'];
+  assert.equal(cache.run(media, () => 'cedar'), 'cedar');
 });
