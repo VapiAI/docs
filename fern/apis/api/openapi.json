@@ -158,6 +158,43 @@
         ]
       }
     },
+    "/assistant/background-sound/validate": {
+      "post": {
+        "operationId": "AssistantController_validateBackgroundSoundUrl",
+        "summary": "Validate Background Sound URL",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateBackgroundSoundUrlDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundSoundUrlValidationResult"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assistants"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/assistant/{id}": {
       "get": {
         "operationId": "AssistantController_findOne",
@@ -4521,6 +4558,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolWriteConflictResponseDTO"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -4693,7 +4740,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ToolPinnedConflictResponseDTO"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ToolPinnedConflictResponseDTO"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ToolWriteConflictResponseDTO"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "error",
+                    "mapping": {
+                      "tool_pinned": "#/components/schemas/ToolPinnedConflictResponseDTO",
+                      "tool_write_conflict": "#/components/schemas/ToolWriteConflictResponseDTO"
+                    }
+                  }
                 }
               }
             }
@@ -4754,9 +4815,15 @@
         "parameters": [
           {
             "name": "purpose",
-            "required": true,
+            "required": false,
             "in": "query",
+            "description": "Only return files with this purpose. When omitted, files of every purpose except composer attachments are returned.",
             "schema": {
+              "enum": [
+                "assistant",
+                "composer-attachment",
+                "knowledge-base-v2"
+              ],
               "type": "string"
             }
           }
@@ -5987,6 +6054,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalityInUseConflictResponseDTO"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -6320,6 +6397,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Scenario"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioInUseConflictResponseDTO"
                 }
               }
             }
@@ -7221,6 +7308,50 @@
                 }
               }
             }
+          }
+        },
+        "tags": [
+          "Simulation Suites"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/suite/{id}/duplicate": {
+      "post": {
+        "operationId": "SimulationSuiteController_duplicate",
+        "summary": "Duplicate simulation suite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "The unique identifier for the resource.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationSuite"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Simulation suite not found"
+          },
+          "409": {
+            "description": "Simulation suite graph is invalid"
           }
         },
         "tags": [
@@ -8707,6 +8838,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -8869,6 +9003,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -8917,6 +9054,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -8953,6 +9093,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -8989,6 +9132,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -9027,6 +9173,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -9063,6 +9212,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -9091,9 +9243,6 @@
           }
         },
         "responses": {
-          "200": {
-            "description": ""
-          },
           "201": {
             "description": "",
             "content": {
@@ -9103,6 +9252,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -9119,47 +9271,31 @@
         "summary": "List Eval Runs",
         "parameters": [
           {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "createdAt"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Literal, case-insensitive search across eval and assistant names.",
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
             "name": "id",
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "description": "This is the page number to return. Defaults to 1.",
-            "schema": {
-              "minimum": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "sortOrder",
-            "required": false,
-            "in": "query",
-            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
-            "schema": {
-              "enum": [
-                "ASC",
-                "DESC"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "sortBy",
-            "required": false,
-            "in": "query",
-            "description": "This is the column to sort by. Defaults to 'createdAt'.",
-            "schema": {
-              "enum": [
-                "createdAt",
-                "duration",
-                "cost"
-              ],
               "type": "string"
             }
           },
@@ -9253,6 +9389,29 @@
               "format": "date-time",
               "type": "string"
             }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "This is the page number to return. Defaults to 1.",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
+            "schema": {
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9265,6 +9424,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "tags": [
@@ -10229,7 +10391,7 @@
           },
           "mode": {
             "type": "string",
-            "description": "This is the transcription mode used by the `universal-3-5-pro` speech model. Only applies to the `universal-3-5-pro` speech model.\n\n@default 'balanced'",
+            "description": "This is the transcription mode used by the Universal Pro speech models. Only applies to `universal-3-5-pro` and `universal-3-6-pro`.\n\n@default 'balanced'",
             "enum": [
               "max_accuracy",
               "min_latency",
@@ -10238,37 +10400,22 @@
           },
           "prompt": {
             "type": "string",
-            "description": "This is a prompt that provides additional context to the transcription model. Only applies to the `universal-3-5-pro` speech model.",
+            "description": "This is a prompt that provides additional context to the transcription model. Only applies to `universal-3-5-pro` and `universal-3-6-pro`.",
             "maxLength": 1750
           },
           "agentContext": {
             "type": "string",
-            "description": "This is context about the voice agent that guides the transcription model. Only applies to the `universal-3-5-pro` speech model.",
+            "description": "This is context about the voice agent that guides the transcription model. Only applies to `universal-3-5-pro` and `universal-3-6-pro`.",
             "maxLength": 1750
+          },
+          "agentContextAutoUpdateEnabled": {
+            "type": "boolean",
+            "description": "When true, the text the assistant just spoke is sent to AssemblyAI as `agent_context` after every assistant turn, replacing the previous value, so the user's reply is transcribed in the context of the question it answers.\n`agentContext` still seeds the first turn. Text longer than 1750 characters keeps its last 1750 characters. Turns the user interrupted are not sent when the interruption is detected by voice activity (the default, `stopSpeakingPlan.numWords: 0`).\nOnly applies to `universal-3-5-pro` and `universal-3-6-pro`.\n\n@default false",
+            "default": false
           },
           "languageCodes": {
             "type": "array",
-            "description": "These are language codes used to steer automatic language detection. Only applies to the `universal-3-5-pro` speech model.",
-            "enum": [
-              "en",
-              "es",
-              "fr",
-              "de",
-              "it",
-              "pt",
-              "tr",
-              "nl",
-              "sv",
-              "no",
-              "da",
-              "fi",
-              "hi",
-              "vi",
-              "ar",
-              "he",
-              "ja",
-              "zh"
-            ],
+            "description": "These are language codes used to steer automatic language detection. Only applies to `universal-3-5-pro` and `universal-3-6-pro`.\n`ur`, `ru`, `ko`, `ca`, `gl`, `ro`, `et`, `fa`, `yue`, `af`, `mr`, `zu`, `xh` and `nn` were added with `universal-3-6-pro`.",
             "items": {
               "type": "string",
               "enum": [
@@ -10289,17 +10436,32 @@
                 "ar",
                 "he",
                 "ja",
-                "zh"
+                "zh",
+                "ur",
+                "ru",
+                "ko",
+                "ca",
+                "gl",
+                "ro",
+                "et",
+                "fa",
+                "yue",
+                "af",
+                "mr",
+                "zu",
+                "xh",
+                "nn"
               ]
             }
           },
           "speechModel": {
             "type": "string",
-            "description": "This is the speech model used for the streaming session.\nKeyterms prompting is supported on universal-streaming-english and universal-3-5-pro.\nuniversal-3-5-pro is AssemblyAI's most accurate voice-agent model.\n@default 'universal-streaming-english'",
+            "description": "This is the speech model used for the streaming session.\nKeyterms prompting is supported on universal-streaming-english, universal-3-5-pro and universal-3-6-pro.\nuniversal-3-6-pro is AssemblyAI's newest and most accurate voice-agent model.\n@default 'universal-streaming-english'",
             "enum": [
               "universal-streaming-english",
               "universal-streaming-multilingual",
-              "universal-3-5-pro"
+              "universal-3-5-pro",
+              "universal-3-6-pro"
             ]
           },
           "realtimeUrl": {
@@ -10315,7 +10477,7 @@
             }
           },
           "keytermsPrompt": {
-            "description": "Keyterms prompting improves recognition accuracy for specific words and phrases.\nCan include up to 100 keyterms, each up to 50 characters.\nCosts an additional $0.04/hour on universal-streaming-english and is included at no extra cost on universal-3-5-pro.",
+            "description": "Keyterms prompting improves recognition accuracy for specific words and phrases.\nCan include up to 100 keyterms, each up to 50 characters.\nCosts an additional $0.04/hour on universal-streaming-english and is included at no extra cost on the Universal Pro models (universal-3-5-pro, universal-3-6-pro).",
             "type": "array",
             "items": {
               "type": "string",
@@ -11037,7 +11199,7 @@
           },
           "mipOptOut": {
             "type": "boolean",
-            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis will only be used if you are using your own Deepgram API key.\n\n@default false",
+            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis only applies to your own Deepgram API key. Requests on Vapi's key always opt out, whatever this is set to.\n\n@default false",
             "example": false,
             "default": false
           },
@@ -12182,6 +12344,20 @@
             "minimum": 500,
             "maximum": 3000,
             "description": "Maximum delay in milliseconds between when the speaker stops and when the endpoint is detected. Lower values mean faster turn-taking but more false endpoints. Range: 500-3000. Default: 500."
+          },
+          "endpointSensitivity": {
+            "type": "number",
+            "description": "How likely Soniox is to emit an endpoint (end the caller turn). Higher values make endpoints more likely for faster turn-taking; negative values make them less likely, which helps when callers pause mid-sentence (e.g. reading numbers group by group). Range: -1.0 to 1.0. Default: 0.3 (the platform low-latency voice profile; Soniox's own default is 0.0). Supported by stt-rt-v5; omitted from the Soniox request on explicit stt-rt-v4. Soniox recommends tuning endpointLatencyAdjustmentLevel first, and advises against negative sensitivity while the level is above 0 (the settings work against each other).",
+            "minimum": -1,
+            "maximum": 1,
+            "example": 0.3
+          },
+          "endpointLatencyAdjustmentLevel": {
+            "type": "number",
+            "description": "How aggressively Soniox reduces endpoint latency. 0 is Soniox's default semantic endpointing; 3 is the most aggressive. Higher levels return endpoints sooner but may split speech into more segments and slightly reduce accuracy. Integer. Range: 0-3. Default: 2 (the platform low-latency voice profile; Soniox's own default is 0). Supported by stt-rt-v5; omitted from the Soniox request on explicit stt-rt-v4.",
+            "minimum": 0,
+            "maximum": 3,
+            "example": 2
           },
           "customVocabulary": {
             "description": "Custom vocabulary terms to boost recognition accuracy. Useful for brand names, product names, and domain-specific terminology. Maps to Soniox context.terms.",
@@ -13475,7 +13651,7 @@
           },
           "mode": {
             "type": "string",
-            "description": "This is the transcription mode used by the `universal-3-5-pro` speech model. Only applies to the `universal-3-5-pro` speech model.\n\n@default 'balanced'",
+            "description": "This is the transcription mode used by the Universal Pro speech models. Only applies to `universal-3-5-pro` and `universal-3-6-pro`.\n\n@default 'balanced'",
             "enum": [
               "max_accuracy",
               "min_latency",
@@ -13484,37 +13660,22 @@
           },
           "prompt": {
             "type": "string",
-            "description": "This is a prompt that provides additional context to the transcription model. Only applies to the `universal-3-5-pro` speech model.",
+            "description": "This is a prompt that provides additional context to the transcription model. Only applies to `universal-3-5-pro` and `universal-3-6-pro`.",
             "maxLength": 1750
           },
           "agentContext": {
             "type": "string",
-            "description": "This is context about the voice agent that guides the transcription model. Only applies to the `universal-3-5-pro` speech model.",
+            "description": "This is context about the voice agent that guides the transcription model. Only applies to `universal-3-5-pro` and `universal-3-6-pro`.",
             "maxLength": 1750
+          },
+          "agentContextAutoUpdateEnabled": {
+            "type": "boolean",
+            "description": "When true, the text the assistant just spoke is sent to AssemblyAI as `agent_context` after every assistant turn, replacing the previous value, so the user's reply is transcribed in the context of the question it answers.\n`agentContext` still seeds the first turn. Text longer than 1750 characters keeps its last 1750 characters. Turns the user interrupted are not sent when the interruption is detected by voice activity (the default, `stopSpeakingPlan.numWords: 0`).\nOnly applies to `universal-3-5-pro` and `universal-3-6-pro`.\n\n@default false",
+            "default": false
           },
           "languageCodes": {
             "type": "array",
-            "description": "These are language codes used to steer automatic language detection. Only applies to the `universal-3-5-pro` speech model.",
-            "enum": [
-              "en",
-              "es",
-              "fr",
-              "de",
-              "it",
-              "pt",
-              "tr",
-              "nl",
-              "sv",
-              "no",
-              "da",
-              "fi",
-              "hi",
-              "vi",
-              "ar",
-              "he",
-              "ja",
-              "zh"
-            ],
+            "description": "These are language codes used to steer automatic language detection. Only applies to `universal-3-5-pro` and `universal-3-6-pro`.\n`ur`, `ru`, `ko`, `ca`, `gl`, `ro`, `et`, `fa`, `yue`, `af`, `mr`, `zu`, `xh` and `nn` were added with `universal-3-6-pro`.",
             "items": {
               "type": "string",
               "enum": [
@@ -13535,17 +13696,32 @@
                 "ar",
                 "he",
                 "ja",
-                "zh"
+                "zh",
+                "ur",
+                "ru",
+                "ko",
+                "ca",
+                "gl",
+                "ro",
+                "et",
+                "fa",
+                "yue",
+                "af",
+                "mr",
+                "zu",
+                "xh",
+                "nn"
               ]
             }
           },
           "speechModel": {
             "type": "string",
-            "description": "This is the speech model used for the streaming session.\nKeyterms prompting is supported on universal-streaming-english and universal-3-5-pro.\nuniversal-3-5-pro is AssemblyAI's most accurate voice-agent model.\n@default 'universal-streaming-english'",
+            "description": "This is the speech model used for the streaming session.\nKeyterms prompting is supported on universal-streaming-english, universal-3-5-pro and universal-3-6-pro.\nuniversal-3-6-pro is AssemblyAI's newest and most accurate voice-agent model.\n@default 'universal-streaming-english'",
             "enum": [
               "universal-streaming-english",
               "universal-streaming-multilingual",
-              "universal-3-5-pro"
+              "universal-3-5-pro",
+              "universal-3-6-pro"
             ]
           },
           "realtimeUrl": {
@@ -13561,7 +13737,7 @@
             }
           },
           "keytermsPrompt": {
-            "description": "Keyterms prompting improves recognition accuracy for specific words and phrases.\nCan include up to 100 keyterms, each up to 50 characters.\nCosts an additional $0.04/hour on universal-streaming-english and is included at no extra cost on universal-3-5-pro.",
+            "description": "Keyterms prompting improves recognition accuracy for specific words and phrases.\nCan include up to 100 keyterms, each up to 50 characters.\nCosts an additional $0.04/hour on universal-streaming-english and is included at no extra cost on the Universal Pro models (universal-3-5-pro, universal-3-6-pro).",
             "type": "array",
             "items": {
               "type": "string",
@@ -14160,7 +14336,7 @@
           },
           "mipOptOut": {
             "type": "boolean",
-            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis will only be used if you are using your own Deepgram API key.\n\n@default false",
+            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis only applies to your own Deepgram API key. Requests on Vapi's key always opt out, whatever this is set to.\n\n@default false",
             "example": false,
             "default": false
           },
@@ -15260,6 +15436,20 @@
             "minimum": 500,
             "maximum": 3000,
             "description": "Maximum delay in milliseconds between when the speaker stops and when the endpoint is detected. Lower values mean faster turn-taking but more false endpoints. Range: 500-3000. Default: 500."
+          },
+          "endpointSensitivity": {
+            "type": "number",
+            "description": "How likely Soniox is to emit an endpoint (end the caller turn). Higher values make endpoints more likely for faster turn-taking; negative values make them less likely, which helps when callers pause mid-sentence (e.g. reading numbers group by group). Range: -1.0 to 1.0. Default: 0.3 (the platform low-latency voice profile; Soniox's own default is 0.0). Supported by stt-rt-v5; omitted from the Soniox request on explicit stt-rt-v4. Soniox recommends tuning endpointLatencyAdjustmentLevel first, and advises against negative sensitivity while the level is above 0 (the settings work against each other).",
+            "minimum": -1,
+            "maximum": 1,
+            "example": 0.3
+          },
+          "endpointLatencyAdjustmentLevel": {
+            "type": "number",
+            "description": "How aggressively Soniox reduces endpoint latency. 0 is Soniox's default semantic endpointing; 3 is the most aggressive. Higher levels return endpoints sooner but may split speech into more segments and slightly reduce accuracy. Integer. Range: 0-3. Default: 2 (the platform low-latency voice profile; Soniox's own default is 0). Supported by stt-rt-v5; omitted from the Soniox request on explicit stt-rt-v4.",
+            "minimum": 0,
+            "maximum": 3,
+            "example": 2
           },
           "customVocabulary": {
             "description": "Custom vocabulary terms to boost recognition accuracy. Useful for brand names, product names, and domain-specific terminology. Maps to Soniox context.terms.",
@@ -17089,6 +17279,11 @@
             "type": "string",
             "description": "This is the assistant to transfer the call to."
           },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the transfer destination. This is just for your own reference.\n\nUsage:\n- Optional. Stored with the destination wherever it is supplied. For `number`\n  and `sip` destinations it is also persisted on the transfer record in the\n  call artifact after a transfer and displayed in the dashboard call log (on\n  the transfer divider in the transcript view) alongside the destination.\n  When omitted, everything behaves exactly as before.\n- Display-only. Unlike `description`, it is never included in prompts or tool\n  descriptions and has no effect on model behavior or destination choice.",
+            "maxLength": 40
+          },
           "description": {
             "type": "string",
             "description": "This is the description of the destination, used by the AI to choose when and how to transfer the call."
@@ -17721,7 +17916,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -18031,7 +18226,7 @@
           },
           "callerId": {
             "type": "string",
-            "description": "This is the caller ID to use when transferring the call to the `number`.\n\nUsage:\n- If not provided, the caller ID will be the number the call is coming **from**.\n  Example: a customer with number +14151111111 calls in to and the assistant transfers out to +16470000000. +16470000000 will see +14151111111 as the caller.\n  For inbound calls, the caller ID is the customer's number. For outbound calls, the caller ID is the phone number of the assistant.\n- To change this behavior, provide a `callerId`.\n- Set to '{{customer.number}}' to always use the customer's number as the caller ID.\n- Set to '{{phoneNumber.number}}' to always use the phone number of the assistant as the caller ID.\n- Set to any E164 number to always use that number as the caller ID. This needs to be a number that is owned or verified by your Transport provider like Twilio.\n\nFor Twilio, you can read up more here: https://www.twilio.com/docs/voice/twiml/dial#callerid",
+            "description": "This is the caller ID to use when transferring the call to the `number`.\n\nUsage:\n- If not provided, the caller ID will be the number the call is coming **from**.\n  Example: a customer with number +14151111111 calls in to and the assistant transfers out to +16470000000. +16470000000 will see +14151111111 as the caller.\n  For inbound calls, the caller ID is the customer's number. For outbound calls, the caller ID is the phone number of the assistant.\n- To change this behavior, provide a `callerId`.\n- Set to '{{customer.number}}' to always use the customer's number as the caller ID.\n- Set to '{{phoneNumber.number}}' to always use the phone number of the assistant as the caller ID.\n- Set to any E164 number to always use that number as the caller ID. This needs to be a number that is owned or verified by your Transport provider like Twilio.\n\nNote: on Twilio, a caller who withheld their number has no caller ID the destination carrier will accept, so the assistant's phone number is presented instead and the transfer goes through. This applies when `callerId` is not provided and when it is set to '{{customer.number}}'.\n\nFor Twilio, you can read up more here: https://www.twilio.com/docs/voice/twiml/dial#callerid",
             "maxLength": 40
           },
           "transferPlan": {
@@ -18041,6 +18236,11 @@
                 "$ref": "#/components/schemas/TransferPlan"
               }
             ]
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the transfer destination. This is just for your own reference.\n\nUsage:\n- Optional. Stored with the destination wherever it is supplied. For `number`\n  and `sip` destinations it is also persisted on the transfer record in the\n  call artifact after a transfer and displayed in the dashboard call log (on\n  the transfer divider in the transcript view) alongside the destination.\n  When omitted, everything behaves exactly as before.\n- Display-only. Unlike `description`, it is never included in prompts or tool\n  descriptions and has no effect on model behavior or destination choice.",
+            "maxLength": 40
           },
           "description": {
             "type": "string",
@@ -18092,6 +18292,11 @@
           "sipHeaders": {
             "type": "object",
             "description": "These are custom headers to be added to SIP refer during transfer call."
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the transfer destination. This is just for your own reference.\n\nUsage:\n- Optional. Stored with the destination wherever it is supplied. For `number`\n  and `sip` destinations it is also persisted on the transfer record in the\n  call artifact after a transfer and displayed in the dashboard call log (on\n  the transfer divider in the transcript view) alongside the destination.\n  When omitted, everything behaves exactly as before.\n- Display-only. Unlike `description`, it is never included in prompts or tool\n  descriptions and has no effect on model behavior or destination choice.",
+            "maxLength": 40
           },
           "description": {
             "type": "string",
@@ -19789,6 +19994,51 @@
               "global.anthropic.claude-haiku-4-5-20251001-v1:0"
             ]
           },
+          "fallbackModels": {
+            "type": "array",
+            "description": "At most one same-provider Bedrock fallback model, tried if the primary fails. Cannot be combined with thinking in this release. Resolution uses the call's Bedrock credential region (or ANTHROPIC_BEDROCK_AWS_REGION). Names with no inference profile in that region are skipped and warned, never remapped to US or global. On Vapi EU, fallback names without an EU inference profile are rejected at write time.",
+            "enum": [
+              "claude-3-opus-20240229",
+              "claude-3-sonnet-20240229",
+              "claude-3-haiku-20240307",
+              "claude-3-5-sonnet-20240620",
+              "claude-3-5-sonnet-20241022",
+              "claude-3-5-haiku-20241022",
+              "claude-3-7-sonnet-20250219",
+              "claude-opus-4-20250514",
+              "claude-opus-4-5-20251101",
+              "claude-opus-4-6",
+              "claude-sonnet-4-20250514",
+              "claude-sonnet-4-5-20250929",
+              "claude-sonnet-4-6",
+              "claude-haiku-4-5-20251001",
+              "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+            ],
+            "maxItems": 1,
+            "example": [
+              "claude-haiku-4-5-20251001"
+            ],
+            "items": {
+              "type": "string",
+              "enum": [
+                "claude-3-opus-20240229",
+                "claude-3-sonnet-20240229",
+                "claude-3-haiku-20240307",
+                "claude-3-5-sonnet-20240620",
+                "claude-3-5-sonnet-20241022",
+                "claude-3-5-haiku-20241022",
+                "claude-3-7-sonnet-20250219",
+                "claude-opus-4-20250514",
+                "claude-opus-4-5-20251101",
+                "claude-opus-4-6",
+                "claude-sonnet-4-20250514",
+                "claude-sonnet-4-5-20250929",
+                "claude-sonnet-4-6",
+                "claude-haiku-4-5-20251001",
+                "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+              ]
+            }
+          },
           "thinking": {
             "description": "Optional configuration for Anthropic's thinking feature.\nOnly applicable for claude-3-7-sonnet-20250219 model.\nIf provided, maxTokens must be greater than thinking.budgetTokens.",
             "allOf": [
@@ -21345,6 +21595,68 @@
           "model"
         ]
       },
+      "OpenAISpeaker": {
+        "type": "object",
+        "properties": {
+          "instructions": {
+            "type": "string",
+            "description": "Omit to use model.systemPrompt, or system-role messages when systemPrompt is absent. An explicit empty string is preserved."
+          },
+          "personalityPacks": {
+            "type": "array",
+            "description": "Personality packs append speaking-style guidance to the speaker prompt. Set to an array of pack IDs and test one pack at a time. These are prompt instructions, not fixed speed controls.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "eager-listener",
+                "idle-hummer",
+                "bouncy",
+                "unhurried"
+              ]
+            }
+          }
+        }
+      },
+      "OpenAIReasoner": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "The reasoner uses OpenAI. Omit to use OpenAI.",
+            "enum": [
+              "openai"
+            ],
+            "default": "openai"
+          },
+          "model": {
+            "type": "string",
+            "description": "The delegated reasoning model. Omit to use GPT-5.6 Terra.",
+            "enum": [
+              "gpt-5.6-sol",
+              "gpt-5.6-terra",
+              "gpt-5.6-luna"
+            ],
+            "default": "gpt-5.6-terra"
+          },
+          "reasoningEffort": {
+            "type": "string",
+            "description": "Higher effort can increase response time. Omit to use low.",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default": "low"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Complete reasoner instructions. An explicit empty string is preserved.\nOmit to use Vapi's default reasoner instructions. No behavioral instructions\nare appended to a custom prompt."
+          }
+        }
+      },
       "OpenAIModel": {
         "type": "object",
         "properties": {
@@ -21478,6 +21790,22 @@
               }
             ]
           },
+          "speaker": {
+            "description": "Configuration for the GPT-Live speaker.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAISpeaker"
+              }
+            ]
+          },
+          "reasoner": {
+            "description": "Configuration for the reasoner supporting the GPT-Live speaker.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpenAIReasoner"
+              }
+            ]
+          },
           "provider": {
             "type": "string",
             "description": "This is the provider that will be used for the model.",
@@ -21487,7 +21815,7 @@
           },
           "model": {
             "type": "string",
-            "description": "This is the OpenAI model that will be used.\n\nWhen using Vapi OpenAI or your own Azure Credentials, you have the option to specify the region for the selected model. This shouldn't be specified unless you have a specific reason to do so. Vapi will automatically find the fastest region that make sense.\nThis is helpful when you are required to comply with Data Residency rules. Learn more about Azure regions here https://azure.microsoft.com/en-us/explore/global-infrastructure/data-residency/.\n\n@default undefined",
+            "description": "This is the OpenAI model that will be used.\nFor GPT-Live configuration and supported settings, see https://docs.vapi.ai/gpt-live/overview.\n\nWhen using Vapi OpenAI or your own Azure Credentials, you have the option to specify the region for the selected model. This shouldn't be specified unless you have a specific reason to do so. Vapi will automatically find the fastest region that make sense.\nThis is helpful when you are required to comply with Data Residency rules. Learn more about Azure regions here https://azure.microsoft.com/en-us/explore/global-infrastructure/data-residency/.\n\n@default undefined",
             "enum": [
               "gpt-5.6-sol",
               "gpt-5.6-terra",
@@ -21644,7 +21972,8 @@
               "gpt-3.5-turbo-1106:westus",
               "gpt-4.1:australiaeast",
               "gpt-4o:australiaeast",
-              "gpt-5.4-mini:australiaeast"
+              "gpt-5.4-mini:australiaeast",
+              "gpt-live-1"
             ]
           },
           "fallbackModels": {
@@ -21836,6 +22165,16 @@
             "type": "string",
             "description": "This is the prompt cache key for models that support extended caching (GPT-4.1, GPT-5 series).\n\nProviding a cache key allows you to share cached prefixes across requests.\n\n@default undefined",
             "maxLength": 64
+          },
+          "serviceTier": {
+            "type": "string",
+            "description": "This is the OpenAI service tier used for chat completions requests.\n\n- `fast`: OpenAI's fast processing tier (renamed from `priority` on 2026-07-30; both values are accepted and billed identically) — up to ~2.5x faster inference at 2x the standard token rates. OpenAI may silently downgrade a fast request to standard processing under ramp limits; when that happens the response reports the served tier and the request is billed at standard rates.\n- `auto`: uses the service tier configured for the OpenAI project.\n- `default`: standard processing and billing.\n\nOnly applies to models that support fast processing: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5. Ignored for other models.\n\n@default undefined (uses the service tier configured for the OpenAI project)",
+            "enum": [
+              "auto",
+              "default",
+              "fast",
+              "priority"
+            ]
           },
           "reasoningEffort": {
             "type": "string",
@@ -24792,7 +25131,7 @@
           },
           "regex": {
             "type": "string",
-            "description": "This is the regex pattern to match against the transcript.\n\nOnly used when type is 'regex'. Supports both raw patterns (e.g. '\\d+') and\nregex literal format (e.g. '/\\d+/gi'). Uses RE2 syntax for safety.\n\nThe result depends on the schema type:\n- boolean: true if the pattern matches, false otherwise\n- string: the first match or first capture group\n- number/integer: the first match parsed as a number\n- array: all matches",
+            "description": "This is the regex pattern to match against the transcript.\n\nSimulation evaluations use a canonical transcript built from recorded messages:\nUser: and AI: dialogue, AI: tool_calls: JSON name/arguments records, and\nAI: tool_call_results: JSON results. System messages are excluded. These\nfixed labels apply even when custom artifact transcript labels are configured.\nTool payloads participate in first-match and all-match extraction in event order.\nAn empty message array falls back to the supplied transcript verbatim.\nProduction-call extraction and call preview use their existing transcripts,\nso previewing the same output on a simulation's call can return a different result.\n\nOnly used when type is 'regex'. Supports both raw patterns (e.g. '\\d+') and\nregex literal format (e.g. '/\\d+/gi'). Uses RE2 syntax for safety.\n\nThe result depends on the schema type:\n- boolean: true if the pattern matches, false otherwise\n- string: the first match or first capture group\n- number/integer: the first match parsed as a number\n- array: all matches",
             "minLength": 1,
             "maxLength": 1000
           },
@@ -25549,7 +25888,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -27123,24 +27462,77 @@
               "julius",
               "lara",
               "elara",
-              "aurelia"
+              "aurelia",
+              "hannah",
+              "kit",
+              "alexis",
+              "cliff",
+              "sienna",
+              "cole",
+              "brooke",
+              "colin",
+              "gemma",
+              "haley",
+              "heather",
+              "miles",
+              "sean",
+              "bree",
+              "brittany",
+              "bruce",
+              "conor",
+              "donovan",
+              "drew",
+              "elise",
+              "jack",
+              "kai",
+              "kelsey",
+              "maeve",
+              "marcelo",
+              "marcus",
+              "meena",
+              "meghan",
+              "naveen",
+              "paige",
+              "priya",
+              "rufus",
+              "sharon",
+              "tanner",
+              "wade",
+              "wes"
             ],
             "title": "This is the Deepgram Voice ID"
           },
           "model": {
             "type": "string",
-            "description": "This is the model that will be used. Defaults to 'aura-2' when not specified.",
+            "description": "This is the model that will be used. Defaults to 'aura' when not specified.",
             "enum": [
               "aura",
-              "aura-2"
+              "aura-2",
+              "flux"
             ],
             "example": "aura-2"
           },
           "mipOptOut": {
             "type": "boolean",
-            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis will only be used if you are using your own Deepgram API key.\n\n@default false",
+            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis only applies to your own Deepgram API key. Requests on Vapi's key always opt out, whatever this is set to.\n\n@default false",
             "example": false,
             "default": false
+          },
+          "speed": {
+            "type": "number",
+            "description": "This is the speed multiplier that will be used. Aura-2 accepts 0.7 to 1.5; Flux accepts 0.5 to 1.5 in steps of 0.05. Aura does not support speed.\n\n@default 1",
+            "minimum": 0.5,
+            "maximum": 1.5,
+            "example": 1.1,
+            "default": 1
+          },
+          "expressivity": {
+            "type": "number",
+            "description": "This is the expressivity level for Flux voices, from -2 (flat) to 2 (lively). Deepgram marks this control as beta and may retune the scale. Aura and Aura-2 do not support it.\n\n@default 0",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 1,
+            "default": 0
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -28031,8 +28423,8 @@
             ]
           },
           "voiceId": {
-            "description": "This is the provider-specific ID that will be used.\nPlease note that ash, ballad, coral, sage, and verse may only be used with realtime models.",
-            "oneOf": [
+            "description": "This is the provider-specific ID that will be used.\nVoice availability depends on the selected model.\nquartz, ripple, vesper, willow, stone, gleam, meridian, bossa, tempo, beacon, delta, cinder are only supported with GPT-Live models.",
+            "anyOf": [
               {
                 "type": "string",
                 "enum": [
@@ -28043,7 +28435,24 @@
                   "nova",
                   "shimmer",
                   "marin",
-                  "cedar"
+                  "cedar",
+                  "ash",
+                  "ballad",
+                  "beacon",
+                  "bossa",
+                  "cinder",
+                  "coral",
+                  "delta",
+                  "gleam",
+                  "meridian",
+                  "quartz",
+                  "ripple",
+                  "sage",
+                  "stone",
+                  "tempo",
+                  "verse",
+                  "vesper",
+                  "willow"
                 ],
                 "title": "Preset Voice Options"
               },
@@ -28337,10 +28746,17 @@
                   "orion",
                   "masonry",
                   "albion",
-                  "parapet"
+                  "parapet",
+                  "clementine",
+                  "walnut",
+                  "eyre",
+                  "bancroft",
+                  "hesse",
+                  "beatty",
+                  "godfrey"
                 ],
                 "title": "Suggested Voice Options",
-                "description": "Popular Rime AI voices across mist, mistv2, and arcana models. Any valid Rime AI voice ID is accepted, not just these suggestions."
+                "description": "Popular Rime AI voices across mist, mistv2, mistv3, arcana, and coda models. Any valid Rime AI voice ID is accepted, not just these suggestions."
               },
               {
                 "type": "string",
@@ -28354,7 +28770,9 @@
             "description": "This is the model that will be used. Defaults to 'arcana' when not specified.",
             "enum": [
               "arcana",
+              "coda",
               "mistv2",
+              "mistv3",
               "mist"
             ],
             "example": "arcana"
@@ -29915,24 +30333,77 @@
               "julius",
               "lara",
               "elara",
-              "aurelia"
+              "aurelia",
+              "hannah",
+              "kit",
+              "alexis",
+              "cliff",
+              "sienna",
+              "cole",
+              "brooke",
+              "colin",
+              "gemma",
+              "haley",
+              "heather",
+              "miles",
+              "sean",
+              "bree",
+              "brittany",
+              "bruce",
+              "conor",
+              "donovan",
+              "drew",
+              "elise",
+              "jack",
+              "kai",
+              "kelsey",
+              "maeve",
+              "marcelo",
+              "marcus",
+              "meena",
+              "meghan",
+              "naveen",
+              "paige",
+              "priya",
+              "rufus",
+              "sharon",
+              "tanner",
+              "wade",
+              "wes"
             ],
             "title": "This is the Deepgram Voice ID"
           },
           "model": {
             "type": "string",
-            "description": "This is the model that will be used. Defaults to 'aura-2' when not specified.",
+            "description": "This is the model that will be used. Defaults to 'aura' when not specified.",
             "enum": [
               "aura",
-              "aura-2"
+              "aura-2",
+              "flux"
             ],
             "example": "aura-2"
           },
           "mipOptOut": {
             "type": "boolean",
-            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis will only be used if you are using your own Deepgram API key.\n\n@default false",
+            "description": "If set to true, this will add mip_opt_out=true as a query parameter of all API requests. See https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program#want-to-opt-out\n\nThis only applies to your own Deepgram API key. Requests on Vapi's key always opt out, whatever this is set to.\n\n@default false",
             "example": false,
             "default": false
+          },
+          "speed": {
+            "type": "number",
+            "description": "This is the speed multiplier that will be used. Aura-2 accepts 0.7 to 1.5; Flux accepts 0.5 to 1.5 in steps of 0.05. Aura does not support speed.\n\n@default 1",
+            "minimum": 0.5,
+            "maximum": 1.5,
+            "example": 1.1,
+            "default": 1
+          },
+          "expressivity": {
+            "type": "number",
+            "description": "This is the expressivity level for Flux voices, from -2 (flat) to 2 (lively). Deepgram marks this control as beta and may retune the scale. Aura and Aura-2 do not support it.\n\n@default 0",
+            "minimum": -2,
+            "maximum": 2,
+            "example": 1,
+            "default": 0
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -30704,8 +31175,8 @@
             ]
           },
           "voiceId": {
-            "description": "This is the provider-specific ID that will be used.\nPlease note that ash, ballad, coral, sage, and verse may only be used with realtime models.",
-            "oneOf": [
+            "description": "This is the provider-specific ID that will be used.\nVoice availability depends on the selected model.\nquartz, ripple, vesper, willow, stone, gleam, meridian, bossa, tempo, beacon, delta, cinder are only supported with GPT-Live models.",
+            "anyOf": [
               {
                 "type": "string",
                 "enum": [
@@ -30716,7 +31187,24 @@
                   "nova",
                   "shimmer",
                   "marin",
-                  "cedar"
+                  "cedar",
+                  "ash",
+                  "ballad",
+                  "beacon",
+                  "bossa",
+                  "cinder",
+                  "coral",
+                  "delta",
+                  "gleam",
+                  "meridian",
+                  "quartz",
+                  "ripple",
+                  "sage",
+                  "stone",
+                  "tempo",
+                  "verse",
+                  "vesper",
+                  "willow"
                 ],
                 "title": "Preset Voice Options"
               },
@@ -30994,10 +31482,17 @@
                   "orion",
                   "masonry",
                   "albion",
-                  "parapet"
+                  "parapet",
+                  "clementine",
+                  "walnut",
+                  "eyre",
+                  "bancroft",
+                  "hesse",
+                  "beatty",
+                  "godfrey"
                 ],
                 "title": "Suggested Voice Options",
-                "description": "Popular Rime AI voices across mist, mistv2, and arcana models. Any valid Rime AI voice ID is accepted, not just these suggestions."
+                "description": "Popular Rime AI voices across mist, mistv2, mistv3, arcana, and coda models. Any valid Rime AI voice ID is accepted, not just these suggestions."
               },
               {
                 "type": "string",
@@ -31011,7 +31506,9 @@
             "description": "This is the model that will be used. Defaults to 'arcana' when not specified.",
             "enum": [
               "arcana",
+              "coda",
               "mistv2",
+              "mistv3",
               "mist"
             ],
             "example": "arcana"
@@ -34145,7 +34642,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -35142,7 +35639,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -35603,6 +36100,49 @@
           }
         }
       },
+      "ModelDeprecationNotice": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "description": "Path of the slot that carries the model, relative to the response root,\ne.g. `model`, `model.fallbackModels[1]`, `transcriber`, `voice`, or\n`members[2].assistantOverrides.model` on a squad.",
+            "example": "model.fallbackModels[1]"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider as stored on the slot.",
+            "example": "openai"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model name as stored on the slot.",
+            "example": "gpt-4-1106-preview"
+          },
+          "deprecationDate": {
+            "type": "string",
+            "description": "Day the model became deprecated, `YYYY-MM-DD` in UTC.",
+            "example": "2025-09-26"
+          },
+          "retirementDate": {
+            "type": "string",
+            "description": "Day the model is or was retired, `YYYY-MM-DD` in UTC. On and after this\nday Vapi no longer runs the model as configured.",
+            "example": "2026-03-26"
+          },
+          "replacementModel": {
+            "type": "string",
+            "description": "The recommended migration target for the slot's model: the registry's\nreplacement, followed through any further retirements as of the response\ndate, so it names a model that is alive on that day. A `<model>:<region>`\npin on the slot's model is kept on the target when the pinned name is\nitself a settable model; otherwise the bare replacement is named.",
+            "example": "gpt-5"
+          }
+        },
+        "required": [
+          "slot",
+          "provider",
+          "model",
+          "deprecationDate",
+          "retirementDate",
+          "replacementModel"
+        ]
+      },
       "Assistant": {
         "type": "object",
         "properties": {
@@ -36036,7 +36576,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -36402,6 +36942,13 @@
             "nullable": true,
             "description": "This is the latest version label (e.g. `v3`) of the assistant in the\nversion history. `null` while the org is not yet\nonboarded to versioning, or for assistants that have not yet been\npublished under it."
           },
+          "modelDeprecations": {
+            "description": "Read-only. Present only when a model this configuration uses is deprecated or retired in Vapi's model deprecation registry, judged on the day of the response. Each entry names the slot that carries the model (for example `model` or `model.fallbackModels[1]`), the deprecation and retirement dates as `YYYY-MM-DD` in UTC, and the recommended replacement model: the registry's replacement, followed through any further retirements as of the response date, so it names a model that is alive on that day. Ignored if sent back in a create or update request.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelDeprecationNotice"
+            }
+          },
           "name": {
             "type": "string",
             "description": "This is the name of the assistant.\n\nThis is required when you want to transfer between assistants in a call.",
@@ -36524,6 +37071,53 @@
           "orgId",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "ValidateBackgroundSoundUrlDTO": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "This is the background sound URL to validate. The server performs a ranged request and checks that the URL serves a live media file.",
+            "example": "https://example.com/my-sound.mp3"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "BackgroundSoundUrlValidationResult": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "description": "Whether the URL currently serves a live media file. When false, calls configured with this URL silently play no background sound."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why validation failed. Only present when valid is false.",
+            "enum": [
+              "invalid-url",
+              "blocked-address",
+              "unreachable",
+              "timeout",
+              "too-many-redirects",
+              "http-error",
+              "not-audio"
+            ]
+          },
+          "status": {
+            "type": "number",
+            "description": "The HTTP status the URL returned, when a response was received."
+          },
+          "contentType": {
+            "type": "string",
+            "description": "The content-type the URL returned, when a response was received."
+          }
+        },
+        "required": [
+          "valid"
         ]
       },
       "PaginationMeta": {
@@ -37024,7 +37618,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -37383,6 +37977,13 @@
                   "title": "SessionCreatedHook"
                 }
               ]
+            }
+          },
+          "modelDeprecations": {
+            "description": "Read-only. Present only when a model this configuration uses is deprecated or retired in Vapi's model deprecation registry, judged on the day of the response. Each entry names the slot that carries the model (for example `model` or `model.fallbackModels[1]`), the deprecation and retirement dates as `YYYY-MM-DD` in UTC, and the recommended replacement model: the registry's replacement, followed through any further retirements as of the response date, so it names a model that is alive on that day. Ignored if sent back in a create or update request.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelDeprecationNotice"
             }
           },
           "name": {
@@ -38041,7 +38642,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -38464,6 +39065,13 @@
             "description": "This is the ISO 8601 date-time string of when the version was created.",
             "format": "date-time"
           },
+          "modelDeprecations": {
+            "description": "Read-only. Present only when a model this configuration uses is deprecated or retired in Vapi's model deprecation registry, judged on the day of the response. Each entry names the slot that carries the model (for example `model` or `model.fallbackModels[1]`), the deprecation and retirement dates as `YYYY-MM-DD` in UTC, and the recommended replacement model: the registry's replacement, followed through any further retirements as of the response date, so it names a model that is alive on that day. Ignored if sent back in a create or update request.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelDeprecationNotice"
+            }
+          },
           "name": {
             "type": "string",
             "description": "This is the name of the assistant.\n\nThis is required when you want to transfer between assistants in a call.",
@@ -38634,6 +39242,7 @@
             "enum": [
               "assistant_version",
               "squad",
+              "squad_version",
               "tool_version"
             ],
             "description": "Kind of source row the pin originates from."
@@ -39109,7 +39718,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -40027,7 +40636,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -40921,7 +41530,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -41404,6 +42013,18 @@
       "Squad": {
         "type": "object",
         "properties": {
+          "latestVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the latest version label (e.g. `v3`) of the squad in the version\nhistory. `null` while the org is not yet onboarded to versioning, or for\nsquads that have not yet been published under it."
+          },
+          "modelDeprecations": {
+            "description": "Read-only. Present only when a model this configuration uses is deprecated or retired in Vapi's model deprecation registry, judged on the day of the response. Each entry names the slot that carries the model (for example `model` or `model.fallbackModels[1]`), the deprecation and retirement dates as `YYYY-MM-DD` in UTC, and the recommended replacement model: the registry's replacement, followed through any further retirements as of the response date, so it names a model that is alive on that day. Ignored if sent back in a create or update request.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelDeprecationNotice"
+            }
+          },
           "name": {
             "type": "string",
             "description": "This is the name of the squad."
@@ -41448,6 +42069,138 @@
           "orgId",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "SquadVersion": {
+        "type": "object",
+        "properties": {
+          "versionName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional human-readable label for this version. Set when the version is published.",
+            "maxLength": 80
+          },
+          "versionDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional description for this version. Set when the version is published.",
+            "maxLength": 500
+          },
+          "id": {
+            "type": "string",
+            "description": "This is the unique identifier for the version row.",
+            "format": "uuid"
+          },
+          "orgId": {
+            "type": "string",
+            "description": "This is the unique identifier for the org that owns this version.",
+            "format": "uuid"
+          },
+          "squadId": {
+            "type": "string",
+            "description": "This is the unique identifier for the squad this version was snapshotted from.",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string",
+            "description": "This is the public monotonic version label, e.g. \"v1\".\nSystem-owned and incremented per squad; never user-supplied.",
+            "example": "v1"
+          },
+          "configHash": {
+            "type": "string",
+            "description": "This is the SHA-256 hex of the snapshotted content used for no-op detection."
+          },
+          "parentVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the prior version label (vN-1). Null on v1 or for branch roots."
+          },
+          "restoredFromVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "The version this version was restored from. Null when it was not restored."
+          },
+          "createdBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the actor that wrote this version. Email when created via JWT; null\nwhen created via API key, and null for a baseline version authored by nobody."
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the soft-delete timestamp. Null when active.",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of when the version was created.",
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string",
+            "description": "This is the name of the squad."
+          },
+          "members": {
+            "description": "This is the list of assistants that make up the squad.\n\nThe call will start with the first assistant in the list.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SquadMemberDTO"
+            }
+          },
+          "membersOverrides": {
+            "description": "This can be used to override all the assistants' settings and provide values for their template variables.\n\nBoth `membersOverrides` and `members[n].assistantOverrides` can be used together. First, `members[n].assistantOverrides` is applied. Then, `membersOverrides` is applied as a global override.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOverrides"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "orgId",
+          "squadId",
+          "version",
+          "configHash",
+          "createdAt",
+          "members"
+        ]
+      },
+      "SquadVersionPaginatedMetadata": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "hasNextPage": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "hasNextPage",
+          "limit"
+        ]
+      },
+      "SquadVersionPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SquadVersion"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/SquadVersionPaginatedMetadata"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
         ]
       },
       "UpdateSquadDTO": {
@@ -41694,7 +42447,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -42398,7 +43151,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -43084,7 +43837,7 @@
               {
                 "type": "string",
                 "format": "uri",
-                "example": "https://www.soundjay.com/ambient/sounds/people-in-lounge-1.mp3"
+                "example": "https://example.com/my-sound.mp3"
               }
             ]
           },
@@ -43884,6 +44637,14 @@
               "model"
             ]
           },
+          "seconds": {
+            "type": "number",
+            "description": "Provider-reported billable duration in seconds. Currently supplied for GPT-Live; omitted for token-billed models."
+          },
+          "usageComplete": {
+            "type": "boolean",
+            "description": "Whether the reported usage is complete. False means the cost reflects missing or partial usage and may understate provider spend. Omitted when the provider integration does not report completeness."
+          },
           "model": {
             "type": "object",
             "description": "This is the model that was used during the call.\n\nThis matches one of the following:\n- `call.assistant.model`,\n- `call.assistantId->model`,\n- `call.squad[n].assistant.model`,\n- `call.squad[n].assistantId->model`,\n- `call.squadId->[n].assistant.model`,\n- `call.squadId->[n].assistantId->model`."
@@ -44160,7 +44921,7 @@
             "maximum": 192000
           },
           "format": {
-            "type": "object",
+            "type": "string",
             "description": "This is the audio format of the call.\n\n@default 'pcm_s16le'",
             "enum": [
               "pcm_s16le",
@@ -44199,7 +44960,7 @@
             ]
           },
           "audioFormat": {
-            "description": "This is the audio format of the call. Defaults to 16KHz raw pcm_s16le",
+            "description": "This is the audio format of the call. Defaults to 16KHz raw pcm_s16le.\n\nFor GPT-Live calls using Vapi's custom WebSocket transport, explicitly set\n`{ format: pcm_s16le, sampleRate: 24000 }`. This requirement is specific\nto Vapi's WebSocket transport and does not apply to phone or web calls.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/AudioFormat"
@@ -44234,6 +44995,10 @@
             "description": "This determines whether the daily room will be deleted and all participants will be kicked once the user leaves the room.\nIf set to `false`, the room will be kept alive even after the user leaves, allowing clients to reconnect to the same room.\nIf set to `true`, the room will be deleted and reconnection will not be allowed.\n\nDefaults to `true`.",
             "example": true,
             "default": true
+          },
+          "callToken": {
+            "type": "string",
+            "description": "This is the meeting token the web client should join the call with.\nWhen video recording is enabled, joining with this token starts the cloud\nrecording automatically server-side, which is more reliable than the\nclient starting it after joining. Set by the server; only present when\nvideo recording is enabled."
           },
           "callUrl": {
             "type": "string",
@@ -44774,7 +45539,12 @@
           "assistantVersion": {
             "type": "string",
             "nullable": true,
-            "description": "This is the version label (e.g. `v3`) of the assistant active when\nthe activation row was recorded. `null` for inline assistants,\norgs not on assistant versioning, and parent assistants that have\nnot yet been published under it."
+            "description": "This is the version label (e.g. `v3`) of the assistant active when\nthe activation row was recorded. Absent for inline assistants,\norgs not on assistant versioning, and parent assistants that have\nnot yet been published under it."
+          },
+          "squadVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the version label (e.g. `v3`) of the squad that was governing the\ncall when this activation was recorded. Absent for activations that no\nsquad version governs: standalone-assistant calls, flag-off orgs, squads\nwith no published version, and hops to an assistant outside the squad."
           },
           "assistantName": {
             "type": "string",
@@ -45590,6 +46360,7 @@
               "call.start.error-subscription-concurrency-limit-reached",
               "call.start.error-enterprise-feature-not-available-recording-consent",
               "call.start.assistant-version-error-validation",
+              "call.start.squad-version-error-validation",
               "assistant-not-valid",
               "call.start.error-vapifault-database-error",
               "assistant-not-found",
@@ -45732,6 +46503,8 @@
               "call.in-progress.error-providerfault-deep-seek-llm-failed",
               "call.in-progress.error-providerfault-baseten-llm-failed",
               "call.in-progress.error-vapifault-chat-pipeline-failed-to-start",
+              "call.in-progress.error-configfault-model-unsupported-in-squad",
+              "call.in-progress.error-configfault-transport-unsupported-for-model",
               "pipeline-error-openai-400-bad-request-validation-failed",
               "pipeline-error-openai-401-unauthorized",
               "pipeline-error-openai-401-incorrect-api-key",
@@ -46216,6 +46989,11 @@
             "nullable": true,
             "description": "This is the assistant version to use for this call. Supported only with\ndirect `assistantId`. Omit to follow the latest version."
           },
+          "squadVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the squad version to use for this call. Supported only with\ndirect `squadId`. Omit to follow the latest version."
+          },
           "transport": {
             "description": "This is the transport of the call.",
             "oneOf": [
@@ -46594,6 +47372,11 @@
             "nullable": true,
             "description": "This is the assistant version to use for this call. Supported only with\ndirect `assistantId`. Omit to follow the latest version."
           },
+          "squadVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the squad version to use for this call. Supported only with\ndirect `squadId`. Omit to follow the latest version."
+          },
           "transport": {
             "description": "This is the transport of the call.",
             "oneOf": [
@@ -46792,6 +47575,11 @@
             "nullable": true,
             "description": "This is the assistant version to use for this call. Supported only with\ndirect `assistantId`. Omit to follow the latest version."
           },
+          "squadVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the squad version to use for this call. Supported only with\ndirect `squadId`. Omit to follow the latest version."
+          },
           "transport": {
             "description": "This is the transport of the call.",
             "oneOf": [
@@ -46934,6 +47722,11 @@
             "type": "string",
             "nullable": true,
             "description": "This is the assistant version to use for this call. Supported only with\ndirect `assistantId`. Omit to follow the latest version."
+          },
+          "squadVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the squad version to use for this call. Supported only with\ndirect `squadId`. Omit to follow the latest version."
           },
           "roomDeleteOnUserLeaveEnabled": {
             "type": "boolean",
@@ -48607,7 +49400,8 @@
           "maxConcurrency": {
             "type": "number",
             "minimum": 1,
-            "description": "This is the maximum number of concurrent calls that will be made for the campaign. Defaults to 10."
+            "maximum": 500,
+            "description": "This is the maximum number of concurrent calls that will be made for the campaign. Defaults to 10. Maximum of 500, and may not exceed your organization's concurrency limit."
           },
           "assistantOverrides": {
             "description": "These are the overrides for the assistant's settings and template variables for the campaign. Use this when the campaign targets an `assistantId`.",
@@ -48756,7 +49550,8 @@
           "maxConcurrency": {
             "type": "number",
             "minimum": 1,
-            "description": "This is the maximum number of concurrent calls that will be made for the campaign. Defaults to 10."
+            "maximum": 500,
+            "description": "This is the maximum number of concurrent calls that will be made for the campaign. Defaults to 10. Maximum of 500, and may not exceed your organization's concurrency limit."
           },
           "assistantOverrides": {
             "description": "These are the overrides for the assistant's settings and template variables for the campaign. Use this when the campaign targets an `assistantId`.",
@@ -49002,7 +49797,8 @@
           "maxConcurrency": {
             "type": "number",
             "minimum": 1,
-            "description": "This is the maximum number of concurrent calls that will be made for the campaign. Defaults to 10."
+            "maximum": 500,
+            "description": "This is the maximum number of concurrent calls that will be made for the campaign. Defaults to 10. Maximum of 500, and may not exceed your organization's concurrency limit."
           },
           "assistantOverrides": {
             "description": "These are the overrides for the assistant's settings and template variables for the campaign. Use this when the campaign targets an `assistantId`.",
@@ -57346,23 +58142,6 @@
           }
         }
       },
-      "UpdateToolVersionMetadataDTO": {
-        "type": "object",
-        "properties": {
-          "versionName": {
-            "type": "string",
-            "nullable": true,
-            "description": "Optional human-readable label for this version. Pass `null` to clear.",
-            "maxLength": 80
-          },
-          "versionDescription": {
-            "type": "string",
-            "nullable": true,
-            "description": "Optional description for this version. Pass `null` to clear.",
-            "maxLength": 500
-          }
-        }
-      },
       "ToolPinnedConflictResponseDTO": {
         "type": "object",
         "properties": {
@@ -57381,6 +58160,42 @@
           "error",
           "message"
         ]
+      },
+      "ToolWriteConflictResponseDTO": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "tool_write_conflict"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable reason the tool write was rejected."
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ]
+      },
+      "UpdateToolVersionMetadataDTO": {
+        "type": "object",
+        "properties": {
+          "versionName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional human-readable label for this version. Pass `null` to clear.",
+            "maxLength": 80
+          },
+          "versionDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional description for this version. Pass `null` to clear.",
+            "maxLength": 500
+          }
+        }
       },
       "CreateFileDTO": {
         "type": "object",
@@ -57500,6 +58315,24 @@
             "maxLength": 40
           }
         }
+      },
+      "FilePaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/File"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
+        ]
       },
       "CustomKnowledgeBase": {
         "type": "object",
@@ -57808,7 +58641,7 @@
           },
           "regex": {
             "type": "string",
-            "description": "This is the regex pattern to match against the transcript.\n\nOnly used when type is 'regex'. Supports both raw patterns (e.g. '\\d+') and\nregex literal format (e.g. '/\\d+/gi'). Uses RE2 syntax for safety.\n\nThe result depends on the schema type:\n- boolean: true if the pattern matches, false otherwise\n- string: the first match or first capture group\n- number/integer: the first match parsed as a number\n- array: all matches",
+            "description": "This is the regex pattern to match against the transcript.\n\nSimulation evaluations use a canonical transcript built from recorded messages:\nUser: and AI: dialogue, AI: tool_calls: JSON name/arguments records, and\nAI: tool_call_results: JSON results. System messages are excluded. These\nfixed labels apply even when custom artifact transcript labels are configured.\nTool payloads participate in first-match and all-match extraction in event order.\nAn empty message array falls back to the supplied transcript verbatim.\nProduction-call extraction and call preview use their existing transcripts,\nso previewing the same output on a simulation's call can return a different result.\n\nOnly used when type is 'regex'. Supports both raw patterns (e.g. '\\d+') and\nregex literal format (e.g. '/\\d+/gi'). Uses RE2 syntax for safety.\n\nThe result depends on the schema type:\n- boolean: true if the pattern matches, false otherwise\n- string: the first match or first capture group\n- number/integer: the first match parsed as a number\n- array: all matches",
             "minLength": 1,
             "maxLength": 1000
           },
@@ -57970,7 +58803,7 @@
           },
           "regex": {
             "type": "string",
-            "description": "This is the regex pattern to match against the transcript.\n\nOnly used when type is 'regex'. Supports both raw patterns (e.g. '\\d+') and\nregex literal format (e.g. '/\\d+/gi'). Uses RE2 syntax for safety.\n\nThe result depends on the schema type:\n- boolean: true if the pattern matches, false otherwise\n- string: the first match or first capture group\n- number/integer: the first match parsed as a number\n- array: all matches",
+            "description": "This is the regex pattern to match against the transcript.\n\nSimulation evaluations use a canonical transcript built from recorded messages:\nUser: and AI: dialogue, AI: tool_calls: JSON name/arguments records, and\nAI: tool_call_results: JSON results. System messages are excluded. These\nfixed labels apply even when custom artifact transcript labels are configured.\nTool payloads participate in first-match and all-match extraction in event order.\nAn empty message array falls back to the supplied transcript verbatim.\nProduction-call extraction and call preview use their existing transcripts,\nso previewing the same output on a simulation's call can return a different result.\n\nOnly used when type is 'regex'. Supports both raw patterns (e.g. '\\d+') and\nregex literal format (e.g. '/\\d+/gi'). Uses RE2 syntax for safety.\n\nThe result depends on the schema type:\n- boolean: true if the pattern matches, false otherwise\n- string: the first match or first capture group\n- number/integer: the first match parsed as a number\n- array: all matches",
             "minLength": 1,
             "maxLength": 1000
           },
@@ -59009,7 +59842,7 @@
             "maxLength": 80
           },
           "assistant": {
-            "description": "This is the full assistant configuration for this personality.",
+            "description": "Complete assistant replacement. Omitted credentials and redacted server secrets are preserved when their endpoint URL is unchanged. Send credentials: [] to clear credentials; omit a server container to remove it.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/CreateAssistantDTO"
@@ -59024,6 +59857,25 @@
             "pattern": "/^[a-zA-Z0-9][a-zA-Z0-9._-]*(?:\\/[a-zA-Z0-9][a-zA-Z0-9._-]*){0,2}$/"
           }
         }
+      },
+      "PersonalityInUseConflictResponseDTO": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "personality_in_use"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable reason the personality cannot be deleted."
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ]
       },
       "SimulationHookInclude": {
         "type": "object",
@@ -59416,7 +60268,7 @@
             }
           },
           "targetOverrides": {
-            "description": "Overrides to inject into the simulated target assistant or squad",
+            "description": "Complete override replacement. Omitted credentials and redacted server secrets are preserved when their endpoint URL is unchanged. Send credentials: [] to clear credentials; omit a server container to remove it.",
             "example": {
               "variableValues": {
                 "customerName": "Alice",
@@ -59443,6 +60295,25 @@
             "pattern": "/^[a-zA-Z0-9][a-zA-Z0-9._-]*(?:\\/[a-zA-Z0-9][a-zA-Z0-9._-]*){0,2}$/"
           }
         }
+      },
+      "ScenarioInUseConflictResponseDTO": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "scenario_in_use"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable reason the scenario cannot be deleted."
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ]
       },
       "SimulationRunSimulationEntry": {
         "type": "object",
@@ -62365,12 +63236,14 @@
               "assistant.model.requestAttemptStarted",
               "assistant.model.requestAttemptSucceeded",
               "assistant.model.requestAttemptFailed",
+              "assistant.knowledgeBase.requestSucceeded",
               "assistant.model.connectionOpened",
               "assistant.model.connectionClosed",
               "assistant.model.firstTokenReceived",
               "assistant.model.tokenReceived",
               "assistant.model.responseSucceeded",
               "assistant.model.responseFailed",
+              "assistant.model.responseEmpty",
               "assistant.model.toolCallsReceived",
               "assistant.model.reconnecting",
               "assistant.model.cleanup",
@@ -64889,30 +65762,19 @@
       "GetEvalRunPaginatedDTO": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string"
-          },
-          "page": {
-            "type": "number",
-            "description": "This is the page number to return. Defaults to 1.",
-            "minimum": 1
-          },
-          "sortOrder": {
-            "type": "string",
-            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
-            "enum": [
-              "ASC",
-              "DESC"
-            ]
-          },
           "sortBy": {
             "type": "string",
-            "description": "This is the column to sort by. Defaults to 'createdAt'.",
             "enum": [
-              "createdAt",
-              "duration",
-              "cost"
+              "createdAt"
             ]
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Literal, case-insensitive search across eval and assistant names."
+          },
+          "id": {
+            "type": "string"
           },
           "limit": {
             "type": "number",
@@ -64959,6 +65821,19 @@
             "format": "date-time",
             "type": "string",
             "description": "This will return items where the updatedAt is less than or equal to the specified value."
+          },
+          "page": {
+            "type": "number",
+            "description": "This is the page number to return. Defaults to 1.",
+            "minimum": 1
+          },
+          "sortOrder": {
+            "type": "string",
+            "description": "This is the sort order for pagination. Defaults to 'DESC'.",
+            "enum": [
+              "ASC",
+              "DESC"
+            ]
           }
         }
       },
@@ -65277,6 +66152,11 @@
             "type": "string",
             "description": "This is the timestamp when the subscription was last updated."
           },
+          "name": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is the display name for the subscription, used to tell subscriptions\napart in the dashboard. It is unique across all subscriptions and does not\nappear on invoices, which use the company details on the invoice plan."
+          },
           "type": {
             "type": "string",
             "description": "This is the type / tier of the subscription.",
@@ -65341,14 +66221,6 @@
           "stripePaymentMethodId": {
             "type": "string",
             "description": "This is the Stripe payment ID."
-          },
-          "slackSupportEnabled": {
-            "type": "boolean",
-            "description": "If this flag is true, then the user has purchased slack support."
-          },
-          "slackChannelId": {
-            "type": "string",
-            "description": "If this subscription has a slack support subscription, the slack channel's ID will be stored here."
           },
           "hipaaEnabled": {
             "type": "boolean",
@@ -65479,6 +66351,15 @@
           "platformFee": {
             "type": "number",
             "description": "This is the platform fee for the subscription."
+          },
+          "billingCollectionMethod": {
+            "type": "string",
+            "nullable": true,
+            "description": "This is how payment is collected for the subscription: charged to the card\non file, or invoiced.",
+            "enum": [
+              "charge_automatically",
+              "send_invoice"
+            ]
           }
         },
         "required": [
@@ -65607,6 +66488,66 @@
           "updatedAt"
         ]
       },
+      "OrgConcurrencyLimitsDTO": {
+        "type": "object",
+        "properties": {
+          "concurrencyBlocked": {
+            "type": "boolean",
+            "description": "True when the org is at or over its concurrency limit at the time of the read. This is a status read, not an admission decision: no call was evaluated and no slot is reserved."
+          },
+          "concurrencyLimit": {
+            "type": "number",
+            "description": "Maximum number of concurrent calls the subscription allows, at the time of the read. Computed as the subscription's included plus purchased concurrency, defaulting to the initial allowance when either is unset; call create derives its own figure and can differ for subscriptions with an unset allowance."
+          },
+          "remainingConcurrentCalls": {
+            "type": "number",
+            "description": "Plain concurrent-call headroom at the time of the read, floored at zero. Unlike the call create response, this does not include or reserve a slot for a new call."
+          }
+        },
+        "required": [
+          "concurrencyBlocked",
+          "concurrencyLimit",
+          "remainingConcurrentCalls"
+        ]
+      },
+      "OrgApiLimitsDTO": {
+        "type": "object",
+        "properties": {
+          "rateLimitUsage": {
+            "type": "number",
+            "description": "Approximate number of API requests counted against the rate limit in the current minute, in the region that served this request. The count lives in a tumbling one-minute window aligned to the UTC clock (unix seconds / 60), so it resets to zero at the top of every minute; there is no reset header — the next boundary is (floor(now / 60) + 1) * 60."
+          },
+          "rateLimitMax": {
+            "type": "number",
+            "description": "Maximum number of standard API requests allowed per minute, in the region that served this request. Live call media traffic is limited separately and is not reflected here."
+          }
+        },
+        "required": [
+          "rateLimitUsage",
+          "rateLimitMax"
+        ]
+      },
+      "OrgLimitsResponseDTO": {
+        "type": "object",
+        "properties": {
+          "subscriptionLimits": {
+            "description": "Call concurrency limits for the subscription. Unlike the call create response, remainingConcurrentCalls does not reserve a slot for a new call: it is the plain headroom at the time of the read. Covers the concurrency gate only — credits, frozen subscriptions, included minutes, and the billing limit are not reflected here, so call create can still refuse. Omitted when the limits could not be computed, and for an org with no subscription at all (legacy ungated orgs), which has no concurrency ceiling.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrgConcurrencyLimitsDTO"
+              }
+            ]
+          },
+          "apiLimits": {
+            "description": "API rate limit usage for the org. Approximate, per region, and scoped to the current minute. Omitted when the limit information is unavailable.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrgApiLimitsDTO"
+              }
+            ]
+          }
+        }
+      },
       "UpdateOrgDTO": {
         "type": "object",
         "properties": {
@@ -65717,7 +66658,8 @@
                 "enum": [
                   "admin",
                   "editor",
-                  "viewer"
+                  "viewer",
+                  "hipaa-special"
                 ]
               },
               {
@@ -65789,7 +66731,8 @@
                 "enum": [
                   "admin",
                   "editor",
-                  "viewer"
+                  "viewer",
+                  "hipaa-special"
                 ]
               },
               {
@@ -75428,6 +76371,7 @@
               "call.start.error-subscription-concurrency-limit-reached",
               "call.start.error-enterprise-feature-not-available-recording-consent",
               "call.start.assistant-version-error-validation",
+              "call.start.squad-version-error-validation",
               "assistant-not-valid",
               "call.start.error-vapifault-database-error",
               "assistant-not-found",
@@ -75570,6 +76514,8 @@
               "call.in-progress.error-providerfault-deep-seek-llm-failed",
               "call.in-progress.error-providerfault-baseten-llm-failed",
               "call.in-progress.error-vapifault-chat-pipeline-failed-to-start",
+              "call.in-progress.error-configfault-model-unsupported-in-squad",
+              "call.in-progress.error-configfault-transport-unsupported-for-model",
               "pipeline-error-openai-400-bad-request-validation-failed",
               "pipeline-error-openai-401-unauthorized",
               "pipeline-error-openai-401-incorrect-api-key",
@@ -76878,6 +77824,7 @@
               "call.start.error-subscription-concurrency-limit-reached",
               "call.start.error-enterprise-feature-not-available-recording-consent",
               "call.start.assistant-version-error-validation",
+              "call.start.squad-version-error-validation",
               "assistant-not-valid",
               "call.start.error-vapifault-database-error",
               "assistant-not-found",
@@ -77020,6 +77967,8 @@
               "call.in-progress.error-providerfault-deep-seek-llm-failed",
               "call.in-progress.error-providerfault-baseten-llm-failed",
               "call.in-progress.error-vapifault-chat-pipeline-failed-to-start",
+              "call.in-progress.error-configfault-model-unsupported-in-squad",
+              "call.in-progress.error-configfault-transport-unsupported-for-model",
               "pipeline-error-openai-400-bad-request-validation-failed",
               "pipeline-error-openai-401-unauthorized",
               "pipeline-error-openai-401-incorrect-api-key",
@@ -80123,6 +81072,37 @@
           "message"
         ]
       },
+      "ClientInboundMessageAppendContext": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "HTTP-only: append context to a GPT-Live call via `call.monitor.controlUrl`.\nNot supported on WebSocket text frames or SDK data channels.",
+            "enum": [
+              "append-context"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "description": "Commentary is spoken in the model's own words; thinking is silent context;\ninstructions steer the speaker, including requests to try saying something.\nAcceptance does not guarantee exact wording or speech completion.",
+            "enum": [
+              "commentary",
+              "thinking",
+              "instructions"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 16000,
+            "pattern": "/\\S/"
+          }
+        },
+        "required": [
+          "type",
+          "kind",
+          "content"
+        ]
+      },
       "ClientInboundMessageControl": {
         "type": "object",
         "properties": {
@@ -80264,6 +81244,10 @@
               {
                 "$ref": "#/components/schemas/ClientInboundMessageAddMessage",
                 "title": "AddMessage"
+              },
+              {
+                "$ref": "#/components/schemas/ClientInboundMessageAppendContext",
+                "title": "AppendContext"
               },
               {
                 "$ref": "#/components/schemas/ClientInboundMessageControl",

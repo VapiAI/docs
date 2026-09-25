@@ -2,6 +2,7 @@
 title: "Transient vs permanent configurations"
 subtitle: "Learn to choose between inline and stored assistant configurations"
 slug: assistants/concepts/transient-vs-permanent-configurations
+description: Choose between transient inline and permanent stored assistant configurations in Vapi, and learn when each fits for flexibility, reusability, and management.
 ---
 
 ## Overview
@@ -193,17 +194,25 @@ curl -X POST "https://api.vapi.ai/call" \
 
 ### Transient tools
 
-Create custom tools for specific integrations or workflows:
+Add call-specific tools directly to a transient assistant's model configuration.
+
+The API Request tool sends the model-generated `body` directly to the configured URL. Replace `YOUR_CREDENTIAL_ID` with a Vapi [Custom Credential](/tools/api-request/configuration#authenticate-requests) that authenticates the request without placing a secret in the tool definition.
+
+The following examples are `assistant.model` fragments:
 
 <CodeBlocks>
-```json title="Customer-specific function tool"
+```json title="Customer-specific API Request tool"
 {
   "tools": [
     {
-      "type": "function",
+      "type": "apiRequest",
       "name": "check_inventory",
       "description": "Check product inventory for the customer's specific region",
-      "parameters": {
+      "method": "POST",
+      "url": "https://api.example.com/inventory/check",
+      "credentialId": "YOUR_CREDENTIAL_ID",
+      "timeoutSeconds": 30,
+      "body": {
         "type": "object",
         "properties": {
           "productId": {
@@ -212,15 +221,10 @@ Create custom tools for specific integrations or workflows:
           },
           "region": {
             "type": "string",
-            "description": "Customer's region code"
+            "description": "The customer's region code"
           }
         },
         "required": ["productId", "region"]
-      },
-      "server": {
-        "url": "https://api.customer-integration.com/inventory",
-        "secret": "customer-webhook-secret",
-        "timeoutSeconds": 30
       }
     }
   ]
@@ -280,18 +284,45 @@ Use **permanent configurations** for reusable setups that multiple teams can acc
 ### Creating permanent configurations
 
 <Steps>
+  <Step title="Create the tool">
+    Store the reusable tool on Vapi servers and copy its ID.
+  </Step>
   <Step title="Create the assistant">
-    Store your assistant configuration on Vapi servers
+    Add the tool ID to the assistant's model configuration and copy the assistant ID.
   </Step>
-  <Step title="Get the assistant ID">
-    Use the returned UUID to reference the assistant
-  </Step>
-  <Step title="Reference in API calls">
-    Use the ID instead of inline configuration
+  <Step title="Create calls with the assistant">
+    Reference the stored assistant by its ID.
   </Step>
 </Steps>
 
 <CodeBlocks>
+```bash title="Create permanent tool"
+curl -X POST "https://api.vapi.ai/tool" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "apiRequest",
+    "name": "update_crm_contact",
+    "description": "Update contact information in the CRM system",
+    "method": "POST",
+    "url": "https://api.example.com/contacts/update",
+    "credentialId": "YOUR_CREDENTIAL_ID",
+    "body": {
+      "type": "object",
+      "properties": {
+        "contactId": {
+          "type": "string",
+          "description": "The CRM contact ID"
+        },
+        "updates": {
+          "type": "object",
+          "description": "The contact fields and values to update"
+        }
+      },
+      "required": ["contactId", "updates"]
+    }
+  }'
+```
 ```bash title="Create permanent assistant"
 curl -X POST "https://api.vapi.ai/assistant" \
   -H "Authorization: Bearer $VAPI_API_KEY" \
@@ -306,41 +337,14 @@ curl -X POST "https://api.vapi.ai/assistant" \
           "role": "system",
           "content": "You are a helpful customer service representative for Acme Corp. Provide accurate information about our products and services."
         }
-      ]
+      ],
+      "toolIds": ["YOUR_TOOL_ID"]
     },
     "voice": {
       "provider": "11labs",
       "voiceId": "N2lVS1w4EtoT3dr4eOWO"
     },
     "firstMessage": "Hello! Thank you for calling Acme Corp. How can I assist you today?"
-  }'
-```
-```bash title="Create permanent tool"
-curl -X POST "https://api.vapi.ai/tool" \
-  -H "Authorization: Bearer $VAPI_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "function",
-    "name": "update_crm_contact",
-    "description": "Update contact information in the CRM system",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "contactId": {
-          "type": "string",
-          "description": "CRM contact ID"
-        },
-        "updates": {
-          "type": "object",
-          "description": "Fields to update"
-        }
-      },
-      "required": ["contactId", "updates"]
-    },
-    "server": {
-      "url": "https://api.yourcrm.com/contacts/update",
-      "secret": "your-webhook-secret"
-    }
   }'
 ```
 ```bash title="Use permanent configurations"
@@ -354,7 +358,6 @@ curl -X POST "https://api.vapi.ai/call" \
     },
     "assistantId": "your-assistant-id",
     "assistantOverrides": {
-      "toolIds": ["tool-id-1", "tool-id-2"],
       "variableValues": {
         "customerName": "John Smith",
         "accountId": "ACC123456"
@@ -363,6 +366,8 @@ curl -X POST "https://api.vapi.ai/call" \
   }'
 ```
 </CodeBlocks>
+
+Replace the tool, credential, and assistant ID placeholders with values from the resources you created. The credential authenticates the API Request tool's call to the CRM endpoint.
 
 ## Mixed configurations
 

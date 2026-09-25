@@ -1,0 +1,278 @@
+---
+title: Get order status
+subtitle: Extend the coffee-order assistant so callers can check an existing order on a later call
+description: Add an order-status API Request Tool to the coffee-order assistant, update its opening and system prompt, and verify status lookup across two inbound calls.
+slug: tools/api-request/order-status
+---
+
+Extend the configured coffee-order assistant with a second API Request Tool that looks up an order by its five-digit order number. This guide keeps `createCoffeeOrder` and its request configuration unchanged. You update the existing assistant and keep its connected phone number.
+
+## Prerequisites
+
+- The coffee-order assistant and `createCoffeeOrder` tool from the [quickstart](/tools/api-request/quickstart)
+- The request configuration from [Customize API Request tool requests](/tools/api-request/configuration)
+- For cURL, your Vapi API key, the existing tool ID, and the assistant ID from the quickstart
+
+## 1. Create the status tool
+
+Create one new API Request Tool named `getCoffeeOrderStatus`. Keep the existing `createCoffeeOrder` tool and any request configuration you already added to it.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create the tool">
+        Open the [Dashboard](https://dashboard.vapi.ai), select **Tools**, select **Create Tool**, then choose **API Request**.
+      </Step>
+
+      <Step title="Configure the status request">
+        Enter these values under **Base Configuration**:
+
+        | Field | Value |
+        | --- | --- |
+        | **Tool Name** | `getCoffeeOrderStatus` |
+        | **Description** | `Gets the status of a mock coffee shop order. Use only after the caller states and confirms a five-digit order number. Never guess an order number or status.` |
+        | **Request URL** | `https://vapi-docs-orders.val.run/lookup` |
+        | **Request HTTP Method** | `POST` |
+
+        Under **Authorization**, keep **No authentication** selected.
+      </Step>
+
+      <Step title="Define the request body">
+        Under **Request Body**, add one required property:
+
+        | Property | Type | Required | Configuration |
+        | --- | --- | --- | --- |
+        | `orderId` | Number | Yes | Description: `The five-digit whole-number order ID stated and confirmed by the caller.` |
+
+        Leave **Default value** empty. The Dashboard exposes this property as **Number**; the endpoint still requires a whole number from `10000` through `99999`.
+
+        Select **Apply**, enable **Lock schema (no additional properties)**, then select **Publish**.
+
+        <Frame caption="Require the caller's confirmed order ID">
+          <img src="/static/images/tools/api-request/11-order-status-request-body.png" alt="Vapi Dashboard Request Body with orderId as the only required property" />
+        </Frame>
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    Create a second tool with the [Create Tool endpoint](/api-reference/tools/create). Reuse the `VAPI_API_KEY` from the earlier guides; do not replace the existing `VAPI_TOOL_ID` value.
+
+    ```bash
+    curl --request POST \
+      --url https://api.vapi.ai/tool \
+      --header "Authorization: Bearer $VAPI_API_KEY" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "type": "apiRequest",
+        "name": "getCoffeeOrderStatus",
+        "description": "Gets the status of a mock coffee shop order. Use only after the caller states and confirms a five-digit order number. Never guess an order number or status.",
+        "method": "POST",
+        "url": "https://vapi-docs-orders.val.run/lookup",
+        "timeoutSeconds": 20,
+        "body": {
+          "type": "object",
+          "properties": {
+            "orderId": {
+              "type": "integer",
+              "minimum": 10000,
+              "maximum": 99999,
+              "description": "The five-digit order number stated and confirmed by the caller."
+            }
+          },
+          "required": ["orderId"],
+          "additionalProperties": false
+        }
+      }'
+    ```
+
+    Copy the returned `id`, then export both tool IDs:
+
+    ```bash
+    export VAPI_TOOL_ID="YOUR_CREATE_COFFEE_ORDER_TOOL_ID"
+    export VAPI_STATUS_TOOL_ID="RETURNED_STATUS_TOOL_ID"
+    ```
+  </Tab>
+</Tabs>
+
+Do not copy the headers, static body fields, or credential from `createCoffeeOrder`. The status endpoint needs only `orderId`.
+
+## 2. Extend the existing assistant
+
+Replace the assistant's complete **System Prompt** with the prompt below. It includes the existing product and order instructions plus the new status flow, so do not append it to the old prompt.
+
+```txt title="System prompt" wordWrap
+You are a friendly coffee shop assistant. Help callers place an order or check the status of an existing order.
+
+Available products:
+- House coffee beans: productId coffee-beans, $18 each
+- Tea sampler: productId tea-sampler, $14 each
+- Ceramic mug: productId ceramic-mug, $12 each
+
+Ask one question at a time and keep responses concise. Use tool results to answer naturally. Do not read product IDs, internal field names, the internal requestId, or raw tool responses aloud.
+
+To place an order, collect the caller's name, product, and positive whole-number quantity. If the caller requests an unavailable product, say it is unavailable and offer the listed products. Never substitute another product without confirmation.
+
+Read back the caller's name, product, quantity, and listed unit price, then get explicit confirmation before calling createCoffeeOrder. Never invent a productId, and never call createCoffeeOrder before confirmation.
+
+After a successful createCoffeeOrder response, confirm the product, quantity, and server-calculated total. Read the five-digit order number one digit at a time and tell the caller to save it for a later status check. If createCoffeeOrder fails, do not claim that the order was created or invent an order number or total.
+
+To check order status, collect the five-digit order number. Do not collect the caller's name, product, or quantity, and do not call createCoffeeOrder. Read the order number back one digit at a time and get explicit confirmation before calling getCoffeeOrderStatus. Never guess or complete a partial number.
+
+After a successful getCoffeeOrderStatus response, state the returned order number and communicate the returned statusLabel naturally. If the first lookup finds no order, reconfirm the number and try once more. If no order is found after the second confirmed lookup, apologize, state that the order could not be located, and do not retry again for that request. For any other error, say you could not retrieve the status. Do not guess.
+
+After completing a request, do not reuse its collected name, product, quantity, or order number. If the caller starts another order or status check, collect and confirm the required information again.
+
+After completing the caller's request, ask whether they need anything else. If they do not, say "Thanks for calling. Goodbye." Do not continue speaking after that sentence.
+```
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Update the existing assistant">
+        Open `Docs Coffee Order Hello World` and update these fields:
+
+        | Field | Value |
+        | --- | --- |
+        | **First Message** | `Thanks for calling the Vapi coffee shop. Would you like to place an order or check an existing order?` |
+        | **System Prompt** | Replace the complete prompt with the system prompt above. |
+
+        Keep the assistant's existing end-call settings, other settings, and connected phone number. Do not create another assistant.
+      </Step>
+
+      <Step title="Attach the status tool">
+        In **Tools**, add `getCoffeeOrderStatus` and keep `createCoffeeOrder` attached.
+
+        <Frame caption="Attach both coffee-order tools to the assistant">
+          <img src="/static/images/tools/api-request/12-attached-order-tools.png" alt="Vapi Dashboard assistant Tools section with createCoffeeOrder and getCoffeeOrderStatus attached" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the assistant">
+        Select **Publish**, review the changes, then select **Quick Publish**. The existing phone number remains connected to this assistant.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    Keep `VAPI_API_KEY`, `VAPI_TOOL_ID`, and `VAPI_STATUS_TOOL_ID` set from the earlier cURL steps. Replace `YOUR_ASSISTANT_ID` with the assistant ID from the quickstart, then run this command. It requires `jq`.
+
+    The command retrieves the complete existing model, replaces the first system message, and adds both tool IDs. It preserves the provider, model, temperature, any additional messages, and existing tool IDs.
+
+    ```bash title="Update the existing assistant" wordWrap
+    (
+      set -euo pipefail
+
+      VAPI_ASSISTANT_ID="YOUR_ASSISTANT_ID"
+      : "${VAPI_API_KEY:?Set VAPI_API_KEY before running this command}"
+      : "${VAPI_TOOL_ID:?Set VAPI_TOOL_ID to the createCoffeeOrder tool ID}"
+      : "${VAPI_STATUS_TOOL_ID:?Set VAPI_STATUS_TOOL_ID to the getCoffeeOrderStatus tool ID}"
+
+      FIRST_MESSAGE='Thanks for calling the Vapi coffee shop. Would you like to place an order or check an existing order?'
+      SYSTEM_PROMPT=$(cat <<'PROMPT'
+    You are a friendly coffee shop assistant. Help callers place an order or check the status of an existing order.
+
+    Available products:
+    - House coffee beans: productId coffee-beans, $18 each
+    - Tea sampler: productId tea-sampler, $14 each
+    - Ceramic mug: productId ceramic-mug, $12 each
+
+    Ask one question at a time and keep responses concise. Use tool results to answer naturally. Do not read product IDs, internal field names, the internal requestId, or raw tool responses aloud.
+
+    To place an order, collect the caller's name, product, and positive whole-number quantity. If the caller requests an unavailable product, say it is unavailable and offer the listed products. Never substitute another product without confirmation.
+
+    Read back the caller's name, product, quantity, and listed unit price, then get explicit confirmation before calling createCoffeeOrder. Never invent a productId, and never call createCoffeeOrder before confirmation.
+
+    After a successful createCoffeeOrder response, confirm the product, quantity, and server-calculated total. Read the five-digit order number one digit at a time and tell the caller to save it for a later status check. If createCoffeeOrder fails, do not claim that the order was created or invent an order number or total.
+
+    To check order status, collect the five-digit order number. Do not collect the caller's name, product, or quantity, and do not call createCoffeeOrder. Read the order number back one digit at a time and get explicit confirmation before calling getCoffeeOrderStatus. Never guess or complete a partial number.
+
+    After a successful getCoffeeOrderStatus response, state the returned order number and communicate the returned statusLabel naturally. If the first lookup finds no order, reconfirm the number and try once more. If no order is found after the second confirmed lookup, apologize, state that the order could not be located, and do not retry again for that request. For any other error, say you could not retrieve the status. Do not guess.
+
+    After completing a request, do not reuse its collected name, product, quantity, or order number. If the caller starts another order or status check, collect and confirm the required information again.
+
+    After completing the caller's request, ask whether they need anything else. If they do not, say "Thanks for calling. Goodbye." Do not continue speaking after that sentence.
+    PROMPT
+      )
+
+      CURRENT_ASSISTANT=$(curl --fail --silent --show-error \
+        --url "https://api.vapi.ai/assistant/$VAPI_ASSISTANT_ID" \
+        --header "Authorization: Bearer $VAPI_API_KEY")
+
+      PATCH_BODY=$(printf '%s' "$CURRENT_ASSISTANT" | jq -e \
+        --arg firstMessage "$FIRST_MESSAGE" \
+        --arg prompt "$SYSTEM_PROMPT" \
+        --arg orderToolId "$VAPI_TOOL_ID" \
+        --arg statusToolId "$VAPI_STATUS_TOOL_ID" \
+        '{
+          firstMessage: $firstMessage,
+          model: (
+            .model
+            | if ((.messages | type) != "array" or (.messages | length) == 0 or .messages[0].role != "system")
+              then error("Expected model.messages[0] to be the existing system message")
+              else .messages[0].content = $prompt
+              end
+            | .toolIds = (
+                reduce (((.toolIds // []) + [$orderToolId, $statusToolId])[]) as $id
+                  ([]; if index($id) == null then . + [$id] else . end)
+              )
+          )
+        }')
+
+      printf '%s' "$PATCH_BODY" |
+        curl --fail-with-body --silent --show-error \
+          --request PATCH \
+          --url "https://api.vapi.ai/assistant/$VAPI_ASSISTANT_ID" \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data-binary @- |
+        jq '{id, firstMessage, toolIds: .model.toolIds}'
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## 3. Test two calls
+
+<Steps>
+  <Step title="Place an order">
+    Call the connected phone number and follow the [quickstart test flow](/tools/api-request/quickstart#5-place-a-coffee-order). Save the five-digit order number the assistant reads back.
+  </Step>
+
+  <Step title="Choose when to check the order status">
+    The endpoint calculates the order status from the time the order was created:
+
+    | Time since creation | Status |
+    | --- | --- |
+    | Less than 30 seconds | `confirmed` |
+    | 30 to less than 90 seconds | `preparing` |
+    | 90 seconds or more | `ready_for_pickup` |
+  </Step>
+
+  <Step title="Check the order status">
+    Call the same phone number and ask for the order's status. Provide the saved order number and confirm it when the assistant reads the digits back.
+
+    The assistant should call `getCoffeeOrderStatus` and state the returned `statusLabel`. The returned `status` should match the time window above.
+  </Step>
+</Steps>
+
+A ready order returns these values:
+
+```json
+{
+  "orderId": 47730,
+  "status": "ready_for_pickup",
+  "statusLabel": "Order is ready for pickup"
+}
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Handle responses and errors" icon="circle-exclamation" href="/tools/api-request/response-handling">
+    Design response contracts and help the assistant recover from failures.
+  </Card>
+  <Card title="Use response data" icon="arrow-right-arrow-left" href="/tools/api-request/response-data">
+    Extract response values and pass them to later tools.
+  </Card>
+</CardGroup>

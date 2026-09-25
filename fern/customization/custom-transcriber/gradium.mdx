@@ -1,0 +1,57 @@
+---
+title: Gradium
+subtitle: Use Gradium speech-to-text as a custom transcriber in Vapi
+description: Stream Vapi call audio to Gradium's real-time speech-to-text over a WebSocket bridge.
+slug: customization/custom-transcriber/gradium
+---
+
+[Gradium](https://gradium.ai) builds real-time audio models, including streaming speech-to-text with semantic voice activity detection. You can connect it through a [custom transcriber](/customization/custom-transcriber) endpoint: a small WebSocket bridge that forwards call audio to Gradium and returns transcripts to Vapi.
+
+<Note>A Gradium account and API key are required.</Note>
+
+<Steps>
+  <Step title="Build the bridge">
+    Gradium's [Vapi integration guide](https://docs.gradium.ai/integrations/agent-frameworks/vapi) has the complete bridge, including end-of-turn detection and reconnecting on long calls.
+
+    Two things matter most: forward **only channel 0** of the interleaved audio, or the agent transcribes its own speech; and send `partial` transcripts as well as `final` ones, which Vapi needs for barge-in.
+  </Step>
+  <Step title="Point your assistant at it">
+    Host the bridge somewhere Vapi can reach over `wss`, then reference it with
+    a [custom credential](/server-url/server-authentication) so Vapi can
+    authenticate to it:
+
+    ```json
+    {
+      "transcriber": {
+        "provider": "custom-transcriber",
+        "server": {
+          "url": "wss://your-server.com/vapi/transcriber",
+          "credentialId": "cred_transcriber_auth_123"
+        }
+      }
+    }
+    ```
+
+    Start a call and your assistant transcribes with Gradium.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| The agent transcribes its own speech | Both channels are being forwarded. Send only channel 0 from the interleaved PCM |
+| Turns get swallowed, barge-in stops working | Send `partial` transcripts as well as `final` |
+| Final transcripts lose the last word or two | Finalize on Gradium's flush acknowledgement, not on the VAD threshold crossing. See [Gradium's Vapi guide](https://docs.gradium.ai/integrations/agent-frameworks/vapi) |
+| The assistant replies before the caller finishes | Vapi's endpointing is racing Gradium's VAD. Tune [start and stop speaking plans](/customization/voice-pipeline-configuration), or hand the decision to Gradium with a [custom endpointing model](https://docs.gradium.ai/integrations/agent-frameworks/vapi) |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Gradium Vapi guide" icon="book" href="https://docs.gradium.ai/integrations/agent-frameworks/vapi">
+    The full bridge, tuning, and configuration reference.
+  </Card>
+  <Card title="Gradium text-to-speech" icon="volume-high" href="/customization/custom-tts/gradium">
+    Use Gradium voices as a custom voice.
+  </Card>
+</CardGroup>

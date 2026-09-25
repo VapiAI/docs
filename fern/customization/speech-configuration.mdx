@@ -2,6 +2,7 @@
 title: Speech configuration
 subtitle: Control when your assistant starts and stops speaking
 slug: customization/speech-configuration
+description: Control when a Vapi assistant starts and stops speaking, tuning speech settings to sound natural, avoid interrupting the customer, and reduce awkward pauses.
 ---
 
 ## Overview
@@ -37,19 +38,21 @@ This plan defines the parameters for when the assistant begins speaking after th
   - **End-of-turn prediction** - predicting when the current speaker is likely to finish their turn.
   - **Backchannel prediction** - detecting moments where a listener may provide short verbal acknowledgments like "uh-huh", "yeah", etc. to show engagement, without intending to take over the speaking turn. This is better handled by the assistant's stopSpeakingPlan.
 
-  We offer different providers that can be audio-based, text-based, or audio-text based:
+  Vapi supports built-in smart endpointing, endpointing supplied by compatible transcribers, and custom endpointing models:
 
-  **Audio-based providers:**
+  **Custom endpointing:**
 
-  - **Krisp**: Audio-based model that analyzes prosodic and acoustic features such as changes in intonation, pitch, and rhythm to detect when users finish speaking. Since it's audio-based, it always notifies when the user is done speaking, even for brief acknowledgments. Vapi offers configurable acknowledgement words and a well-configured stop speaking plan to handle this properly.
+  - **Custom endpointing model**: Lets your server decide how long Vapi waits before considering the customer's speech finished. Use it when you want your own service to control the endpointing timeout for each turn.
 
-    Configure Krisp with a threshold between 0 and 1 (default 0.5), where 1 means the user definitely stopped speaking and 0 means they're still speaking. Use lower values for snappier conversations and higher values for more conservative detection.
+    Set `startSpeakingPlan.smartEndpointingPlan.provider` to `custom-endpointing-model`. Vapi sends a `call.endpointing.request` containing the conversation history to the configured `server.url` whenever it receives a new transcript.
 
-    When interacting with an AI agent, users may genuinely want to interrupt to ask a question or shift the conversation, or they might simply be using backchannel cues like "right" or "okay" to signal they're actively listening. The core challenge lies in distinguishing meaningful interruptions from casual acknowledgments. Since the audio-based model signals end-of-turn after each word, configure the stop speaking plan with the right number of words to interrupt, interruption settings, and acknowledgement phrases to handle backchanneling properly.
+    Your server returns a `timeoutSeconds` value from 0 to 15. Vapi resets the timeout when it receives the next transcript and sends another request. If `server` is not configured, Vapi uses `assistant.server`, then `org.server`.
+
+    See [Custom endpointing model configuration](/customization/voice-pipeline-configuration#custom-endpointing-model-configuration) for configuration details and [Call endpointing request](/server-url/events#call-endpointing-request-custom-endpointing-server) for the request and response contract.
 
   **Audio-text based providers:**
 
-  - **Deepgram Flux**: Deepgram's latest transcriber model with built-in conversational speech recognition. Flux combines high-quality speech-to-text with native turn detection, while delivering ultra-low latency and Nova-3 level accuracy. Available in English (`flux-general-en`) and multilingual (`flux-general-multi`) variants. Supported languages for `flux-general-multi`: English (`en`), Spanish (`es`), French (`fr`), German (`de`), Hindi (`hi`), Russian (`ru`), Portuguese (`pt`), Japanese (`ja`), Italian (`it`), Dutch (`nl`).
+  - **Deepgram Flux**: Deepgram's latest transcriber model with built-in conversational speech recognition. Flux combines high-quality speech-to-text with native turn detection, while delivering ultra-low latency and Nova-3 level accuracy. Available in English (`flux-general-en`) and multilingual (`flux-general-multi`) variants. See [Deepgram's supported languages](/providers/transcriber/deepgram#supported-languages) for the current model and language combinations.
 
   - **Assembly**: Transcriber that also reports end-of-turn detection. To use Assembly, choose it as your transcriber without setting a separate smart endpointing plan. As transcripts arrive, we consider the `end_of_turn` flag that Assembly sends to mark the end-of-turn, stream to the LLM, and generate a response.
 

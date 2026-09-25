@@ -1,21 +1,30 @@
 ---
 title: Multilingual support agent
-subtitle: Build a global support agent that handles English, Spanish, and French customer inquiries with automatic language detection and native voice quality
+subtitle: Configure transcription, a multilingual voice, and file-based support answers in English, Spanish, and French
 slug: assistants/examples/multilingual-agent
-description: Build a multilingual voice AI customer support agent with automatic language detection, native voices, and comprehensive tools for international customer service
+description: Build a multilingual Vapi support demo with transcription, voice settings, prompts, and a Query tool for sample customer, product, and support article data.
 ---
+
+<Warning>
+Use sample customer records only. A knowledge-base lookup does not authenticate callers or enforce access to real customer accounts.
+</Warning>
 
 ## Overview
 
-Build a dynamic customer support agent for GlobalTech International that automatically detects and responds in the customer's language (English, Spanish, or French) during conversation, with seamless language switching and real-time adaptation.
+Build a support assistant for GlobalTech International that handles English, Spanish, and French. Configure multilingual transcription and one multilingual voice, then use a prompt to guide the assistant's response language.
 
+A [Query tool](/knowledge-base/using-query-tool) retrieves information from uploaded files. In this demo, one Query tool searches three CSV files. You don't need a custom server or a `tool-calls` webhook handler.
 
-**What You'll Build:**
-* Assistant with automatic multilingual transcription
-* Dynamic voice adaptation for detected languages
-* Real-time language switching during conversations
-* Phone number setup for seamless international support
-* Advanced prompting for cultural context awareness
+The files are a snapshot, not a live customer database or product catalog.
+
+**What you'll build:**
+
+* Multilingual transcription for English, Spanish, and French
+* One multilingual voice that automatically selects the synthesis language
+* Prompt-guided responses when callers change languages
+* A Vapi phone number for incoming support calls
+* A system prompt with language and tone instructions
+* One Query tool for customer records, product information, and support article summaries
 
 <Note>
 **Alternative Approach**: For a more structured multilingual experience with explicit language selection, see our [Squad-based multilingual support](../../squads/examples/multilingual-support) that guides customers through language selection and dedicated conversation paths.
@@ -24,14 +33,20 @@ Build a dynamic customer support agent for GlobalTech International that automat
 ## Prerequisites
 
 * A [Vapi account](https://dashboard.vapi.ai/).
+* A Vapi private API key stored in the `VAPI_API_KEY` environment variable. Run API examples on your server or local machine, not in browser code.
+* Install `@vapi-ai/server-sdk` version 2.0.1 for TypeScript or the `requests` package for Python. The cURL model-update examples also use `jq`.
+
+Each TypeScript and Python snippet includes its own imports and setup. Replace `YOUR_ASSISTANT_ID` and the file or tool ID placeholders with the IDs returned by earlier steps.
 
 ## Scenario
 
-We will be creating a dynamic multilingual customer support agent for GlobalTech International, a technology company serving customers across North America, Europe, and Latin America. Unlike structured language selection, this agent automatically detects the customer's language from their speech and can switch languages mid-conversation, providing a truly seamless multilingual experience.
+GlobalTech International serves customers across North America, Europe, and Latin America. This example uses one assistant for all three languages, without a language-selection menu. Test transcription, spoken responses, and knowledge-base answers in each language before connecting callers.
 
 ---
 
-## 1. Create a Multilingual Knowledge Base
+## 1. Upload the sample files
+
+The CSV files contain fictional example data for this tutorial. Do not call or email the sample customers.
 
 <Steps>
   <Step title="Download the spreadsheets">
@@ -50,18 +65,20 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
   <Step title="Upload the files">
     <Tabs>
       <Tab title="Dashboard">
-        1. Navigate to **Files** in your [Vapi Dashboard](https://dashboard.vapi.ai/)
-        2. Click **Choose file** and upload all three CSV files
-        3. Note the file IDs for use in creating multilingual tools
+        1. Navigate to **Files** in your [Vapi Dashboard](https://dashboard.vapi.ai/).
+        2. Click **Choose file** and upload all three CSV files.
+        3. Note the file IDs for use in creating the Query tool.
 
         <video autoPlay loop muted src="../../static/videos/upload-files.mp4" type="video/mp4" style={{ aspectRatio: '16 / 9', width: '100%' }} />
       </Tab>
-      <Tab title="TypeScript (Server SDK)">
+      <Tab title="TypeScript (Server SDK)" language="typescript">
         ```typescript
         import { VapiClient } from "@vapi-ai/server-sdk";
         import fs from 'fs';
 
-        const vapi = new VapiClient({ token: "YOUR_VAPI_API_KEY" });
+        const apiKey = process.env.VAPI_API_KEY;
+        if (!apiKey) throw new Error("Set VAPI_API_KEY to your Vapi private API key");
+        const vapi = new VapiClient({ token: apiKey });
 
         async function uploadMultilingualFiles() {
           try {
@@ -99,19 +116,20 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
         const fileIds = await uploadMultilingualFiles();
         ```
       </Tab>
-      <Tab title="Python (Server SDK)">
+      <Tab title="Python (HTTP API)" language="python">
         ```python
+        import os
         import requests
 
         def upload_multilingual_file(file_path):
             """Upload a CSV file for multilingual support data"""
             url = "https://api.vapi.ai/file"
-            headers = {"Authorization": f"Bearer {YOUR_VAPI_API_KEY}"}
+            headers = {"Authorization": f"Bearer {os.environ['VAPI_API_KEY']}"}
             
             try:
                 with open(file_path, 'rb') as file:
                     files = {'file': file}
-                    response = requests.post(url, headers=headers, files=files)
+                    response = requests.post(url, headers=headers, files=files, timeout=30)
                     response.raise_for_status()
                     return response.json()
             except requests.exceptions.RequestException as error:
@@ -128,21 +146,21 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
         print(f"Support articles file ID: {support_file['id']}")
         ```
       </Tab>
-      <Tab title="cURL">
+      <Tab title="cURL" language="bash">
         ```bash
         # Upload customers.csv
-        curl -X POST https://api.vapi.ai/file \
-             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+        curl --fail -X POST https://api.vapi.ai/file \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
              -F "file=@customers.csv"
 
         # Upload products.csv
-        curl -X POST https://api.vapi.ai/file \
-             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+        curl --fail -X POST https://api.vapi.ai/file \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
              -F "file=@products.csv"
 
         # Upload support_articles.csv
-        curl -X POST https://api.vapi.ai/file \
-             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+        curl --fail -X POST https://api.vapi.ai/file \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
              -F "file=@support_articles.csv"
         ```
       </Tab>
@@ -167,11 +185,13 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
       </Step>
     </Steps>
   </Tab>
-  <Tab title="TypeScript (Server SDK)">
+  <Tab title="TypeScript (Server SDK)" language="typescript">
     ```typescript
     import { VapiClient } from "@vapi-ai/server-sdk";
 
-    const vapi = new VapiClient({ token: "YOUR_VAPI_API_KEY" });
+    const apiKey = process.env.VAPI_API_KEY;
+    if (!apiKey) throw new Error("Set VAPI_API_KEY to your Vapi private API key");
+    const vapi = new VapiClient({ token: apiKey });
 
     const systemPrompt = `You are Maria, a multilingual customer support representative for GlobalTech International. You help customers in English, Spanish, and French with product information, account support, and technical troubleshooting.
 
@@ -205,13 +225,14 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
     console.log(`Assistant created with ID: ${assistant.id}`);
     ```
   </Tab>
-  <Tab title="Python (Server SDK)">
+  <Tab title="Python (HTTP API)" language="python">
     ```python
+    import os
     import requests
 
     url = "https://api.vapi.ai/assistant"
     headers = {
-        "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+        "Authorization": f"Bearer {os.environ['VAPI_API_KEY']}",
         "Content-Type": "application/json"
     }
 
@@ -244,15 +265,16 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
         }
     }
 
-    response = requests.post(url, headers=headers, json=data)
+    response = requests.post(url, headers=headers, json=data, timeout=30)
+    response.raise_for_status()
     assistant = response.json()
     print(f"Assistant created with ID: {assistant['id']}")
     ```
   </Tab>
-  <Tab title="cURL">
+  <Tab title="cURL" language="bash">
     ```bash
-    curl -X POST https://api.vapi.ai/assistant \
-         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+    curl --fail -X POST https://api.vapi.ai/assistant \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
          -H "Content-Type: application/json" \
          -d '{
            "name": "GlobalTech Support Agent",
@@ -278,86 +300,105 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
 
 <Steps>
   <Step title="Set up automatic language detection">
+    Use Deepgram `nova-3` with `language: "multi"` for English, Spanish, and French. Nova-2 multilingual mode supports English and Spanish only. Choose one transcriber configuration below.
+
     <Tabs>
       <Tab title="Dashboard">
         1. In your assistant configuration, find the **Transcriber** section
         2. **Provider**: Select `Deepgram` (recommended for speed and accuracy)
-        3. **Model**: Choose `Nova 2` or `Nova 3`
+        3. **Model**: Choose `Nova 3`
         4. **Language**: Select `Multi` (enables automatic language detection)
         5. **Alternative**: Use `Google` provider with `Multilingual` language setting
       </Tab>
-      <Tab title="TypeScript (Server SDK)">
+      <Tab title="TypeScript (Server SDK)" language="typescript">
         ```typescript
+        import { VapiClient } from "@vapi-ai/server-sdk";
+
+        const apiKey = process.env.VAPI_API_KEY;
+        if (!apiKey) throw new Error("Set VAPI_API_KEY to your Vapi private API key");
+        const vapi = new VapiClient({ token: apiKey });
+
         // Option 1: Deepgram Multi (recommended)
         const deepgramTranscriber = {
           provider: "deepgram",
-          model: "nova-2", // or "nova-3"
+          model: "nova-3",
           language: "multi"
-        };
+        } as const;
 
         // Option 2: Google Multilingual
         const googleTranscriber = {
           provider: "google",
-          model: "latest",
-          language: "multilingual"
-        };
+          model: "gemini-2.0-flash",
+          language: "Multilingual"
+        } as const;
 
-        // Update assistant with transcriber
-        await vapi.assistants.update("YOUR_ASSISTANT_ID", {
+        // For Google, pass googleTranscriber instead.
+        await vapi.assistants.update({
+          id: "YOUR_ASSISTANT_ID",
           transcriber: deepgramTranscriber
         });
         ```
       </Tab>
-      <Tab title="Python (Server SDK)">
+      <Tab title="Python (HTTP API)" language="python">
         ```python
+        import os
+        import requests
+
         # Option 1: Deepgram Multi (recommended)
         deepgram_transcriber = {
             "provider": "deepgram",
-            "model": "nova-2",  # or "nova-3"
+            "model": "nova-3",
             "language": "multi"
         }
 
         # Option 2: Google Multilingual
         google_transcriber = {
             "provider": "google",
-            "model": "latest",
-            "language": "multilingual"
+            "model": "gemini-2.0-flash",
+            "language": "Multilingual"
         }
 
-        # Update assistant with transcriber
-        url = f"https://api.vapi.ai/assistant/{YOUR_ASSISTANT_ID}"
+        # For Google, pass google_transcriber instead.
+        url = "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID"
         headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Authorization": f"Bearer {os.environ['VAPI_API_KEY']}",
             "Content-Type": "application/json"
         }
         
         data = {"transcriber": deepgram_transcriber}
-        response = requests.patch(url, headers=headers, json=data)
+        response = requests.patch(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
         ```
       </Tab>
-      <Tab title="cURL">
+      <Tab title="cURL" language="bash">
+        Run one of these requests. For Deepgram:
+
         ```bash
         # Option 1: Deepgram Multi
-        curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
-             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+        curl --fail -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
              -H "Content-Type: application/json" \
              -d '{
                "transcriber": {
                  "provider": "deepgram",
-                 "model": "nova-2",
+                 "model": "nova-3",
                  "language": "multi"
                }
              }'
+        ```
 
+        For Google instead:
+
+        ```bash
         # Option 2: Google Multilingual
-        curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
-             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+        curl --fail -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
              -H "Content-Type: application/json" \
              -d '{
                "transcriber": {
                  "provider": "google",
-                 "model": "latest",
-                 "language": "multilingual"
+                 "model": "gemini-2.0-flash",
+                 "language": "Multilingual"
                }
              }'
         ```
@@ -371,116 +412,74 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
 ## 4. Configure Multilingual Voice Synthesis
 
 <Steps>
-  <Step title="Set up language-specific voices">
+  <Step title="Set up automatic language synthesis">
     <Tabs>
       <Tab title="Dashboard">
-        1. In the **Voice** section of your assistant:
-        2. **Provider**: Select `Azure` (best multilingual coverage)
-        3. **Voice**: Choose primary voice `en-US-AriaNeural` (English)
-        4. **Add fallback voices**:
-           - Spanish: `es-ES-ElviraNeural` (Spain) or `es-MX-DaliaNeural` (Mexico)
-           - French: `fr-FR-DeniseNeural` (France) or `fr-CA-SylvieNeural` (Canada)
-        5. **Alternative providers**: ElevenLabs, OpenAI, or PlayHT all support multiple languages
+        1. In the **Voice** section of your assistant, select **Vapi**.
+        2. Choose a Vapi Voice.
+        3. Set **Version** to `2`.
+        4. Leave the language unset, or set it to `auto`.
+
+        Voice fallbacks activate when synthesis fails. They do not select a different voice based on the detected language.
       </Tab>
-      <Tab title="TypeScript (Server SDK)">
+      <Tab title="TypeScript (Server SDK)" language="typescript">
         ```typescript
-        // Multi-language voice configuration
+        import { VapiClient } from "@vapi-ai/server-sdk";
+
+        const apiKey = process.env.VAPI_API_KEY;
+        if (!apiKey) throw new Error("Set VAPI_API_KEY to your Vapi private API key");
+        const vapi = new VapiClient({ token: apiKey });
+
+        // Vapi Voices V2 automatically selects the synthesis language.
         const multilingualVoice = {
-          provider: "azure",
-          voiceId: "en-US-AriaNeural", // Primary English voice
-          fallbackPlan: {
-            voices: [
-              {
-                provider: "azure",
-                voiceId: "es-ES-ElviraNeural" // Spanish (Spain)
-              },
-              {
-                provider: "azure",
-                voiceId: "fr-FR-DeniseNeural" // French (France)
-              },
-              {
-                provider: "azure",
-                voiceId: "es-MX-DaliaNeural" // Spanish (Mexico)
-              },
-              {
-                provider: "azure",
-                voiceId: "fr-CA-SylvieNeural" // French (Canada)
-              }
-            ]
-          }
-        };
+          provider: "vapi",
+          voiceId: "Elliot",
+          version: "2",
+          language: "auto"
+        } as const;
 
-        // Alternative: ElevenLabs multilingual
-        const elevenLabsVoice = {
-          provider: "11labs",
-          voiceId: "multilingual-v2" // Supports multiple languages
-        };
-
-        await vapi.assistants.update("YOUR_ASSISTANT_ID", {
+        await vapi.assistants.update({
+          id: "YOUR_ASSISTANT_ID",
           voice: multilingualVoice
         });
         ```
       </Tab>
-      <Tab title="Python (Server SDK)">
+      <Tab title="Python (HTTP API)" language="python">
         ```python
-        # Multi-language voice configuration
+        import os
+        import requests
+
+        # Vapi Voices V2 automatically selects the synthesis language.
         multilingual_voice = {
-            "provider": "azure",
-            "voiceId": "en-US-AriaNeural",  # Primary English voice
-            "fallbackPlan": {
-                "voices": [
-                    {
-                        "provider": "azure",
-                        "voiceId": "es-ES-ElviraNeural"  # Spanish (Spain)
-                    },
-                    {
-                        "provider": "azure",
-                        "voiceId": "fr-FR-DeniseNeural"  # French (France)
-                    },
-                    {
-                        "provider": "azure",
-                        "voiceId": "es-MX-DaliaNeural"  # Spanish (Mexico)
-                    },
-                    {
-                        "provider": "azure",
-                        "voiceId": "fr-CA-SylvieNeural"  # French (Canada)
-                    }
-                ]
-            }
+            "provider": "vapi",
+            "voiceId": "Elliot",
+            "version": 2,
+            "language": "auto"
         }
 
         # Update assistant with voice configuration
-        url = f"https://api.vapi.ai/assistant/{YOUR_ASSISTANT_ID}"
+        url = "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID"
         headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Authorization": f"Bearer {os.environ['VAPI_API_KEY']}",
             "Content-Type": "application/json"
         }
         
         data = {"voice": multilingual_voice}
-        response = requests.patch(url, headers=headers, json=data)
+        response = requests.patch(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
         ```
       </Tab>
-      <Tab title="cURL">
+      <Tab title="cURL" language="bash">
         ```bash
-        curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
-             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+        curl --fail -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+             -H "Authorization: Bearer $VAPI_API_KEY" \
              -H "Content-Type: application/json" \
              -d '{
                "voice": {
-                 "provider": "azure",
-                 "voiceId": "en-US-AriaNeural",
-                 "fallbackPlan": {
-                   "voices": [
-                     {
-                       "provider": "azure",
-                       "voiceId": "es-ES-ElviraNeural"
-                     },
-                     {
-                       "provider": "azure",
-                       "voiceId": "fr-FR-DeniseNeural"
-                     }
-                   ]
-                 }
+                 "provider": "vapi",
+                 "voiceId": "Elliot",
+                 "version": 2,
+                 "language": "auto"
                }
              }'
         ```
@@ -495,7 +494,7 @@ We will be creating a dynamic multilingual customer support agent for GlobalTech
 
 <Steps>
   <Step title="Update the multilingual system prompt">
-    First, create this comprehensive system prompt:
+    Use this system prompt to choose the relevant knowledge base and answer from the returned data:
 
     ```txt title="System Prompt" maxLines=15
 # GlobalTech International - Multilingual Support Agent
@@ -522,9 +521,9 @@ You are **Maria**, a multilingual customer support representative for GlobalTech
 
 ## Core Responsibilities
 1. **Product Information**: Help customers understand our technology solutions
-2. **Account Support**: Assist with account access, billing, and subscription questions
-3. **Technical Troubleshooting**: Guide customers through technical issues step-by-step
-4. **Escalation**: Transfer to specialized teams when needed
+2. **Customer Records**: Look up sample customer profiles without changing accounts
+3. **Support Articles**: Find relevant article titles and summaries
+4. **Limits**: Explain when the sample data cannot answer a question. Transfers and callbacks are not configured.
 
 ## Language Behavior
 - **Auto-detect**: Automatically respond in the customer's language
@@ -532,25 +531,40 @@ You are **Maria**, a multilingual customer support representative for GlobalTech
 - **Mixed Languages**: If customer uses multiple languages, respond in their primary language
 - **Unsupported Languages**: If customer speaks another language, politely explain you support English, Spanish, and French
 
-## Available Tools
-- **Customer Lookup**: Search customer database by email, phone, or account ID
-- **Product Information**: Access product catalog and specifications
-- **Support Articles**: Find relevant troubleshooting guides in customer's language
+## Knowledge-base tool
+Use defaultQueryTool before answering questions about customer records, products, or support articles.
+Select the relevant knowledge base with knowledgeBaseNames:
+- ["customers"]: Sample customer profiles. Ask for a customer_id, email, or phone number, then use only a matching returned record.
+- ["products"]: Product names, descriptions, prices in USD, and availability from the sample catalog.
+- ["support_articles"]: Article titles and content summaries. These are not full articles or step-by-step instructions.
+Select more than one knowledge base if the caller's question needs multiple categories.
+
+## Grounded answers and limits
+Respond in the caller's current language. For products and articles, use the returned _en, _es, or _fr fields for English, Spanish, or French.
+If the caller changes languages, keep the same factual answer and use the appropriate language fields.
+If the caller changes the customer or product details, repeat the lookup and ignore results for the old request.
+Use only returned facts. If a record is missing, ambiguous, or mismatched, ask for clarification instead of guessing.
+If retrieval fails, explain the failure. Do not treat it as proof that a customer does not exist or a product is unavailable.
+Do not invent article steps, URLs, customer history, or pricing terms that the files do not contain.
+Matching a customer record does not verify identity or authorize access to real accounts.
+The files are a snapshot. Do not claim to check live stock, change an account, reset a password, or complete a transfer.
 
 Keep responses concise (under 50 words) while being thorough and helpful.
     ```
 
-    Then update your assistant:
+    Then update your assistant. The API examples retrieve the existing `model` first so the prompt update preserves its other settings:
 
     <Tabs>
       <Tab title="Dashboard">
         Copy the system prompt above and paste it into the `System Prompt` field in your assistant configuration.
       </Tab>
-      <Tab title="TypeScript (Server SDK)">
+      <Tab title="TypeScript (Server SDK)" language="typescript">
         ```typescript
         import { VapiClient } from "@vapi-ai/server-sdk";
 
-        const vapi = new VapiClient({ token: "YOUR_VAPI_API_KEY" });
+        const apiKey = process.env.VAPI_API_KEY;
+        if (!apiKey) throw new Error("Set VAPI_API_KEY to your Vapi private API key");
+        const vapi = new VapiClient({ token: apiKey });
 
         const systemPrompt = `# GlobalTech International - Multilingual Support Agent
 
@@ -576,9 +590,9 @@ You are **Maria**, a multilingual customer support representative for GlobalTech
 
 ## Core Responsibilities
 1. **Product Information**: Help customers understand our technology solutions
-2. **Account Support**: Assist with account access, billing, and subscription questions
-3. **Technical Troubleshooting**: Guide customers through technical issues step-by-step
-4. **Escalation**: Transfer to specialized teams when needed
+2. **Customer Records**: Look up sample customer profiles without changing accounts
+3. **Support Articles**: Find relevant article titles and summaries
+4. **Limits**: Explain when the sample data cannot answer a question. Transfers and callbacks are not configured.
 
 ## Language Behavior
 - **Auto-detect**: Automatically respond in the customer's language
@@ -586,17 +600,33 @@ You are **Maria**, a multilingual customer support representative for GlobalTech
 - **Mixed Languages**: If customer uses multiple languages, respond in their primary language
 - **Unsupported Languages**: If customer speaks another language, politely explain you support English, Spanish, and French
 
-## Available Tools
-- **Customer Lookup**: Search customer database by email, phone, or account ID
-- **Product Information**: Access product catalog and specifications
-- **Support Articles**: Find relevant troubleshooting guides in customer's language
+## Knowledge-base tool
+Use defaultQueryTool before answering questions about customer records, products, or support articles.
+Select the relevant knowledge base with knowledgeBaseNames:
+- ["customers"]: Sample customer profiles. Ask for a customer_id, email, or phone number, then use only a matching returned record.
+- ["products"]: Product names, descriptions, prices in USD, and availability from the sample catalog.
+- ["support_articles"]: Article titles and content summaries. These are not full articles or step-by-step instructions.
+Select more than one knowledge base if the caller's question needs multiple categories.
+
+## Grounded answers and limits
+Respond in the caller's current language. For products and articles, use the returned _en, _es, or _fr fields for English, Spanish, or French.
+If the caller changes languages, keep the same factual answer and use the appropriate language fields.
+If the caller changes the customer or product details, repeat the lookup and ignore results for the old request.
+Use only returned facts. If a record is missing, ambiguous, or mismatched, ask for clarification instead of guessing.
+If retrieval fails, explain the failure. Do not treat it as proof that a customer does not exist or a product is unavailable.
+Do not invent article steps, URLs, customer history, or pricing terms that the files do not contain.
+Matching a customer record does not verify identity or authorize access to real accounts.
+The files are a snapshot. Do not claim to check live stock, change an account, reset a password, or complete a transfer.
 
 Keep responses concise (under 50 words) while being thorough and helpful.`;
 
-        const updatedAssistant = await vapi.assistants.update("YOUR_ASSISTANT_ID", {
+        const assistant = await vapi.assistants.get({ id: "YOUR_ASSISTANT_ID" });
+        if (!assistant.model) throw new Error("Assistant has no model configuration");
+
+        const updatedAssistant = await vapi.assistants.update({
+          id: assistant.id,
           model: {
-            provider: "openai",
-            model: "gpt-4o",
+            ...assistant.model,
             messages: [
               {
                 role: "system",
@@ -609,13 +639,14 @@ Keep responses concise (under 50 words) while being thorough and helpful.`;
         console.log("System prompt updated successfully");
         ```
       </Tab>
-      <Tab title="Python (Server SDK)">
+      <Tab title="Python (HTTP API)" language="python">
         ```python
+        import os
         import requests
 
-        url = f"https://api.vapi.ai/assistant/{YOUR_ASSISTANT_ID}"
+        url = "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID"
         headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Authorization": f"Bearer {os.environ['VAPI_API_KEY']}",
             "Content-Type": "application/json"
         }
 
@@ -643,9 +674,9 @@ You are **Maria**, a multilingual customer support representative for GlobalTech
 
 ## Core Responsibilities
 1. **Product Information**: Help customers understand our technology solutions
-2. **Account Support**: Assist with account access, billing, and subscription questions
-3. **Technical Troubleshooting**: Guide customers through technical issues step-by-step
-4. **Escalation**: Transfer to specialized teams when needed
+2. **Customer Records**: Look up sample customer profiles without changing accounts
+3. **Support Articles**: Find relevant article titles and summaries
+4. **Limits**: Explain when the sample data cannot answer a question. Transfers and callbacks are not configured.
 
 ## Language Behavior
 - **Auto-detect**: Automatically respond in the customer's language
@@ -653,17 +684,33 @@ You are **Maria**, a multilingual customer support representative for GlobalTech
 - **Mixed Languages**: If customer uses multiple languages, respond in their primary language
 - **Unsupported Languages**: If customer speaks another language, politely explain you support English, Spanish, and French
 
-## Available Tools
-- **Customer Lookup**: Search customer database by email, phone, or account ID
-- **Product Information**: Access product catalog and specifications
-- **Support Articles**: Find relevant troubleshooting guides in customer's language
+## Knowledge-base tool
+Use defaultQueryTool before answering questions about customer records, products, or support articles.
+Select the relevant knowledge base with knowledgeBaseNames:
+- ["customers"]: Sample customer profiles. Ask for a customer_id, email, or phone number, then use only a matching returned record.
+- ["products"]: Product names, descriptions, prices in USD, and availability from the sample catalog.
+- ["support_articles"]: Article titles and content summaries. These are not full articles or step-by-step instructions.
+Select more than one knowledge base if the caller's question needs multiple categories.
+
+## Grounded answers and limits
+Respond in the caller's current language. For products and articles, use the returned _en, _es, or _fr fields for English, Spanish, or French.
+If the caller changes languages, keep the same factual answer and use the appropriate language fields.
+If the caller changes the customer or product details, repeat the lookup and ignore results for the old request.
+Use only returned facts. If a record is missing, ambiguous, or mismatched, ask for clarification instead of guessing.
+If retrieval fails, explain the failure. Do not treat it as proof that a customer does not exist or a product is unavailable.
+Do not invent article steps, URLs, customer history, or pricing terms that the files do not contain.
+Matching a customer record does not verify identity or authorize access to real accounts.
+The files are a snapshot. Do not claim to check live stock, change an account, reset a password, or complete a transfer.
 
 Keep responses concise (under 50 words) while being thorough and helpful."""
 
+        current_response = requests.get(url, headers=headers, timeout=30)
+        current_response.raise_for_status()
+        current_model = current_response.json()["model"]
+
         data = {
             "model": {
-                "provider": "openai",
-                "model": "gpt-4o",
+                **current_model,
                 "messages": [
                     {
                         "role": "system",
@@ -673,28 +720,23 @@ Keep responses concise (under 50 words) while being thorough and helpful."""
             }
         }
 
-        response = requests.patch(url, headers=headers, json=data)
+        response = requests.patch(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
         assistant = response.json()
         print("System prompt updated successfully")
         ```
       </Tab>
-      <Tab title="cURL">
+      <Tab title="cURL" language="bash">
         ```bash
-        curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
-             -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
-             -H "Content-Type: application/json" \
-             -d '{
-               "model": {
-                 "provider": "openai",
-                 "model": "gpt-4o",
-                 "messages": [
-                   {
-                     "role": "system",
-                     "content": "# GlobalTech International - Multilingual Support Agent..."
-                   }
-                 ]
-               }
-             }'
+        current_assistant=$(curl --fail https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+             -H "Authorization: Bearer $VAPI_API_KEY") &&
+        assistant_update=$(jq -e --argjson changes '{"messages":[{"role":"system","content":"# GlobalTech International - Multilingual Support Agent\n\n## Identity & Role\nYou are **Maria**, a multilingual customer support representative for GlobalTech International. You are fluent in English, Spanish, and French, and you help customers with product information, account support, and technical troubleshooting.\n\n## Language Capabilities & Cultural Guidelines\n\n### English (Primary)\n- **Tone**: Direct, friendly, professional\n- **Style**: Conversational but efficient\n- **Approach**: Solution-focused, provide clear steps\n\n### Spanish \n- **Tone**: Warm, respectful, patient\n- **Formality**: Use formal \"usted\" initially, then adapt to customer preference\n- **Approach**: Take time to build rapport, be thorough in explanations\n\n### French\n- **Tone**: Polite, courteous, professional\n- **Formality**: Use proper greeting conventions (\"Bonjour/Bonsoir\")\n- **Approach**: Structured responses, respectful of formality\n\n## Core Responsibilities\n1. **Product Information**: Help customers understand our technology solutions\n2. **Customer Records**: Look up sample customer profiles without changing accounts\n3. **Support Articles**: Find relevant article titles and summaries\n4. **Limits**: Explain when the sample data cannot answer a question. Transfers and callbacks are not configured.\n\n## Language Behavior\n- **Auto-detect**: Automatically respond in the customer'\''s language\n- **Language Switching**: If customer switches languages, switch with them seamlessly\n- **Mixed Languages**: If customer uses multiple languages, respond in their primary language\n- **Unsupported Languages**: If customer speaks another language, politely explain you support English, Spanish, and French\n\n## Knowledge-base tool\nUse defaultQueryTool before answering questions about customer records, products, or support articles.\nSelect the relevant knowledge base with knowledgeBaseNames:\n- [\"customers\"]: Sample customer profiles. Ask for a customer_id, email, or phone number, then use only a matching returned record.\n- [\"products\"]: Product names, descriptions, prices in USD, and availability from the sample catalog.\n- [\"support_articles\"]: Article titles and content summaries. These are not full articles or step-by-step instructions.\nSelect more than one knowledge base if the caller'\''s question needs multiple categories.\n\n## Grounded answers and limits\nRespond in the caller'\''s current language. For products and articles, use the returned _en, _es, or _fr fields for English, Spanish, or French.\nIf the caller changes languages, keep the same factual answer and use the appropriate language fields.\nIf the caller changes the customer or product details, repeat the lookup and ignore results for the old request.\nUse only returned facts. If a record is missing, ambiguous, or mismatched, ask for clarification instead of guessing.\nIf retrieval fails, explain the failure. Do not treat it as proof that a customer does not exist or a product is unavailable.\nDo not invent article steps, URLs, customer history, or pricing terms that the files do not contain.\nMatching a customer record does not verify identity or authorize access to real accounts.\nThe files are a snapshot. Do not claim to check live stock, change an account, reset a password, or complete a transfer.\n\nKeep responses concise (under 50 words) while being thorough and helpful."}]}' \
+               'if (.model | type) != "object" then error("Assistant has no model configuration") else {model: (.model + $changes)} end' \
+          <<< "$current_assistant") &&
+        curl --fail -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+              -H "Authorization: Bearer $VAPI_API_KEY" \
+              -H "Content-Type: application/json" \
+              --data "$assistant_update"
         ```
       </Tab>
     </Tabs>
@@ -703,292 +745,230 @@ Keep responses concise (under 50 words) while being thorough and helpful."""
 
 ---
 
-## 6. Add Multilingual Tools
+## 6. Create and attach a Query tool
+
+Create one [Query tool](/knowledge-base/using-query-tool) with three knowledge bases. The assistant selects the relevant knowledge bases for each question. Vapi retrieves from the uploaded files, so you don't need a custom `tool-calls` webhook handler.
+
+The API examples use the default function name, `defaultQueryTool`. Use that name in the dashboard and in the [system prompt from step 5](#5-configure-system-prompt). Replace the file ID placeholders with the IDs from [step 1](#1-upload-the-sample-files).
+
+For complete request schemas, see the [Create Tool](/api-reference/tools/create) and [Update Assistant](/api-reference/assistants/update) API references.
 
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="Navigate to Tools">
-        Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Tools` in the left sidebar.
+      <Step title="Create a Query tool">
+        Open **Tools** in the [Vapi Dashboard](https://dashboard.vapi.ai). Click **Create Tool** and select **Query**. Set **Tool Name** to `defaultQueryTool`.
       </Step>
-      <Step title="Create customer lookup tool">
-        - Click `Create Tool`.
-        - Select `Function` as your tool type.
-        - Change tool name to `lookup_customer`.
-        - Add function description:
+      <Step title="Add the knowledge bases">
+        Under **Knowledge Bases**, click **Add Knowledge Base** for each row below. Set **Model** to `gemini-2.5-flash` for all three.
 
-          ```txt title="Function Description" wordWrap
-          Look up customer information by email, phone number, or account ID. Returns customer details including preferred language, account status, and support history.
-          ```
-        - Add knowledge base:
-          - Name: `customers`
-          - Description: `Customer database with multilingual support preferences`
-          - File IDs: `<File ID of your customers.csv file>`
-      </Step>
-      <Step title="Create product information tool">
-        - Click `Create Tool`.
-        - Select `Function` as your tool type.
-        - Change tool name to `get_product_info`.
-        - Add function description:
+        | Name | Files | Description |
+        | --- | --- | --- |
+        | `customers` | `customers.csv` | Sample customer profiles with customer IDs, contact details, preferred languages, account status, and support tiers. |
+        | `products` | `products.csv` | Sample product names and descriptions in English, Spanish, and French, with prices in USD and recorded availability. |
+        | `support_articles` | `support_articles.csv` | Support article titles and content summaries in English, Spanish, and French. Does not contain full articles or step-by-step instructions. |
 
-          ```txt title="Function Description" wordWrap
-          Get detailed product information including specifications, pricing, and availability. Supports queries in English, Spanish, and French.
-          ```
-        - Add knowledge base:
-          - Name: `products`
-          - Description: `Product catalog with multilingual descriptions`
-          - File IDs: `<File ID of your products.csv file>`
+        Save or publish the tool.
       </Step>
-      <Step title="Create support articles tool">
-        - Click `Create Tool`.
-        - Select `Function` as your tool type.
-        - Change tool name to `search_support_articles`.
-        - Add function description:
+      <Step title="Attach the tool">
+        Open **Assistants** and select `GlobalTech Support Agent`. In **Tools**, attach `defaultQueryTool`. If you followed an earlier version of this guide, detach `lookup_customer`, `get_product_info`, and `search_support_articles`.
 
-          ```txt title="Function Description" wordWrap
-          Search technical support articles and troubleshooting guides. Returns relevant articles in the customer's preferred language.
-          ```
-        - Add knowledge base:
-          - Name: `support_articles`
-          - Description: `Multilingual support documentation and troubleshooting guides`
-          - File IDs: `<File ID of your support_articles.csv file>`
-      </Step>
-      <Step title="Add tools to assistant">
-        - Click `Assistants` in the left sidebar.
-        - Select your `GlobalTech Support Agent`.
-        - Scroll down to the `Tools` section and expand it.
-        - Add all three tools: `lookup_customer`, `get_product_info`, and `search_support_articles`.
-        - Click `Publish` to save your changes.
+        Keep the system prompt from step 5, then publish the assistant.
       </Step>
     </Steps>
   </Tab>
-  <Tab title="TypeScript (Server SDK)">
+  <Tab title="TypeScript (Server SDK)" language="typescript">
+    Set `VAPI_API_KEY` to your Vapi private API key.
+
     ```typescript
     import { VapiClient } from "@vapi-ai/server-sdk";
 
-    const vapi = new VapiClient({ token: "YOUR_VAPI_API_KEY" });
+    const apiKey = process.env.VAPI_API_KEY;
+    if (!apiKey) throw new Error("Set VAPI_API_KEY to your Vapi private API key");
+    const vapi = new VapiClient({ token: apiKey });
 
-    // Create customer lookup tool
-    const customerLookupTool = await vapi.tools.create({
-      type: "function",
-      function: {
-        name: "lookup_customer",
-        description: "Look up customer information by email, phone number, or account ID. Returns customer details including preferred language, account status, and support history."
-      },
+    const queryTool = await vapi.tools.create({
+      type: "query",
       knowledgeBases: [
         {
           name: "customers",
-          description: "Customer database with multilingual support preferences",
+          provider: "google",
+          model: "gemini-2.5-flash",
+          description: "Sample customer profiles with customer IDs, contact details, preferred languages, account status, and support tiers.",
           fileIds: ["YOUR_CUSTOMERS_FILE_ID"]
-        }
-      ]
-    });
-
-    // Create product information tool
-    const productInfoTool = await vapi.tools.create({
-      type: "function",
-      function: {
-        name: "get_product_info",
-        description: "Get detailed product information including specifications, pricing, and availability. Supports queries in English, Spanish, and French."
-      },
-      knowledgeBases: [
+        },
         {
           name: "products",
-          description: "Product catalog with multilingual descriptions",
+          provider: "google",
+          model: "gemini-2.5-flash",
+          description: "Sample product names and descriptions in English, Spanish, and French, with prices in USD and recorded availability.",
           fileIds: ["YOUR_PRODUCTS_FILE_ID"]
-        }
-      ]
-    });
-
-    // Create support articles tool
-    const supportArticlesTool = await vapi.tools.create({
-      type: "function",
-      function: {
-        name: "search_support_articles",
-        description: "Search technical support articles and troubleshooting guides. Returns relevant articles in the customer's preferred language."
-      },
-      knowledgeBases: [
+        },
         {
           name: "support_articles",
-          description: "Multilingual support documentation and troubleshooting guides",
+          provider: "google",
+          model: "gemini-2.5-flash",
+          description: "Support article titles and content summaries in English, Spanish, and French. Does not contain full articles or step-by-step instructions.",
           fileIds: ["YOUR_SUPPORT_ARTICLES_FILE_ID"]
         }
       ]
     });
 
-    // Add all tools to the assistant
-    const updatedAssistant = await vapi.assistants.update("YOUR_ASSISTANT_ID", {
+    const assistant = await vapi.assistants.get({ id: "YOUR_ASSISTANT_ID" });
+    if (!assistant.model) throw new Error("Assistant has no model configuration");
+
+    await vapi.assistants.update({
+      id: assistant.id,
       model: {
-        toolIds: [
-          customerLookupTool.id,
-          productInfoTool.id,
-          supportArticlesTool.id
-        ]
+        ...assistant.model,
+        toolIds: [queryTool.id]
       }
     });
 
-    console.log("All multilingual tools added to assistant successfully!");
+    console.log(`Attached Query tool: ${queryTool.id}`);
     ```
   </Tab>
-  <Tab title="Python (Server SDK)">
+  <Tab title="Python (HTTP API)" language="python">
+    Set `VAPI_API_KEY` to your Vapi private API key.
+
     ```python
+    import os
     import requests
 
-    def create_multilingual_tool(name, description, knowledge_base_name, knowledge_base_description, file_id):
-        """Create a multilingual tool with knowledge base"""
-        url = "https://api.vapi.ai/tool"
-        headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": description
+    headers = {
+        "Authorization": f"Bearer {os.environ['VAPI_API_KEY']}",
+        "Content-Type": "application/json"
+    }
+    tool_data = {
+        "type": "query",
+        "knowledgeBases": [
+            {
+                "name": "customers",
+                "provider": "google",
+                "model": "gemini-2.5-flash",
+                "description": "Sample customer profiles with customer IDs, contact details, preferred languages, account status, and support tiers.",
+                "fileIds": [
+                    "YOUR_CUSTOMERS_FILE_ID"
+                ]
             },
-            "knowledgeBases": [
-                {
-                    "name": knowledge_base_name,
-                    "description": knowledge_base_description,
-                    "fileIds": [file_id]
-                }
-            ]
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        return response.json()
-
-    # Create customer lookup tool
-    customer_lookup_tool = create_multilingual_tool(
-        "lookup_customer",
-        "Look up customer information by email, phone number, or account ID. Returns customer details including preferred language, account status, and support history.",
-        "customers",
-        "Customer database with multilingual support preferences",
-        "YOUR_CUSTOMERS_FILE_ID"
-    )
-
-    # Create product information tool
-    product_info_tool = create_multilingual_tool(
-        "get_product_info",
-        "Get detailed product information including specifications, pricing, and availability. Supports queries in English, Spanish, and French.",
-        "products",
-        "Product catalog with multilingual descriptions",
-        "YOUR_PRODUCTS_FILE_ID"
-    )
-
-    # Create support articles tool
-    support_articles_tool = create_multilingual_tool(
-        "search_support_articles",
-        "Search technical support articles and troubleshooting guides. Returns relevant articles in the customer'\''s preferred language.",
-        "support_articles",
-        "Multilingual support documentation and troubleshooting guides",
-        "YOUR_SUPPORT_ARTICLES_FILE_ID"
-    )
-
-    # Add all tools to the assistant
-    def update_assistant_with_tools(assistant_id, tool_ids):
-        url = f"https://api.vapi.ai/assistant/{assistant_id}"
-        headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "model": {
-                "toolIds": tool_ids
+            {
+                "name": "products",
+                "provider": "google",
+                "model": "gemini-2.5-flash",
+                "description": "Sample product names and descriptions in English, Spanish, and French, with prices in USD and recorded availability.",
+                "fileIds": [
+                    "YOUR_PRODUCTS_FILE_ID"
+                ]
+            },
+            {
+                "name": "support_articles",
+                "provider": "google",
+                "model": "gemini-2.5-flash",
+                "description": "Support article titles and content summaries in English, Spanish, and French. Does not contain full articles or step-by-step instructions.",
+                "fileIds": [
+                    "YOUR_SUPPORT_ARTICLES_FILE_ID"
+                ]
             }
-        }
-        
-        response = requests.patch(url, headers=headers, json=data)
-        return response.json()
+        ]
+    }
 
-    tool_ids = [
-        customer_lookup_tool['id'],
-        product_info_tool['id'],
-        support_articles_tool['id']
-    ]
-    
-    updated_assistant = update_assistant_with_tools("YOUR_ASSISTANT_ID", tool_ids)
-    print("All multilingual tools added to assistant successfully!")
+    tool_response = requests.post(
+        "https://api.vapi.ai/tool",
+        headers=headers,
+        json=tool_data,
+        timeout=30
+    )
+    tool_response.raise_for_status()
+    query_tool = tool_response.json()
+
+    assistant_url = "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID"
+    current_response = requests.get(assistant_url, headers=headers, timeout=30)
+    current_response.raise_for_status()
+    current_model = current_response.json()["model"]
+
+    response = requests.patch(
+        assistant_url,
+        headers=headers,
+        json={"model": {**current_model, "toolIds": [query_tool["id"]]}},
+        timeout=30
+    )
+    response.raise_for_status()
+    print(f"Attached Query tool: {query_tool['id']}")
     ```
   </Tab>
-  <Tab title="cURL">
+  <Tab title="cURL" language="bash">
+    Create the tool and copy its returned `id`:
+
     ```bash
-    # Create customer lookup tool
-    curl -X POST https://api.vapi.ai/tool \
-         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+    curl --fail -X POST https://api.vapi.ai/tool \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
          -H "Content-Type: application/json" \
          -d '{
-           "type": "function",
-           "function": {
-             "name": "lookup_customer",
-             "description": "Look up customer information by email, phone number, or account ID. Returns customer details including preferred language, account status, and support history."
-           },
+           "type": "query",
            "knowledgeBases": [
              {
                "name": "customers",
-               "description": "Customer database with multilingual support preferences",
-               "fileIds": ["YOUR_CUSTOMERS_FILE_ID"]
-             }
-           ]
-         }'
-
-    # Create product information tool
-    curl -X POST https://api.vapi.ai/tool \
-         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
-         -H "Content-Type: application/json" \
-         -d '{
-           "type": "function",
-           "function": {
-             "name": "get_product_info",
-             "description": "Get detailed product information including specifications, pricing, and availability. Supports queries in English, Spanish, and French."
-           },
-           "knowledgeBases": [
+               "provider": "google",
+               "model": "gemini-2.5-flash",
+               "description": "Sample customer profiles with customer IDs, contact details, preferred languages, account status, and support tiers.",
+               "fileIds": [
+                 "YOUR_CUSTOMERS_FILE_ID"
+               ]
+             },
              {
                "name": "products",
-               "description": "Product catalog with multilingual descriptions",
-               "fileIds": ["YOUR_PRODUCTS_FILE_ID"]
-             }
-           ]
-         }'
-
-    # Create support articles tool
-    curl -X POST https://api.vapi.ai/tool \
-         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
-         -H "Content-Type: application/json" \
-         -d '{
-           "type": "function",
-           "function": {
-             "name": "search_support_articles",
-             "description": "Search technical support articles and troubleshooting guides. Returns relevant articles in the customer'\''s preferred language."
-           },
-           "knowledgeBases": [
+               "provider": "google",
+               "model": "gemini-2.5-flash",
+               "description": "Sample product names and descriptions in English, Spanish, and French, with prices in USD and recorded availability.",
+               "fileIds": [
+                 "YOUR_PRODUCTS_FILE_ID"
+               ]
+             },
              {
                "name": "support_articles",
-               "description": "Multilingual support documentation and troubleshooting guides",
-               "fileIds": ["YOUR_SUPPORT_ARTICLES_FILE_ID"]
+               "provider": "google",
+               "model": "gemini-2.5-flash",
+               "description": "Support article titles and content summaries in English, Spanish, and French. Does not contain full articles or step-by-step instructions.",
+               "fileIds": [
+                 "YOUR_SUPPORT_ARTICLES_FILE_ID"
+               ]
              }
            ]
          }'
+    ```
 
-    # Add all tools to the assistant
-    curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
-         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
-         -H "Content-Type: application/json" \
-         -d '{
-           "model": {
-             "toolIds": ["CUSTOMER_LOOKUP_TOOL_ID", "PRODUCT_INFO_TOOL_ID", "SUPPORT_ARTICLES_TOOL_ID"]
-           }
-         }'
+    Replace `YOUR_QUERY_TOOL_ID` with that ID. Retrieve the assistant's existing model, then attach the tool without discarding its other settings:
+
+    ```bash
+    current_assistant=$(curl --fail https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+         -H "Authorization: Bearer $VAPI_API_KEY") &&
+    assistant_update=$(jq -e --arg toolId "YOUR_QUERY_TOOL_ID" \
+           'if (.model | type) != "object" then error("Assistant has no model configuration") else {model: (.model + {toolIds: [$toolId]})} end' \
+      <<< "$current_assistant") &&
+    curl --fail -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+          -H "Authorization: Bearer $VAPI_API_KEY" \
+          -H "Content-Type: application/json" \
+          --data "$assistant_update"
     ```
   </Tab>
 </Tabs>
 
+The API examples target the new assistant created in this guide and replace its `model.toolIds` array. Include unrelated tool IDs you want to keep if you adapt an existing assistant. Use one Query tool for these three knowledge bases.
+
+Test the saved assistant before connecting callers:
+
+- Ask about `P001` in English, then switch to Spanish. Check that `defaultQueryTool` uses `knowledgeBaseNames: ["products"]` and that both answers match the product's corresponding language fields.
+- Ask in French for a summary of `A001`. The answer should use `support_articles` and summarize the French content, without inventing password-reset steps.
+- Ask for the sample profile `C001`. The answer should use `customers` and match that record. Confirm that the assistant does not describe the lookup as authentication.
+- Test an unknown ID, a correction, and a failed lookup. The assistant should clarify or explain the failure instead of inventing a record.
+
+Knowledge-base selection, language choice, and matching are guided by the prompt, not enforced as database rules. The sample files contain no live inventory, account-changing actions, or complete troubleshooting procedures.
+
 ---
 
 ## 7. Set Up Phone Number
+
+These examples create a Vapi phone number in a US-region organization. Choose an available area code; the API examples request `415`.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -997,84 +977,78 @@ Keep responses concise (under 50 words) while being thorough and helpful."""
         Open your [dashboard.vapi.ai](https://dashboard.vapi.ai) and click `Phone Numbers` in the left sidebar.
       </Step>
       <Step title="Create a new phone number">
-        - Click `Create Phone Number`.
-        - Choose `Free Vapi Number` to get started.
-        - Select your preferred area code (e.g., `212` for New York).
+        - Click **Create Phone Number**.
+        - Choose **Free Vapi Number**.
+        - Enter an available area code in **Area code**, for example `415`.
+        - Click **Create**.
       </Step>
       <Step title="Configure the phone number">
-        - Set the `Phone Number Name` to `GlobalTech International Support`.
-        - Under `Inbound Settings`, find `Assistant` dropdown and select `GlobalTech Support Agent`.
-        - **Optional**: Configure advanced settings:
-          - Enable call recording for quality assurance
-          - Set up voicemail detection
-          - Configure business hours if needed
-        - Changes are saved automatically.
+        - Set **Phone Number Label** to `GlobalTech International Support`.
+        - Under **Inbound Settings**, select `GlobalTech Support Agent` from **Assistant**.
+        - Click **Save**.
       </Step>
     </Steps>
   </Tab>
-  <Tab title="TypeScript (Server SDK)">
+  <Tab title="TypeScript (Server SDK)" language="typescript">
     ```typescript
     import { VapiClient } from "@vapi-ai/server-sdk";
 
-    const vapi = new VapiClient({ token: "YOUR_VAPI_API_KEY" });
+    const apiKey = process.env.VAPI_API_KEY;
+    if (!apiKey) throw new Error("Set VAPI_API_KEY to your Vapi private API key");
+    const vapi = new VapiClient({ token: apiKey });
 
     const phoneNumber = await vapi.phoneNumbers.create({
+      provider: "vapi",
+      numberDesiredAreaCode: "415",
       name: "GlobalTech International Support",
-      assistantId: "YOUR_ASSISTANT_ID",
-      inboundSettings: {
-        recordingEnabled: true,
-        voicemailDetectionEnabled: true,
-        maxCallDurationMinutes: 30
-      }
+      assistantId: "YOUR_ASSISTANT_ID"
     });
 
     console.log(`Multilingual support phone number created: ${phoneNumber.number}`);
+    console.log(`Phone number ID: ${phoneNumber.id}`);
     ```
   </Tab>
-  <Tab title="Python (Server SDK)">
+  <Tab title="Python (HTTP API)" language="python">
     ```python
+    import os
     import requests
 
     def create_multilingual_phone_number(assistant_id):
         """Create phone number for multilingual support"""
         url = "https://api.vapi.ai/phone-number"
         headers = {
-            "Authorization": f"Bearer {YOUR_VAPI_API_KEY}",
+            "Authorization": f"Bearer {os.environ['VAPI_API_KEY']}",
             "Content-Type": "application/json"
         }
         
         data = {
+            "provider": "vapi",
+            "numberDesiredAreaCode": "415",
             "name": "GlobalTech International Support",
-            "assistantId": assistant_id,
-            "inboundSettings": {
-                "recordingEnabled": True,
-                "voicemailDetectionEnabled": True,
-                "maxCallDurationMinutes": 30
-            }
+            "assistantId": assistant_id
         }
         
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
         return response.json()
 
     # Create multilingual support phone number
     phone_number = create_multilingual_phone_number("YOUR_ASSISTANT_ID")
     print(f"Multilingual support phone number created: {phone_number['number']}")
+    print(f"Phone number ID: {phone_number['id']}")
     ```
   </Tab>
-  <Tab title="cURL">
+  <Tab title="cURL" language="bash">
     ```bash
     # Create multilingual support phone number
-    curl -X POST https://api.vapi.ai/phone-number \
-         -H "Authorization: Bearer YOUR_VAPI_API_KEY" \
+    curl --fail -X POST https://api.vapi.ai/phone-number \
+         -H "Authorization: Bearer $VAPI_API_KEY" \
          -H "Content-Type: application/json" \
          -d '{
+           "provider": "vapi",
+           "numberDesiredAreaCode": "415",
            "name": "GlobalTech International Support",
-           "assistantId": "YOUR_ASSISTANT_ID",
-           "inboundSettings": {
-             "recordingEnabled": true,
-             "voicemailDetectionEnabled": true,
-             "maxCallDurationMinutes": 30
-           }
+           "assistantId": "YOUR_ASSISTANT_ID"
          }'
     ```
   </Tab>
@@ -1084,36 +1058,24 @@ Keep responses concise (under 50 words) while being thorough and helpful."""
 
 ## Alternative: Squad-Based Language Selection
 
-For a more structured approach with explicit language selection, see our comprehensive [Squad-based multilingual support](../../squads/examples/multilingual-support) guide. This approach lets customers choose their language at the start of the call, then routes them to dedicated conversation paths optimized for each language.
+For a more structured approach with explicit language selection, see our comprehensive [Squad-based multilingual support](/squads/examples/multilingual-support) guide. This approach lets customers choose their language at the start of the call, then routes them to dedicated conversation paths optimized for each language.
 
 ## Provider Support Summary
 
-**Speech-to-Text (Transcription):**
-- **Gladia**: Solaria, automatic language detection and code-switching.
-- **Deepgram**: Nova 2, Nova 3 with "Multi" language setting
-- **Google**: Latest models with "Multilingual" language setting
-- **All other providers**: Single language only, no automatic detection
+Automatic detection and code-switching require provider-specific transcriber settings. Review [Multilingual support](/customization/multilingual) and the individual [transcriber provider pages](/providers/transcriber/overview) for current configurations.
 
-**Text-to-Speech (Voice Synthesis):**
-- **Azure**: 400+ voices across 140+ languages (recommended for coverage)
-- **ElevenLabs**: 30+ languages with premium quality
-- **OpenAI**: 50+ languages with consistent quality
-- **PlayHT**: 80+ languages, cost-effective
-- **All providers**: Support multiple languages natively
-
-**Language Models:**
-- **All major LLMs** (GPT-4o, Claude, Gemini, Llama, etc.): Native multilingual support
+For speech synthesis, confirm that the selected model and voice support every language in your assistant's system prompt. Vapi Voices V2 can select the synthesis language automatically. Other providers may require a provider-specific model, voice, or language setting.
 
 ## Next Steps
 
-Just like that, you've built a dynamic multilingual customer support agent that automatically detects and responds in the customer's language with seamless mid-conversation language switching.
+You've configured a multilingual support demo with transcription, one multilingual voice, and a Query tool for sample data. Test each language and mid-conversation language changes before connecting callers.
 
 Consider reading the following guides to further enhance your multilingual implementation:
 
-* [**Squad-based Multilingual Support**](../../squads/examples/multilingual-support) - Compare with structured language selection approach
-* [**Multilingual Configuration Guide**](../../../customization/multilingual) - Learn about all multilingual configuration options
-* [**Custom Tools**](../../../tools/custom-tools) - Build advanced multilingual tools and integrations
+* [**Squad-based Multilingual Support**](/squads/examples/multilingual-support) - Compare with structured language selection approach
+* [**Multilingual Configuration Guide**](/customization/multilingual) - Learn about all multilingual configuration options
+* [**Query tool**](/knowledge-base/using-query-tool) - Configure file-based knowledge retrieval
 
 <Callout>
-Need help with multilingual implementation? Chat with the team on our [Discord](https://discord.com/invite/pUFNcf2WmH) or mention us on [X/Twitter](https://x.com/Vapi_AI).
+Need help with multilingual implementation? Ask other developers in the [Vapi Discord community](https://discord.gg/v5Ee6FhAZt) or mention us on [X/Twitter](https://x.com/Vapi_AI).
 </Callout>
