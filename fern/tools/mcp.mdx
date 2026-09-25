@@ -37,7 +37,7 @@ First, you need to obtain an MCP server URL from your chosen provider:
 <Note>
   For Zapier MCP, visit https://mcp.zapier.com/mcp/?client=vapi? to generate your MCP server URL. This URL should be treated as a credential and kept secure.
 
-  To generate your Make MCP Server URL (also known as MCP Token), navigate to your Make profile > API Access tab > Tokens > Add token. See [Obtaining MCP Token documentation](https://developers.make.com/mcp-server/make-cloud-mcp-server/obtaining-mcp-token) for detailed instructions. This URL should be treated as a credential and kept secure.
+  For Make MCP, create an [MCP token](https://developers.make.com/mcp-server/connect-using-mcp-token) and construct the connection URL described in Make's documentation. Treat the token and any URL containing it as credentials.
 </Note>
 
 ### 2. Create and Configure MCP Tool
@@ -49,7 +49,9 @@ After obtaining your MCP server URL, create and configure the tool:
 3. Select **MCP** from the available options
 4. Provide a name and description explaining when it should be invoked
 5. Configure the tool with the following required field:
-   - `serverUrl`: The URL of your MCP server
+   - **Server URL**: The URL of your MCP server
+
+The Dashboard labels this field **Server URL**. In an API request, configure the same value as `server.url`.
 
 <Note>
   The MCP server URL should be treated as a credential and kept secure. It will be used to authenticate requests to the MCP server.
@@ -84,8 +86,12 @@ The MCP integration follows these steps during a call or chat session:
 </Note>
 
 <Note>
-  The tools available through MCP are determined by your MCP server provider. Different providers may offer different sets of tools.
+  The tools available through MCP are determined by your MCP server provider. Vapi imports the complete tool list exposed by the configured server and does not apply its own per-tool filter.
 </Note>
+
+<Warning>
+  Expose only the tools the assistant needs. Large tool lists consume model context and can increase latency and timeout risk. Use the MCP provider's access controls and least-privilege credentials to keep the tool surface focused.
+</Warning>
 
 ### Request Headers
 
@@ -186,7 +192,7 @@ If you need to use Server-Sent Events protocol instead:
 
 ## Best Practices
 
-1. **Protocol Selection**: Use the default Streamable HTTP protocol for better performance unless you specifically need SSE
+1. **Protocol Selection**: Use the default Streamable HTTP protocol. SSE is deprecated and should be used only when required by the server
 2. **Dynamic Tool Awareness**: Be aware that the available tools may change between calls
 3. **Clear Instructions**: Provide clear instructions in your assistant's system message about how to handle dynamic tools
 4. **Error Handling**: Include fallback responses for cases where tools fail or are unavailable
@@ -197,17 +203,35 @@ If you need to use Server-Sent Events protocol instead:
 
 ### Make MCP
 
-The Make MCP Server provides access to the Make scenarios you select, allowing you to expose them as MCP tools.
+Make MCP can expose active, on-demand scenarios as tools and can expose account-management tools when the token has the corresponding scopes.
 
-1. Define your Make scenarios, configuring scenario [inputs and outputs](https://help.make.com/scenario-inputs-and-outputs) and setting them to be [scheduled on demand](https://help.make.com/schedule-a-scenario#30pY_)
-2. Get your [Make MCP Token](https://developers.make.com/mcp-server/make-cloud-mcp-server/obtaining-mcp-token)
-3. Choose your MCP [Tool Access Control](https://developers.make.com/mcp-server/make-cloud-mcp-server/tool-access-control) mechanism and define your MCP URL
-4. Add the URL to your Vapi MCP tool configuration
-5. Your assistant will now have access to your chosen Make scenarios
+<Steps>
+  <Step title="Prepare the scenarios">
+    Define the inputs and outputs for each scenario, then set its schedule to **On demand**.
+  </Step>
+  <Step title="Create an MCP token">
+    Create a [Make MCP token](https://developers.make.com/mcp-server/connect-using-mcp-token) with the minimum scopes required.
+  </Step>
+  <Step title="Limit scenario access">
+    Use Make's [scenarios as tools access control](https://developers.make.com/mcp-server/connect-using-mcp-token/scenarios-as-tools-access-control) to expose only the scenarios the assistant needs.
+  </Step>
+  <Step title="Add the server URL">
+    Add the resulting URL as the Vapi MCP tool's **Server URL** in the Dashboard, or as `server.url` through the API.
+  </Step>
+  <Step title="Use Streamable HTTP">
+    Keep **Streamable HTTP** selected.
+  </Step>
+</Steps>
 
-<Note>
-  Make Cloud MCP allows you to build simple or complex MCP tools using business logic to access the most important apps in your business tech stack. Check the full list in the Make app gallery.
-</Note>
+<Warning>
+  Scenario access-control parameters apply to scenario tools, not management tools. A broadly scoped token can expose management tools capable of modifying Make resources. Because Vapi imports every exposed tool, broad access also increases model context, latency, and timeout risk. Grant no management scopes unless the assistant needs them.
+</Warning>
+
+<Card title="Run the Make MCP example" icon="flask" href="https://github.com/VapiAI/vapi-labs/blob/main/projects/vapi-make-patterns/examples/mcp/README.md">
+  Provision a demo scenario, inspect the tools Make exposes, and verify the Vapi → Make → Vapi round trip.
+</Card>
+
+See [Connect Vapi to Make](/tools/integrations/make) to compare MCP with API Request and Function tools.
 
 ### Zapier MCP
 
@@ -230,7 +254,7 @@ Composio also offers an MCP server for integration:
 2. Select the tool you want to integrate (e.g., Gmail)
 3. Enable the MCP server for the selected tool by connecting your account using authentication flow
 4. Create a server and copy the generated URL
-5. Add this URL to your MCP tool configuration as the `serverUrl`
+5. Add this URL as the **Server URL** in the Dashboard, or as `server.url` through the API
 6. Your assistant will now have access to the specific Composio tool integration
 
 <Note type="warning">

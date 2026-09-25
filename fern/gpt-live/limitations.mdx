@@ -28,11 +28,11 @@ See [Connect a call](/gpt-live/configuration#connect-a-call) for working connect
 
 ## Transfers and keypad input
 
-Function tools, API Request tools, and `endCall` are supported. The other supported tool types, `transferCall` and `dtmf`, depend on the call connection:
+Function tools, API request tools, MCP tools, and `endCall` are supported. MCP tools run through the reasoner; see [MCP configuration](/gpt-live/configuration#mcp-tools). The other supported tool types, `transferCall` and `dtmf`, depend on the call connection:
 
 | Feature | Support |
 | --- | --- |
-| Blind transfer | Supported on native Twilio and Vapi SIP to configured phone or SIP destinations |
+| Blind transfer | Supported on native Twilio and Vapi SIP to phone or SIP destinations. Configure destinations for a `transferCall` tool, or supply one in an HTTP `transfer` request |
 | Transfer on browser or raw WebSocket calls | Unsupported |
 | Warm transfer or generated transfer summary | Unsupported |
 | Transfer fallback plans or SIP `bye` verb | Unsupported |
@@ -42,7 +42,7 @@ Function tools, API Request tools, and `endCall` are supported. The other suppor
 | SIP INFO DTMF | Unsupported |
 | Incoming keypad collection | Unsupported. Leave `keypadInputPlan.enabled` disabled |
 
-Other tool types are unsupported. Expose external lookups through a Function tool or API Request tool. Carrier acceptance of a transfer doesn't establish that the destination answered.
+Other tool types are unsupported. Expose external lookups through a function, API request, or MCP tool. Carrier acceptance of a transfer doesn't establish that the destination answered.
 
 ## Can I use an existing squad?
 
@@ -52,7 +52,15 @@ Early testing suggests some use cases no longer need the same divisions between 
 
 ## Can I inject commentary or control speech during a call?
 
-Commentary injection, live message injection, and live call-control commands are currently unsupported. The raw WebSocket connection supports audio streaming only. Use the supported [tool response flow](/gpt-live/configuration#connect-your-tools) to return results for requested work.
+Yes. Send HTTP requests to the call's `monitor.controlUrl` to:
+
+- End the call with `end-call`.
+- Append `commentary`, `thinking`, or `instructions` to the speaker with `append-context`.
+- Initiate a cold transfer with `transfer` on native Twilio or Vapi SIP calls.
+
+See [Live call control](/gpt-live/configuration#live-call-control) for request examples, authentication, and response behavior. Appended context affects the speaker; it doesn't update reasoner history or directly trigger tools. Submission doesn't guarantee exact wording or completed speech.
+
+The raw WebSocket connection supports audio streaming only. Send controls over HTTP, not WebSocket text frames or SDK data channels. Classic `say`, `add-message`, and mute/unmute commands remain unsupported.
 
 A caller can ask the assistant to slow down or explain differently, and you can prompt it to respond to those requests. That conversational behavior is separate from an application sending a control command.
 
@@ -63,6 +71,12 @@ GPT-Live generates speech and may paraphrase supplied text. Speaker instructions
 Audio URL greetings and the generated-message first-message mode are unsupported. Use a text `firstMessage` with `assistant-speaks-first`, or let the assistant wait for the caller. Without usable greeting text, it waits.
 
 If exact prerecorded wording or strict control of every spoken step is essential, choose an architecture with those controls. See [voice design](/gpt-live/design#speaking-style) for the choices available through prompting.
+
+## Does the reasoner get the conversation transcript?
+
+Yes. Each delegation receives the available caller and assistant transcript up to that point, along with the reasoner's instructions, tool definitions, and retained reasoner/tool history. It isn't limited to a short snippet chosen by the speaker.
+
+It doesn't receive raw audio or automatically inherit the speaker prompt. The transcript is a snapshot at delegation time; later speech doesn't automatically update a delegation already in progress. See [reasoner context](/gpt-live/design#what-context-does-the-reasoner-receive) for the context comparison and correction example, and [prompt guidance](/gpt-live/design#where-should-an-instruction-go) for what to put in each prompt.
 
 ## Which existing settings no longer apply?
 
@@ -78,9 +92,25 @@ If the caller corrects a date during a lookup, use the result that matches the u
 
 ## Can I run Simulations and Evals?
 
-Voice Simulations are currently unsupported for GPT-Live.
+Yes. **Voice Simulations support GPT-Live** as the assistant under test, the AI tester, or both. You can also pair a GPT-Live participant with a classic voice assistant.
 
-Run voice scenarios through a [supported call connection](/gpt-live/configuration#connect-a-call). [Evals](/observability/evals-quickstart) can supplement testing of supported model decisions, but they don't establish GPT-Live's audio quality, timing, or interruption behavior.
+| Simulation setup | Support |
+| --- | --- |
+| GPT-Live target with a classic AI tester | Supported in Voice mode |
+| GPT-Live AI tester with a classic assistant target | Supported in Voice mode |
+| GPT-Live tester and target | Supported in Voice mode |
+| Chat mode with either participant using GPT-Live | Unsupported; choose Voice |
+| Squad runs with a GPT-Live participant | Unsupported; choose a single assistant target |
+
+To test your assistant:
+
+1. Follow the [Simulations quickstart](/observability/simulations-quickstart), selecting your GPT-Live assistant as the target.
+2. Configure the scenario, AI tester personality, and success criteria. If you use a GPT-Live tester, select a supported native OpenAI voice.
+3. Run the suite in **Voice** mode, then review its transcript, evaluations, and available recording.
+
+Existing GPT-Live organization access requirements still apply. Simulations handle the participants' audio formats, including mixed GPT-Live and classic runs; you don't need to build an audio bridge yourself. [Tool mocks](/observability/simulations-advanced#mock-tool-responses) are supported for GPT-Live simulation tools. Unmocked tools can perform real actions, so configure mocks or sandbox services before running scenarios that change external data.
+
+Voice Simulations let you exercise speech, timing, interruptions, and tool behavior. Listen to the recording as well as checking evaluations: a passing criterion doesn't establish every aspect of conversation quality. [Evals](/observability/evals-quickstart) remain useful for supported model decisions, but don't replace testing the voice interaction.
 
 ## Recordings and post-call data
 

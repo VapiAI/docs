@@ -9,7 +9,7 @@ Create an assistant that checks appointment availability and reads back the resu
 
 For help deciding what to put in each prompt, read [Design your assistant](/gpt-live/design). For feature restrictions, use [Limitations and FAQs](/gpt-live/limitations).
 
-**Jump to:** [Create an assistant](#create-an-assistant) · [Model settings](#model-settings) · [Personality](#personality-and-language) · [Voices](#voices) · [Tools](#connect-your-tools) · [Calls](#connect-a-call) · [Analysis](#review-and-monitor-calls)
+**Jump to:** [Create an assistant](#create-an-assistant) · [Model settings](#model-settings) · [Personality](#personality-and-language) · [Voices](#voices) · [Tools](#connect-your-tools) · [Calls](#connect-a-call) · [Live control](#live-call-control) · [Analysis](#review-and-monitor-calls)
 
 ## Before you start
 
@@ -177,7 +177,7 @@ These fields belong to the assistant object. See [Create Assistant](/api-referen
 
 ## Prompt defaults and overrides
 
-Set `model.speaker.instructions` for the spoken conversation and `model.reasoner.instructions` for task procedures.
+Set `model.speaker.instructions` for the spoken conversation and `model.reasoner.instructions` for task procedures. See [where instructions belong](/gpt-live/design#where-should-an-instruction-go), the [paired prompt example](/gpt-live/design#example-split-a-scheduling-prompt), and [what context the reasoner receives](/gpt-live/design#what-context-does-the-reasoner-receive).
 
 - Explicit speaker instructions take precedence over `model.systemPrompt` and system messages in `model.messages`. If you omit the speaker instructions, Vapi uses that legacy configuration.
 - Omitting reasoner instructions uses Vapi's default reasoner prompt. Custom instructions replace that prompt entirely.
@@ -285,13 +285,29 @@ Return a result for each request using its actual `toolCallId`:
 
 Replace the sample result with your service's data. If the lookup fails, return the failure so the assistant can explain it. See [Server authentication](/server-url/server-authentication) to protect the endpoint.
 
-Supported tool types are `function`, `apiRequest`, `endCall`, `dtmf`, and `transferCall`. Give tools unique resolved function names. Save reusable tools and attach them through `model.toolIds`, or include definitions in `model.tools`.
+Supported tool types are `function`, `apiRequest`, `mcp`, `endCall`, `dtmf`, and `transferCall`. Give tools unique resolved function names. Save reusable tools and attach them through `model.toolIds`, or include definitions in `model.tools`.
 
-Use Function tools or API Request tools to connect external data sources. For phone actions, check [transfer and keypad support](/gpt-live/limitations#transfers-and-keypad-input).
+Use function, API request, or MCP tools to connect external data sources. For phone actions, check [transfer and keypad support](/gpt-live/limitations#transfers-and-keypad-input).
+
+### MCP tools
+
+You can keep the MCP tools you already use with an existing Vapi assistant when migrating to GPT-Live. Attach the same saved tool IDs through `model.toolIds`, or keep your inline `type: "mcp"` definitions in `model.tools`. Existing server URLs, headers, credentials, and protocol settings are reused. See [MCP tools](/tools/mcp) for setup.
+
+For example, add your saved MCP tool ID to the assistant's `model` configuration, preserving any other tool IDs:
+
+```json
+{
+  "toolIds": ["YOUR_EXISTING_MCP_TOOL_ID"]
+}
+```
+
+At call setup, Vapi connects to the MCP server and discovers its tools. Those tools are available to the **reasoner**. The speaker delegates work to the reasoner, which calls the tool and returns the result for the conversation. Put tool-use procedures in `model.reasoner.instructions` and delegation guidance in `model.speaker.instructions`.
+
+The discovered tool list stays fixed for that call. Each tool invocation opens a separate MCP connection; it doesn't rediscover the tool list. Start a new call to pick up changes to the server's available tools. GPT-Live doesn't play classic per-tool speech messages; use speaker instructions to guide how it talks while work runs.
 
 ### Slow and asynchronous requests
 
-A synchronous function waits for your handler's result. Set `async: true` on a Function tool to let the conversation continue while that request completes. Return the final result through the original request, using the matching `toolCallId`.
+A synchronous function waits for your handler's result. Set `async: true` on a function tool to let the conversation continue while that request completes. Return the final result through the original request, using the matching `toolCallId`.
 
 If your handler returns “queued” before the work finishes, add a status lookup tool. Tell the reasoner when to check it. A later callback doesn't automatically update the conversation.
 
@@ -339,7 +355,61 @@ Connect to `transport.websocketCallUrl` in the response. Send and receive binary
 
 Set `sampleRate` to `24000` for GPT-Live. Browser WebRTC and phone connections negotiate their own audio formats.
 
-Close the WebSocket to end the call, or have the assistant invoke `endCall`. Incoming JSON call-control commands are not supported by this GPT-Live connection. See [WebSocket transport](/calls/websocket-transport) for the general transport, applying the restrictions above.
+Close the WebSocket to end the call, have the assistant invoke `endCall`, or send an HTTP `end-call` request to the [live control URL](#live-call-control). Send control commands over HTTP, not as JSON frames on the audio WebSocket. See [WebSocket transport](/calls/websocket-transport) for the general transport, applying the restrictions above.
+
+## Live call control
+
+Your application can end an active GPT-Live call, append speaker context, or initiate a cold transfer. Send an HTTP POST to that call's `monitor.controlUrl`, returned in the call object. These commands aren't supported through audio WebSocket text frames or SDK data channels.
+
+Set `CONTROL_URL` to the returned URL. Call control must be enabled in the assistant's `monitorPlan`: setting `controlEnabled` to `false` disables it. If `controlAuthenticationEnabled` is `true`, include `Authorization: Bearer YOUR_VAPI_PUBLIC_API_KEY` from the same organization on each request. The examples below assume control authentication is disabled. Keep the control URL private.
+
+### End the call
+
+```bash
+curl --fail-with-body -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"end-call"}'
+```
+
+### Append speaker context
+
+Use `append-context` with a `kind` and nonblank `content` of up to 16,000 characters:
+
+| Kind | Purpose | Example content |
+| --- | --- | --- |
+| `commentary` | Give the speaker information to convey in its own words | `Your appointment is confirmed for Tuesday at 2 PM.` |
+| `thinking` | Add silent context for the speaker to use | `The caller has already verified their account.` |
+| `instructions` | Guide the speaker's behavior or ask it to try saying something | `Tell the caller their order is ready, then ask whether they need anything else.` |
+
+```bash
+curl --fail-with-body -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"append-context","kind":"instructions","content":"Tell the caller their order is ready, then ask whether they need anything else."}'
+```
+
+These messages go to the speaker. They don't add context to the reasoner's history or directly start reasoning or tool work. `thinking` doesn't request speech, but it isn't a separate private context store: the speaker can use that information in subsequent responses.
+
+A successful append response means the context was submitted. It doesn't guarantee exact wording, immediate speech, or completed playback.
+
+### Cold transfer
+
+On native Twilio and Vapi SIP calls, send a phone or SIP destination. For example:
+
+```bash
+curl --fail-with-body -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"transfer","destination":{"type":"number","number":"+14155550100","transferPlan":{"mode":"blind-transfer"}}}'
+```
+
+Replace the number with your transfer destination. For SIP, use a destination such as `{"type":"sip","sipUri":"sip:agent@example.com"}`. An application supplies the destination in this request; a reasoner using a `transferCall` tool selects from that tool's configured destinations.
+
+Cold transfer isn't supported on browser or raw WebSocket calls. Don't include pre-transfer `content`, warm-transfer plans, generated summaries, or fallback plans. See [transfer restrictions](/gpt-live/limitations#transfers-and-keypad-input). Carrier acceptance doesn't establish that the destination answered.
+
+### Responses and unsupported controls
+
+Successful commands return HTTP `200` with `{"status":"ok"}`. Rejected requests return an error, including when the call isn't active or is already transferring. If a `502` response reports an unconfirmed outcome, don't automatically retry: the action may have reached the provider. A `503` response stating that no action was taken is safe to retry.
+
+GPT-Live doesn't support `say`, `add-message`, or mute/unmute controls. Use `append-context` for speaker guidance. See [live control compatibility](/gpt-live/limitations#can-i-inject-commentary-or-control-speech-during-a-call).
 
 ## Review and monitor calls
 
