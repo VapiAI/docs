@@ -65,7 +65,7 @@ Assistant shape (each member). The node's `systemPrompt` becomes `model.messages
     "provider": "openai",
     "model": "gpt-4o",
     "messages": [ { "role": "system", "content": "the assistant's instructions" } ],
-    "tools": [ /* handoff tools, transferCall tools, apiRequest/custom tools */ ]
+    "tools": [ /* handoff tools, transferCall tools, apiRequest tools, or Function tools */ ]
   }
 }
 ```
@@ -111,7 +111,7 @@ Run these in order.
    - A variable used only to *choose a branch* doesn't need extraction — that decision is encoded in which destination the model picks.
 
 6. **Map the remaining node types:**
-   - `apiRequest` → an apiRequest/custom tool on the assistant that owns that stage.
+   - `apiRequest` → an `apiRequest` tool or a Function tool on the assistant that owns that stage.
    - `transferCall` → a transferCall tool on the relevant assistant (`destination` = phone number, `transferPlan.message` carried over).
    - `endCall` / `hangup` → fold "end the call" into the terminal assistant's prompt (no separate member needed).
    - **Global node** (`isGlobal: true`) → give the relevant assistant(s) a handoff/transfer whose `description` is the node's `condition` (e.g. "caller asks to speak to a human"). It applies from anywhere that assistant is active.
@@ -129,7 +129,7 @@ Run these in order.
 | Edge with no condition (crossing a boundary) | Handoff with a "when done with X" description |
 | `extractVariables` used downstream in another assistant | `variableExtractionPlan.schema` on the crossing handoff |
 | `extractVariables` used only locally | Just `{{name}}` in the same assistant's prompt — no plan needed |
-| `apiRequest` node | apiRequest/custom tool on the owning assistant |
+| `apiRequest` node | `apiRequest` tool or Function tool on the owning assistant |
 | `transferCall` node | transferCall tool on the relevant assistant |
 | `endCall` / `hangup` node | "end the call" instruction in the terminal assistant's prompt |
 | Global node (`isGlobal`) | A broad-condition handoff/transfer on the relevant assistant(s) |
