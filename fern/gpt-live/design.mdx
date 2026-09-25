@@ -11,7 +11,7 @@ The design task is to make those moments feel connected. Decide what the assista
 
 This guide uses scheduling as an example. The same approach applies to support, intake, and other conversations that combine questions with actions.
 
-**Jump to:** [Architecture](#speaker-and-reasoner-roles) · [Squads](#start-with-one-assistant) · [Conversation flow](#questions-and-changes-of-topic) · [Voice design](#speaking-style) · [Testing](#testing-conversations)
+**Jump to:** [Architecture](#speaker-and-reasoner-roles) · [Prompt example](#example-split-a-scheduling-prompt) · [Context](#what-context-does-the-reasoner-receive) · [Squads](#start-with-one-assistant) · [Conversation flow](#questions-and-changes-of-topic) · [Voice design](#speaking-style) · [Testing](#testing-conversations)
 
 ## Speaker and reasoner roles
 
@@ -29,6 +29,84 @@ Both models belong to the same assistant. The caller stays in one conversation w
 For example, the speaker needs to know that it can help find an appointment. The reasoner needs to know which service returns availability, what information that service requires, and when booking is allowed.
 
 This separation lets you keep the speaker's instructions focused. Put detailed business procedures in the reasoner prompt. Your services remain responsible for enforcing permissions and validating actions.
+
+### Where should an instruction go?
+
+Use `model.speaker.instructions` for **how to conduct the conversation and when to ask for help**. Use `model.reasoner.instructions` for **how to decide and act once asked**.
+
+| Instruction | Where it belongs | Why |
+| --- | --- | --- |
+| “Ask one question at a time and speak briefly.” | Speaker | Controls the interaction the caller hears. |
+| “Delegate availability checks and booking requests.” | Speaker | Tells it when to involve the reasoner. |
+| “Use `lookupAvailability` with an explicit date and time zone.” | Reasoner | Defines how to use a tool correctly. |
+| “Call `bookAppointment` only after the caller confirms a specific slot.” | Reasoner | Defines the condition for taking an action. |
+| “Never tell the caller a booking succeeded before the tool confirms it.” | Both, tailored to each role | The reasoner must verify success; the speaker must describe it accurately. |
+
+The prompts are separate. Instructions written only in the speaker prompt aren't automatically included in the reasoner prompt. Put rules that affect both conversation and actions in both prompts, using wording appropriate to each role. Keep detailed tool procedures in the reasoner prompt rather than copying the entire prompt into both fields.
+
+### Example: split a scheduling prompt
+
+Suppose the assistant can look up availability and book appointments. The example below assumes you have attached tools named `lookupAvailability` and `bookAppointment`. Replace those names and requirements with your actual tools. The [configuration walkthrough](/gpt-live/configuration#create-an-assistant) provides a lookup-only example if you haven't connected booking yet.
+
+```text title="model.speaker.instructions"
+You help callers find and book appointments. Speak warmly and briefly.
+Ask one question at a time. Use details the caller has already supplied.
+
+Collect an explicit date and time zone, then delegate availability checks.
+Read back the returned options. Ask the caller to confirm one specific
+slot before delegating a booking request.
+
+While a lookup runs, you may ask about preferences that don't change
+its inputs. If the caller changes the date or time zone, acknowledge
+the correction and delegate the updated request. Don't present an old
+lookup result as an answer to the new request.
+
+Only say an appointment is booked after the reasoner returns a confirmed
+booking. If information is missing or a tool fails, explain the issue
+and ask for the next detail needed.
+```
+
+```text title="model.reasoner.instructions"
+Help the speaker complete the caller's scheduling request using the
+conversation transcript and the available tools.
+
+For availability, require an explicit date and time zone before calling
+lookupAvailability. If either is missing or ambiguous, return a concise
+clarification for the speaker to ask. Don't invent missing arguments.
+
+For booking, require the caller's explicit confirmation of a specific
+slot returned by lookupAvailability. Call bookAppointment only when
+those conditions and the tool's required arguments are satisfied.
+
+Use the latest request in the supplied transcript. Before taking a new
+action, check prior tool results so you don't repeat a completed booking.
+Don't retry an uncertain booking outcome without checking its status.
+
+Return the relevant date, time zone, slots, or confirmed booking details
+for the speaker to explain. If a tool fails, report the failure and the
+next useful step. Don't invent availability or claim success without a
+successful tool result.
+```
+
+The speaker asks the caller for clarification; the reasoner returns what needs clarification. The reasoner doesn't speak to the caller directly. Your service should also enforce booking requirements: prompt instructions don't replace validation in the tool handler.
+
+### What context does the reasoner receive?
+
+**At each delegation, the reasoner receives the available spoken conversation transcript so far**, including caller and assistant turns. It also receives its own instructions, available tool definitions, and retained history from prior reasoner work and tool results within that call. It doesn't rely on a short summary or a few selected lines supplied by the speaker.
+
+The speaker and reasoner still have different context:
+
+| Context | Speaker | Reasoner |
+| --- | --- | --- |
+| Live audio | Listens and speaks continuously | Receives text, not the audio stream |
+| Spoken conversation | Part of the live conversation | Receives the transcript available when delegation starts |
+| Instructions | Speaker prompt and personality guidance | Reasoner prompt; the speaker prompt isn't automatically copied |
+| Tool work | Receives results returned by the reasoner | Has tool definitions and retained reasoner/tool history |
+| HTTP `append-context` | Receives the injected speaker context | Doesn't receive it directly in its history |
+
+The transcript is a snapshot of what Vapi has received at that point. Speech that arrives while the reasoner is already working doesn't automatically refresh that delegation's transcript. A subsequent delegation receives the updated transcript. Completed work and tool results can inform later reasoning, but the reasoner isn't continuously listening alongside the speaker.
+
+For example, if the caller says “Actually, Thursday” while a Friday lookup is running, the speaker can hear and acknowledge the correction. The ongoing lookup may still return Friday's availability. Delegate the changed request, match results to the date they answer, and don't assume an interruption cancels an action already sent to a tool.
 
 ### When to delegate
 
@@ -148,7 +226,7 @@ explaining a process. Follow requests to speed up, slow down, or
 explain more. Leave room for the caller to respond.
 ```
 
-These are prompted behaviors, not precise speed or pause controls. Test the spoken result. [Programmatic speech control](/gpt-live/limitations#can-i-inject-commentary-or-control-speech-during-a-call) is currently unsupported in Vapi's GPT-Live integration.
+These are prompted behaviors, not precise speed or pause controls. Test the spoken result. Your application can also send [live speaker guidance](/gpt-live/configuration#live-call-control) with `append-context`; it doesn't guarantee exact wording, speed, or pauses.
 
 ### Pacing
 
@@ -185,6 +263,6 @@ Review a short set of conversations before expanding the prompt. Include a direc
 
 Ask whether the assistant used what the caller had already said, delegated at the right moment, and returned naturally to unfinished work. Listen for whether its pace helps the caller make progress.
 
-Keep a few representative calls as a baseline. Repeat them when either prompt changes. Use [post-call analysis](/gpt-live/configuration#review-and-monitor-calls) to track outcomes, while reviewing audio for timing and delivery. Check [testing limitations](/gpt-live/limitations#can-i-run-simulations-and-evals) before choosing an automated test method.
+Keep a few representative calls as a baseline. Repeat them when either prompt changes. Use [post-call analysis](/gpt-live/configuration#review-and-monitor-calls) to track outcomes, while reviewing audio for timing and delivery. Use [Voice Simulations](/gpt-live/limitations#can-i-run-simulations-and-evals) to repeat scenarios with GPT-Live as the tester, target, or both. Choose Voice mode and a single assistant target.
 
 For additional model-level examples, see OpenAI's [GPT-Live prompting guide](https://developers.openai.com/api/docs/guides/live-prompting). Use Vapi's fields when applying that guidance to your assistant.
