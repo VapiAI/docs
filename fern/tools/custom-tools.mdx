@@ -290,6 +290,49 @@ Let's revisit the weather tool example from before. If the tool successfully ret
 }
 ```
 
+### Returning an error instead of a result
+
+If your logic fails, return an `error` field in place of `result` for that tool call — and still respond with **HTTP 200**. Any non-200 status code is ignored entirely, so the assistant hears nothing back and reports "no result returned."
+
+```json
+{
+  "results": [
+    {
+      "toolCallId": "call_VaJOd8ZeZgWCEHDYomyCPfwN",
+      "error": "Weather service is unavailable right now."
+    }
+  ]
+}
+```
+
+Both `result` and `error` must be **single-line strings**. Line breaks (`\n`) cause parsing errors and the response is dropped, so join multi-line output into one line (for example, `"Temperature: 72°F, Condition: Sunny, Humidity: 45%"`).
+
+### Responding to more than one tool call
+
+A single request can contain several tool calls in `toolCallList`. Return one entry in `results` for **every** call, in the same order they were sent, and set each `toolCallId` to exactly match the ID from the request. Individual calls can succeed or fail independently:
+
+```json
+{
+  "results": [
+    { "toolCallId": "call_1", "result": "First tool success" },
+    { "toolCallId": "call_2", "error": "Second tool failed" },
+    { "toolCallId": "call_3", "result": "Third tool success" }
+  ]
+}
+```
+
+Return HTTP 200 for the whole response even when an individual tool errors — handle per-call failures with the `error` field, not the status code.
+
+<Note>
+  Response coming back empty, ignored, or truncated? See [Troubleshoot tools](/tools/custom-tools-troubleshooting) for the full checklist: response-format rules, tool-call-ID matching, the HTTP 200 requirement, and token limits.
+</Note>
+
+### Response format depends on the tool type
+
+The `results` array shown above is the response contract for **Function tools**. Other server-backed tool types can expect a different response shape — a [Query tool](/knowledge-base/using-query-tool) backed by a knowledge base does not necessarily use the `toolCallId`/`result` structure. Follow the guide for the specific tool type you are building rather than assuming the Function-tool format applies everywhere.
+
+{/* TODO(maintainers): a short per-tool-type response-shape table (Function vs Query/Knowledge Base vs Custom TTS/Transcriber) would fully close this gap — "which JSON do I return?" is the single largest Custom Tools confusion in Ask AI. Confirm exact shapes before adding. */}
+
 **Some Key Points:**
 
 - Pay attention to the required parameters and response format of your functions.
