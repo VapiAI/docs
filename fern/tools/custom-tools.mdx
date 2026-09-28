@@ -273,7 +273,12 @@ When your Vapi assistant calls a tool (via the server URL you configured), your 
 **Breaking down the components:**
 
 - **toolCallId (X):** This is a unique identifier included in the initial request from Vapi. It allows the assistant to match the response with the corresponding tool call, ensuring accurate processing and context preservation.
-- **result (Y):** This field holds the actual output or result of your tool's execution. The format and content of "result" will vary depending on the specific function of your tool. It could be a string, a number, an object, an array, or any other data structure that is relevant to the tool's purpose.
+- **result (Y):** This field holds the actual output or result of your tool's execution on success. It must be a flat string -- not an object, array, or multi-line value. If your tool's output isn't already a string, serialize it (for example with `JSON.stringify`) before returning it.
+- **error:** Use this field instead of `result` when the tool call fails. Vapi decides whether to speak the `Request Failed` message by checking for the *presence* of an `error` field on the result -- it does not inspect `result`'s content for failure text. `error` must also be a flat string, and a response can use `result` or `error` per `toolCallId`, but not both.
+
+<Note>
+Always respond with HTTP 200, even when reporting a tool failure through `error`. Any other status code is ignored completely, and the assistant reports "no result returned" instead of speaking your error message. See [Troubleshoot tools](/tools/custom-tools-troubleshooting) for more response-format failure modes.
+</Note>
 
 **Example:**
 
@@ -290,10 +295,26 @@ Let's revisit the weather tool example from before. If the tool successfully ret
 }
 ```
 
+If the location can't be found, report the failure through `error` instead of `result` -- Vapi still expects HTTP 200:
+
+```json
+{
+  "results": [
+    {
+      "toolCallId": "call_VaJOd8ZeZgWCEHDYomyCPfwN",
+      "error": "No weather data found for that location."
+    }
+  ]
+}
+```
+
+For multiple tool calls in one request, return one result per `toolCallId`, in the same order the calls were triggered -- some can use `result` and others `error` in the same response.
+
 **Some Key Points:**
 
 - Pay attention to the required parameters and response format of your functions.
 - Ensure your server is accessible and can handle the incoming requests from Vapi.
 - Make sure to add "Tools Calls" in both the Server and Client messages and remove the function calling from it.
+- Always return HTTP 200, and use the `error` field -- not a non-2xx status code -- to signal that a specific tool call failed.
 
 By following these guidelines and adapting the sample payload, you can easily configure a variety of tools to expand your Vapi assistant's capabilities and provide a richer, more interactive user experience.
