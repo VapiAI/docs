@@ -64,22 +64,48 @@ The traffic pill in the assistant header shows where calls route right now. Sele
 
 ## Splitting via the API
 
-Every dashboard action above is a single API call. Create a traffic allocation with explicit targets to set a split, or with the follow-latest intent to restore the default:
+Every dashboard action above is a single API call. Versions are named by their label, such as `"v7"`, the same label the version routes use. Targets must be published versions of the assistant, so publish first, then allocate.
+
+**Start a canary** by posting the split you want. Sending `targets` is enough; the intent is understood to be an explicit split:
 
 ```json
 POST /traffic-allocations
 {
   "assistantId": "9d5f9d3a-...",
-  "allocationIntent": "explicit",
   "targets": [
-    { "assistantVersionId": "b7e2c1d0-...", "percentage": 90 },
-    { "assistantVersionId": "4a81f622-...", "percentage": 10 }
+    { "assistantVersion": "v6", "percentage": 90 },
+    { "assistantVersion": "v7", "percentage": 10 }
   ],
-  "reason": "canary: tightened refund prompt"
+  "description": "canary: tightened refund prompt"
 }
 ```
 
-The newest allocation for an assistant is the one that governs; read it back with `GET /traffic-allocations/latest?assistantId=...`. The optional `reason` appears in history, so future readers know why a split existed.
+**Adjust it** the same way: post the whole new split. The most recently created allocation is the one in effect, so each post replaces the last:
+
+```json
+POST /traffic-allocations
+{
+  "assistantId": "9d5f9d3a-...",
+  "targets": [
+    { "assistantVersion": "v6", "percentage": 50 },
+    { "assistantVersion": "v7", "percentage": 50 }
+  ]
+}
+```
+
+If concurrent editors are a concern, include `"expectedCurrentAllocationId"` with the allocation id you last read; the write then applies only while that allocation is still in effect, and conflicts return a 409 instead of letting the last write win.
+
+**Stop splitting** by saying so. Ending a split is the one request that must name its intent, so a dropped `targets` field can never end a rollout by accident:
+
+```json
+POST /traffic-allocations
+{
+  "assistantId": "9d5f9d3a-...",
+  "allocationIntent": "follow-latest"
+}
+```
+
+Read the split currently in effect with `GET /traffic-allocations/latest?assistantId=...`, and the full history with `GET /traffic-allocations?assistantId=...`. The optional `description` appears in history, so future readers know why a split existed.
 
 ## Next steps
 
