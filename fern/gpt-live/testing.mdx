@@ -62,9 +62,24 @@ To run one:
 
 Unmocked tools run for real. Use [tool mocks](/observability/simulations-advanced#mock-tool-responses), or point tools at a test service, before running scenarios that change data. A passing evaluation doesn't cover everything about the conversation, so listen to some recordings too.
 
+[Evals](/observability/evals-quickstart) check supported text-model decisions, such as which tool is called, using mock conversations. They don't test GPT-Live's listening, speech, or turn-taking. Use Voice Simulations to test the spoken conversation.
+
 ## Watch production calls
 
-GPT-Live supports [structured outputs](/assistants/structured-outputs-quickstart), [call analysis](/assistants/call-analysis), [scorecards](/observability/scorecard-quickstart), [Boards](/observability/boards-quickstart), [Monitoring](/observability/monitoring-quickstart), and [end-of-call reports](/server-url/events).
+GPT-Live supports Vapi's post-call analysis and monitoring features:
+
+- **Extract data from each call.** Create [structured outputs](/assistants/structured-outputs-quickstart) and attach their IDs in `artifactPlan.structuredOutputIds`. Read the results in `call.artifact.structuredOutputs`.
+- **Grade calls.** Create a [scorecard](/observability/scorecard-quickstart) from boolean or number structured outputs, and link it to the assistant. Read the grades in `call.artifact.scorecards`.
+- **Receive call records on your server.** Set a Server URL and include `end-of-call-report` in the [server messages](/server-url/events). Your server receives an `end-of-call-report` message after the call.
+- **Get alerts.** Create a [monitor](/observability/monitoring-quickstart) with its conditions, thresholds, evaluation windows, and notification destinations. Review its issues and alerts in Monitoring.
+
+A few things to know when setting these up:
+
+- When you update an assistant, keep its existing structured output IDs and artifact settings in the update, so you don't drop them.
+- Existing [call analysis](/assistants/call-analysis) (`analysisPlan`) configurations keep working. For new setups, use structured outputs.
+- A scorecard doesn't create a monitor. Set up monitors separately.
+- [Authenticate your Server URL](/server-url/server-authentication). An end-of-call report can be delivered more than once, so handle repeats by call ID.
+- [Boards](/observability/boards-quickstart) show call metrics and outcome trends for your assistant.
 
 A structured output is a good way to catch the problems on this page after the fact. For example, a boolean output: "Did the assistant tell the caller an action was completed that no tool result in the call confirmed?" A scorecard can then flag those calls.
 
@@ -114,7 +129,7 @@ Here's an illustrative estimate. It uses public rates as of September 30, 2026 a
 | --- | --- | --- |
 | GPT-Live voice | 4 minutes at $0.05 per minute | $0.20 |
 | Vapi platform fee | 4 minutes at $0.05 per minute | $0.20 |
-| Reasoner, `gpt-5.6-terra` | 8 delegations, about 4,000 uncached input and 150 output tokens each, at $2 per million input and $12 per million output tokens | about $0.08 |
+| Reasoner, `gpt-5.6-terra` | 8 delegations, about 4,000 uncached input and 150 output tokens each, at \$2 per million input and \$12 per million output tokens | about $0.08 |
 | Telephony | Depends on your provider | not included |
 | **Total** | | **about $0.48 plus telephony** |
 
@@ -131,6 +146,13 @@ The call's `costs` include the model cost with its billable voice time in `secon
 
 ## Troubleshooting
 
+### GPT-Live isn't available, or calls don't start
+
+- **GPT-Live isn't offered for your organization.** It must be enabled for your organization. See [Access](/gpt-live/overview#access).
+- **You use your own OpenAI API key.** The key needs access to GPT-Live and to the reasoner model you selected.
+- **The assistant is rejected when you save it.** See [A voice or tool is rejected when saving](#a-voice-or-tool-is-rejected-when-saving).
+- **Calls stopped starting after you added a skill or saved tool.** Check that every saved tool ID the assistant or its skills reference still exists.
+
 ### The assistant said it would act, but nothing happened
 
 Follow the request through the call, in order:
@@ -141,6 +163,10 @@ Follow the request through the call, in order:
 4. **What does your service show?** Its state is the answer to whether the action happened.
 
 Delegation is a model decision, so check over several calls after changing the prompt.
+
+### A tool result never reaches the conversation
+
+The tool ran, but the assistant didn't use its result. Check your webhook's response against [the tool response contract](/gpt-live/tools#the-tool-response-contract): HTTP 200, one entry per call with the `toolCallId` from the request, and `result` or `error` as a string. For an async tool, the result must come back in the response to the original request. A job that finishes after your webhook has responded needs a status tool. See [Slow and external work](/gpt-live/tools#slow-and-external-work).
 
 ### Said goodbye but the call didn't end
 

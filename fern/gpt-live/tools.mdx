@@ -7,7 +7,7 @@ slug: gpt-live/tools
 
 In a GPT-Live assistant, the reasoner calls your tools. The speaker never calls them directly. It delegates, and the reasoner decides which tool to use and returns what it found. Your service decides what actually happens.
 
-This tutorial connects the appointment assistant from [Design conversations](/gpt-live/design) to a small test service you run on your own machine. You'll start with read-only lookups, add booking, then test corrections and failures. At each step you can check the service's state to see what really happened, alongside what the assistant said.
+This tutorial builds an assistant that books appointments for Example Service Studio, a fictional business, and connects it to a small test service you run on your own machine. It's the same assistant used as the example in [Design conversations](/gpt-live/design). You'll start with read-only lookups, add booking, then test corrections and failures. At each step you can check the service's state to see what really happened, alongside what the assistant said.
 
 <Note>
 The test service keeps a fictional calendar in memory. Nothing it does books a real appointment, and its data is lost when it stops. It's a local fixture for learning and testing, not a production deployment.
@@ -260,6 +260,8 @@ Set `async: true` on a function tool when the reasoner shouldn't wait for it, fo
 
 Work that finishes after your webhook has responded is different. If your handler returns "queued" and a job keeps running elsewhere, nothing updates the conversation when the job finishes. Give the reasoner a status tool, such as `checkOrderStatus`, and tell it when to use it. Report a queued job as queued, never as done.
 
+Ending the call doesn't undo work your service has already started. Don't assume a hangup cancels an in-flight request; check its status in your service.
+
 While an async call or external job is pending, idle check-ins can resume if the caller goes quiet. See [When the caller goes quiet](/gpt-live/design#when-the-caller-goes-quiet).
 
 ## Answer questions from your content
@@ -293,7 +295,7 @@ A transfer involves separate events: the assistant says it's transferring, the r
 
 ## Use existing MCP tools
 
-MCP tools you already use with a Vapi assistant work with GPT-Live. Attach the same saved tool IDs through `model.toolIds`, or keep inline `type: "mcp"` definitions in `model.tools`. See [MCP tools](/tools/mcp) for setup.
+MCP tools you already use with a Vapi assistant work with GPT-Live, with their existing server URLs, headers, and credentials. Attach the same saved tool IDs through `model.toolIds`, or keep inline `type: "mcp"` definitions in `model.tools`. See [MCP tools](/tools/mcp) for setup.
 
 At the start of a call, Vapi connects to the MCP server and makes its tools available to the reasoner. The tool list stays fixed for that call, so start a new call to pick up changes on the server. Put tool-use procedures in the reasoner prompt and delegation triggers in the speaker prompt.
 
@@ -303,6 +305,7 @@ When you replace the test service with your own:
 
 - Authenticate the webhook with a [credential](/server-url/server-authentication).
 - Enforce the prerequisites for every action in the service, as the test service does.
+- Tool calls can arrive together. The reasoner can request several at once, and they can run concurrently, so enforce any required order, such as lookup before booking, in the service.
 - Make state-changing operations safe to repeat, using the `toolCallId` or your own operation IDs.
 - Keep the result style above: short, specific, and clear about what didn't happen.
 
