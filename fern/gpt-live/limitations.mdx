@@ -9,7 +9,7 @@ GPT-Live has a different set of supported features from Vapi's other voice archi
 
 These limits describe **Vapi's GPT-Live integration**. A capability in OpenAI's direct API isn't necessarily exposed through Vapi.
 
-**Jump to:** [Calls and voices](#calls-and-voice) · [Transfers](#transfers-and-keypad-input) · [Squads](#can-i-use-an-existing-squad) · [Live control](#can-i-inject-commentary-or-control-speech-during-a-call) · [Testing](#can-i-run-simulations-and-evals) · [Recordings](#recordings-and-post-call-data)
+**Jump to:** [Calls and voices](#calls-and-voice) · [Transfers](#transfers-and-keypad-input) · [Squads](#can-i-use-an-existing-squad) · [Live control](#can-i-inject-commentary-or-control-speech-during-a-call) · [Silence](#can-i-reuse-silence-hooks-and-timeouts) · [Testing](#can-i-run-simulations-and-evals) · [Recordings](#recordings-and-post-call-data)
 
 ## Calls and voice
 
@@ -60,9 +60,17 @@ Yes. Send HTTP requests to the call's `monitor.controlUrl` to:
 
 See [Live call control](/gpt-live/configuration#live-call-control) for request examples, authentication, and response behavior. Appended context affects the speaker; it doesn't update reasoner history or directly trigger tools. Submission doesn't guarantee exact wording or completed speech.
 
-The raw WebSocket connection supports audio streaming only. Send controls over HTTP, not WebSocket text frames or SDK data channels. Classic `say`, `add-message`, and mute/unmute commands remain unsupported.
+The raw WebSocket connection supports audio streaming only. Send controls over HTTP, not WebSocket text frames or SDK data channels. Classic HTTP `say`, `add-message`, and mute/unmute commands remain unsupported. The `say` and `message.add` actions in [silence hooks](#can-i-reuse-silence-hooks-and-timeouts) are separate assistant configuration.
 
 A caller can ask the assistant to slow down or explain differently, and you can prompt it to respond to those requests. That conversational behavior is separate from an application sending a control command.
+
+## Can I reuse silence hooks and timeouts?
+
+Yes. GPT-Live supports `customer.speech.timeout` hooks with `say`, `message.add`, and inline `endCall` actions. Existing trigger limits and reset modes apply. Saved tool references, function calls, transfers, and other hook actions aren't supported by this silence handler; this doesn't imply support for every assistant hook event.
+
+The legacy `silenceTimeoutSeconds` and `messagePlan.silenceTimeoutMessage` settings also work, including an organization's existing behavior for skipping that timeout when hooks are present. Caller speech during a legacy timeout farewell cancels its pending hangup. Once a hook's explicit `endCall` fires, caller speech doesn't cancel that hangup.
+
+See [Silence handling](/gpt-live/configuration#silence-handling) for examples, timing, and interruption behavior. Hook speech is generated and remains subject to the wording limitations below.
 
 ## Can I guarantee exact speech or a fixed pause?
 
