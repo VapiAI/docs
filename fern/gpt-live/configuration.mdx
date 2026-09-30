@@ -1,7 +1,7 @@
 ---
 title: Configure GPT-Live
 subtitle: Create an assistant, choose its voice, and connect your tools
-description: Configure a GPT-Live assistant in Vapi using the dashboard or API, with speaker and reasoner settings, voice samples, tools, call connections, and analysis.
+description: Configure a GPT-Live assistant in Vapi using the dashboard or API, with speaker and reasoner settings, voices, idle-message hooks, tools, call connections, and analysis.
 slug: gpt-live/configuration
 ---
 
@@ -9,7 +9,7 @@ Create an assistant that checks appointment availability and reads back the resu
 
 For help deciding what to put in each prompt, read [Design your assistant](/gpt-live/design). For feature restrictions, use [Limitations and FAQs](/gpt-live/limitations).
 
-**Jump to:** [Create an assistant](#create-an-assistant) · [Model settings](#model-settings) · [Personality](#personality-and-language) · [Voices](#voices) · [Tools](#connect-your-tools) · [Calls](#connect-a-call) · [Live control](#live-call-control) · [Analysis](#review-and-monitor-calls)
+**Jump to:** [Create an assistant](#create-an-assistant) · [Model settings](#model-settings) · [Personality](#personality-and-language) · [Voices](#voices) · [Idle messages](#idle-messages) · [Tools](#connect-your-tools) · [Calls](#connect-a-call) · [Live control](#live-call-control) · [Analysis](#review-and-monitor-calls)
 
 ## Before you start
 
@@ -265,6 +265,82 @@ Use a text greeting if the assistant should begin the conversation.
 
 Generated speech may vary from the supplied greeting. A text greeting is not a guarantee of exact prerecorded playback.
 
+## Idle messages
+
+Configure idle messages with `customer.speech.timeout` [assistant hooks](/assistants/assistant-hooks). GPT-Live can check in when the caller hasn't responded, make another check-in later, and optionally end the call with a final hook.
+
+Use `say.prompt` to guide each idle message. GPT-Live generates the spoken response; it doesn't guarantee exact wording or verbatim playback.
+
+Add these fields at the top level of your assistant configuration, preserving any existing hooks:
+
+```json title="Two idle check-ins and an optional final hangup"
+{
+  "hooks": [
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 8,
+        "triggerMaxCount": 3,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [
+        { "type": "say", "prompt": "Briefly ask whether the caller is still there." }
+      ]
+    },
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 16,
+        "triggerMaxCount": 3,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [
+        { "type": "say", "prompt": "Briefly ask whether the caller would like more time." }
+      ]
+    },
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 30,
+        "triggerMaxCount": 1
+      },
+      "do": [
+        { "type": "say", "prompt": "Say a brief goodbye because the caller hasn't responded." },
+        { "type": "tool", "tool": { "type": "endCall" } }
+      ]
+    }
+  ]
+}
+```
+
+The first two hooks request check-ins after 8 and 16 seconds. At 30 seconds of continued caller silence, the optional third hook requests a farewell, then ends the call. All three delays use the same silence window: a check-in doesn't postpone the later hooks. Each hook fires at most once per window. To add another check-in within that window, add a separate hook with a different timeout.
+
+| Hook option | Behavior |
+| --- | --- |
+| `options.timeoutSeconds` | Set explicitly for each hook. Accepts 2–1000 seconds. |
+| `options.triggerMaxCount` | Limits triggers across silence windows. Accepts 1–10; defaults to 3. |
+| `options.triggerResetMode` | Defaults to `never`, keeping the trigger count across the call. Set `onUserSpeech` to reset the count when the caller speaks. |
+
+The first silence window starts when the conversation becomes active. Caller speech cancels the remaining check-ins for that window; an ordinary assistant response or further reasoner activity can start a new window. The hook's own speech doesn't rearm it. Pending reasoner work and transfers defer silence handling. Timing follows conversation activity, so test the delays with your prompts and tools.
+
+### Supported idle-message hook actions
+
+| Action | GPT-Live behavior |
+| --- | --- |
+| `say` with `prompt` | Generates one spoken response guided by the prompt. The model chooses the wording. |
+| `message.add` | Adds context to the speaker and requests a response by default. Set `triggerResponseEnabled: false` to add context without requesting speech. System and developer messages become speaker instructions; other roles become speaker context. |
+| `tool` with inline `tool: { "type": "endCall" }` | Ends the call, allowing an accompanying spoken action to play first. Without a spoken action, ends immediately. |
+
+Other actions, including saved `toolId` references, function calls, and transfers, aren't executed by these GPT-Live hooks. Hook messages affect the speaker, not the reasoner's history. These hook actions are separate from HTTP live-call controls: HTTP `say` and `add-message` remain unsupported.
+
+Use `say.prompt` for a one-time check-in. Its speech request applies to one response; if the caller interrupts, the speaker is instructed to answer the caller without repeating or resuming the check-in.
+
+<Note>
+An inline `endCall` action is an explicit instruction to hang up. Once that hook fires, caller speech doesn't cancel the pending hangup. Choose the timeout accordingly.
+</Note>
+
+Test a silent caller, a caller returning after multiple check-ins, and a slow tool response. Confirm that check-ins stop when the caller returns and don't repeat during the resumed conversation. If you include an `endCall` hook, verify its final hangup behavior too.
+
 ## Connect your tools
 
 Handle Vapi's [`tool-calls` server message](/server-url/events) at your HTTPS endpoint. Read `message.toolCallList`, validate each function's arguments, and query your availability service.
@@ -409,7 +485,7 @@ Cold transfer isn't supported on browser or raw WebSocket calls. Don't include p
 
 Successful commands return HTTP `200` with `{"status":"ok"}`. Rejected requests return an error, including when the call isn't active or is already transferring. If a `502` response reports an unconfirmed outcome, don't automatically retry: the action may have reached the provider. A `503` response stating that no action was taken is safe to retry.
 
-GPT-Live doesn't support `say`, `add-message`, or mute/unmute controls. Use `append-context` for speaker guidance. See [live control compatibility](/gpt-live/limitations#can-i-inject-commentary-or-control-speech-during-a-call).
+GPT-Live doesn't support HTTP `say`, `add-message`, or mute/unmute controls. Use `append-context` for speaker guidance. The `say` and `message.add` actions in [idle-message hooks](#idle-messages) are configured on the assistant and aren't HTTP control commands. See [live control compatibility](/gpt-live/limitations#can-i-inject-commentary-or-control-speech-during-a-call).
 
 ## Review and monitor calls
 
