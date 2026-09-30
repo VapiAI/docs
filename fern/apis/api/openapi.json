@@ -11059,6 +11059,7 @@
                   "nova-3",
                   "nova-3-general",
                   "nova-3-medical",
+                  "nova-3-pharma",
                   "nova-2",
                   "nova-2-general",
                   "nova-2-meeting",
@@ -14196,6 +14197,7 @@
                   "nova-3",
                   "nova-3-general",
                   "nova-3-medical",
+                  "nova-3-pharma",
                   "nova-2",
                   "nova-2-general",
                   "nova-2-meeting",
@@ -44319,6 +44321,67 @@
           }
         }
       },
+      "TranscriptWordConfidence": {
+        "type": "object",
+        "properties": {
+          "word": {
+            "type": "string",
+            "description": "The word as the transcriber recognised it."
+          },
+          "start": {
+            "type": "number",
+            "description": "Offset at which the word begins, measured from the start of the\ntranscriber stream (ElevenLabs, which transcribes each utterance as its\nown request, measures from the start of that utterance's audio). The unit\nis transcriber-specific today: seconds for Deepgram, Soniox, Gladia and\nElevenLabs realtime (`scribe_v2_realtime`); milliseconds for AssemblyAI,\nElevenLabs HTTP Scribe and Google. Transcribers without per-word timing\nemit a placeholder, typically `0`."
+          },
+          "end": {
+            "type": "number",
+            "description": "Offset at which the word ends, with the same origin and unit as `start`."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "The transcriber's confidence for this word, in [0, 1]. Transcribers that\nreport no per-word score, or whose stream does not map one (Cartesia,\nElevenLabs HTTP Scribe, Google, Talkscriber and custom transcribers), emit\n`1` for every word; that placeholder is not a measurement. ElevenLabs\nrealtime passes through its token log-probability, which is not a [0, 1]\nconfidence.",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "punctuated_word": {
+            "type": "string",
+            "description": "The word with punctuation and casing applied, when the transcriber\nreports a punctuated form. The snake_case name deliberately mirrors the\ntranscriber wire spelling already stored on every existing message;\nrenaming it would break stored data."
+          },
+          "language": {
+            "type": "string",
+            "description": "The language the transcriber detected for this word, when it reports one."
+          },
+          "speaker": {
+            "type": "number",
+            "description": "The diarized speaker index this word was attributed to, when the\ntranscriber reports one."
+          }
+        },
+        "required": [
+          "word",
+          "start",
+          "end",
+          "confidence"
+        ]
+      },
+      "UserMessageMetadata": {
+        "type": "object",
+        "properties": {
+          "wordLevelConfidence": {
+            "description": "Per-word confidence scores from the transcriber. After consecutive\ntranscript fragments are merged into one message the list covers the whole\nmerged message, or is absent when any fragment lacked word scores.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscriptWordConfidence"
+            }
+          },
+          "type": {
+            "type": "string",
+            "description": "Marks a message injected out-of-band rather than produced by the\ntranscriber (e.g. an inbound SMS relayed into the conversation)."
+          },
+          "source": {
+            "type": "string",
+            "description": "The channel or address the out-of-band message arrived from (e.g. the\nsender's phone number for an SMS)."
+          }
+        }
+      },
       "UserMessage": {
         "type": "object",
         "properties": {
@@ -44361,9 +44424,27 @@
             "type": "string",
             "description": "The original message before filtering (only included if content was filtered)."
           },
+          "confidence": {
+            "type": "number",
+            "description": "The transcriber's confidence score for this message, in [0, 1]. Only\never set alongside `confidenceSource` — see there for why an unmarked\nor out-of-range score is never stored.",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "confidenceSource": {
+            "type": "string",
+            "description": "Whether `confidence` came directly from the transcriber ('provider') or\nwas computed by Vapi ('derived').\n\n'derived' means Vapi computed the score from the transcriber's per-word\nscores; the exact aggregation is provider-specific (an average, a median\nor a minimum, depending on the transcriber). It is also 'derived' when\nconsecutive transcript fragments were merged into one message, where the\nscore is the minimum across the fragments.\n\nAbsent means no trustworthy score was available for this message: either\nthe transcriber does not report one, or the value it reported was invalid\nand was dropped. A merged message is unmarked whenever any fragment it\ncontains was unmarked.",
+            "enum": [
+              "provider",
+              "derived"
+            ]
+          },
           "metadata": {
-            "type": "object",
-            "description": "The metadata associated with the message. Currently used to store the transcriber's word level confidence."
+            "description": "The metadata associated with the message. Currently used to store the transcriber's word level confidence.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserMessageMetadata"
+              }
+            ]
           },
           "speakerLabel": {
             "type": "string",
@@ -58809,31 +58890,6 @@
             "minLength": 1,
             "maxLength": 1000
           },
-          "model": {
-            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nBetween the system or user messages, you must reference either 'transcript' or 'messages' with the `{{}}` syntax to access the conversation history.\nBetween the system or user messages, you must reference a variation of the structured output with the `{{}}` syntax to access the structured output definition.\ni.e.:\n`{{structuredOutput}}`\n`{{structuredOutput.name}}`\n`{{structuredOutput.description}}`\n`{{structuredOutput.schema}}`\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/WorkflowOpenAIModel",
-                "title": "WorkflowOpenAIModel"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowAnthropicModel",
-                "title": "WorkflowAnthropicModel"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowAnthropicBedrockModel",
-                "title": "WorkflowAnthropicBedrockModel"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowGoogleModel",
-                "title": "WorkflowGoogleModel"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowCustomModel",
-                "title": "WorkflowCustomModel"
-              }
-            ]
-          },
           "compliancePlan": {
             "description": "Compliance configuration for this output. Only enable overrides if no sensitive data will be stored.",
             "example": {
@@ -58875,6 +58931,31 @@
                 }
               ]
             }
+          },
+          "model": {
+            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nBetween the system or user messages, you must reference either 'transcript' or 'messages' with the `{{}}` syntax to access the conversation history.\nBetween the system or user messages, you must reference a variation of the structured output with the `{{}}` syntax to access the structured output definition.\ni.e.:\n`{{structuredOutput}}`\n`{{structuredOutput.name}}`\n`{{structuredOutput.description}}`\n`{{structuredOutput.schema}}`\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowOpenAIModel",
+                "title": "WorkflowOpenAIModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAnthropicModel",
+                "title": "WorkflowAnthropicModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAnthropicBedrockModel",
+                "title": "WorkflowAnthropicBedrockModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowGoogleModel",
+                "title": "WorkflowGoogleModel"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowCustomModel",
+                "title": "WorkflowCustomModel"
+              }
+            ]
           },
           "name": {
             "type": "string",
@@ -74775,6 +74856,20 @@
           "originalTranscript": {
             "type": "string",
             "description": "The original transcript before filtering (only included if content was filtered)."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "The transcriber's confidence score for this transcript, in [0, 1]. Only\never set alongside `confidenceSource` — see there for why an unmarked\nscore is never included. Set only on final user-role transcripts: each\nlive message carries the score of the one fragment it was built from, and\n`artifact.messages` agrees with it per fragment. A stored message built\nfrom several consecutive fragments reports the minimum across them as\n'derived', so it can differ from the individual live messages that fed\nit. Partials never carry a score, because nothing stored exists for a\npartial's score to agree with.",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "confidenceSource": {
+            "type": "string",
+            "description": "Whether `confidence` came directly from the transcriber ('provider') or\nwas computed by Vapi ('derived').\n\n'derived' means Vapi computed the score from the transcriber's per-word\nscores; the exact aggregation is provider-specific (an average, a median\nor a minimum, depending on the transcriber).\n\nAbsent means no trustworthy score was available for this transcript:\neither the transcriber does not report one, or the value it reported was\ninvalid and was dropped.",
+            "enum": [
+              "provider",
+              "derived"
+            ]
           }
         },
         "required": [
@@ -79026,6 +79121,20 @@
           "originalTranscript": {
             "type": "string",
             "description": "The original transcript before filtering (only included if content was filtered)."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "The transcriber's confidence score for this transcript, in [0, 1]. Only\never set alongside `confidenceSource` — see there for why an unmarked\nscore is never included. Set only on final user-role transcripts: each\nlive message carries the score of the one fragment it was built from, and\n`artifact.messages` agrees with it per fragment. A stored message built\nfrom several consecutive fragments reports the minimum across them as\n'derived', so it can differ from the individual live messages that fed\nit. Partials never carry a score, because nothing stored exists for a\npartial's score to agree with.",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "confidenceSource": {
+            "type": "string",
+            "description": "Whether `confidence` came directly from the transcriber ('provider') or\nwas computed by Vapi ('derived').\n\n'derived' means Vapi computed the score from the transcriber's per-word\nscores; the exact aggregation is provider-specific (an average, a median\nor a minimum, depending on the transcriber).\n\nAbsent means no trustworthy score was available for this transcript:\neither the transcriber does not report one, or the value it reported was\ninvalid and was dropped.",
+            "enum": [
+              "provider",
+              "derived"
+            ]
           }
         },
         "required": [
