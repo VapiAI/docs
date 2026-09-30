@@ -1,232 +1,42 @@
 ---
 title: Build with tools
-subtitle: Connect a real service so the assistant can look up, book, and answer questions
-description: Connect a GPT-Live assistant to a runnable test service. Check availability, book a confirmed time, handle corrections and failures, answer service questions, handle slow work, and transfer calls.
+subtitle: Connect your service so the assistant can look things up, take actions, and answer questions
+description: How GPT-Live uses tools. Design tool inputs and results, handle actions that change state, return results correctly, handle slow and external work, and connect retrieval, transfers, and MCP tools.
 slug: gpt-live/tools
 ---
 
-In a GPT-Live assistant, the reasoner calls your tools. The speaker never calls them directly. It delegates, and the reasoner decides which tool to use and returns what it found. Your service decides what actually happens.
+In a GPT-Live assistant, the reasoner calls your tools. The speaker never calls them directly: it delegates, the reasoner decides which tool to use, and it returns what it found for the speaker to use in the conversation. Your service decides what actually happens.
 
-This tutorial builds an assistant that books appointments for Example Service Studio, a fictional business, and connects it to a small test service you run on your own machine. It's the same assistant used as the example in [Design conversations](/gpt-live/design). You'll start with read-only lookups, add booking, then test corrections and failures. At each step you can check the service's state to see what really happened, alongside what the assistant said.
-
-<Note>
-The test service keeps a fictional calendar in memory. Nothing it does books a real appointment, and its data is lost when it stops. It's a local fixture for learning and testing, not a production deployment.
-</Note>
-
-## What you'll build
+This page uses an appointment assistant as its example. It has four tools of its own, plus Vapi's built-in `endCall`:
 
 | Tool | What it does | Changes state? |
 | --- | --- | --- |
 | `lookupAvailability` | Lists every open time for a service, location, and date | No |
 | `getServiceInfo` | Returns today's date, services, what to bring, locations, hours, and the change policy | No |
-| `bookAppointment` | Books a time returned by a lookup in the same call | Yes |
-| `cancelAppointment` | Cancels a booking made in the same call | Yes |
-| `endCall` | Built-in Vapi tool that ends the call | Ends the call |
+| `bookAppointment` | Books a time returned by a lookup | Yes |
+| `cancelAppointment` | Cancels a booking | Yes |
+
+Function tools are covered in general in [Function tools](/tools/custom-tools). This page covers what matters when a GPT-Live assistant uses them.
 
 ## Before you start
 
-- GPT-Live enabled for your Vapi organization.
-- [Node.js](https://nodejs.org) 22 or later. The test service has no other dependencies.
-- An HTTPS tunnel to your machine, such as ngrok or Cloudflare Tunnel, so Vapi can reach the service.
-- A Vapi private API key, and [`jq`](https://jqlang.org), for the API steps.
+- A GPT-Live assistant. The [Quickstart](/gpt-live/quickstart) creates one.
+- For custom function tools, a server that handles Vapi's tool calls, protected with a [credential](/server-url/server-authentication).
+- Speaker and reasoner prompts that say when to delegate and how to use each tool. [Design conversations](/gpt-live/design#turn-the-design-into-prompts) shows a full pair for this example.
 
-## Run the test service
+## Design tool inputs and results
 
-Download the service and the two assistant configurations, one for each step:
+A tool's inputs and results shape the conversation as much as the prompts do.
 
-<Download src="../static/gpt-live/appointment-server.mjs">
-  <Button intent="primary" rightIcon="download">Download appointment-server.mjs</Button>
-</Download>
+**Return enough to answer the likely follow-up.** The example lookup takes a service, location, and date, and returns every open time for that day. If the caller adds "ideally after three" while it runs, the result still answers the request, and the assistant can filter it without another lookup. A different day or location changes the request, so it needs a new lookup. Keep results short even when they're complete.
 
-<Download src="../static/gpt-live/appointment-assistant-lookup.json">
-  <Button intent="primary" rightIcon="download">Download appointment-assistant-lookup.json (step 1)</Button>
-</Download>
+**Echo the request details.** Include the date and location in each result. When the caller changes their mind during a lookup, the earlier result may still come back, and the details make it easy to recognize as out of date.
 
-<Download src="../static/gpt-live/appointment-assistant.json">
-  <Button intent="primary" rightIcon="download">Download appointment-assistant.json (step 2)</Button>
-</Download>
+**Say what didn't happen, as well as what did.** "Availability only. Nothing has been booked" helps the assistant avoid overstating a lookup.
 
-You'll use three terminals: one for the service, one for the tunnel, and one for commands. Start by generating a token to authenticate requests to your webhook:
+**Keep results plain.** The reasoner passes what matters to the speaker, so leave out Markdown and long explanations.
 
-```bash
-openssl rand -hex 24
-```
-
-Copy the output. In the **service terminal**, set it and start the service:
-
-```bash
-export FIXTURE_TOKEN="paste-your-token-here"
-node appointment-server.mjs
-```
-
-The service listens on two local ports:
-
-- `3000` receives Vapi's tool calls at `/vapi/tools`. This is the only port to expose through your tunnel.
-- `3001` is for you. It shows the calendar state and has test controls. Keep it private.
-
-In the **tunnel terminal**, start a tunnel to port 3000, for example `ngrok http 3000`, and note the public host name.
-
-In the **command terminal**, set the same token, your tunnel host, and your Vapi private API key. Every later command runs here:
-
-```bash
-export FIXTURE_TOKEN="paste-your-token-here"
-export TUNNEL_HOST="your-tunnel-host.example"
-export VAPI_PRIVATE_API_KEY="paste-your-private-key-here"
-```
-
-Check that the service is running, locally and through the tunnel:
-
-```bash
-curl -s http://127.0.0.1:3001/health
-curl -s "https://$TUNNEL_HOST/health"
-```
-
-You should see `{"ok": true, ...}`. Then send a tool call the same way Vapi does, to confirm the request and response format:
-
-```bash
-curl -s "https://$TUNNEL_HOST/vapi/tools" \
-  -H "Authorization: Bearer $FIXTURE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"message":{"type":"tool-calls","call":{"id":"curl-test"},"toolCallList":[{"id":"call_1","type":"function","function":{"name":"getServiceInfo","arguments":{}}}]}}'
-```
-
-The response has one entry in `results`, with `"toolCallId": "call_1"` and a `result` string describing the fictional business. That is the format your own service needs to return.
-
-Finally, give Vapi the token. In the dashboard, create a **Bearer Token** custom credential with your `FIXTURE_TOKEN` value, as described in [Server authentication](/server-url/server-authentication), and keep its credential ID:
-
-```bash
-export CREDENTIAL_ID="your-credential-id"
-```
-
-## Step 1: Check availability
-
-Start with the two read-only business tools and `endCall`. The step 1 configuration has only those tools, and its prompts say booking isn't connected yet. Nothing can be booked, so this step is safe to repeat.
-
-Create the assistant, pointing its tools at your tunnel:
-
-```bash
-jq --arg host "$TUNNEL_HOST" --arg cred "$CREDENTIAL_ID" '
-  .model.tools |= map(
-    if .type == "function"
-    then .server = {url: ("https://" + $host + "/vapi/tools"), credentialId: $cred}
-    else . end)
-' appointment-assistant-lookup.json > step1-assistant.json
-
-curl --fail-with-body https://api.vapi.ai/assistant \
-  -H "Authorization: Bearer $VAPI_PRIVATE_API_KEY" \
-  -H "Content-Type: application/json" \
-  --data-binary @step1-assistant.json
-```
-
-Keep the returned `id`, and set it in the command terminal:
-
-```bash
-export ASSISTANT_ID="paste-the-returned-id-here"
-```
-
-To build it in the dashboard instead, create an assistant and switch it to GPT-Live as in the [Quickstart](/gpt-live/quickstart#create-the-assistant), then paste the speaker and reasoner prompts from the file and add the tools with the same names, parameters, and server settings.
-
-Open the assistant in the dashboard, select **Talk**, and try:
-
-1. "I'd like a consultation downtown on" a weekday in the next two weeks.
-2. While it checks, answer if it asks about a time of day.
-3. "Anything after three?"
-4. "Can you book the 4 o'clock?"
-5. "That's all, goodbye."
-
-What to check:
-
-- **The service log.** The service terminal prints each tool call with its arguments. You should see `lookupAvailability` with the service, location, and date you asked for.
-- **The spoken times.** They should match the times in the log's result. After "Anything after three?", the assistant can answer from the same result without another lookup.
-- **The booking request.** Booking isn't connected in this step, so the assistant should say it can check times but can't book yet. The service log shows no booking call.
-- **The call record.** The call ends through `endCall`, which appears in the call's messages.
-
-You can also see every tool call and its outcome in one place:
-
-```bash
-curl -s http://127.0.0.1:3001/state
-```
-
-## Step 2: Book a confirmed time
-
-Now add booking. The step 2 configuration has all four business tools, `endCall`, and the full prompts from [Design conversations](/gpt-live/design#example-split-a-scheduling-prompt). Update the assistant with it:
-
-```bash
-jq --arg host "$TUNNEL_HOST" --arg cred "$CREDENTIAL_ID" '
-  {model: (.model | .tools |= map(
-    if .type == "function"
-    then .server = {url: ("https://" + $host + "/vapi/tools"), credentialId: $cred}
-    else . end))}
-' appointment-assistant.json > step2-model.json
-
-curl --fail-with-body -X PATCH "https://api.vapi.ai/assistant/$ASSISTANT_ID" \
-  -H "Authorization: Bearer $VAPI_PRIVATE_API_KEY" \
-  -H "Content-Type: application/json" \
-  --data-binary @step2-model.json
-```
-
-Booking changes state, so the service checks what it can before it acts:
-
-| Check | Why |
-| --- | --- |
-| The slot came from a lookup in this call | The service only books a time it actually reported as open |
-| The slot is still open | Someone else may have taken it since the lookup |
-| This call has no other active booking | A changed request must cancel the first booking before making another |
-| The same slot requested again returns the existing booking | A repeated request doesn't create a second booking |
-| A repeated delivery of the same tool call returns the original outcome, even if the copies arrive at once | A retry is safe |
-
-The service can't check what happened in the conversation: whether the caller heard that time, chose it, and agreed. The prompts ask the assistant to read back the details and get agreement before booking, and a real service might add its own confirmation step. Keep the checks that matter in your service, because prompts guide the model but don't enforce anything.
-
-Make a call and book a time. Then check the state:
-
-```bash
-curl -s http://127.0.0.1:3001/state | jq '.bookings'
-```
-
-There should be exactly one booking, with the time, location, and name you confirmed. The assistant should say the booking is done only after the `bookAppointment` result appears in the service log.
-
-## Step 3: Corrections and failures
-
-The test controls on port 3001 let you create the situations that are hard to produce on demand. Each one applies to the next matching tool call.
-
-**A correction during a lookup.** Slow the next lookup so there's time to change your mind:
-
-```bash
-curl -s -X POST http://127.0.0.1:3001/test/delay-next \
-  -H "Content-Type: application/json" -d '{"tool":"lookupAvailability","seconds":8}'
-```
-
-Ask for one day, then say "Actually, the next day instead" while it's checking. The log should show a second lookup for the new day, and the times offered should come from it. If you then book, the booking should use the new day.
-
-**A time that's no longer available.** After a lookup, take one of the offered slots, using a `slotId` from the log:
-
-```bash
-curl -s -X POST http://127.0.0.1:3001/test/take-slot \
-  -H "Content-Type: application/json" -d '{"slotId":"downtown-2026-10-06-1430"}'
-```
-
-Ask to book that time. The service returns an error, and the assistant should say the time is gone and offer to look again. It shouldn't claim a booking.
-
-**A service outage.** Make the next booking fail:
-
-```bash
-curl -s -X POST http://127.0.0.1:3001/test/fail-next \
-  -H "Content-Type: application/json" -d '{"tool":"bookAppointment"}'
-```
-
-The assistant should explain that the booking didn't go through. This test failure is known to have no side effect, so the service can say nothing was booked.
-
-A real failure can be less clear. If a request times out, the booking may have been made before the connection dropped. Your service shouldn't report "nothing was booked" from a timeout alone. Check the booking record before retrying, and reuse the same operation ID so a retry can't book twice. When the outcome is unknown, the assistant should say so and offer to check.
-
-**Moving a booking.** Book a time, then ask to move it to another day. The assistant should look up the new day, get your agreement, then cancel and rebook. The state should show the first booking cancelled and one new booking. In this service, a move is two separate operations, so if the new booking fails after the cancellation, the assistant should tell you exactly that.
-
-**A slow booking.** Delay the next `bookAppointment` by 8 seconds and listen to the wait. Compare it with [When the next step is blocked](/gpt-live/design#when-the-next-step-is-blocked): one acknowledgment, useful answers if the caller asks something, and no invented progress.
-
-To start over, reset the calendar:
-
-```bash
-curl -s -X POST http://127.0.0.1:3001/test/reset
-```
+**Make failures specific**, with the next step: "That time is no longer available. Look up availability again."
 
 ## The tool response contract
 
@@ -237,24 +47,47 @@ Vapi sends a `tool-calls` [server message](/server-url/events) to your server UR
   "results": [
     {
       "toolCallId": "call_1",
-      "result": "{\"testData\":true,\"status\":\"booked\",\"date\":\"2026-10-06\",\"time\":\"14:30\",\"note\":\"Booked in the test calendar only.\"}"
+      "result": "{\"status\":\"booked\",\"date\":\"2026-10-06\",\"time\":\"14:30\",\"location\":\"Downtown\"}"
     }
   ]
 }
 ```
 
-Use `result` for success and `error` for failure. Both must be flat strings, so serialize structured data. Return HTTP 200 even when a call fails, and report the failure in `error`. See [Function tools](/tools/custom-tools#server-response-format-providing-results-and-context) for the full contract.
+Use the `toolCallId` from the request. Use `result` for success and `error` for failure. Both must be flat strings, so serialize structured data. Return HTTP 200 even when a call fails, and report the failure in `error`. See [Function tools](/tools/custom-tools#server-response-format-providing-results-and-context) for the full contract.
 
-The reasoner reads your result and passes what matters to the speaker, so write results for that purpose:
+## Actions that change state
 
-- **Say what didn't happen**, as well as what did. "Availability only. Nothing has been booked" helps the assistant avoid overstating a lookup.
-- **Echo the request details**, such as the date and location, so a result for an outdated request is easy to recognize.
-- **Keep it short and factual.** Leave out Markdown and long explanations, since the reasoner's output reaches the speaker.
-- **Make failures specific**, with the next step: "That time is no longer available. Look up availability again."
+Lookups are safe to repeat. Bookings and cancellations aren't, so they need more care from both the prompts and your service.
+
+### Get the caller's agreement first
+
+A caller choosing a time is a selection, not agreement to book. Have the speaker read back the details and ask, and have the reasoner book only after the caller clearly says yes. [Design conversations](/gpt-live/design#example-split-a-scheduling-prompt) shows the prompt wording.
+
+A tool call alone doesn't establish whether the caller heard the details and agreed to them. Prompts guide the model, but they don't enforce approval. If an action needs a stronger confirmation, enforce it in your service.
+
+### Check prerequisites in your service
+
+Before an action runs, check what your service can:
+
+- The time came from a real lookup and is still open. Someone else may have taken it.
+- The request doesn't conflict with a booking already made, such as a second booking for the same caller when they meant to move the first.
+- A repeated request doesn't create a second booking. Use the `toolCallId` or your own operation ID to recognize a retry, and return the original outcome.
+
+Tool calls can arrive together. The reasoner can request several at once, and they can run concurrently, so enforce any required order, such as lookup before booking, in the service.
+
+### Handle uncertain outcomes
+
+A request can time out after your service has already made the booking. Don't report "nothing was booked" from a timeout alone. Check the booking record before retrying, and reuse the same operation ID so a retry can't book twice. When the outcome is unknown, the assistant should say so and offer to check.
+
+### Changes to a completed action
+
+If your service moves a booking in two operations—cancel the old one, then book the new one—account for what happens if only the first succeeds. Have the reasoner look up the new time and get the caller's agreement first, then follow your service's change procedure. If the new booking fails after the cancellation, the assistant should say exactly that: the original booking was cancelled and the new time wasn't booked.
+
+Interrupting the assistant doesn't cancel work already running. See [When callers change the request](/gpt-live/design#when-callers-change-the-request).
 
 ## Slow and external work
 
-A normal function tool makes the reasoner wait for your webhook's response. The conversation carries on meanwhile, as described in [While work is running](/gpt-live/design#while-work-is-running), and the reasoner returns the result for the speaker to use. This is the right choice when the caller is waiting for the answer, as with every tool in this tutorial.
+A normal function tool makes the reasoner wait for your webhook's response. The conversation carries on meanwhile, as described in [While work is running](/gpt-live/design#while-work-is-running), and the reasoner returns the result for the speaker to use. This is the right choice when the caller is waiting for the answer.
 
 Set `async: true` on a function tool when the reasoner shouldn't wait for it, for example when the result doesn't affect what happens next in the call. Vapi records the call as pending and the reasoner carries on. Your webhook still returns the final result in its response to the original request, matched by `toolCallId`. When that response arrives, the result is added to the reasoner's history and given to the speaker as quiet context. The speaker can use it when it's relevant, but the result isn't guaranteed to be announced as soon as it arrives. If the caller needs to hear it, use a normal tool.
 
@@ -299,14 +132,8 @@ MCP tools you already use with a Vapi assistant work with GPT-Live, with their e
 
 At the start of a call, Vapi connects to the MCP server and makes its tools available to the reasoner. The tool list stays fixed for that call, so start a new call to pick up changes on the server. Put tool-use procedures in the reasoner prompt and delegation triggers in the speaker prompt.
 
-## Moving to your own service
+## Check the outcome, not just the conversation
 
-When you replace the test service with your own:
+When you test a tool, look at three things together: what the assistant said, the tool calls and results in the call's messages, and your service's own records. The assistant saying a booking is done doesn't prove it happened. [Test and improve](/gpt-live/testing#scenarios-to-run) has a set of scenarios to run, including corrections, failures, and slow tools.
 
-- Authenticate the webhook with a [credential](/server-url/server-authentication).
-- Enforce the prerequisites for every action in the service, as the test service does.
-- Tool calls can arrive together. The reasoner can request several at once, and they can run concurrently, so enforce any required order, such as lookup before booking, in the service.
-- Make state-changing operations safe to repeat, using the `toolCallId` or your own operation IDs.
-- Keep the result style above: short, specific, and clear about what didn't happen.
-
-[Reasoner skills](/gpt-live/skills) show how to group procedures and tools when an assistant handles several kinds of work. [Test and improve](/gpt-live/testing) covers how to test the whole conversation.
+When an assistant handles several kinds of work, [reasoner skills](/gpt-live/skills) group each procedure with its tools.
