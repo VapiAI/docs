@@ -1,13 +1,11 @@
 ---
 title: Migrate to GPT-Live
-subtitle: Move an existing assistant or squad, compare it with the original, and keep a way back
-description: Migrate a Vapi assistant or squad to GPT-Live. Check fit, convert a copy, split prompts between the speaker and reasoner, map squad members to reasoner skills, compare results, and roll back safely.
+subtitle: Move an existing assistant, compare it with the original, and keep a way back
+description: Migrate a Vapi assistant to GPT-Live. Check fit, convert a copy, split prompts between the speaker and reasoner, compare results, and roll back safely.
 slug: gpt-live/migrate
 ---
 
-This page has two complete paths. Follow [From a single assistant](#from-a-single-assistant) if you're moving one assistant, or [From a squad](#from-a-squad) if you're combining a squad into one GPT-Live assistant. Each path repeats what it needs, so you can follow one without reading the other.
-
-Both start from the same preparation.
+Move a copy of your assistant first, compare it with the original, and switch traffic after it meets the same goals. This guide covers a single assistant. If you use a squad, see [From a squad](#from-a-squad) for the current limits.
 
 ## Before you start
 
@@ -16,7 +14,7 @@ Both start from the same preparation.
 Some features don't carry over. If your assistant depends on one of these, plan how to replace it before you begin:
 
 - **Voices** must be one of the [OpenAI voices GPT-Live supports](/gpt-live/configuration#voices). Other voice providers and custom or cloned voices aren't available.
-- **Squads and assistant handoffs** aren't supported. A squad becomes one assistant, as described [below](#from-a-squad).
+- **Squads and assistant handoffs** aren't supported. There is no direct squad conversion; see [the current limits](#from-a-squad).
 - **Model and voice fallbacks** must be removed. GPT-Live can't be a fallback model either.
 - **Exact or prerecorded speech** isn't available. GPT-Live generates all of its speech, including the greeting.
 - **Keypad input** from callers isn't supported.
@@ -31,7 +29,7 @@ Pick a handful of calls that represent what the assistant has to get right: a st
 
 ### Keep the original running
 
-Leave your phone numbers on the original assistant or squad until the GPT-Live version has passed the same calls. Work on a copy, test it on its own, and switch traffic when you're ready.
+Leave your phone numbers on the original assistant until the GPT-Live version has passed the same calls. Work on a copy, test it on its own, and switch traffic when you're ready.
 
 ## From a single assistant
 
@@ -140,8 +138,6 @@ Three things changed besides the split:
 - **Waiting is designed.** In the classic flow, the assistant read times out after a lookup and then asked for the name. The speaker now asks for the name while the lookup runs.
 - **Results are for speaking.** The reasoner returns short facts that the speaker can use directly.
 
-If the reasoner prompt grows to cover several distinct procedures, group them into [reasoner skills](/gpt-live/skills).
-
 ### 4. Map the settings
 
 | Classic setting | With GPT-Live |
@@ -204,104 +200,6 @@ If you need to take a converted assistant back to Classic, select **Revert to Cl
 
 ## From a squad
 
-A squad splits a conversation across assistants and hands the caller between them. GPT-Live keeps one voice for the whole call, and its reasoner can switch between procedures without a handoff. Migrating a squad means mapping what each member was responsible for onto one assistant. **Switch to GPT Live** converts a single assistant. It doesn't convert a squad, so this path is done by hand.
+GPT-Live doesn't support squads or assistant handoffs. **Switch to GPT Live** converts one assistant; it doesn't convert a squad or preserve its routing and handoff behavior.
 
-### How the pieces map
-
-Take a squad with a front-desk assistant that greets callers and routes them, a scheduling assistant, and a service-information assistant:
-
-| In the squad | In one GPT-Live assistant |
-| --- | --- |
-| Front-desk greeting, intake, and routing | Shared speaker behavior, assistant-wide reasoner rules, and delegation triggers |
-| Scheduling assistant | A `schedule-appointment` skill with its procedure and booking tools |
-| Service-information assistant | An `answer-service-questions` skill with its guidance and retrieval tool |
-| Handoff conditions | Skill descriptions and the speaker's delegation triggers |
-| Values passed between assistants | What the caller said is in the shared conversation. Values an earlier assistant or tool produced come from your services |
-| Protected actions | Checks in your services: prerequisites, confirmation, duplicate handling |
-| Transfer to a person | A `transferCall` tool, kept as a base tool |
-
-### 1. Map each member's responsibility
-
-For each assistant in the squad, write down what it's responsible for and why it was separate. Common reasons are a long procedure, a different set of tools, or a different tone.
-
-Then decide where each responsibility goes:
-
-- A procedure with its own rules and tools becomes a **skill**.
-- Rules every part of the call follows, like "never report an action a tool didn't confirm", go in the **reasoner prompt**.
-- Conversation guidance, like tone and pacing, goes in the **speaker prompt**.
-
-You don't need one skill per old assistant. A front-desk assistant that only greeted and routed usually doesn't need a skill at all: its job becomes the speaker's greeting and delegation triggers. Two specialists with closely related work may be clearer as one skill.
-
-### 2. Keep one voice and shared conversation rules
-
-Write one speaker prompt for the whole call. Take the greeting and tone from the assistant callers heard first, and add anything the specialists did differently that callers relied on, such as a slower pace for explaining policies.
-
-Remove handoff announcements like "Let me transfer you to our scheduling team." The caller stays with the same assistant, so they aren't needed. One of the goals of the migration is that the caller no longer repeats details at each handoff. Check that on real calls: it depends on your prompts and on the reasoner using the earlier conversation.
-
-A handoff was also a point where the conversation paused. Now the speaker can keep going while the reasoner works. When the caller moves from a question to booking, the speaker can start the lookup and ask for the name in the same breath:
-
-> **Caller:** Thanks. Can I book a consultation downtown on Friday?
->
-> **Assistant:** Sure, I'll check Friday downtown. Who should I put it under?
-
-Give the speaker the same waiting guidance as a single assistant: ask what the next step needs, answer what it already knows, and acknowledge a blocked wait once instead of filling it. See [Redesign the waits](#5-redesign-the-waits) above.
-
-### 3. Build the skills
-
-Each specialist's procedure becomes a skill's `content`, and its tools become the skill's tools. A minimal version for the scheduling and service-information specialists:
-
-```json title="model.reasoner (excerpt)"
-{
-  "instructions": "Work from the latest request in the conversation transcript. Load the skill that fits the request. Return short, plain facts the assistant can say. Never report an action a tool did not confirm. Call endCall when the caller asks to end the call.",
-  "skills": [
-    {
-      "name": "schedule-appointment",
-      "description": "Check open times, book a time, or cancel or move a booking made on this call.",
-      "content": "Call lookupAvailability when you have the service, location, and date. A caller choosing a time isn't agreement to book. Call bookAppointment only for a time from the latest lookup, and only when the transcript shows the assistant read back the day, time, location, and name and the caller then clearly said yes. Otherwise, return those details for the assistant to read back and confirm. To move a booking, look up the new time and confirm it with the caller first, then cancel the existing booking with cancelAppointment and book the new time. If the new booking fails after the cancellation, say so.",
-      "toolIds": ["LOOKUP_TOOL_ID", "BOOK_TOOL_ID", "CANCEL_TOOL_ID"]
-    },
-    {
-      "name": "answer-service-questions",
-      "description": "Answer questions about services, how long they take, what to bring, locations, hours, and the change policy.",
-      "content": "Use getServiceInfo and answer only from its result. If the caller was in the middle of booking, say so in your result so the assistant can return to it."
-    }
-  ]
-}
-```
-
-The `toolIds` are the IDs of the saved tools the scheduling assistant used. Tools that several skills need, or that must always be available, go in the assistant's base tools instead. Here `getServiceInfo`, `endCall`, and any transfer to a person are base tools. See [Reasoner skills](/gpt-live/skills#example-scheduling-and-service-questions) for the full procedure and tool placement.
-
-### 4. Turn handoff conditions into descriptions and triggers
-
-In the squad, handoff conditions decided which assistant took over. Now they do two jobs:
-
-- **Skill descriptions** tell the reasoner which procedure a request needs. Write them in terms of the caller's request, and make sure two skills don't claim the same requests.
-- **Delegation triggers** in the speaker prompt tell the speaker when to send work to the reasoner at all.
-
-A condition like "hand off to scheduling when the caller wants to book, move, or cancel" becomes the scheduling skill's description and a line in the speaker's triggers.
-
-The speaker also sees skill names and descriptions, so keep them short and suitable for the caller to hear about.
-
-### 5. Plan for what doesn't carry over
-
-- **Different voices or models per member.** One assistant has one voice and one reasoner model. Skills don't change either.
-- **Separate context per member.** In one assistant, the whole call's conversation is shared, and skills don't isolate it. If a member was separate to keep information apart, enforce that in your services or keep that flow outside this assistant.
-- **Handoff tools.** Remove them, since handoffs aren't supported.
-- **Values passed at handoff.** Inventory each one before removing it. Details the caller said are in the shared conversation. Values an earlier assistant or tool produced, such as an account ID or a lookup result, may not be. Make those available from your services, for example through a tool the reasoner can call, and keep authoritative state there.
-- **Member-specific hooks or settings.** Combine them into the one assistant's configuration, and check each against [Settings and compatibility](/gpt-live/configuration#compatibility).
-
-### 6. Test the switches between procedures
-
-The old handoff boundaries are the places to test most carefully, because that's where the combined assistant switches between procedures. Test:
-
-- **A switch** from scheduling to a service question and back, without repeating details.
-- **A return** to an unfinished booking after the detour.
-- **A correction** during a lookup.
-- **An already-completed action.** After a booking, return to the topic and check the assistant doesn't book again.
-- **A failure** from a tool, and the recovery.
-
-For each, check the call's messages for the skill loads and tool calls, your service's state for the outcome, and the recording for how it sounded. The reasoner uses the conversation and earlier results to continue, which works well when results are clear about status. Skills don't track workflow state for you, so your services must still reject duplicates and out-of-order actions.
-
-### 7. Roll out and keep the squad
-
-Move traffic to the new assistant when it passes your saved calls. Keep the original squad and its configuration unchanged as your fallback. Revert to Classic works on converted single assistants and doesn't recreate a squad, so the squad itself is your way back.
+Keep your existing squad if your call flow depends on those capabilities. The single-assistant steps above aren't a replacement for a squad migration.
