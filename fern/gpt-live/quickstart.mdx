@@ -1,0 +1,149 @@
+---
+title: GPT-Live quickstart
+subtitle: Make a first call and see how the speaker and reasoner work together
+description: Create a GPT-Live assistant in the Vapi dashboard or API with no custom backend, talk to it in the browser, and check the call record for the end-call action.
+slug: gpt-live/quickstart
+---
+
+This quickstart creates a simple front-desk assistant and makes a browser call to it. It needs no server of your own. It uses one built-in tool, `endCall`, so you can see a delegation happen and find it in the call record.
+
+## Before you start
+
+- GPT-Live enabled for your Vapi organization. See [access](/gpt-live/overview#access).
+- A browser with a microphone.
+- For the API path, a Vapi private API key.
+- If you use your own OpenAI API key, it needs access to GPT-Live and to the reasoner model. This quickstart uses the default, `gpt-5.6-terra`.
+
+## Create the assistant
+
+The assistant answers for Example Service Studio, a fictional business. It greets the caller, asks for their name and reason for calling, and ends the call when they're done. It has two prompts: the **speaker** prompt shapes the conversation, and the **reasoner** prompt handles tasks, which here is only ending the call.
+
+<Tabs>
+<Tab title="Dashboard">
+<Steps>
+<Step title="Create an assistant">
+Open [Assistants](https://dashboard.vapi.ai/assistants) and select **Create Assistant**. This creates a new Classic assistant.
+</Step>
+<Step title="Switch it to GPT-Live">
+On the new assistant, select **Try GPT Live**, then confirm with **Switch to GPT Live**. The switch publishes the assistant, so don't attach a phone number until you've finished testing. When the conversion completes, choose **Marin** as the voice.
+</Step>
+<Step title="Set the prompts">
+In **Speaker**, enter:
+
+```text title="Speaker instructions"
+You are the front desk for Example Service Studio, a fictional business used
+for testing. Greet callers warmly, ask for their name and the reason for their
+call, and summarize what they told you. You can't look anything up or book
+appointments yet, so say so if they ask.
+
+Speak plainly and keep replies short. Ask one question at a time. Use details
+the caller has already given.
+
+Delegation policy:
+Backend tools:
+- Ending the call.
+
+Delegate to the backend when:
+- The caller asks to end the call or says goodbye. Always delegate this.
+  Saying goodbye does not end the call.
+```
+
+In **Reasoner**, enter:
+
+```text title="Reasoner instructions"
+Call endCall when the caller asks to end the call or says goodbye.
+```
+</Step>
+<Step title="Add the end-call tool">
+Add the built-in **End Call** tool to the assistant.
+</Step>
+<Step title="Set the greeting and publish">
+Set the first message to "Hi, this is Example Service Studio. Who am I speaking with?" and set the assistant to speak first. Select **Publish**.
+</Step>
+</Steps>
+</Tab>
+<Tab title="API" language="bash">
+<Steps>
+<Step title="Save the configuration">
+Save this as `quickstart-assistant.json`:
+
+```json title="quickstart-assistant.json"
+{
+  "name": "GPT-Live quickstart",
+  "model": {
+    "provider": "openai",
+    "model": "gpt-live-1",
+    "speaker": {
+      "instructions": "You are the front desk for Example Service Studio, a fictional business used for testing. Greet callers warmly, ask for their name and the reason for their call, and summarize what they told you. You can't look anything up or book appointments yet, so say so if they ask.\n\nSpeak plainly and keep replies short. Ask one question at a time. Use details the caller has already given.\n\nDelegation policy:\nBackend tools:\n- Ending the call.\n\nDelegate to the backend when:\n- The caller asks to end the call or says goodbye. Always delegate this. Saying goodbye does not end the call."
+    },
+    "reasoner": {
+      "instructions": "Call endCall when the caller asks to end the call or says goodbye."
+    },
+    "tools": [
+      { "type": "endCall" }
+    ]
+  },
+  "voice": {
+    "provider": "openai",
+    "voiceId": "marin"
+  },
+  "firstMessageMode": "assistant-speaks-first",
+  "firstMessage": "Hi, this is Example Service Studio. Who am I speaking with?",
+  "maxDurationSeconds": 600
+}
+```
+</Step>
+<Step title="Create the assistant">
+Set your Vapi private API key in the terminal, then create the assistant:
+
+```bash
+export VAPI_PRIVATE_API_KEY="paste-your-private-key-here"
+
+curl --fail-with-body https://api.vapi.ai/assistant \
+  -H "Authorization: Bearer $VAPI_PRIVATE_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data-binary @quickstart-assistant.json
+```
+
+The reasoner uses its defaults: `gpt-5.6-terra` with `low` reasoning effort. Keep the returned `id` to open the assistant in the dashboard.
+</Step>
+</Steps>
+</Tab>
+</Tabs>
+
+## Talk to it
+
+Open the assistant in the dashboard and select **Talk**. Allow microphone access. Try these, one at a time:
+
+1. **Give several details at once.** "Hi, it's Sam, I'm calling about moving my appointment." The assistant should use both and not ask for your name again.
+2. **Interrupt it.** Start speaking while it's talking. It should stop and listen.
+3. **Change the pace.** "Could you slow down a little?" It should adjust.
+4. **Say goodbye.** "Thanks, that's everything. Bye." The call should end.
+
+The greeting and replies are generated, so the wording varies from call to call and may not match your first message exactly. The assistant may also be cut off before it finishes saying goodbye, because ending the call is an action that happens as soon as the reasoner takes it.
+
+## Check what happened
+
+Open the call in [Call Logs](https://dashboard.vapi.ai/calls). You'll find:
+
+- **The transcript** of both sides of the conversation.
+- **The recording**, if recording is enabled.
+- **An `endCall` tool call** in the call's messages. This is the reasoner acting on the speaker's delegation.
+- **The ended reason**, which shows that the assistant ended the call.
+
+That `endCall` entry is the thing to look for. The assistant saying "goodbye" and the call actually ending are separate events, so check for the action as well as the words.
+
+## If the call didn't end
+
+If the assistant said goodbye but the call stayed open, look in the call's messages for an `endCall` tool call:
+
+- **No `endCall` entry.** The speaker may not have delegated, or the reasoner may not have called the tool. Check that the speaker prompt lists ending the call as a delegation trigger, the reasoner prompt says to call `endCall`, and the tool is attached. Delegation is a model decision, so try a few calls.
+- **An `endCall` entry is there.** The delegation happened, so look at the tool's result for an error.
+
+See [the troubleshooting guide](/gpt-live/testing#said-goodbye-but-the-call-didnt-end) for more checks.
+
+## Next steps
+
+- **[Design conversations](/gpt-live/design):** how to shape a conversation that reaches the caller's goal while work runs in the background.
+- **[Build with tools](/gpt-live/tools):** connect your service so the assistant can look things up and take actions.
+- **[Migrate to GPT-Live](/gpt-live/migrate):** move an existing assistant.

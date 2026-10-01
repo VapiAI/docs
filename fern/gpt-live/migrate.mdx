@@ -1,0 +1,205 @@
+---
+title: Migrate to GPT-Live
+subtitle: Move an existing assistant, compare it with the original, and keep a way back
+description: Migrate a Vapi assistant to GPT-Live. Check fit, convert a copy, split prompts between the speaker and reasoner, compare results, and roll back safely.
+slug: gpt-live/migrate
+---
+
+Move a copy of your assistant first, compare it with the original, and switch traffic after it meets the same goals. This guide covers a single assistant. If you use a squad, see [From a squad](#from-a-squad) for the current limits.
+
+## Before you start
+
+### Check that your assistant can move
+
+Some features don't carry over. If your assistant depends on one of these, plan how to replace it before you begin:
+
+- **Voices** must be one of the [OpenAI voices GPT-Live supports](/gpt-live/configuration#voices). Other voice providers and custom or cloned voices aren't available.
+- **Squads and assistant handoffs** aren't supported. There is no direct squad conversion; see [the current limits](#from-a-squad).
+- **Model and voice fallbacks** must be removed. GPT-Live can't be a fallback model either.
+- **Exact or prerecorded speech** isn't available. GPT-Live generates all of its speech, including the greeting.
+- **Keypad input** from callers isn't supported.
+- **Knowledge bases and the Query tool** aren't available. Use a function, API request, or MCP tool for retrieval.
+- **Transfers** are blind only, on native Twilio and Vapi SIP calls. **Native Telnyx and Vonage** numbers aren't supported.
+
+The full list is in [Settings and compatibility](/gpt-live/configuration#compatibility).
+
+### Save representative calls
+
+Pick a handful of calls that represent what the assistant has to get right: a straightforward success, a caller who changes their mind, a failure your tools return, and anything specific to your business. For each, note the starting state, the expected tool actions, the expected outcome, and a recording from the current assistant. These are what you'll compare against.
+
+### Keep the original running
+
+Leave your phone numbers on the original assistant until the GPT-Live version has passed the same calls. Work on a copy, test it on its own, and switch traffic when you're ready.
+
+## From a single assistant
+
+### 1. Take inventory
+
+Write down what the assistant does and what it depends on:
+
+| Area | What to record |
+| --- | --- |
+| Caller's goal | What a successful call achieves |
+| Prompt | The system prompt, and which parts are about conversation and which are procedures |
+| Tools | Each tool, its type, and when it should be used |
+| Voice | The current provider and voice, and what matters about it |
+| Call connection | Browser, Twilio, SIP, WebSocket, or another provider |
+| Hooks | Idle messages and any other hooks |
+| Transfers | Destinations, and whether any are warm transfers |
+| Analysis | Structured outputs, scorecards, and anything that reads the transcript or recording |
+
+### 2. Convert a copy
+
+Convert a copy, so the original keeps serving callers while you test:
+
+<Steps>
+<Step title="Duplicate the assistant">
+In [Assistants](https://dashboard.vapi.ai/assistants), open the assistant's menu and select **Duplicate**. Don't attach a phone number to the copy.
+</Step>
+<Step title="Switch the copy to GPT-Live">
+Open the copy, select **Try GPT Live**, then confirm with **Switch to GPT Live**.
+</Step>
+<Step title="Review the result">
+Conversion publishes a new version of the copy straight away, with speaker and reasoner prompts written for you. Read both prompts and compare them with the split described in the next step.
+</Step>
+</Steps>
+
+Because conversion publishes immediately, working on a duplicate is what keeps callers on the original until you're ready.
+
+To go back, select **Revert to Classic**. It restores the assistant's Classic configuration as a draft, and the published version stays GPT-Live until you select **Publish**.
+
+You can also migrate by hand through the API: create a new assistant with the GPT-Live configuration from the steps below.
+
+### 3. Split the prompt
+
+A classic assistant has one prompt that covers both how to talk and how to do the work. GPT-Live has two. The speaker prompt shapes the conversation and says when to delegate. The reasoner prompt holds the procedures and tool rules. Neither sees the other, so rules that affect both belong in both, worded for each role.
+
+For example, a classic prompt for an appointment assistant at Example Service Studio, a fictional business, might read:
+
+```text title="Before: one classic system prompt"
+You are the booking assistant for Example Service Studio. Be friendly and brief.
+Ask for the service, location, and date. Use lookupAvailability to find open
+times and read them to the caller. When they choose one, ask for their name,
+confirm the details, and call bookAppointment. Never say a booking is done
+until bookAppointment succeeds. If the caller wants to change a booking, cancel
+it with cancelAppointment first. Answer questions about services with
+getServiceInfo.
+```
+
+Split it by who does what:
+
+```text title="After: speaker instructions"
+You are the booking assistant for Example Service Studio. Speak warmly and
+briefly, one question at a time. Use details the caller has already given.
+
+Delegation policy:
+Backend tools:
+- Appointments: check open times, book a time, and cancel a booking.
+- Service information: services, what to bring, locations, hours, policies.
+- Ending the call.
+
+Delegate to the backend when:
+- You know the service, location, and date. Ask for availability right away.
+- The caller has clearly said yes to booking after you read back the day,
+  time, location, and name.
+- The caller changes the request, or asks to cancel or move a booking.
+- The caller asks about services, what to bring, locations, hours, or policies.
+- The backend asked for a detail and the caller has now given it.
+- The caller asks to end the call or says goodbye. Always delegate this.
+
+While work is running, ask for the name for the booking if you don't have it.
+If the caller asks something you can answer from what you already know, answer
+it. Otherwise acknowledge the wait once and give the caller room.
+
+Say a time is booked only after the backend reports that it is booked. When
+the caller chooses a time, that's a choice, not agreement to book. Read back
+the day, time, location, and name, and ask whether to book it. Delegate the
+booking only after the caller clearly says yes.
+```
+
+```text title="After: reasoner instructions"
+Work from the latest request in the conversation transcript. Call
+lookupAvailability when you have the service, location, and date. A caller
+choosing a time isn't agreement to book. Call bookAppointment only for a time
+from the latest lookup, and only when the transcript shows the assistant read
+back the day, time, location, and name and the caller then clearly said yes.
+Otherwise, return those details for the assistant to read back and confirm.
+To move a booking, look up the new time and confirm
+it with the caller first, then cancel the existing booking with
+cancelAppointment and book the new time. If the new booking fails after the
+cancellation, say so. Use getServiceInfo for service questions. Return short,
+plain facts. Never report an action a tool did not confirm. Call endCall when
+the caller asks to end the call.
+```
+
+Three things changed besides the split:
+
+- **Explicit delegation triggers.** The speaker only starts work when it delegates, so every kind of task, including ending the call, is listed.
+- **Waiting is designed.** In the classic flow, the assistant read times out after a lookup and then asked for the name. The speaker now asks for the name while the lookup runs.
+- **Results are for speaking.** The reasoner returns short facts that the speaker can use directly.
+
+### 4. Map the settings
+
+| Classic setting | With GPT-Live |
+| --- | --- |
+| System prompt | Conversation guidance goes in `model.speaker.instructions`, procedures in `model.reasoner.instructions`. If speaker instructions are set, they take precedence over the classic system prompt |
+| Model | `model.model` is `gpt-live-1`. The reasoner model is set separately and defaults to `gpt-5.6-terra` |
+| Transcriber | Not used. GPT-Live hears the caller directly |
+| Voice | An OpenAI voice from the [supported list](/gpt-live/configuration#voices) |
+| Model or voice fallbacks | Remove them |
+| Function, API request, and MCP tools | Keep them. Move their usage rules into the reasoner prompt |
+| `endCall`, `transferCall`, `dtmf` | Keep them, and check [transfer and keypad support](/gpt-live/configuration#transfers-and-keypad-input) for your connection |
+| Other tool types | Not supported. Replace them with a function, API request, or MCP tool |
+| Tool messages, such as request-start messages | Not spoken. Guide what the assistant says while work runs in the speaker prompt |
+| Idle-message hooks with `say.prompt` | Keep them. See [When the caller goes quiet](/gpt-live/design#when-the-caller-goes-quiet) |
+| Idle-message hooks with `say.exact` | Accepted, but the text is spoken as generated speech, so the words may vary and verbatim playback isn't guaranteed. Rewrite them with `say.prompt` |
+| Greeting | A text `firstMessage` works and is spoken as generated speech. Audio greetings and generated first-message mode aren't supported |
+| Keypad input plan | Must be disabled |
+| Start and stop speaking plans, `temperature`, `maxTokens` | No effect |
+| Structured outputs, call analysis, scorecards | Keep them. See [Test and improve](/gpt-live/testing#watch-production-calls) |
+
+### 5. Redesign the waits
+
+Look at the places where your current flow waits for a tool before it moves on. With GPT-Live, the conversation can keep going during that time, so decide what it should cover. Start work as soon as its inputs are known, then ask for something the next step will need:
+
+> **Caller:** A consultation downtown on Friday.
+>
+> **Assistant:** I'll check Friday downtown. Who should I put the appointment under?
+>
+> **Caller:** Sam Lee.
+>
+> **Assistant:** Thanks, Sam. Friday I have 10:30, 2:30, or 4.
+
+When the next step is blocked, the conversation can still help. Here the booking is running, and the caller asks about something the assistant already knows:
+
+> **Assistant:** That's Friday at 2:30, downtown, under Sam Lee. Shall I book it?
+>
+> **Caller:** Yes. Do I need to bring anything?
+>
+> **Assistant:** Nothing's required for a consultation. Bring any questions you'd like to cover, and it helps to arrive five minutes early.
+>
+> **Assistant:** You're booked: Friday at 2:30 downtown, under Sam Lee.
+
+The preparation answer doesn't depend on the booking, so it can come while the booking runs. "You're booked" waits for the result. For the speaker to answer like this, give it a few stable facts in its prompt, such as arrival and preparation guidance. When there's nothing useful to say, one acknowledgment and a pause is better than filler. [Design conversations](/gpt-live/design#while-work-is-running) covers these choices in depth.
+
+### 6. Compare with the original
+
+Run your saved calls against the copy. For each one, check:
+
+- **The outcome.** Your service's state shows the same result as before, with no duplicate or missing actions.
+- **The tool calls.** The call's messages show the expected tool calls and arguments.
+- **The conversation.** The recording shows the assistant reached the goal without making the caller repeat themselves, and that waits sounded reasonable.
+
+Record differences you intended, such as a shorter call, separately from regressions. [Test and improve](/gpt-live/testing) describes how to repeat these calls with Voice Simulations.
+
+### 7. Roll out and roll back
+
+When the copy passes, assign your phone number to it. Keep the original assistant, unchanged, until you're confident in the new one.
+
+If you need to take a converted assistant back to Classic, select **Revert to Classic**, then **Publish**. Until you publish, callers still reach the GPT-Live version.
+
+## From a squad
+
+GPT-Live doesn't support squads or assistant handoffs. **Switch to GPT Live** converts one assistant; it doesn't convert a squad or preserve its routing and handoff behavior.
+
+Keep your existing squad if your call flow depends on those capabilities. The single-assistant steps above aren't a replacement for a squad migration.
