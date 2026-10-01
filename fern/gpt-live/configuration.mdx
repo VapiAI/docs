@@ -1,13 +1,13 @@
 ---
 title: GPT-Live settings and compatibility
 subtitle: Supported features, fields, voices, hooks, call connections, and live controls
-description: Reference for GPT-Live in Vapi. Feature compatibility, speaker and reasoner fields, personality packs, voices with previews, greetings, idle-message hooks, call connections, and live call control.
+description: Reference for GPT-Live in Vapi. Feature compatibility, speaker and reasoner fields, reasoner skills, personality packs, voices with previews, greetings, idle-message hooks, call connections, and live call control.
 slug: gpt-live/configuration
 ---
 
 This page is the reference for GPT-Live's settings and supported features. For how to use them in a conversation, start with [Design conversations](/gpt-live/design).
 
-**Jump to:** [Compatibility](#compatibility) · [Model settings](#model-settings) · [Personality](#personality-and-language) · [Voices](#voices) · [Greetings](#greetings-and-duration) · [Idle messages](#idle-messages) · [Calls](#connect-a-call) · [Live control](#live-call-control)
+**Jump to:** [Compatibility](#compatibility) · [Model settings](#model-settings) · [Skills](#reasoner-skills) · [Personality](#personality-and-language) · [Voices](#voices) · [Greetings](#greetings-and-duration) · [Idle messages](#idle-messages) · [Calls](#connect-a-call) · [Live control](#live-call-control)
 
 ## Compatibility
 
@@ -56,6 +56,7 @@ Give tools unique names. Classic tool messages, such as request-start messages, 
 | Feature | Support |
 | --- | --- |
 | Squads and assistant handoffs | Not supported. See [Migrate to GPT-Live](/gpt-live/migrate#from-a-squad) |
+| Reasoner skills | Supported. See [Reasoner skills](/gpt-live/skills) |
 | Knowledge bases | Not available to the reasoner. Use a retrieval tool |
 | Exact or prerecorded speech | Not supported. All speech, including greetings and idle check-ins, is generated |
 | Audio URL greetings, generated first-message mode | Not supported |
@@ -95,17 +96,35 @@ These fields belong to the assistant object. See [Create Assistant](/api-referen
 | `model.reasoner.model` | `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`. Defaults to `gpt-5.6-terra` |
 | `model.reasoner.reasoningEffort` | `none`, `low`, `medium`, `high`, `xhigh`, or `max`. Defaults to `low`. Higher effort can increase response time |
 | `model.reasoner.instructions` | Reasoner prompt. Omit to use Vapi's default |
-| `model.tools` | Inline tool definitions available to the reasoner |
-| `model.toolIds` | IDs of saved tools |
+| `model.reasoner.skills` | Array of skills. See [Reasoner skills](#reasoner-skills) |
+| `model.tools` | Inline base tool definitions, available whether or not a skill is loaded |
+| `model.toolIds` | IDs of saved base tools |
 | `voice.provider` | `openai` |
 | `voice.voiceId` | One of the [22 supported voices](#voices) |
 
 ## Prompt defaults and overrides
 
 - Explicit speaker instructions take precedence over `model.systemPrompt` and system messages in `model.messages`. If you omit the speaker instructions, Vapi uses that classic configuration.
-- Omitting reasoner instructions uses Vapi's default reasoner prompt. Custom instructions replace that prompt entirely. Vapi doesn't append behavioral instructions to a custom prompt.
+- Omitting reasoner instructions uses Vapi's default reasoner prompt. Custom instructions replace that prompt entirely. When skills are configured, Vapi adds skill-loading guidance and the content of loaded skills.
 - An explicit empty string stays empty. Updating one prompt doesn't update the other.
 - Personality packs append guidance to the speaker prompt.
+- The speaker also receives the names and descriptions of any reasoner skills.
+
+## Reasoner skills
+
+Set `model.reasoner.skills` to an array of skills. See [Reasoner skills](/gpt-live/skills) for how to design them.
+
+| Field | Behavior | Limit |
+| --- | --- | --- |
+| `name` | Unique within the assistant. Start with a lowercase letter; use lowercase letters, digits, hyphens, or underscores. The speaker and reasoner both see it | 64 characters |
+| `description` | Tells the reasoner, and the speaker, when the skill applies | 1,024 characters |
+| `content` | The full procedure. Only the reasoner sees it, once the skill is loaded | 32,000 characters |
+| `tools` | Optional inline tool definitions, available only while the skill is loaded | 20 tools |
+| `toolIds` | Optional IDs of saved tools, available only while the skill is loaded | 20 tools |
+
+An assistant can have up to 20 skills.
+
+Skills are stored with the assistant. Tools in `model.tools` and `model.toolIds` stay available whether or not a skill is loaded. Each delegation starts from the catalog and loads the skills it needs, and the reasoner can unload a skill when it finishes that work or changes tasks. A saved tool ID that doesn't exist can stop calls from starting.
 
 ## Personality and language
 
