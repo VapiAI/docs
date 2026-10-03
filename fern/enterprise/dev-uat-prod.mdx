@@ -4,9 +4,15 @@ subtitle: Promotion and configuration management for assistants and squads
 description: Promote and manage Vapi assistant and squad configurations across DEV, UAT, and PROD environments, giving enterprise teams a repeatable, auditable workflow.
 ---
 
-## Purpose
+## Overview
 
 Provide enterprise teams a repeatable, auditable way to build, test, and promote assistant and squad configurations across environments.
+
+This guide covers the environment topology and operating practices. For the tooling that implements it, use the [Vapi GitOps template](https://github.com/VapiAI/gitops), which manages Vapi resources from YAML and Markdown files in your own repository.
+
+<Note>
+This page is being expanded into a full GitOps guide. Until then, treat the [GitOps template README](https://github.com/VapiAI/gitops) as the authoritative reference for commands, file formats, and CI configuration.
+</Note>
 
 ## Audience
 
@@ -17,8 +23,8 @@ Provide enterprise teams a repeatable, auditable way to build, test, and promote
 ## Principles
 
 - **Isolation**: Separate organizations per environment: `dev`, `uat` (or `staging`), `prod`.
-- **Config as Code**: Store assistant/squad/tool/knowledge-base configs as JSON/YAML in Git.
-- **Immutability + Promotion**: Create in `dev`, validate in `uat`, promote to `prod` via automation.
+- **Config as code**: Store assistant, squad, and tool configuration in Git.
+- **Immutability and promotion**: Create in `dev`, validate in `uat`, promote to `prod` via automation.
 - **Least privilege**: RBAC, secrets isolation, and data boundaries per environment.
 - **Reproducibility**: Idempotent apply, drift detection, and rollbacks from Git history.
 
@@ -36,241 +42,73 @@ Provide enterprise teams a repeatable, auditable way to build, test, and promote
 
 ## Resources under management
 
-Treat these as declarative resources:
-- **Assistants**: system prompt, tools, routing, grounding, safety settings
-- **Squads/Teams**: membership and permissions
-- **Tools/Integrations**: function schemas, external service configs
-- **Knowledge Bases**: document sources, embedding settings
-- **Runtimes/Policies**: rate limits, safety policies, fallback models
+The [GitOps template](https://github.com/VapiAI/gitops) manages these Vapi resources as files:
 
-Reference resources by stable logical names (slugs) in config; resolve to IDs at apply time.
+- **Assistants**: system prompt, model, voice, transcriber, tools, and hooks
+- **Squads**: membership and handoff configuration
+- **Tools**: function schemas and external service configuration
+- **Structured outputs**: post-call data extraction
+- **Personalities**, **scenarios**, **simulations**, **simulation suites**, and **evals**
 
-## Repository structure (example)
+Resources are referenced by name in your files and resolved to Vapi IDs through a state file at apply time.
 
-```text
-/platform
-  /assistants
-    order-agent.yaml
-    support-agent.yaml
-  /squads
-    support-level1.yaml
-  /tools
-    jira.yaml
-    zendesk.yaml
-  /knowledge
-    product-faqs.yaml
-  /policies
-    safety.yaml
-  environments.yaml       # maps env → org IDs, model defaults, endpoints
-  schemas/                # JSONSchema for validation
-```
-
-Do not commit secrets. Store them in your secret manager (e.g., Vault, AWS Secrets Manager, GCP Secret Manager) and reference via placeholders.
-
-## Config format (YAML examples)
-
-```yaml
-kind: Assistant
-apiVersion: v1
-metadata:
-  name: order-agent
-  description: Handles order inquiries
-spec:
-  systemPromptRef: prompts/order-agent.md
-  model: gpt-4.1
-  tools:
-    - ref: jira
-    - ref: zendesk
-  knowledge:
-    - ref: product-faqs
-  safetyPolicyRef: policies/safety.yaml
-```
-
-```yaml
-kind: Tool
-apiVersion: v1
-metadata:
-  name: jira
-spec:
-  type: http
-  authRef: secrets/jira-token        # resolved from secret manager
-  endpoint: https://jira.example.com
-  operations:
-    - name: createIssue
-      method: POST
-      path: /rest/api/3/issue
-      schemaRef: schemas/jira-create-issue.json
-```
+Do not commit secrets. Store them in your secret manager and keep environment credentials out of version control.
 
 ## Promotion workflow
 
 1. **Develop in DEV**
-   - Create/modify configs in Git.
-   - Run local validation (schema/lint) and a plan/diff against `dev`.
-   - Apply to `dev`; run unit/integration tests and data access checks.
+   - Create or modify resource files in Git.
+   - Validate locally, then apply to `dev`.
+   - Run your [simulations and evals](/test/run-and-maintain-tests) against the deployed assistant.
 2. **Promote to UAT**
-   - Open a PR; CI runs `plan` against `uat` and posts a diff.
-   - On approval, CI applies to `uat` using a service principal for the `uat` org.
+   - Open a PR so reviewers can read the configuration diff.
+   - On approval, promote the reviewed configuration to the `uat` org.
 3. **Promote to PROD**
-   - Change window + ticket if required.
-   - CI runs `plan` against `prod`, requires approvals from owners.
-   - CI applies to `prod`; record the change set and artifacts.
-4. **Rollback**
-   - Revert Git commit → CI reapplies previous config (idempotent).
-   - Keep backup exports from each apply job for audit.
+   - Change window and ticket if required.
+   - Require approvals from owners, then promote to `prod`.
+   - Record the change set and artifacts.
+4. **Roll back**
+   - Revert the Git commit and redeploy, or restore from a snapshot taken before the previous deployment.
+   - Verify the recovered behavior with a test call.
 
-## Applying configs via API
-
-Use a small deployer that:
-- Reads YAML/JSON
-- Resolves references and secrets for the target environment
-- Translates to API payloads
-- Uses idempotency keys and labels to detect drift
-
-Example pseudo-commands:
-
-```bash
-# Export (backup)
-curl -sS -H "Authorization: Bearer $TOKEN" \
-  GET `https://api.vendor.com/v1/assistants?label=order-agent` > backups/order-agent-dev.json
-
-# Apply (create or update)
-curl -sS -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $KEY" \
-  -H "Content-Type: application/json" \
-  -X PUT `https://api.vendor.com/v1/assistants/order-agent` \
-  --data-binary @rendered/order-agent.dev.json
-```
-
-Recommendations:
-- **Idempotency**: One key per resource per pipeline run
-- **Labeling**: Tag resources with `env`, `app`, `owner`, `sha` for traceability
-- **Drift**: Fetch current → compute diff → fail pipeline on unmanaged drift
-
-## CI/CD example (GitHub Actions)
-
-```yaml
-name: Platform Deploy
-
-on:
-  pull_request:
-  push:
-    branches: [ main ]
-
-jobs:
-  plan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: npm ci
-      - name: Validate
-        run: npm run validate:all
-      - name: Plan UAT
-        env:
-          ORG_ID: ${{ secrets.UAT_ORG_ID }}
-          API_TOKEN: ${{ secrets.UAT_TOKEN }}
-        run: npm run plan -- --env uat --out plan-uat.txt
-      - uses: actions/upload-artifact@v4
-        with: { name: plan-uat, path: plan-uat.txt }
-
-  deploy-prod:
-    if: github.ref == 'refs/heads/main'
-    needs: [ plan ]
-    permissions: { contents: read }
-    runs-on: ubuntu-latest
-    environment:
-      name: prod
-      url: https://console.vendor.com/orgs/${{ secrets.PROD_ORG_ID }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: npm ci
-      - name: Apply PROD
-        env:
-          ORG_ID: ${{ secrets.PROD_ORG_ID }}
-          API_TOKEN: ${{ secrets.PROD_TOKEN }}
-        run: npm run apply -- --env prod --approve
-```
-
-## Naming and referencing
-
-- Use unique slugs (e.g., `order-agent`) per environment
-- Prefer logical refs in specs; map to environment-specific IDs at render/apply time
-- Save Git commit SHA as a label on each resource for traceability
+<Note>
+Storing configuration in Git does not by itself enforce review, testing, or release gates. Those are branch protections, required approvals, and CI jobs that your organization configures.
+</Note>
 
 ## Security and compliance
 
-- **RBAC**: Developers write to `dev`, read `uat`, no direct `prod` writes; CI principals per org
-- **Secrets**: Keep out of Git. Resolve via `secrets://path` at apply time; rotate per policy
-- **Audit**: Keep apply logs, request/response checksums, and exported snapshots per run; enable API audit logs in each org
+- **RBAC**: Developers write to `dev`, read `uat`, no direct `prod` writes; separate CI credentials per org
+- **Secrets**: Keep out of Git. Resolve from your secret manager at apply time and rotate per policy
+- **Audit**: Keep apply logs and exported snapshots per run; enable API audit logs in each org
 
 ## Testing and validation
 
-- **Static**: JSONSchema validation; lint refs and schema compatibility
-- **Dynamic**: Dry-run/plan renders and diffs
-- **Behavioral**: Golden-path chat transcripts in `dev` and `uat`; tool execution smoke tests; canary in `prod`
+- **Static**: Validate resource files before every deployment
+- **Drift**: Compare deployed resources against the repository and reconcile before promoting
+- **Behavioral**: Run [simulations](/observability/simulations-quickstart) in `dev` and `uat`, smoke-test tool execution, and place controlled calls after a `prod` release
 
 ## Operational runbooks
 
-- **Create a new assistant**: add YAML → PR → CI plans → approve → deploy to `uat` → UAT signoff → deploy to `prod`
-- **Change a tool**: update tool YAML; bump assistant `spec.tools`; ensure backward compatibility; run smoke tests
-- **Incident rollback**: revert commit; re-run apply; confirm labels reverted
-
-## FAQ
-
-- **How do we copy an assistant to another environment?** Export from source org (GET), normalize to YAML/JSON, check into Git, then apply to target org via CI using the deployer.
-- **What exactly is the “config”?** The full API payload needed to create/update the assistant, its referenced tools, knowledge bases, and policies. Store it declaratively and resolve environment-specific references at apply time.
-- **How does this relate to built-in versioning?** Vapi has built-in [versioning](/assistants/versioning) for assistants and the tools they use. Publishing creates a new version, and you can restore a previous one. Git-based promotion in this guide and built-in versioning work well together. Use Git as the cross-environment source of truth, and use built-in versions for per-environment history and rollback.
-- **How do we handle environment-specific differences (models, endpoints)?** Parameterize via `environments.yaml` and templates; keep the logical spec identical across envs, only vary parameters.
+- **Create a new assistant**: add the resource file → PR → review the diff → approve → deploy to `uat` → UAT signoff → deploy to `prod`
+- **Change a tool**: update the tool file, confirm the assistants referencing it still work, and run smoke tests
+- **Incident rollback**: revert the commit, redeploy, and confirm the deployed behavior
 
 ## Promotion checklist
 
 - **Config**: validated and reviewed
 - **Secrets**: present in target environment
-- **Diff**: plan shows expected changes only
+- **Diff**: shows expected changes only
 - **Tests**: UAT signoff recorded
 - **Approvals**: change ticket and reviewers complete
-- **Backups**: exported current `prod` state saved
+- **Backups**: snapshot of current `prod` state saved
 - **Monitoring**: alerts enabled for error rate and tool failures
 
-## Minimal example: render + apply (Node)
+## FAQ
 
-```javascript
-import { readFileSync } from 'fs';
-import yaml from 'js-yaml';
-import fetch from 'node-fetch';
+**How do we copy an assistant to another environment?** Pull the resource from the source org into files, commit them, then promote to the target org. The [GitOps template](https://github.com/VapiAI/gitops) provides both steps.
 
-const token = process.env.API_TOKEN;
-const orgId = process.env.ORG_ID;
+**What exactly is the "config"?** The resource definitions needed to recreate the assistant, its tools, and its related resources, stored declaratively so environment-specific values can be resolved at apply time.
 
-async function upsertAssistant(doc) {
-  const url = `https://api.vendor.com/v1/assistants/${doc.metadata.name}?org=${orgId}`;
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Idempotency-Key': process.env.IDEMPOTENCY_KEY
-    },
-    body: JSON.stringify(render(doc))
-  });
-  if (!res.ok) throw new Error(`Apply failed: ${res.status} ${await res.text()}`);
-}
+**How does this relate to built-in versioning?** Vapi has built-in [versioning](/assistants/versioning) for assistants and the tools they use. Publishing creates a new version, and you can restore a previous one. Git-based promotion and built-in versioning work well together. Use Git as the cross-environment source of truth, and use built-in versions for per-environment history and rollback.
 
-function render(doc) {
-  return {
-    name: doc.metadata.name,
-    description: doc.metadata.description,
-    model: doc.spec.model,
-    tools: doc.spec.tools.map(t => ({ name: t.ref })),
-    labels: { env: process.env.ENV, sha: process.env.GIT_SHA }
-  };
-}
-
-const doc = yaml.load(readFileSync(process.argv[2], 'utf8'));
-upsertAssistant(doc)
-  .then(() => console.log('Applied'))
-  .catch(e => { console.error(e); process.exit(1); });
-```
+**How do we handle environment-specific differences?** Keep the resource definitions identical across environments and vary only the per-org credentials and bindings.
