@@ -1,0 +1,121 @@
+---
+title: Traffic splitting
+subtitle: Roll out assistant versions gradually with canary releases and experiments
+description: Split live call traffic between published assistant versions by percentage, so you can canary a new version, run experiments, and roll back instantly.
+slug: assistants/versioning/traffic-splitting
+---
+
+<Note>
+**Beta.** Traffic splitting must be enabled for your Vapi organization. Request access through the [beta access form](https://forms.gle/6EfEcCFxvxJTZHDs8).
+
+The beta includes percentage splits across published versions, sticky routing for repeat callers, the dashboard traffic editor, and the API, which also returns the full history of allocation changes. It does not yet include per-version call metrics, side-by-side version comparisons, or a dashboard view of past splits. To compare versions today, use each call's `assistantVersion` field, which records the version that handled the call and is also a column in call exports.
+</Note>
+
+Traffic splitting routes a percentage of an assistant's live calls to each published version you choose. Instead of every call moving to a new version the moment you publish, you decide how much traffic the new version takes, watch how it behaves, and finish or cancel the rollout on your own schedule.
+
+## Why split traffic
+
+Publishing an assistant changes what every caller hears. A prompt rewrite that reads well can still greet customers the wrong way, mishandle a transfer, or cause regressions in edge cases that review missed. Traffic splitting turns that all-or-nothing moment into a controlled rollout:
+
+- **Canary releases**: Send a small share, such as 10%, of calls to the new version. If its calls look healthy, gradually raise the share to 100%. If they do not, remove it so the previous version immediately takes back the traffic.
+- **Experiments**: Run two versions side by side at 50/50 and compare their transcripts, call outcomes, and analysis before committing to either.
+- **Staged parking**: Publish a version at 0% so it exists in history and is callable by version, without routing any live traffic to it until you are ready.
+
+## How routing works
+
+- Percentages apply to **new calls** as they start; calls already in progress never switch versions.
+- Calls choose a version randomly, weighted by your percentages. Repeat callers are routed to the same version when possible; see [sticky routing](#sticky-routing-is-best-effort).
+- Shares are precise to **0.001%**, and a split always totals exactly 100%.
+- A split names up to **5 versions**. Below three versions taking traffic, a rollout stays easy to reason about; the dashboard will nudge you before a third version starts taking traffic.
+
+### Sticky routing is best effort
+
+Repeat callers usually reach the same version because routing uses the caller's phone number or, for SIP calls, the SIP username. Calls without either identifier are routed independently each time, so a repeat caller might reach a different version. This includes web calls, calls from people who withhold their number, and calls with caller IDs that are not phone numbers.
+
+Stickiness also depends on target order. Keep listing versions in the same order across updates, and ramp by growing a later version's share at the expense of an earlier one; reordering targets can move repeat callers to a different version.
+
+### Follow latest, the default
+
+An assistant without an explicit split **follows the latest published version**: 100% of calls go to whatever you published most recently. This is the behavior you already know, and it stays in effect until you save an explicit split. Removing every version from a split returns the assistant to follow-latest.
+
+<Note>
+An **explicit split pins its versions.** While a split is saved, publishing a new version does not move traffic to it — the split keeps routing exactly as written until you change it. Publish at 100% to both publish and return to follow-latest in one step.
+</Note>
+
+## Splitting from the publish flow
+
+When you publish an assistant, the publish dialog offers three choices:
+
+- **Publish at 100%**: The new version takes all traffic. This is the default, and it also clears any explicit split back to follow-latest.
+- **Split traffic**: The editor opens with today's routing exactly as it is and the new version on top at 0%. Give each version the share you want before publishing.
+- **Publish at 0%**: Today's routing is preserved exactly as it is, and the new version is published parked at 0%. Give it a share later from the traffic editor when you are ready to start the rollout.
+
+A first publish must take traffic, so **Publish at 0%** becomes available from your second version onward.
+
+## Editing a live split
+
+The traffic pill in the assistant header shows where calls route now. Select the pill or the edit control for a version in version history to open the traffic editor:
+
+- Each edit changes only the version you touched; no other share ever moves on its own. The editor shows the running total, and you can only save when it is exactly 100%.
+- Add a version and it joins with an empty share. Whenever exactly one share is empty, it hints the remainder that lands the total on 100%, so finishing a split is one glance. Removing a version frees its share for you to reassign.
+- Undo steps back through your changes; Cancel discards the draft entirely. Nothing routes differently until you save.
+
+## Navigating common situations
+
+**Finishing a canary.** Raise the new version's share gradually and lower the older version's share to match. For example, increase it from 10% to 50%, then to 100%. You can also publish at 100% to return the assistant to follow-latest for future publishes.
+
+**Rolling back a bad canary.** Set the bad version to 0%, or remove it and give its share back to the versions you trust. The change applies to new calls immediately.
+
+**An urgent fix during a rollout.** Remember that an explicit split pins traffic: publishing the fix does not route calls to it until you update the split. Publish at 100% if the fix should take everything, or add the fix's version to the split at the share you want.
+
+**Comparing versions fairly.** Give the candidates equal shares and let repeat-caller affinity keep each customer's experience consistent while the experiment runs.
+
+## Splitting via the API
+
+Every dashboard action above is a single API call. Targets use the version label, such as `"v7"`, that the version routes use. Targets must be published versions of the assistant, so publish first, then allocate. A split is accepted when every version is listed once and the percentages total exactly 100, with at least one above 0; otherwise the request returns a 400. Keep targets in the same order from one request to the next so repeat callers stay on their version.
+
+**Start a canary** by posting the split you want. Sending `targets` is enough; the intent is understood to be an explicit split:
+
+```json
+POST /traffic-allocations
+{
+  "assistantId": "9d5f9d3a-...",
+  "targets": [
+    { "assistantVersion": "v6", "percentage": 90 },
+    { "assistantVersion": "v7", "percentage": 10 }
+  ],
+  "description": "canary: tightened refund prompt"
+}
+```
+
+**Adjust it** the same way: post the whole new split. The most recently created allocation is the one in effect, so each post replaces the last:
+
+```json
+POST /traffic-allocations
+{
+  "assistantId": "9d5f9d3a-...",
+  "targets": [
+    { "assistantVersion": "v6", "percentage": 50 },
+    { "assistantVersion": "v7", "percentage": 50 }
+  ]
+}
+```
+
+If concurrent editors are a concern, include `"expectedCurrentAllocationId"` with the allocation id you last read; the write then applies only while that allocation is still in effect, and conflicts return a 409 instead of letting the last write win.
+
+**Stop splitting** by saying so. Ending a split is the one request that must name its intent, so a dropped `targets` field can never end a rollout by accident:
+
+```json
+POST /traffic-allocations
+{
+  "assistantId": "9d5f9d3a-...",
+  "allocationIntent": "follow-latest"
+}
+```
+
+Read the split currently in effect with `GET /traffic-allocations/latest?assistantId=...`, and the full history with `GET /traffic-allocations?assistantId=...`. The optional `description` appears in history, so future readers know why a split existed.
+
+## Next steps
+
+- **[Versioning overview](/assistants/versioning):** How drafts, publishing, and restore work.
+- **[Versioning assistants](/assistants/versioning/versioning-assistants):** Publishing and version history in the dashboard.

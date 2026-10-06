@@ -1,0 +1,373 @@
+---
+title: GPT-Live settings and compatibility
+subtitle: Supported features, fields, voices, hooks, call connections, and live controls
+description: Reference for GPT-Live in Vapi. Feature compatibility, speaker and reasoner fields, reasoner skills, personality packs, voices with previews, greetings, idle-message hooks, call connections, and live call control.
+slug: gpt-live/configuration
+---
+
+This page is the reference for GPT-Live's settings and supported features. For how to use them in a conversation, start with [Design conversations](/gpt-live/design).
+
+**Jump to:** [Compatibility](#compatibility) · [Model settings](#model-settings) · [Skills](#reasoner-skills) · [Personality](#personality-and-language) · [Voices](#voices) · [Greetings](#greetings-and-duration) · [Idle messages](#idle-messages) · [Calls](#connect-a-call) · [Live control](#live-call-control)
+
+## Compatibility
+
+GPT-Live supports a different set of features from Vapi's other voice architectures. These limits describe Vapi's GPT-Live integration. A capability in OpenAI's API or in ChatGPT isn't necessarily available through Vapi.
+
+### Calls and voice
+
+| Feature | Support |
+| --- | --- |
+| Browser WebRTC, native Twilio, and Vapi SIP | Supported |
+| Raw WebSocket | Supported with mono, signed 16-bit little-endian PCM at 24 kHz. Set the rate explicitly |
+| Native Telnyx or Vonage | Not supported |
+| 22 preset OpenAI voices | Supported. See [voices](#voices) |
+| Custom or cloned voices, or other voice providers | Not supported |
+| Changing voice during a call | Not supported. Save the assistant and start a new call |
+| Model and voice fallbacks | Not supported. GPT-Live also can't be a fallback model |
+| Reconnecting to an existing GPT-Live session | Not supported. Start a new call and check the status of pending work |
+
+### Transfers and keypad input
+
+| Feature | Support |
+| --- | --- |
+| Blind transfer | Supported on native Twilio and Vapi SIP, to phone or SIP destinations. Use a `transferCall` tool with configured destinations, or an HTTP [`transfer`](#cold-transfer) request |
+| Transfer on browser or raw WebSocket calls | Not supported |
+| Warm transfer or generated transfer summary | Not supported |
+| Transfer fallback plans or SIP `bye` verb | Not supported |
+| SIP transfer with extension dialing | Not supported. Use a direct destination |
+| Outgoing DTMF | Supported on SIP using RTP DTMF. Pass digits as a string, for example `"0011*#"` |
+| Outgoing DTMF on Twilio, browser, or raw WebSocket calls | Not supported |
+| SIP INFO DTMF | Not supported |
+| Incoming keypad collection | Not supported. Leave `keypadInputPlan.enabled` disabled |
+
+### Tools
+
+| Tool type | Support |
+| --- | --- |
+| `function`, `apiRequest`, `mcp` | Supported. Called by the reasoner |
+| `endCall` | Supported |
+| `transferCall`, `dtmf` | Supported on the connections listed above |
+| Other tool types, including the Query tool, handoff, SMS, voicemail, and integration tools | Not supported. Use a function, API request, or MCP tool instead |
+
+Give tools unique names. Classic tool messages, such as request-start messages, aren't spoken. Guide what the assistant says while work runs in the speaker prompt.
+
+### Assistant features
+
+| Feature | Support |
+| --- | --- |
+| Squads and assistant handoffs | Not supported. See [Migrate to GPT-Live](/gpt-live/migrate#from-a-squad) |
+| Reasoner skills | Supported. See [Reasoner skills](/gpt-live/skills) |
+| Knowledge bases | Not available to the reasoner. Use a retrieval tool |
+| Exact or prerecorded speech | Not supported. All speech, including greetings and idle check-ins, is generated |
+| Audio URL greetings, generated first-message mode | Not supported |
+| Idle-message hooks | Supported with `say.prompt`, `message.add`, and inline `endCall`. See [Idle messages](#idle-messages) |
+| Other assistant hook events | Not covered by idle-message support. Check before relying on them |
+| Live call control | End call, append speaker context, and cold transfer over HTTP. See [Live call control](#live-call-control) |
+| Voice Simulations | Supported in Voice mode with a single assistant. See [Test and improve](/gpt-live/testing#repeat-scenarios-with-voice-simulations) |
+
+### Recordings and post-call data
+
+GPT-Live supports post-call analysis, structured outputs, scorecards, Boards, and Monitoring. Availability depends on your configuration and retained call data:
+
+| Setting or feature | Behavior |
+| --- | --- |
+| Recording disabled in the assistant | No recording is created |
+| Recording-consent plan configured | Recording is disabled, because GPT-Live doesn't collect that consent |
+| Transcript-based analysis | Requires transcripts |
+| Audio-based analysis | Requires a recording |
+| Monitoring with Zero Data Retention | Not supported |
+| Live listen or monitor sockets | Not supported. Post-call Monitoring doesn't provide live audio |
+
+### Settings that no longer apply
+
+Classic transcriber selection, text-to-speech settings, and start and stop speaking plans don't configure a GPT-Live conversation. General model fields such as `temperature` and `maxTokens` don't tune it either.
+
+## Model settings
+
+These fields belong to the assistant object. See [Create Assistant](/api-reference/assistants/create) for the full schema.
+
+| Field | Values or behavior |
+| --- | --- |
+| `model.provider` | `openai` |
+| `model.model` | `gpt-live-1` |
+| `model.speaker.instructions` | Speaker prompt. See [prompt defaults](#prompt-defaults-and-overrides) |
+| `model.speaker.personalityPacks` | Array of `eager-listener`, `idle-hummer`, `bouncy`, and `unhurried` |
+| `model.reasoner.provider` | `openai`. Defaults to OpenAI when omitted |
+| `model.reasoner.model` | `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`. Defaults to `gpt-5.6-terra` |
+| `model.reasoner.reasoningEffort` | `none`, `low`, `medium`, `high`, `xhigh`, or `max`. Defaults to `low`. Higher effort can increase response time |
+| `model.reasoner.instructions` | Reasoner prompt. Omit to use Vapi's default |
+| `model.reasoner.skills` | Array of skills. See [Reasoner skills](#reasoner-skills) |
+| `model.tools` | Inline base tool definitions, available whether or not a skill is loaded |
+| `model.toolIds` | IDs of saved base tools |
+| `voice.provider` | `openai` |
+| `voice.voiceId` | One of the [22 supported voices](#voices) |
+
+## Prompt defaults and overrides
+
+- Explicit speaker instructions take precedence over `model.systemPrompt` and system messages in `model.messages`. If you omit the speaker instructions, Vapi uses that classic configuration.
+- Omitting reasoner instructions uses Vapi's default reasoner prompt. Custom instructions replace that prompt entirely. When skills are configured, Vapi adds skill-loading guidance and the content of loaded skills.
+- An explicit empty string stays empty. Updating one prompt doesn't update the other.
+- Personality packs append guidance to the speaker prompt.
+- Vapi adds a summary of skill names and descriptions to the speaker prompt. The reasoner manages the catalog, loads skills, and uses their instructions and tools.
+
+## Reasoner skills
+
+Set `model.reasoner.skills` to an array of skills. See [Reasoner skills](/gpt-live/skills) for how to design them.
+
+| Field | Behavior | Limit |
+| --- | --- | --- |
+| `name` | Unique within the assistant. Start with a lowercase letter; use lowercase letters, digits, hyphens, or underscores. The speaker and reasoner both see it | 64 characters |
+| `description` | Tells the reasoner when to load the skill; also included in the speaker's skill summary | 1,024 characters |
+| `content` | The full procedure. Only the reasoner sees it, once the skill is loaded | 32,000 characters |
+| `tools` | Optional inline tool definitions, available only while the skill is loaded | 20 tools |
+| `toolIds` | Optional IDs of saved tools, available only while the skill is loaded | 20 tools |
+
+An assistant can have up to 20 skills.
+
+Skills are stored with the assistant. Tools in `model.tools` and `model.toolIds` stay available whether or not a skill is loaded. Each delegation starts from the catalog and loads the skills it needs, and the reasoner can unload a skill when it finishes that work or changes tasks. A saved tool ID that doesn't exist can stop calls from starting.
+
+## Personality and language
+
+Set `model.speaker.personalityPacks` to an array of pack IDs. Each pack appends speaking-style guidance to the speaker prompt:
+
+| Pack | What its guidance encourages |
+| --- | --- |
+| `eager-listener` | Brief acknowledgments at natural openings, with room for the caller to continue |
+| `idle-hummer` | Soft humming or wordless sounds during quiet moments while waiting for tools |
+| `bouncy` | More expressive pitch, emphasis, and rhythm, adapting to the caller's mood |
+| `unhurried` | A slower pace, clear articulation, and space between ideas |
+
+```json
+{
+  "speaker": {
+    "instructions": "Speak warmly and briefly. Slow down for dates and times.",
+    "personalityPacks": ["unhurried"]
+  }
+}
+```
+
+Packs are prompt guidance, not fixed speed or pause controls. Test one at a time. See [Speaking style](/gpt-live/design#speaking-style) for how to choose.
+
+Write the speaker prompt and `firstMessage` in the language you want the assistant to speak. For Bossa or Tempo, for example:
+
+```text
+Fale em português do Brasil, com respostas curtas e claras.
+Faça uma pergunta por vez. Só confirme um agendamento
+quando a ferramenta confirmar que ele foi realizado.
+```
+
+Keep delegation triggers in the prompt in the same language. Try names, dates, and product terms on real calls, and add pronunciation guidance where needed.
+
+## Voices
+
+Choose any of these 22 voices with `voice.provider: "openai"` and `voice.voiceId`. Save the assistant and start a new call to change voices. In-call voice changes aren't supported.
+
+### Voices with regional tags
+
+Use the tags to narrow your choices, then listen to the samples. Bossa and Tempo previews are in Brazilian Portuguese. The other previews are in English. Test your preferred voice with your own prompts to hear how it handles the accent and vocabulary you need.
+
+| Voice | API ID | Language | Regional influence | Presentation | Source | Preview |
+| --- | --- | --- | --- | --- | --- | --- |
+| Quartz | `quartz` | English | Australian | Feminine | Generated | [Listen to Quartz](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/quartz.mp3) |
+| Ripple | `ripple` | English | Australian | Masculine | Natural | [Listen to Ripple](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/ripple.mp3) |
+| Vesper | `vesper` | English | British | Masculine | Natural | [Listen to Vesper](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/vesper.mp3) |
+| Willow | `willow` | English | Irish | Feminine | Natural | [Listen to Willow](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/willow.mp3) |
+| Stone | `stone` | English | Irish | Masculine | Natural | [Listen to Stone](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/stone.mp3) |
+| Gleam | `gleam` | English | North American | Feminine | Natural | [Listen to Gleam](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/gleam.mp3) |
+| Meridian | `meridian` | English | North American | Masculine | Natural | [Listen to Meridian](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/meridian.mp3) |
+| Bossa | `bossa` | Portuguese | Brazilian | Feminine | Natural | [Listen to Bossa](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/bossa.mp3) |
+| Tempo | `tempo` | Portuguese | Brazilian | Masculine | Natural | [Listen to Tempo](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/tempo.mp3) |
+| Beacon | `beacon` | English | Filipino | Masculine | Generated | [Listen to Beacon](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/beacon.mp3) |
+| Delta | `delta` | English | Southern U.S. | Feminine | Generated | [Listen to Delta](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/delta.mp3) |
+| Cinder | `cinder` | English | Southern U.S. | Masculine | Generated | [Listen to Cinder](https://voices-storage.vapi.ai/gpt-live/gpt-live-1/cinder.mp3) |
+
+### More voices
+
+| Voice | API ID | Preview |
+| --- | --- | --- |
+| Alloy | `alloy` | [Listen to Alloy](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/alloy.mp3) |
+| Ash | `ash` | [Listen to Ash](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/ash.mp3) |
+| Ballad | `ballad` | [Listen to Ballad](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/ballad.mp3) |
+| Cedar | `cedar` | [Listen to Cedar](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/cedar.mp3) |
+| Coral | `coral` | [Listen to Coral](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/coral.mp3) |
+| Echo | `echo` | [Listen to Echo](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/echo.mp3) |
+| Marin | `marin` | [Listen to Marin](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/marin.mp3) |
+| Sage | `sage` | [Listen to Sage](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/sage.mp3) |
+| Shimmer | `shimmer` | [Listen to Shimmer](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/shimmer.mp3) |
+| Verse | `verse` | [Listen to Verse](https://voices-storage.vapi.ai/gpt-live/marble-alpha-v6/verse.mp3) |
+
+## Greetings and duration
+
+| Field or feature | Behavior |
+| --- | --- |
+| `firstMessageMode: "assistant-speaks-first"` | Speaks a greeting generated from the text `firstMessage` |
+| `firstMessageMode: "assistant-waits-for-user"` | Waits for the caller |
+| `firstMessage` | Text greeting. Without usable text, the assistant waits |
+| `maxDurationSeconds` | Maximum call duration in seconds |
+| Audio URL greeting | Not supported. Not played as a greeting |
+| Generated first-message mode | Not supported. The assistant waits for the caller |
+
+The spoken greeting may differ from the text you supply.
+
+## Idle messages
+
+Idle messages use `customer.speech.timeout` [assistant hooks](/assistants/assistant-hooks). See [When the caller goes quiet](/gpt-live/design#when-the-caller-goes-quiet) for a complete example.
+
+| Hook option | Behavior |
+| --- | --- |
+| `options.timeoutSeconds` | Set explicitly for each hook. Accepts 2–1000 seconds |
+| `options.triggerMaxCount` | Limits how many times the hook fires across quiet periods. Accepts 1–10. Defaults to 3 |
+| `options.triggerResetMode` | Defaults to `never`, which keeps the count for the whole call. Set `onUserSpeech` to reset the count when the caller speaks |
+
+How timing works:
+
+- A quiet period starts when the conversation becomes active, and again after the assistant speaks or the reasoner finishes work.
+- Activity is measured from speech that appears in the transcript. Background noise doesn't count.
+- All hooks count from the start of the same quiet period. A check-in doesn't postpone later hooks, and each hook fires at most once per quiet period. For another check-in in the same quiet period, add a separate hook with a different `timeoutSeconds`.
+- When the caller speaks, check-ins stop until the next quiet period starts. A check-in that was already being spoken may still be heard.
+- If the caller asks for a moment and the assistant replies, that reply starts a new quiet period.
+- Check-ins wait while the reasoner is actively working. Once an async tool has been dispatched, check-ins can resume even though its result is still pending.
+
+Timing follows conversation activity, so test the delays with your prompts and tools.
+
+### Supported idle-message hook actions
+
+| Action | GPT-Live behavior |
+| --- | --- |
+| `say` with `prompt` | Generates one spoken response guided by the prompt. The model chooses the wording. If the caller interrupts, it answers the caller without resuming the check-in |
+| `message.add` | Adds context to the speaker and requests a response by default. Set `triggerResponseEnabled: false` to add context without requesting speech. System and developer messages become speaker instructions. Other roles become speaker context |
+| `tool` with inline `tool: { "type": "endCall" }` | Ends the call, after an accompanying `say` action if there is one. Once the hook fires, caller speech doesn't cancel the hangup |
+
+Other actions, including saved `toolId` references, function calls, and transfers, aren't run by GPT-Live hooks. The `endCall` tool's own messages aren't used, so configure the goodbye as a separate `say` action. Hook messages affect the speaker, not the reasoner. Hook actions are separate from HTTP live call control.
+
+## Connect a call
+
+Start with the dashboard's **Talk** button, then connect your call channel. GPT-Live supports browser WebRTC, native Twilio, Vapi SIP, and raw WebSocket audio.
+
+### Phone calls
+
+For inbound Twilio calls, [import a Twilio phone number](/phone-numbers/import-twilio) and assign your assistant to it. For SIP, follow the [SIP guide](/advanced/sip).
+
+For an outbound Twilio test, send this body to [Create Call](/api-reference/calls/create), using a customer number you control:
+
+```json
+{
+  "assistantId": "YOUR_ASSISTANT_ID",
+  "phoneNumberId": "YOUR_TWILIO_PHONE_NUMBER_ID",
+  "customer": { "number": "+14155550100" }
+}
+```
+
+`phoneNumberId` is the ID Vapi gave your imported Twilio number, not Twilio's own phone number SID.
+
+### WebSocket configuration
+
+Send this body to `POST https://api.vapi.ai/call` with your Vapi private API key:
+
+```json
+{
+  "assistantId": "YOUR_ASSISTANT_ID",
+  "transport": {
+    "provider": "vapi.websocket",
+    "audioFormat": {
+      "format": "pcm_s16le",
+      "container": "raw",
+      "sampleRate": 24000
+    }
+  }
+}
+```
+
+Connect to `transport.websocketCallUrl` in the response. Send and receive binary frames of mono, signed 16-bit little-endian audio at 24 kHz. The default format is rejected, so set `sampleRate` to `24000` explicitly. Browser and phone connections negotiate their own formats.
+
+To end the call, close the WebSocket, have the assistant call `endCall`, or send an HTTP `end-call` request to the [live control URL](#live-call-control). Send controls over HTTP, not as JSON frames on the audio WebSocket. See [WebSocket transport](/calls/websocket-transport) for the general transport.
+
+## Live call control
+
+Your application can end an active GPT-Live call, add context for the speaker, or start a cold transfer. Send an HTTP POST to the call's `monitor.controlUrl`, returned in the call object. These commands aren't accepted as audio WebSocket text frames or SDK data-channel messages.
+
+Set `CONTROL_URL` to the returned URL. Call control must be enabled in the assistant's `monitorPlan`: setting `controlEnabled` to `false` disables it. If `controlAuthenticationEnabled` is `true`, include `Authorization: Bearer YOUR_VAPI_PUBLIC_API_KEY` from the same organization on each request. The examples below assume control authentication is disabled. Keep the control URL private.
+
+### End the call
+
+```bash
+curl --fail-with-body -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"end-call"}'
+```
+
+### Append speaker context
+
+Use `append-context` with a `kind` and nonblank `content` of up to 16,000 characters:
+
+| Kind | Purpose | Example content |
+| --- | --- | --- |
+| `commentary` | Information for the speaker to convey in its own words | `Your appointment is confirmed for Tuesday at 2 PM.` |
+| `thinking` | Context for the speaker to use, without prompting speech | `The caller has already verified their account.` |
+| `instructions` | Guidance for the speaker's behavior, including asking it to try saying something | `Tell the caller their order is ready, then ask whether they need anything else.` |
+
+```bash
+curl --fail-with-body -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"append-context","kind":"instructions","content":"Tell the caller their order is ready, then ask whether they need anything else."}'
+```
+
+This context goes to the speaker only. It doesn't reach the reasoner or start reasoning or tool work, and it isn't added to the transcript as speech. `thinking` doesn't request speech, but the speaker can use it and repeat it later, so don't send secrets that way.
+
+A successful response means the context was submitted. It doesn't guarantee exact wording, immediate speech, or completed playback.
+
+### Cold transfer
+
+On native Twilio and Vapi SIP calls, send a phone or SIP destination:
+
+```bash
+curl --fail-with-body -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"transfer","destination":{"type":"number","number":"+14155550100","transferPlan":{"mode":"blind-transfer"}}}'
+```
+
+For SIP, use a destination such as `{"type":"sip","sipUri":"sip:agent@example.com"}`. Your application chooses the destination in this request. A reasoner using a `transferCall` tool chooses only from that tool's configured destinations.
+
+Cold transfer isn't supported on browser or raw WebSocket calls. Don't include pre-transfer `content`, warm-transfer plans, generated summaries, or fallback plans. A successful response means the carrier accepted the transfer, not that the destination answered.
+
+### Responses and unsupported controls
+
+Successful commands return HTTP `200` with `{"status":"ok"}`. Rejected requests return an error, including when the call isn't active or is already transferring. If a `502` response reports an unconfirmed outcome, don't retry automatically: the action may have reached the provider. A `503` response means no action was taken and is safe to retry.
+
+GPT-Live doesn't support the HTTP `say`, `add-message`, or mute and unmute controls. Use `append-context` for speaker guidance. The `say` and `message.add` actions in [idle-message hooks](#idle-messages) are assistant configuration, not HTTP controls.
+
+## Moved sections
+
+These sections used to be on this page.
+
+### Before you start
+
+Prerequisites are now in the [Quickstart](/gpt-live/quickstart#before-you-start) and [Build with tools](/gpt-live/tools#before-you-start).
+
+### Create an assistant
+
+See the [Quickstart](/gpt-live/quickstart#create-the-assistant) for a first assistant, and [Build with tools](/gpt-live/tools) for connecting tools.
+
+### Make a test call
+
+See [Talk to it](/gpt-live/quickstart#talk-to-it) and [Check what happened](/gpt-live/quickstart#check-what-happened).
+
+### Connect your tools
+
+See [Build with tools](/gpt-live/tools) and [the tool response contract](/gpt-live/tools#the-tool-response-contract).
+
+### MCP tools
+
+See [Use existing MCP tools](/gpt-live/tools#use-existing-mcp-tools).
+
+### Slow and asynchronous requests
+
+See [Slow and external work](/gpt-live/tools#slow-and-external-work).
+
+### Review and monitor calls
+
+See [Watch production calls](/gpt-live/testing#watch-production-calls).
+
+### Cost
+
+See [Cost](/gpt-live/testing#cost).

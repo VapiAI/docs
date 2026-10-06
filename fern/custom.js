@@ -7,6 +7,7 @@ const WIDGET_SCRIPT_URL = isLocalhost
 
 const HOCKEYSTACK_API_KEY = '96e358f635f3f5ea7fda26023b10da';
 const REO_CLIENT_ID = '0dc28e3fda800b9';
+const LINKEDIN_PARTNER_ID = '6951196';
 
 function injectVapiWidget() {
   console.log('[custom.js] injectVapiWidget called');
@@ -109,6 +110,32 @@ function initializeHubSpot() {
   document.getElementsByTagName('head')[0].appendChild(hubSpotScript);
 }
 
+function initializeLinkedIn() {
+  if (isLocalhost) {
+    console.log('[custom.js] Skipping LinkedIn Insight Tag on localhost');
+    return;
+  }
+
+  window._linkedin_partner_id = LINKEDIN_PARTNER_ID;
+  window._linkedin_data_partner_ids = window._linkedin_data_partner_ids || [];
+  window._linkedin_data_partner_ids.push(LINKEDIN_PARTNER_ID);
+
+  (function (l) {
+    if (!l) {
+      window.lintrk = function (a, b) {
+        window.lintrk.q.push([a, b]);
+      };
+      window.lintrk.q = [];
+    }
+    var s = document.getElementsByTagName('script')[0];
+    var b = document.createElement('script');
+    b.type = 'text/javascript';
+    b.async = true;
+    b.src = 'https://snap.licdn.com/li.lms-analytics/insight.min.js';
+    s.parentNode.insertBefore(b, s);
+  })(window.lintrk);
+}
+
 function initializeSubscribeForm() {
   // Fern's MDX renderer strips JSX event handlers (onSubmit, onClick), so the
   // form's validation and submission logic must be attached from plain JS.
@@ -198,6 +225,7 @@ function initializeAll() {
   initializeHockeyStack();
   initializeReo();
   initializeHubSpot();
+  initializeLinkedIn();
   configurePostHog();
   initializeSubscribeForm();
   if (ENABLE_VOICE_WIDGET) {

@@ -1,0 +1,210 @@
+---
+title: Configure the Voicemail tool
+subtitle: Create the tool, attach it to an assistant, and author what it speaks in each behavior mode
+description: Create a Vapi voicemail tool in the Dashboard or API, attach it to an assistant, prompt for voicemail detection, and set the message for each behavior mode.
+slug: tools/voicemail-tool/configure
+---
+
+Configuring the Voicemail tool takes two parts: create the tool and attach it to an assistant, then decide what the assistant does once it knows it has reached voicemail. You can do both in the Dashboard or through the API.
+
+## Configuration
+
+Add the Voicemail tool to your assistant and configure your system prompt to invoke it when voicemail is detected.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Tools** in the left nav and click **Create Tool**.
+    2. Select **Voicemail** as the tool type.
+    3. Give the tool a name and description. The description tells the LLM when to invoke the tool — keep it consistent with the voicemail-detection instruction you'll add to your system prompt in step 7. Example: *"Leave a voicemail message when you detect you've reached a voicemail system or auto-attendant."*
+    4. Under **Voicemail Script**, choose a behavior mode: **Use assistant voicemail message**, **Use custom script**, or **Skip speaking a voicemail**. See [Voicemail behavior modes](/tools/voicemail-tool#voicemail-behavior-modes) for details.
+    5. Save the tool.
+    6. Attach the tool to your assistant: open the assistant, go to **Tools**, and add the Voicemail tool you just created.
+    7. Add a voicemail-detection instruction to your assistant's system prompt. Without this, the LLM won't know when to call the tool. See [Detection prompting](/tools/voicemail-tool#detection-prompting) for indicators to include.
+
+    ![Voicemail tool configuration](/static/images/tools/voicemail-tool-config.png)
+  </Tab>
+  <Tab title="API">
+    Add the Voicemail tool to your assistant's `tools` array, and include a voicemail-detection instruction in the assistant's system prompt:
+
+<CodeBlocks>
+```json title="API Configuration"
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "type": "system",
+        "content": "You are a sales representative for Acme Corp. If at any point you determine you're speaking to a voicemail system (greeting mentions 'unavailable', 'leave a message', 'voicemail', etc.), immediately use the leave_voicemail tool."
+      }
+    ],
+    "tools": [
+      {
+        "type": "voicemail",
+        "function": {
+          "name": "leave_voicemail",
+          "description": "Leave a voicemail message when you detect you've reached a voicemail system"
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "Hi, this is {{company}}. {{message}}. Please call us back at {{phone}}."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+</CodeBlocks>
+
+    The `messages` array under `model` is your assistant's system prompt, while the `messages` array under the tool is the voicemail script the tool speaks when invoked.
+  </Tab>
+</Tabs>
+
+## Message configuration
+
+### Assistant voicemail message
+
+To reuse the same voicemail across an assistant without configuring the tool separately, leave the tool's `messages` empty and set `voicemailMessage` on the assistant:
+
+<CodeBlocks>
+```json title="API Configuration"
+{
+  "voicemailMessage": "Hi, sorry I missed you — please give us a call back at 555-0100.",
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "type": "system",
+        "content": "You are an outbound sales agent. If you detect a voicemail system, use the leave_voicemail tool to leave the configured message."
+      }
+    ],
+    "tools": [
+      {
+        "type": "voicemail",
+        "function": {
+          "name": "leave_voicemail",
+          "description": "Leave a voicemail when you detect a voicemail system"
+        },
+        "messages": []
+      }
+    ]
+  }
+}
+```
+</CodeBlocks>
+
+### Custom script mode
+
+For custom-script mode, define the voicemail message inline:
+
+<CodeBlocks>
+```json title="API Configuration"
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "type": "system",
+        "content": "You are a sales representative for Acme Corp. If at any point you determine you've reached a voicemail system, immediately use the leave_voicemail tool to deliver the configured message."
+      }
+    ],
+    "tools": [
+      {
+        "type": "voicemail",
+        "function": {
+          "name": "leave_voicemail",
+          "description": "Leave a voicemail message when you detect you've reached a voicemail system"
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "Hi, this is {{company}}. {{message}}. Please call us back at {{phone}}."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+</CodeBlocks>
+
+You can set a hardcoded message, or use template variables like `{{company}}`, `{{message}}`, and `{{phone}}` that are substituted at call time. See [Variables](/assistants/dynamic-variables) for how to pass values.
+
+### Skip mode (silent end-call)
+
+To silently terminate the call on voicemail, leave the tool's `messages` array empty and clear `voicemailMessage` on the assistant:
+
+<CodeBlocks>
+```json title="API Configuration"
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "type": "system",
+        "content": "You are calling prospects. If at any point you determine you've reached a voicemail system or auto-attendant (greeting mentions 'unavailable', 'leave a message', 'voicemail', 'press 1 for', etc.), immediately invoke the end_on_voicemail tool. Do not leave a message."
+      }
+    ],
+    "tools": [
+      {
+        "type": "voicemail",
+        "function": {
+          "name": "end_on_voicemail",
+          "description": "Silently end the call when you detect a voicemail system"
+        },
+        "messages": []
+      }
+    ]
+  }
+}
+```
+</CodeBlocks>
+
+Use this mode for outbound outreach where the value is a live conversation and a missed voicemail is fine — silent termination keeps the call short and avoids the cost of running it to the max-duration cap.
+
+### Pre-recorded audio messages
+
+For consistent quality and pronunciation, use pre-recorded audio files by providing the URL in the `content` field:
+
+<CodeBlocks>
+```json title="API Configuration"
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "type": "system",
+        "content": "You are a sales representative for Acme Corp. If you detect a voicemail system, use the leave_voicemail tool to play our pre-recorded message."
+      }
+    ],
+    "tools": [
+      {
+        "type": "voicemail",
+        "function": {
+          "name": "leave_voicemail",
+          "description": "Leave a pre-recorded voicemail message"
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "https://example.com/voicemail.mp3"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+</CodeBlocks>
+
+<Note>
+  Pre-recorded audio messages are ideal for brand-specific messaging or when you
+  need precise pronunciation of phone numbers, website URLs, or company names.
+  Supported formats: `.wav` and `.mp3` files.
+</Note>

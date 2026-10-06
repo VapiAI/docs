@@ -1,7 +1,7 @@
 ---
 title: Simulations quickstart
-subtitle: Run your first simulation against an assistant or squad in minutes.
-description: "Create a simulation suite that asks an AI tester to book an appointment with Riley, then evaluate whether it was booked for the requested date and time."
+subtitle: Run your first simulation against an assistant or squad in minutes
+description: "Create a simulation suite for Riley and check whether the conversation reports the requested appointment details."
 slug: observability/simulations-quickstart
 ---
 
@@ -9,13 +9,17 @@ In about 10 minutes, you'll run an AI tester through an appointment-booking conv
 
 ## What you'll build
 
-A reusable **simulation suite** that asks an AI tester to book an appointment with Riley, Vapi's appointment-scheduler template assistant. A Boolean evaluation checks whether Riley books the appointment for next Monday at 2:00 PM.
+A reusable **simulation suite** that asks an AI tester to book an appointment with Riley, Vapi's appointment-scheduler template assistant. The first criterion checks whether Riley reports the requested date and time with a confirmation number. This is a conversation-only demonstration, not proof that an appointment exists in a calendar.
 
 ## Prerequisites
 
 - A [**Vapi account**](https://dashboard.vapi.ai).
 
 You create Riley and the structured output during this quickstart.
+
+<Warning>
+  Simulations run unmocked tools for real. Before running, inspect Riley's tools and use sandbox integrations or [mock every tool](/observability/simulations-advanced#mock-tool-responses) that could create a booking, send a message, or affect a real customer.
+</Warning>
 
 ## Build and run a simulation
 
@@ -45,8 +49,9 @@ You create Riley and the structured output during this quickstart.
     The suite opens with its first simulation. In the **Scenario** tab, enter `Book an appointment` as the **Scenario name**. Paste the following text into **Intent**:
 
     ```text
-    You are calling to book an appointment for next Monday at 2pm.
-    Confirm your identity when asked and provide any required information.
+    You are Alex Taylor, calling to book an appointment for January 20, 2027
+    at 2pm in America/Los_Angeles. Your test email is alex@example.com.
+    Provide these details when asked. Don't invent other account information.
     End the call once you receive a confirmation number.
     ```
 
@@ -80,9 +85,9 @@ You create Riley and the structured output during this quickstart.
 
     | Setting | Value |
     | -- | -- |
-    | **Name** | `appointment_booked` |
+    | **Name** | `appointment_details_reported` |
     | **Type** | Boolean |
-    | **Description** | Return `true` if Riley books the appointment for next Monday at 2:00 PM. |
+    | **Description** | Return `true` only if Riley tells the caller the appointment is confirmed for January 20, 2027 at 2pm Pacific time and provides a confirmation number. Otherwise return `false`. This checks the reported details, not calendar state. |
     | **Comparator** | `equals (=)` |
     | **Expected value** | `true` |
 
@@ -97,10 +102,10 @@ You create Riley and the structured output during this quickstart.
 
     <CardGroup cols={2}>
       <Card title="Chat" icon="message">
-        Runs faster and costs less because it skips audio evaluation.
+        Runs without speech generation or transcription, so it is faster and costs less.
       </Card>
       <Card title="Voice" icon="phone">
-        Tests the complete audio experience at about twice the cost.
+        Exercises speech, transcription, and turn-taking with a synthetic caller. Listen to the recording to assess the audio experience.
       </Card>
     </CardGroup>
 
@@ -121,7 +126,7 @@ You create Riley and the structured output during this quickstart.
 
     The header shows Riley, the mode, run date, and overall result (`Passed` or a count such as `1/1 failed`). The list on the left shows one result for each simulation and iteration. Select a result to review it:
 
-    The **Success criteria** panel appears next to the **Transcript**. The `appointment_booked` evaluation passes when Riley books the appointment for next Monday at 2:00 PM. The transcript lists the conversation turn by turn between the AI tester and Riley.
+    The **Success criteria** panel appears next to the **Transcript**. Review whether `appointment_details_reported` agrees with what Riley actually said. The transcript lists the conversation turn by turn between the AI tester and Riley. For voice runs, also listen to the recording when available; the criterion doesn't grade pronunciation, pauses, or interruptions.
 
     <Frame>
       <img
@@ -164,7 +169,7 @@ curl -sS -X GET "https://api.vapi.ai/eval/simulation/personality" \
 
 ### 2. Create a scenario
 
-This request creates the appointment-booking scenario and its success criteria. The `instructions` field sets the AI tester's intent. The Boolean [**structured output**](/assistants/structured-outputs-quickstart) returns `true` when Riley books the requested appointment.
+This request creates the appointment-booking scenario and its success criteria. The `instructions` field sets the AI tester's intent. The Boolean [**structured output**](/assistants/structured-outputs-quickstart) checks the details Riley reports, not an external calendar. If you change the requested date, update the criterion too.
 
 ```bash
 curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
@@ -172,12 +177,12 @@ curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Book an appointment",
-    "instructions": "You are calling to book an appointment for next Monday at 2pm. Confirm your identity when asked and provide any required information. End the call once you receive a confirmation number.",
+    "instructions": "You are Alex Taylor, calling to book an appointment for January 20, 2027 at 2pm in America/Los_Angeles. Your test email is alex@example.com. Provide these details when asked. Do not invent other account information. End the call once you receive a confirmation number.",
     "evaluations": [
       {
         "structuredOutput": {
-          "name": "appointment_booked",
-          "description": "Return true if Riley books the appointment for next Monday at 2:00 PM.",
+          "name": "appointment_details_reported",
+          "description": "Return true only if Riley tells the caller the appointment is confirmed for January 20, 2027 at 2pm Pacific time and provides a confirmation number. Otherwise return false. This checks the reported details, not calendar state.",
           "schema": {
             "type": "boolean"
           }
@@ -258,6 +263,8 @@ The response includes `status` (`queued`, `running`, `ended`) and `itemCounts` (
 </Tabs>
 
 ## Next steps
+
+Use one iteration to check the setup, then [repeat critical journeys](/test/run-and-maintain-tests#repeat-critical-tests) before release. For a tool-backed booking test, add separate criteria for the requested tool arguments and for reporting its result accurately. Include a tool-error case where Riley must not claim success. A mocked success proves behavior under the supplied result, not an actual booking; verify calendar state separately with sandbox records. See [writing observable success criteria](/test/simulations-best-practices).
 
 <CardGroup cols={2}>
   <Card title="Simulations advanced" icon="flask" href="/observability/simulations-advanced">

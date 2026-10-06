@@ -10,8 +10,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Fern
-        run: npm install -g fern-api
+      - uses: ./.github/actions/setup-fern
 
       - name: Generate preview URL
         id: generate-docs
@@ -19,9 +18,9 @@ jobs:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
           POSTHOG_PROJECT_API_KEY: ${{ secrets.POSTHOG_PROJECT_API_KEY }}
         run: |
-          OUTPUT=$(fern generate --docs --preview --log-level debug 2>&1) || true
-          echo "$OUTPUT"
-          URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K.*(?= \()')
+          set -euo pipefail
+          node scripts/fern/run.cjs generate --docs --preview --log-level debug 2>&1 | tee "$RUNNER_TEMP/fern-preview.log"
+          URL=$(grep -oP 'Published docs to \K.*(?= \()' "$RUNNER_TEMP/fern-preview.log")
           echo "Preview URL: $URL"
           echo "🌿 Preview your docs: $URL" > preview_url.txt
 

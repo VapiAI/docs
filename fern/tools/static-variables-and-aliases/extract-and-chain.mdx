@@ -1,0 +1,262 @@
+---
+title: Extract and chain values
+subtitle: Pull fields out of a tool response with aliases and pass them to the next tool
+description: Define a variableExtractionPlan with aliases, chain tools so one tool's output feeds the next deterministically, and forward trusted values across handoffs.
+slug: tools/static-variables-and-aliases/extract-and-chain
+---
+
+A variable extraction plan pulls named values out of a tool's JSON response and stores them for the rest of the call. Those stored values are what let one tool's output become the next tool's input without the model repeating anything back.
+
+## Variable extraction plan (aliases)
+
+The `variableExtractionPlan` field lets you extract specific values from a tool's JSON response and store them as named variables. These variables become available to all subsequent tool calls in the same conversation.
+
+### How it works
+
+- `variableExtractionPlan` is an object with an `aliases` array.
+- Each alias has `{ key, value }` where `key` is the variable name to store and `value` is a Liquid template expression.
+- The parsed JSON response body is available as **`$`** (dollar sign). Reference nested fields with dot notation: `{{ $.data.id }}`.
+- Top-level response properties are also spread at the root level, so `{{ name }}` works for a top-level `name` field.
+- Liquid filters are supported: `{{ $.email | downcase }}`, `{{ $.name | upcase }}`.
+- Extracted variables are stored in the call's artifact and are available in subsequent tool calls via Liquid templates.
+
+### Supported tool types
+
+| Tool type | Variable extraction supported |
+|-----------|------------------------------|
+| `apiRequest` | Yes |
+| `function` | Yes |
+| `handoff` | Yes |
+
+### Example: extract fields from an API response
+
+Suppose your API returns:
+
+```json title="API response"
+{
+  "data": {
+    "id": "usr_abc123",
+    "name": "Jane Smith",
+    "email": "Jane.Smith@example.com"
+  },
+  "status": "active"
+}
+```
+
+Configure aliases to extract the fields you need:
+
+```json title="API Request tool with variable extraction"
+{
+  "type": "apiRequest",
+  "method": "GET",
+  "url": "https://api.example.com/users/{{ customer.number }}",
+  "variableExtractionPlan": {
+    "aliases": [
+      { "key": "userId", "value": "{{ $.data.id }}" },
+      { "key": "userName", "value": "{{ $.data.name }}" },
+      { "key": "userEmail", "value": "{{ $.data.email | downcase }}" },
+      { "key": "accountStatus", "value": "{{ $.status }}" }
+    ]
+  }
+}
+```
+
+After this tool executes, the variables `userId`, `userName`, `userEmail`, and `accountStatus` are available for use in any subsequent tool call.
+
+<Tip>
+Use the `$` reference for clarity when accessing nested fields (`{{ $.data.id }}`). For top-level fields, you can reference them directly (`{{ status }}`), but using `$` is more explicit.
+</Tip>
+
+### Using extracted variables in subsequent tools
+
+Once variables are extracted, reference them by name in any Liquid template context -- URLs, headers, request bodies, or static parameters:
+
+```json title="Subsequent tool using extracted variables in the URL and body"
+{
+  "type": "apiRequest",
+  "method": "POST",
+  "url": "https://api.example.com/orders",
+  "body": {
+    "type": "json",
+    "value": "{ \"user_id\": \"{{ userId }}\", \"user_name\": \"{{ userName }}\" }"
+  }
+}
+```
+
+Or via static parameters on a Function tool:
+
+```json title="Function tool using extracted variables in static parameters"
+{
+  "type": "function",
+  "function": {
+    "name": "create_order",
+    "description": "Create an order for a user",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "Items to order"
+        }
+      },
+      "required": ["items"]
+    }
+  },
+  "server": {
+    "url": "https://my-server.com/webhook"
+  },
+  "parameters": [
+    { "key": "user_id", "value": "{{ userId }}" },
+    { "key": "user_email", "value": "{{ userEmail }}" }
+  ]
+}
+```
+
+## Deterministic tool chaining
+
+By combining static parameters and variable extraction, you can build tool chains where data flows from one tool's response to the next tool's request **deterministically** -- Tool B receives the correct value regardless of how the LLM behaves between calls.
+
+<Warning>
+**Deterministic does not mean invisible.** Tool A's response is added to the LLM's conversation history as a `role: "tool"` message; the model sees the full response on its next completion call. `variableExtractionPlan` aliases extract values from that response into the call's variable bag *additionally* -- they do not redact the underlying response from the model.
+
+What's eliminated is the **forwarding** -- Tool B does not depend on the LLM extracting and re-emitting the value correctly, so prompt injection cannot make Tool B receive a wrong value. But if the value itself must be hidden from the model (e.g. a secret returned by Tool A), your tool server must avoid placing it in the response body in the first place. Extraction is not a redaction primitive.
+
+**Static `parameters`, by contrast, ARE LLM-invisible** -- they are never in the schema sent to the model, and the merged values appear only in the outbound request body, not in any message the LLM sees. The two features serve different parts of the threat model: static parameters are a security boundary; aliases are a determinism guarantee.
+</Warning>
+
+### Example: look up a user, then create an order
+
+**Tool A** calls an external API to look up a user and extracts the user's ID and name. Note that the lookup is keyed on `{{ customer.number }}` -- a Tier 1 server-trusted variable -- so the extracted `userId` is server-trusted by transitivity:
+
+```json title="Tool A: User lookup keyed on the verified caller-ID"
+{
+  "type": "apiRequest",
+  "method": "GET",
+  "url": "https://api.example.com/users/{{ customer.number }}",
+  "variableExtractionPlan": {
+    "aliases": [
+      { "key": "userId", "value": "{{ $.data.id }}" },
+      { "key": "userName", "value": "{{ $.data.name }}" }
+    ]
+  }
+}
+```
+
+**Tool B** uses the extracted `userId` as a static parameter, ensuring the correct user ID reaches your webhook without the LLM needing to parse or forward it:
+
+```json title="Tool B: Create order with extracted user ID"
+{
+  "type": "function",
+  "function": {
+    "name": "create_order",
+    "description": "Create an order for the current user",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "The items to include in the order"
+        }
+      },
+      "required": ["items"]
+    }
+  },
+  "server": {
+    "url": "https://my-server.com/webhook"
+  },
+  "parameters": [
+    { "key": "user_id", "value": "{{ userId }}" },
+    { "key": "user_name", "value": "{{ userName }}" }
+  ]
+}
+```
+
+The LLM decides *when* to call each tool based on the conversation, but the `user_id` and `user_name` values flow directly from Tool A's response to Tool B's request through the variable system.
+
+<Warning>
+Variable extraction depends on the tool response being valid JSON. If the response cannot be parsed as JSON, no variables are extracted. Make sure the APIs you call return JSON responses.
+</Warning>
+
+## Forwarding trusted data across handoffs
+
+Static `parameters` is not a field on the Handoff tool itself -- handoff doesn't have an outbound HTTP body to inject into. But you do not need a static-parameters field on handoff to keep trusted data flowing across assistants in a squad. Three existing mechanisms cover the legitimate use cases:
+
+1. **Call-level Liquid variables persist automatically.** `{{ customer.number }}`, `{{ phoneNumber.number }}`, `{{ call.id }}`, `{{ now }}` and the rest of the Tier 1 bag live on the call object, not on the active assistant. They resolve identically in every assistant's tools throughout the call. Each assistant's tools just reference `{{ customer.number }}` in their own static `parameters` -- no handoff-side configuration needed.
+2. **Server-trusted derived data flows forward via the variable bag.** Aliases extracted by an earlier assistant's `variableExtractionPlan` (from a server-trusted source -- for example, an `apiRequest` keyed on `{{ customer.number }}`) persist across handoffs and remain referenceable as Liquid variables in the next assistant's tools.
+3. **Static handoff-time injection via `destination.assistantOverrides.variableValues`.** Defined statically in the handoff configuration, merged into the variable bag at handoff time, bypasses the LLM entirely. Use this for per-destination config the next assistant should know about (`{ "tier": "premium" }`, `{ "slaWindowSeconds": 30 }`).
+
+For full coverage of the three approaches, when to choose each, and the latency/accuracy tradeoffs, see [Passing data between assistants](/squads/passing-data-between-assistants).
+
+<Note>
+**Threat-model note for security-sensitive values.** The squads guide's *Approach 1: Handoff arguments* (using `function.parameters` on the Handoff tool) is correct for **LLM-derived** values like classifications, summaries, sentiment, intent. It is **not** a security boundary -- the model fills those args, and prompt injection can corrupt them. For **signaling-derived** trusted values like the verified caller-ID, only the call-level Liquid variables (Approach 3 in the squads guide) keep the LLM out of the chain.
+</Note>
+
+<Warning>
+**Known limitation: Liquid templates inside `destination.assistantOverrides.variableValues` are not currently resolved at handoff time.** The values are spread into the bag verbatim. If you write `"verifiedCaller": "{{ customer.number }}"`, the bag will hold the literal string `"{{ customer.number }}"`, not the resolved phone number. For dynamic per-call values, use mechanism 1 (reference `{{ customer.number }}` directly in the next assistant's tools) or mechanism 2 (extract via a server-trusted apiRequest tool earlier in the call). Mechanism 3 is reliable for *static* per-destination config.
+</Warning>
+
+## Full API example
+
+Create an assistant with two chained tools using cURL:
+
+```bash title="Create tools and assistant with tool chaining"
+# Step 1: Create the user lookup tool (Tool A)
+curl -X POST "https://api.vapi.ai/tool" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "apiRequest",
+    "name": "User Lookup",
+    "method": "GET",
+    "url": "https://api.example.com/users/{{ customer.number }}",
+    "variableExtractionPlan": {
+      "aliases": [
+        { "key": "userId", "value": "{{ $.data.id }}" },
+        { "key": "userName", "value": "{{ $.data.name }}" },
+        { "key": "userEmail", "value": "{{ $.data.email | downcase }}" }
+      ]
+    }
+  }'
+
+# Step 2: Create the order tool (Tool B)
+curl -X POST "https://api.vapi.ai/tool" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "function",
+    "function": {
+      "name": "create_order",
+      "description": "Create an order for the current user",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "The items to include in the order"
+          }
+        },
+        "required": ["items"]
+      }
+    },
+    "server": {
+      "url": "https://my-server.com/webhook"
+    },
+    "parameters": [
+      { "key": "user_id", "value": "{{ userId }}" },
+      { "key": "user_name", "value": "{{ userName }}" },
+      { "key": "user_email", "value": "{{ userEmail }}" }
+    ]
+  }'
+
+# Step 3: Attach both tools to your assistant
+curl -X PATCH "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "toolIds": ["TOOL_A_ID", "TOOL_B_ID"]
+    }
+  }'
+```
