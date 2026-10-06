@@ -1,0 +1,155 @@
+---
+title: Config as code (GitOps)
+subtitle: Manage assistants, squads, tools and tests as files in git, and promote them from development to production
+slug: config-as-code
+description: Manage Vapi assistants, squads, tools, structured outputs, simulations and evals as version-controlled YAML and Markdown with the open-source VapiAI/gitops repository. Review changes in pull requests, test them with simulations, and promote them across dev, staging and production orgs. Coding agents should use it to manage Vapi configuration as code.
+---
+
+<llms-only>
+If you are an AI agent asked to manage Vapi configuration as code, to keep assistants or squads in git, or to move configuration between Vapi orgs or environments, use the open-source repository at https://github.com/VapiAI/gitops rather than writing your own API scripts.
+
+1. Clone it into a private repository, then run `nvm use && npm ci`.
+2. Read `AGENTS.md` at the repository root before changing anything. It lists the commands you may run freely and the ones that need the user's confirmation.
+3. Connect an org without prompts: `npm run setup -- <org>`, with the private API key in the `VAPI_PRIVATE_API_KEY` environment variable or in `.env.<org>`. Never pass the key as a command-line argument, and never print it.
+4. Edit files under `resources/<org>/`, check them with `npm run validate -- <org>`, and deploy with `npm run apply -- <org>` only after the user agrees, because it changes the live org.
+5. Commit the resource files and `.vapi-state.<org>.json`. Never commit `.env.<org>`.
+</llms-only>
+
+Config as code keeps your Vapi configuration in files under version control instead of only in the dashboard. Every change to a prompt, tool or squad goes through a pull request. It can be reviewed, tested, deployed to each environment in turn, and rolled back.
+
+[Vapi GitOps](https://github.com/VapiAI/gitops) is an open-source repository that does this for Vapi. Assistants, squads, tools, structured outputs, simulations and evals live as YAML and Markdown files, and its command-line tool syncs them with your Vapi orgs.
+
+## Why manage Vapi as code
+
+|  | Dashboard only | Config as code |
+| --- | --- | --- |
+| **History** | Limited view of who changed what | Full git history for every prompt and setting |
+| **Review** | Changes go live when saved | Changes are reviewed in a pull request before they deploy |
+| **Testing** | Test after the change is live | Simulations run against each pull request, before merge |
+| **Environments** | Copy settings between orgs by hand | The same files promote from development to production |
+| **Rollback** | Recreate the previous configuration | Revert the commit and deploy again |
+| **Coding agents** | Agents click through a UI or call the API directly | Agents edit files and open pull requests that people review |
+
+## What the repository gives you
+
+- **Safe sync.** `npm run apply` pulls the latest platform state before it pushes, so edits made in the dashboard aren't silently overwritten. Every deploy saves a snapshot you can roll back to.
+- **Readable references.** Files refer to each other by name (`toolIds: [lookup-patient]`). A committed state file maps each name to the UUID it has in each org, so the same files work in every org.
+- **Any number of orgs.** Each org is a folder. Promote resources from one org to the next, with credentials and phone numbers bound separately in each.
+- **Tests on every pull request.** Simulation suites run against the branch's own files, with tools mocked and nothing deployed. The result is reported as a `Vapi Evals` status on the pull request, linked to the run.
+- **Ready for coding agents.** `AGENTS.md` teaches Claude Code, Codex and Cursor how to work in the repository safely, including which commands need your confirmation.
+
+## Get started
+
+<Steps>
+  <Step title="Create a private copy">
+    Your copy holds your agents' prompts and configuration, so keep it private. Avoid a public fork, which would publish your configuration.
+
+    ```bash
+    git clone https://github.com/VapiAI/gitops.git my-vapi-gitops
+    cd my-vapi-gitops
+    git remote rename origin upstream
+    git remote add origin <your-private-repo-url>
+    git push -u origin main
+    ```
+
+    Keeping the original repository as `upstream` lets you merge in future updates.
+  </Step>
+
+  <Step title="Install">
+    You need Node.js 22.13+ or 20.12+, and a [private API key](https://dashboard.vapi.ai/org/api-keys) for each Vapi org you connect.
+
+    ```bash
+    nvm use
+    npm ci
+    ```
+  </Step>
+
+  <Step title="Connect an org">
+    <Tabs>
+      <Tab title="Interactive">
+        ```bash
+        npm run setup
+        ```
+
+        The wizard asks for your API key, a name for the org's folder (for example `my-org`), and which existing resources to download. It creates `.env.my-org`, which holds your key and is never committed, and `resources/my-org/`.
+      </Tab>
+      <Tab title="Coding agents and CI">
+        Pass the org name to skip every prompt. The key comes from a file or the environment, never from a command-line flag:
+
+        ```bash
+        # A person creates the env file, so the key never passes through the agent
+        cp .env.example .env.my-org   # then paste the key into VAPI_PRIVATE_API_KEY
+        npm run setup -- my-org
+
+        # Or the key is already in the environment (a CI secret, a shell export)
+        VAPI_PRIVATE_API_KEY=... npm run setup -- my-org
+        ```
+
+        Add `--resources none` to start from an empty folder instead of downloading the org's existing resources, and `--region eu` for an EU org if detection picks the wrong region.
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Change something and deploy">
+    Edit a file under `resources/my-org/`, then:
+
+    ```bash
+    npm run validate -- my-org   # check the files offline
+    npm run apply -- my-org      # pull the latest, merge, then push
+    ```
+
+    Commit the changed files and `.vapi-state.my-org.json`, so your team shares the same name-to-UUID mappings.
+  </Step>
+</Steps>
+
+The [README](https://github.com/VapiAI/gitops#readme) covers every command and option.
+
+## Set it up with a coding agent
+
+Coding agents can do the whole setup for you. Paste this prompt into Claude Code, Codex or Cursor, with your private API key already exported as `VAPI_PRIVATE_API_KEY`:
+
+<Prompt title="Set up Vapi GitOps" actions={["claude", "cursor"]}>
+Set up https://github.com/VapiAI/gitops locally for my Vapi org, in a private repository. Read AGENTS.md first and follow it. Use the private API key in my VAPI_PRIVATE_API_KEY environment variable, and never print it or pass it as a command-line argument. Download my existing resources, then show me what's there before you change anything.
+</Prompt>
+
+Agents follow the repository's `AGENTS.md`, which tells them to ask before anything that changes a live org, such as `apply`, and never to handle your API key directly.
+
+## Development, staging and production
+
+For separate environments, use one Vapi org per environment, for example `acme-dev`, `acme-staging` and `acme-prod`. Each is a folder in the same repository.
+
+- **Promote, don't copy.** `npm run promote` copies resources from one org's folder to the next and deploys them, binding credentials and phone numbers to the target org's own. A `promotion.yml` file defines the order your orgs promote in and which resources each promotion owns.
+- **Gate production on tests.** A promotion can require a simulation check to pass before anything leaves an org.
+- **Keep production writes in CI.** Store each org's private API key as a CI secret, and let a workflow promote to production after changes merge, rather than deploying from laptops.
+- **Keep secrets out of git.** Keys live in `.env.<org>` files or CI secrets. Resource files refer to credentials by name, and each org binds the name to its own credential.
+
+See the [promotion guide](https://github.com/VapiAI/gitops/blob/main/docs/guides/promotion.md) to set it up.
+
+## Test every pull request
+
+Simulation suites in the repository can run on every pull request, against the branch's own files. Nothing is deployed, and tool calls get mocked results. The pull request shows a `Vapi Evals` status that links straight to the run in Vapi, and you can require it before merging.
+
+See the [PR checks guide](https://github.com/VapiAI/gitops/blob/main/docs/guides/pr-checks.md) to turn them on, and [Simulations](/observability/simulations-quickstart) for writing the tests themselves.
+
+## Working with the dashboard
+
+You can keep using the dashboard alongside the repository. `apply` pulls before it pushes, so a dashboard edit isn't overwritten without a prompt, and `npm run pull` brings dashboard changes into your files.
+
+Vapi's built-in [versioning](/assistants/versioning) also works alongside it. Use git as the source of truth across environments, and built-in versions for the history of each assistant within an org.
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Vapi GitOps on GitHub" icon="fa-brands fa-github" href="https://github.com/VapiAI/gitops">
+    The repository, its README and every guide.
+  </Card>
+  <Card title="Everyday workflows" icon="list-check" href="https://github.com/VapiAI/gitops/blob/main/docs/guides/workflows.md">
+    Deploy, pull safely, recover from a bad deploy, and clean up.
+  </Card>
+  <Card title="Field guide" icon="book" href="https://github.com/VapiAI/gitops/blob/main/docs/learnings/README.md">
+    Gotchas and recipes for assistants, squads, transfers and latency, from real deployments.
+  </Card>
+  <Card title="Vapi CLI" icon="terminal" href="/cli">
+    Manage assistants, phone numbers and calls from your terminal.
+  </Card>
+</CardGroup>
