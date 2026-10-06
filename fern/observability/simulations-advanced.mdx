@@ -1,11 +1,11 @@
 ---
 title: Simulations advanced
-subtitle: Mock tools, send lifecycle webhooks, and reuse structured outputs in simulations
-description: "Configure advanced simulations with variables, tool mocks, lifecycle webhooks, and reusable structured outputs for consistent testing."
+subtitle: Mock tools, send lifecycle webhooks, set latency limits, and reuse structured outputs in simulations
+description: "Configure advanced simulations with variables, tool mocks, lifecycle webhooks, latency limits, and reusable structured outputs for consistent testing."
 slug: observability/simulations-advanced
 ---
 
-Advanced simulation options let you set variable values, mock tool responses, trigger lifecycle webhooks, and reuse structured outputs. Use them after you complete the [**Simulations quickstart**](/observability/simulations-quickstart) and need more control over behavior or test conditions.
+Advanced simulation options let you set variable values, mock tool responses, trigger lifecycle webhooks, set latency limits, and reuse structured outputs. Use them after you complete the [**Simulations quickstart**](/observability/simulations-quickstart) and need more control over behavior or test conditions.
 
 ## How it works
 
@@ -28,6 +28,9 @@ Open a suite and select **Edit**, then **Next**. The review step contains the **
   </Card>
   <Card title="Reuse structured outputs" icon="database" href="#reuse-structured-outputs">
     Apply the same evaluation criterion across simulations.
+  </Card>
+  <Card title="Set latency limits" icon="stopwatch" href="#set-latency-limits">
+    Fail a voice simulation when the assistant responds too slowly.
   </Card>
   <Card title="Manage test coverage" icon="flask" href="/observability/simulations-manage#testing-strategies">
     Build coverage with smoke tests, regression tests, and edge cases.
@@ -239,6 +242,76 @@ curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
 </Tab>
 </Tabs>
 
+## Set latency limits
+
+A latency limit fails a voice simulation when the [**assistant**](/assistants) or [**squad**](/squads) under test responds too slowly. Vapi measures latency on each turn of the call, combines the turns into one number, and passes the limit when that number is at or below the limit you set.
+
+Latency limits work alongside structured-output evaluations. A scenario still needs at least one evaluation, and a required limit that fails marks the simulation as failed even when every evaluation passes.
+
+<Tabs>
+<Tab title="Dashboard">
+
+On the **Success criteria** tab, under **Latency expectations**, select **Add latency expectation**. Configure each limit with four fields:
+
+- **Aggregation**: How the call's turns are combined: **Median**, **Mean**, **P95**, or **Max**.
+- **Metric**: **Turn latency**, **Model latency**, or **Voice latency**.
+- **Limit**: The maximum in milliseconds, as a whole number from 1 to 60,000.
+- **Required**: Turn off to make the limit informational. An optional limit is reported but never fails the simulation.
+
+A new limit starts as a required median turn latency of 1,200 ms. Each simulation can have up to 20 limits.
+
+</Tab>
+<Tab title="cURL">
+
+Latency limits are the `latencyExpectations` property of the scenario. Add them when you create a scenario, or patch an existing one:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "latencyExpectations": [
+      { "metric": "turn", "aggregation": "median", "thresholdMs": 1200 },
+      { "metric": "model", "aggregation": "p95", "thresholdMs": 800, "required": false }
+    ]
+  }'
+```
+
+`required` defaults to `true`. Sending `latencyExpectations` replaces the scenario's existing limits, and an empty array removes them.
+
+</Tab>
+</Tabs>
+
+### Metrics and aggregations
+
+| Metric | What it measures |
+| --- | --- |
+| `turn` | Total time from the end of the AI tester's speech to the start of the assistant's reply |
+| `model` | Time for the model to return its first token |
+| `voice` | Time for the voice provider to return the first audio |
+
+The aggregation reduces the call's turns to one value: `mean`, `median`, `p95`, or `max`. `p95` uses the nearest-rank method, so on a call with fewer than 20 turns it equals `max`. Measured values are rounded to the nearest millisecond before they are compared with the limit.
+
+<Tip>
+  Gate on median turn latency. A short simulation has only a few turns, so `p95` and `max` can fail on a single slow turn. To watch the slowest turns without failing runs, add an optional `p95` or `max` limit next to a required `median` limit on the same metric.
+</Tip>
+
+### When a limit is skipped
+
+| Situation | Result |
+| --- | --- |
+| The run uses chat mode | Skipped. Chat runs have no audio, so there is no latency to measure. |
+| The assistant under test uses [**GPT-Live**](/gpt-live/overview) | Skipped. Per-turn latency isn't measured for GPT-Live assistants yet. A GPT-Live AI tester talking to a classic assistant is still measured. |
+| A voice run where no turn measured the metric | The limit fails. A latency that couldn't be measured never counts as within the limit. |
+
+Skipped limits don't affect the result.
+
+### Review latency results
+
+Open a run and select a simulation. The **Latency** section shows the average turn latency, then each limit with its measured value, its limit, and the number of turns measured. Optional and skipped limits are labeled. When a simulation fails, the count in the results list, such as `1 of 3 evaluations failed`, includes its latency limits.
+
+Through the API, each run item's `results.latencyEvaluations` holds one entry per limit with `actualMs`, `thresholdMs`, `sampleCount`, `passed`, `required`, and, for skipped limits, `isSkipped` and `skipReason`. `results.passed` accounts for required latency limits.
+
 ## Set variable values for the assistant or squad
 
 Variables provide values for the [**dynamic variables**](/assistants/dynamic-variables) used by the [**assistant**](/assistants) or [**squad**](/squads) during the simulation. On the **Variables** tab, add **Name** and **Value** pairs. Each name must match a `{{variable}}` placeholder in the assistant's prompt, and the value is substituted during the run.
@@ -255,6 +328,8 @@ Use variables to test specific inputs, such as a customer name or account tier, 
 | There is no audio or recording | Check whether the run used chat mode. Use voice mode to test or record audio. |
 | Start or end webhooks do not trigger | Confirm the corresponding hook and its URL are configured on the scenario. |
 | A tool mock does not apply | Confirm that `toolName` matches the configured tool name exactly and that `enabled` is `true`. |
+| A latency limit fails without a measured value | No turn in the call measured that metric. Confirm the run used voice mode and that the conversation completed at least one exchange. |
+| Latency limits show as skipped | Check whether the run used chat mode or the assistant under test uses GPT-Live. Both skip latency limits. |
 
 ## Next steps
 
