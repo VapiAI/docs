@@ -32,14 +32,14 @@ vapi listen --forward-to localhost:3000/webhook
 ## Choose your integration approach
 
 <CardGroup cols={2}>
-  <Card title="Client-Side Voice Interfaces" icon="globe">
+  <Card title="Client-Side Voice Interfaces" icon="globe" href="#web-voice-interfaces">
     **Best for:** User-facing applications, voice widgets, mobile apps
     - Browser-based voice assistants and widgets
     - Real-time voice conversations
     - Mobile voice applications (iOS, Android, React Native, Flutter)
     - Direct user interaction with assistants
   </Card>
-  <Card title="Server-Side Call Management" icon="server">
+  <Card title="Server-Side Call Management" icon="server" href="#server-side-call-management">
     **Best for:** Backend automation, bulk operations, system integrations
     - Automated outbound call campaigns
     - Inbound call routing and management
@@ -219,7 +219,7 @@ vapi.on('message', (message) => {
     // highlight `text` up to that position.
   } else if (timing?.type === 'word-progress') {
     // Minimax with voice.subtitleType: "word". Cursor-based:
-    // wordsSpoken / totalWords. See note below — events arrive in
+    // wordsSpoken / totalWords. See note below. Events arrive in
     // segment-sized jumps, not word-by-word ticks.
   } else {
     // Cartesia, Deepgram, Azure, OpenAI, etc.: text-only event tied
@@ -229,13 +229,13 @@ vapi.on('message', (message) => {
 ```
 
 <Warning>
-  Cadence and granularity vary significantly by voice provider — pick the one that matches your UI requirements:
+  Cadence and granularity vary significantly by voice provider. Pick the one that matches your UI requirements:
 
   - **ElevenLabs (`word-alignment`)** is the only provider that emits at true playback cadence with real per-word timestamps. Best for smooth karaoke-style highlighting with no client-side interpolation.
-  - **Minimax (`word-progress`)** with `subtitleType: "word"` emits once per synthesis segment, near the *end* of that segment's playback. The per-word `timing.words[]` array carries timestamps for the segment that just finished — useful for retroactive animation or forward extrapolation, but not for driving real-time highlighting *during* that segment. See the [MiniMax provider page](/providers/voice/minimax) for details.
+  - **Minimax (`word-progress`)** with `subtitleType: "word"` emits once per synthesis segment, near the *end* of that segment's playback. The per-word `timing.words[]` array carries timestamps for the segment that just finished. This is useful for retroactive animation or forward extrapolation, but not for driving real-time highlighting *during* that segment. See the [MiniMax provider page](/providers/voice/minimax) for details.
   - **All other providers** emit text-only events (no `timing`). One event per TTS chunk; you can interpolate a word cursor at a flat rate (~3.5 words/sec) between events for an approximate cursor.
 
-  `force-say` events (your `firstMessage`, `say` actions) always emit as text-only, even on ElevenLabs and Minimax. On user barge-in, no further events fire for the interrupted turn — pair with the `user-interrupted` message to know what was actually spoken.
+  `force-say` events (your `firstMessage`, `say` actions) always emit as text-only, even on ElevenLabs and Minimax. On user barge-in, no further events fire for the interrupted turn. Pair with the `user-interrupted` message to know what was actually spoken.
 </Warning>
 
 For the full event schema and field reference, see [Server events → Assistant Speech Started](/server-url/events#assistant-speech-started).
@@ -1009,7 +1009,7 @@ Run automated call campaigns for sales, surveys, or notifications:
 
 ## Webhook integration
 
-Handle real-time events for both client and server applications:
+Handle real-time events for both client and server applications. When the assistant calls a tool, Vapi sends a `tool-calls` message. Respond with a `results` array that includes one entry per tool call. See [custom tools](/tools/custom-tools) for the full request and response format.
 
 <Tabs>
   <Tab title="TypeScript">
@@ -1019,32 +1019,34 @@ Handle real-time events for both client and server applications:
     const app = express();
     app.use(express.json());
 
-    app.post('/webhook/vapi', async (req, res) => {
+    app.post('/webhook/vapi', (req, res) => {
       const { message } = req.body;
 
       switch (message.type) {
         case 'status-update':
-          console.log(`Call ${message.call.id}: ${message.call.status}`);
+          console.log(`Call ${message.call.id}: ${message.status}`);
           break;
         case 'transcript':
           console.log(`${message.role}: ${message.transcript}`);
           break;
-        case 'function-call':
-          return handleFunctionCall(message, res);
+        case 'tool-calls':
+          return res.json({ results: message.toolCallList.map(handleToolCall) });
       }
 
       res.status(200).json({ received: true });
     });
 
-    function handleFunctionCall(message: any, res: express.Response) {
-      const { functionCall } = message;
-      
-      switch (functionCall.name) {
+    function handleToolCall(toolCall: any) {
+      const { name, arguments: args } = toolCall.function;
+
+      switch (name) {
         case 'lookup_order':
-          const orderData = { orderId: functionCall.parameters.orderId, status: 'shipped' };
-          return res.json({ result: orderData });
+          return {
+            toolCallId: toolCall.id,
+            result: JSON.stringify({ orderId: args.orderId, status: 'shipped' }),
+          };
         default:
-          return res.status(400).json({ error: 'Unknown function' });
+          return { toolCallId: toolCall.id, error: `Unknown tool: ${name}` };
       }
     }
 
@@ -1054,6 +1056,7 @@ Handle real-time events for both client and server applications:
 
   <Tab title="Python">
     ```python
+    import json
     from flask import Flask, request, jsonify
 
     app = Flask(__name__)
@@ -1062,31 +1065,32 @@ Handle real-time events for both client and server applications:
     def handle_vapi_webhook():
         payload = request.get_json()
         message = payload.get('message', {})
-        
+
         if message.get('type') == 'status-update':
             call = message.get('call', {})
-            print(f"Call {call.get('id')}: {call.get('status')}")
-            
+            print(f"Call {call.get('id')}: {message.get('status')}")
+
         elif message.get('type') == 'transcript':
             print(f"{message.get('role')}: {message.get('transcript')}")
-            
-        elif message.get('type') == 'function-call':
-            return handle_function_call(message)
-        
+
+        elif message.get('type') == 'tool-calls':
+            results = [handle_tool_call(tc) for tc in message.get('toolCallList', [])]
+            return jsonify({"results": results})
+
         return jsonify({"received": True}), 200
 
-    def handle_function_call(message):
-        function_call = message.get('functionCall', {})
-        function_name = function_call.get('name')
-        
-        if function_name == 'lookup_order':
-            order_data = {
-                "orderId": function_call.get('parameters', {}).get('orderId'),
-                "status": "shipped"
+    def handle_tool_call(tool_call):
+        function = tool_call.get('function', {})
+        name = function.get('name')
+        args = function.get('arguments', {})
+
+        if name == 'lookup_order':
+            return {
+                "toolCallId": tool_call.get('id'),
+                "result": json.dumps({"orderId": args.get('orderId'), "status": "shipped"}),
             }
-            return jsonify({"result": order_data})
-        
-        return jsonify({"error": "Unknown function"}), 400
+
+        return {"toolCallId": tool_call.get('id'), "error": f"Unknown tool: {name}"}
 
     if __name__ == '__main__':
         app.run(port=5000)
@@ -1107,32 +1111,35 @@ Handle real-time events for both client and server applications:
             switch (type) {
                 case "status-update":
                     Map<String, Object> call = (Map<String, Object>) message.get("call");
-                    System.out.println("Call " + call.get("id") + ": " + call.get("status"));
+                    System.out.println("Call " + call.get("id") + ": " + message.get("status"));
                     break;
                 case "transcript":
                     System.out.println(message.get("role") + ": " + message.get("transcript"));
                     break;
-                case "function-call":
-                    return handleFunctionCall(message);
+                case "tool-calls":
+                    List<Map<String, Object>> toolCalls = (List<Map<String, Object>>) message.get("toolCallList");
+                    List<Map<String, Object>> results = new ArrayList<>();
+                    for (Map<String, Object> toolCall : toolCalls) {
+                        results.add(handleToolCall(toolCall));
+                    }
+                    return ResponseEntity.ok(Map.of("results", results));
             }
 
             return ResponseEntity.ok(Map.of("received", true));
         }
 
-        private ResponseEntity<?> handleFunctionCall(Map<String, Object> message) {
-            Map<String, Object> functionCall = (Map<String, Object>) message.get("functionCall");
-            String functionName = (String) functionCall.get("name");
+        private Map<String, Object> handleToolCall(Map<String, Object> toolCall) {
+            String toolCallId = (String) toolCall.get("id");
+            Map<String, Object> function = (Map<String, Object>) toolCall.get("function");
+            String name = (String) function.get("name");
+            Map<String, Object> args = (Map<String, Object>) function.get("arguments");
 
-            if ("lookup_order".equals(functionName)) {
-                Map<String, Object> parameters = (Map<String, Object>) functionCall.get("parameters");
-                Map<String, Object> orderData = Map.of(
-                    "orderId", parameters.get("orderId"),
-                    "status", "shipped"
-                );
-                return ResponseEntity.ok(Map.of("result", orderData));
+            if ("lookup_order".equals(name)) {
+                String result = "{\"orderId\": \"" + args.get("orderId") + "\", \"status\": \"shipped\"}";
+                return Map.of("toolCallId", toolCallId, "result", result);
             }
 
-            return ResponseEntity.badRequest().body(Map.of("error", "Unknown function"));
+            return Map.of("toolCallId", toolCallId, "error", "Unknown tool: " + name);
         }
     }
     ```
@@ -1144,39 +1151,35 @@ Handle real-time events for both client and server applications:
     require 'json'
 
     post '/webhook/vapi' do
+      content_type :json
       payload = JSON.parse(request.body.read)
       message = payload['message']
 
       case message['type']
       when 'status-update'
-        call = message['call']
-        puts "Call #{call['id']}: #{call['status']}"
+        puts "Call #{message['call']['id']}: #{message['status']}"
       when 'transcript'
         puts "#{message['role']}: #{message['transcript']}"
-      when 'function-call'
-        return handle_function_call(message)
+      when 'tool-calls'
+        results = message['toolCallList'].map { |tool_call| handle_tool_call(tool_call) }
+        return { results: results }.to_json
       end
 
-      content_type :json
       { received: true }.to_json
     end
 
-    def handle_function_call(message)
-      function_call = message['functionCall']
-      function_name = function_call['name']
+    def handle_tool_call(tool_call)
+      name = tool_call['function']['name']
+      args = tool_call['function']['arguments']
 
-      case function_name
+      case name
       when 'lookup_order'
-        order_data = {
-          orderId: function_call['parameters']['orderId'],
-          status: 'shipped'
+        {
+          toolCallId: tool_call['id'],
+          result: { orderId: args['orderId'], status: 'shipped' }.to_json
         }
-        content_type :json
-        { result: order_data }.to_json
       else
-        status 400
-        content_type :json
-        { error: 'Unknown function' }.to_json
+        { toolCallId: tool_call['id'], error: "Unknown tool: #{name}" }
       end
     end
     ```
@@ -1184,46 +1187,52 @@ Handle real-time events for both client and server applications:
 
   <Tab title="C#">
     ```csharp
+    using System.Text.Json;
+    using Microsoft.AspNetCore.Mvc;
+
     [ApiController]
     [Route("webhook")]
     public class VapiWebhookController : ControllerBase
     {
         [HttpPost("vapi")]
-        public IActionResult HandleVapiWebhook([FromBody] WebhookPayload payload)
+        public IActionResult HandleVapiWebhook([FromBody] JsonElement payload)
         {
-            var message = payload.Message;
+            var message = payload.GetProperty("message");
 
-            switch (message.Type)
+            switch (message.GetProperty("type").GetString())
             {
                 case "status-update":
-                    Console.WriteLine($"Call {message.Call.Id}: {message.Call.Status}");
+                    var callId = message.GetProperty("call").GetProperty("id").GetString();
+                    Console.WriteLine($"Call {callId}: {message.GetProperty("status").GetString()}");
                     break;
                 case "transcript":
-                    Console.WriteLine($"{message.Role}: {message.Transcript}");
+                    Console.WriteLine($"{message.GetProperty("role").GetString()}: {message.GetProperty("transcript").GetString()}");
                     break;
-                case "function-call":
-                    return HandleFunctionCall(message);
+                case "tool-calls":
+                    var results = message.GetProperty("toolCallList")
+                        .EnumerateArray()
+                        .Select(HandleToolCall)
+                        .ToList();
+                    return Ok(new { results });
             }
 
             return Ok(new { received = true });
         }
 
-        private IActionResult HandleFunctionCall(WebhookMessage message)
+        private static object HandleToolCall(JsonElement toolCall)
         {
-            var functionCall = message.FunctionCall;
+            var toolCallId = toolCall.GetProperty("id").GetString();
+            var function = toolCall.GetProperty("function");
+            var name = function.GetProperty("name").GetString();
 
-            switch (functionCall.Name)
+            if (name == "lookup_order")
             {
-                case "lookup_order":
-                    var orderData = new
-                    {
-                        orderId = functionCall.Parameters["orderId"],
-                        status = "shipped"
-                    };
-                    return Ok(new { result = orderData });
-                default:
-                    return BadRequest(new { error = "Unknown function" });
+                var orderId = function.GetProperty("arguments").GetProperty("orderId").GetString();
+                var result = JsonSerializer.Serialize(new { orderId, status = "shipped" });
+                return new { toolCallId, result };
             }
+
+            return new { toolCallId, error = $"Unknown tool: {name}" };
         }
     }
     ```
@@ -1244,11 +1253,24 @@ Handle real-time events for both client and server applications:
     }
 
     type WebhookMessage struct {
-        Type         string                 `json:"type"`
-        Call         *Call                  `json:"call,omitempty"`
-        Role         string                 `json:"role,omitempty"`
-        Transcript   string                 `json:"transcript,omitempty"`
-        FunctionCall *FunctionCall          `json:"functionCall,omitempty"`
+        Type         string     `json:"type"`
+        Status       string     `json:"status,omitempty"`
+        Call         *Call      `json:"call,omitempty"`
+        Role         string     `json:"role,omitempty"`
+        Transcript   string     `json:"transcript,omitempty"`
+        ToolCallList []ToolCall `json:"toolCallList,omitempty"`
+    }
+
+    type Call struct {
+        ID string `json:"id"`
+    }
+
+    type ToolCall struct {
+        ID       string `json:"id"`
+        Function struct {
+            Name      string                 `json:"name"`
+            Arguments map[string]interface{} `json:"arguments"`
+        } `json:"function"`
     }
 
     func handleVapiWebhook(w http.ResponseWriter, r *http.Request) {
@@ -1259,34 +1281,35 @@ Handle real-time events for both client and server applications:
         }
 
         message := payload.Message
+        w.Header().Set("Content-Type", "application/json")
 
         switch message.Type {
         case "status-update":
-            fmt.Printf("Call %s: %s\n", message.Call.ID, message.Call.Status)
+            fmt.Printf("Call %s: %s\n", message.Call.ID, message.Status)
         case "transcript":
             fmt.Printf("%s: %s\n", message.Role, message.Transcript)
-        case "function-call":
-            handleFunctionCall(w, message)
+        case "tool-calls":
+            results := make([]map[string]string, 0, len(message.ToolCallList))
+            for _, toolCall := range message.ToolCallList {
+                results = append(results, handleToolCall(toolCall))
+            }
+            json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
             return
         }
 
-        w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]bool{"received": true})
     }
 
-    func handleFunctionCall(w http.ResponseWriter, message WebhookMessage) {
-        functionCall := message.FunctionCall
-
-        switch functionCall.Name {
+    func handleToolCall(toolCall ToolCall) map[string]string {
+        switch toolCall.Function.Name {
         case "lookup_order":
-            orderData := map[string]interface{}{
-                "orderId": functionCall.Parameters["orderId"],
+            result, _ := json.Marshal(map[string]interface{}{
+                "orderId": toolCall.Function.Arguments["orderId"],
                 "status":  "shipped",
-            }
-            w.Header().Set("Content-Type", "application/json")
-            json.NewEncoder(w).Encode(map[string]interface{}{"result": orderData})
+            })
+            return map[string]string{"toolCallId": toolCall.ID, "result": string(result)}
         default:
-            http.Error(w, `{"error": "Unknown function"}`, http.StatusBadRequest)
+            return map[string]string{"toolCallId": toolCall.ID, "error": "Unknown tool: " + toolCall.Function.Name}
         }
     }
 
@@ -1305,7 +1328,7 @@ Now that you understand both client and server SDK capabilities:
 
 - **Explore use cases:** Check out our [examples section](/assistants/examples/inbound-support) for complete implementations
 - **Add tools:** Connect your voice agents to external APIs and databases with [Function tools](/tools/custom-tools)
-- **Configure models:** Try different [speech and language models](/assistants/speech-configuration) for better performance
+- **Configure models:** Try different [speech and language models](/customization/speech-configuration) for better performance
 - **Use a preset:** [Model Intelligence presets](/assistants/model-intelligence/presets) bundle a transcriber, model, and voice tuned for common use cases, so you can configure your assistant in one click.
 - **Scale with squads:** Use [Squads](/squads) for multi-assistant setups and complex processes
 
