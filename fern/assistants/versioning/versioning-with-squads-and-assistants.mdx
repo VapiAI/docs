@@ -1,0 +1,131 @@
+---
+title: How squad versioning works with assistant versions
+subtitle: Pin squad members to assistant versions or follow the latest, and view squad version history as you build
+description: Create and review squad versions, pin members to specific published assistant versions or use Latest, and choose a squad version for outbound calls.
+slug: assistants/versioning/versioning-with-squads
+---
+
+## How squad versioning works
+
+Squad versioning saves a numbered version of a [squad](/squads) each time you change it, so you can review how the squad evolved as you build it and use a specific version on a call. Versions are numbered `v1`, `v2`, and so on. The newest version is **current**, and new calls use it.
+
+A squad version saves the squad's configuration:
+
+- The squad name
+- The members, in order
+- Each member's assistant version: a pinned version, such as **v3**, or **Latest**. 
+- Everything you configure for a member in the squad builder, such as its model, voice, tools, and handoffs
+- Transient assistants defined inside the squad
+- Overrides that apply to all members
+
+The assistant's own configuration, including its tools, belongs to the [assistant version](/assistants/versioning/versioning-assistants). You change it in the assistant editor, and the squad uses it through the member's pinned or **Latest** setting.
+
+## When a version is created
+
+| Change | Creates a squad version? |
+| --- | --- |
+| You create a squad | Yes, `v1` |
+| You add or remove a member and save | Yes |
+| You change a member's tools, handoffs, or other settings in the squad builder and save | Yes |
+| You pin a member to an assistant version, change the pin, or set it back to **Latest**, and save | Yes |
+| An assistant in the squad publishes or restores a version, including changes to its tools | No |
+| A tool used by an assistant in the squad publishes a version | No |
+| You edit an assistant's draft | No |
+
+A squad that existed before squad versioning was enabled for your organization gets its first versions the next time you save it: the existing configuration becomes `v1` and your changes become `v2`.
+
+## Create a version
+
+<Steps>
+  <Step title="Edit the squad">
+    Open the [Dashboard](https://dashboard.vapi.ai), select **Squads**, and change the squad.
+  </Step>
+  <Step title="Save">
+    Select **Save**. Vapi creates the next version and makes it current.
+  </Step>
+</Steps>
+
+Through the API, each [create squad](/api-reference/squads/create) or [update squad](/api-reference/squads/update) request that changes the configuration creates a version.
+
+## View version history
+
+<Steps>
+  <Step title="Open the version menu">
+    Select the version number in the squad header to see recent versions. The current version is marked **Current**.
+  </Step>
+  <Step title="Open the full history">
+    Select **View full history** to see every version and when it was saved.
+  </Step>
+  <Step title="Review or export a version">
+    Select a version to see its details, or select the download icon to export it as JSON.
+  </Step>
+</Steps>
+
+## Pin a member's assistant version
+
+Each member that uses a saved assistant has one of two settings:
+
+- **Latest**: The member uses the assistant's current published version when each call starts. This is the default.
+- **Pinned version**, such as **v3**: The member always uses that assistant version.
+
+A squad version saves each member's setting, not the assistant's configuration. When an assistant publishes a new version, the squad version stays the same:
+
+- Members set to **Latest** use the new assistant version on the next call.
+- Pinned members stay on their pinned version until you change the pin and save the squad.
+
+For example, squad **v1** has assistant A pinned to **v5** and assistant B set to **Latest**:
+
+| What happens | A runs | B runs | Squad version |
+| --- | --- | --- | --- |
+| You save the squad, while B's newest version is v2 | v5 | v2 | v1 |
+| A publishes v6 and B publishes v3 | v5 | v3 | v1 |
+| You pin A to v6 and save the squad | v6 | v3 | v2 |
+
+Squads pin assistant versions. Each assistant version keeps its own [tool version selections](/assistants/versioning/versioning-with-assistants-and-tools), so a pinned member uses the tool versions saved with that assistant version.
+
+To pin a member in the Dashboard:
+
+<Steps>
+  <Step title="Select the member">
+    Open the squad in the [Dashboard](https://dashboard.vapi.ai) and select the member.
+  </Step>
+  <Step title="Choose the version">
+    Choose **Latest** or a numbered version from the menu next to the member's name.
+  </Step>
+  <Step title="Save the squad">
+    Select **Save** to create a new squad version with the selection.
+  </Step>
+</Steps>
+
+Through the API, set `assistantVersion` next to `assistantId` on the member. Omit `assistantVersion` to use **Latest**.
+
+```json
+{
+  "members": [
+    { "assistantId": "triage-assistant-id", "assistantVersion": "v3" },
+    { "assistantId": "billing-assistant-id" }
+  ]
+}
+```
+
+<Tip>
+To make a squad version run the same configuration every time, pin each member, and pin the tools inside each of those assistant versions. A tool set to **Latest** in an assistant version uses the tool's newest published version.
+</Tip>
+
+## Which version a call uses
+
+- **Inbound calls** use the squad's current version.
+- **Outbound calls** use the current version by default. To use a specific version, pass `squadVersion` with `squadId` in the [create call request](/api-reference/calls/create).
+
+A call that uses an earlier squad version runs that version's members and pins. Members set to **Latest** use each assistant's current version.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Versioning with assistants" icon="robot" href="/assistants/versioning/versioning-assistants">
+    Publish, view history, and restore versions of an assistant.
+  </Card>
+  <Card title="Squads" icon="users" href="/squads">
+    Build multi-assistant conversations with handoffs.
+  </Card>
+</CardGroup>
