@@ -1,0 +1,78 @@
+---
+title: The Grid
+subtitle: Use The Grid instruments in Vapi through the custom-llm provider
+description: Wire The Grid, an OpenAI-compatible inference marketplace, into Vapi with the custom-llm provider and Custom Credentials.
+slug: customization/custom-llm/thegrid
+---
+
+The Grid is an inference marketplace that serves models from several labs behind one OpenAI-compatible API. Its instrument IDs describe capability tiers rather than specific lab models.
+
+`text-standard`, `code-prime`, and `agent-max` each route to a current model for that tier. When The Grid replaces an underlying model, an assistant can keep using the same instrument ID.
+
+The Grid exposes an OpenAI-compatible Chat Completions API, so you can connect it to Vapi as a [custom LLM](/customization/custom-llm/fine-tuned-openai-models).
+
+Before starting, create an account with The Grid and a [Consumption API key](https://thegrid.ai/docs/api-reference/authentication).
+
+## Add your credential
+
+Send the following body to `POST https://api.vapi.ai/credential`. Use your [Vapi private API key](/security-and-privacy/api-keys) in the `Authorization: Bearer <VAPI_PRIVATE_KEY>` header:
+
+```json
+{
+  "provider": "custom-llm",
+  "apiKey": "<YOUR THE GRID API KEY>"
+}
+```
+
+Save the credential `id` from the response. Add it to the assistant's `credentialIds` to select that credential.
+
+## Create the assistant
+
+Send this body to `POST https://api.vapi.ai/assistant` with the same Vapi private API key. Set `model.url` to The Grid's base URL and `model.model` to an instrument ID:
+
+```json
+{
+  "name": "My Assistant",
+  "credentialIds": ["<YOUR THE GRID CREDENTIAL ID>"],
+  "model": {
+    "provider": "custom-llm",
+    "url": "https://api.thegrid.ai/v1",
+    "model": "text-standard",
+    "metadataSendMode": "off",
+    "maxTokens": 600,
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a helpful voice assistant. Keep replies short."
+      }
+    ]
+  }
+}
+```
+
+Setting `metadataSendMode` to `off` keeps Vapi call metadata out of requests to The Grid.
+
+## Choose an instrument
+
+`GET https://api.thegrid.ai/v1/models` lists available instrument IDs. Check [instrument specifications](https://thegrid.ai/instruments) and [pricing](https://thegrid.ai/pricing) for current details. Examples include:
+
+| Instrument | Use it for |
+| --- | --- |
+| `text-standard` | General conversation. The usual starting point. |
+| `text-prime`, `text-max` | More demanding questions; compare current speed and price. |
+| `agent-standard`, `agent-max` | Multi-step tool use. |
+| `code-standard`, `code-prime` | Assistants that read or write code. |
+
+## Set `maxTokens` for spoken replies
+
+Vapi uses `250` for `maxTokens` when it is omitted and sends the value to The Grid as `max_tokens`. A low cap can cut off a response.
+
+The `600` value in the example is a starting point. Test your chosen instrument with representative spoken turns and raise the limit if replies are truncated. Keep the system prompt explicit about brevity.
+
+## Tool calling
+
+The Grid's API supports OpenAI-style function calling. To configure Vapi tools, see the [tool calling integration guide](/customization/tool-calling-integration). Test a tool call with your chosen instrument before relying on it.
+
+## Verify the assistant
+
+Start a test call and ask the assistant a short question. Confirm it speaks a complete answer. Check the call logs for custom LLM errors. If you attached a tool, request an action that uses it. Confirm the tool runs.
