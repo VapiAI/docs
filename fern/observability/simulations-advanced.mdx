@@ -318,6 +318,29 @@ Variables provide values for the [**dynamic variables**](/assistants/dynamic-var
 
 Use variables to test specific inputs, such as a customer name or account tier, without editing the assistant or squad.
 
+### Simulate a call from a specific phone number
+
+Assistants that identify callers by phone number, for example by passing `{{customer.number}}` to an account lookup tool, need a known caller number to test against. Set `customer.number` in the scenario's `targetOverrides.variableValues`. The **Variables** tab only accepts flat names, so set this value through the API:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "targetOverrides": {
+      "variableValues": {
+        "customer": { "number": "+14155550123" }
+      }
+    }
+  }'
+```
+
+For a transient scenario, set the same `targetOverrides` on the inline `scenario` in `POST /eval/simulation/run`.
+
+- The value replaces the whole `customer` variable, so also set any other `customer` fields the assistant references, such as `customer.name`.
+- Only `{{customer.number}}` changes. The `call.customer` object in server messages does not, so a tool that reads the caller from the message payload won't see the override.
+- To test the conversation without a real lookup, [mock the tool](#mock-tool-responses) instead.
+
 ## Troubleshooting
 
 | Issue | What to check |
@@ -328,6 +351,7 @@ Use variables to test specific inputs, such as a customer name or account tier, 
 | There is no audio or recording | Check whether the run used chat mode. Use voice mode to test or record audio. |
 | Start or end webhooks do not trigger | Confirm the corresponding hook and its URL are configured on the scenario. |
 | A tool mock does not apply | Confirm that `toolName` matches the configured tool name exactly and that `enabled` is `true`. |
+| A tool looks up the wrong caller | Set `customer.number` in the scenario's variable values. See [**Simulate a call from a specific phone number**](#simulate-a-call-from-a-specific-phone-number). |
 | A latency limit fails without a measured value | No turn in the call measured that metric. Confirm the run used voice mode and that the conversation completed at least one exchange. |
 | Latency limits show as skipped | Check whether the run used chat mode or the assistant under test uses GPT-Live. Both skip latency limits. |
 
