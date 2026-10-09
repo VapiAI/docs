@@ -1,8 +1,47 @@
 overlay: 1.0.0
 info:
-  title: Document API parameters
+  title: Document API parameters and preserve response parsing
   version: 1.0.0
 actions:
+  # Python parses undiscriminated union members in order. The preview member
+  # has no required fields and accepts extras, so it must follow the rerun
+  # member to preserve workflowId parsing. Remove first to replace the array
+  # without merging its members with the original schemas.
+  - target: $.paths['/structured-output/run'].post.responses['200'].content['application/json'].schema.oneOf
+    remove: true
+  - target: $.paths['/structured-output/run'].post.responses['200'].content['application/json'].schema
+    update:
+      oneOf:
+        - title: StructuredOutputRerunResponse
+          $ref: '#/components/schemas/StructuredOutputRerunResponse'
+        - title: StructuredOutputRunPreviewResponse
+          allOf:
+            - $ref: '#/components/schemas/StructuredOutputRunPreviewResponse'
+            - additionalProperties:
+                $ref: '#/components/schemas/StructuredOutputRunResult'
+  # These variants are present in the API's oneOf lists. Their schemas declare
+  # the exact discriminator values below; include them in the mappings too.
+  - target: $.paths['/tool'].post.requestBody.content['application/json'].schema.discriminator.mapping
+    update:
+      code: '#/components/schemas/CreateCodeToolDTO'
+  - target: $.paths['/tool/{id}'].patch.requestBody.content['application/json'].schema.discriminator.mapping
+    update:
+      code: '#/components/schemas/UpdateCodeToolDTO'
+  - target: $.paths['/tool'].get.responses['200'].content['application/json'].schema.items.discriminator.mapping
+    update:
+      ghl: '#/components/schemas/GhlTool'
+  - target: $.paths['/tool'].post.responses['201'].content['application/json'].schema.discriminator.mapping
+    update:
+      ghl: '#/components/schemas/GhlTool'
+  - target: $.paths['/tool/{id}'].get.responses['200'].content['application/json'].schema.discriminator.mapping
+    update:
+      ghl: '#/components/schemas/GhlTool'
+  - target: $.paths['/tool/{id}'].patch.responses['200'].content['application/json'].schema.discriminator.mapping
+    update:
+      ghl: '#/components/schemas/GhlTool'
+  - target: $.paths['/tool/{id}'].delete.responses['200'].content['application/json'].schema.discriminator.mapping
+    update:
+      ghl: '#/components/schemas/GhlTool'
   # Path parameters
   - target: $.paths['/assistant/{id}'].*.parameters[?(@.name == 'id' && @.in == 'path')]
     update:
