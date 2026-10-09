@@ -7,7 +7,9 @@ slug: assistants/versioning/versioning-with-squads
 
 ## How squad versioning works
 
-Squad versioning saves a numbered version of a [squad](/squads) each time you change it, so you can review how the squad evolved as you build it and use a specific version on a call. Versions are numbered `v1`, `v2`, and so on. The newest version is **current**, and new calls use it.
+When you save a changed [squad](/squads) configuration, Vapi creates the next numbered version and marks it **Current**. Saving without a configuration change does not create another version. Versions are numbered `v1`, `v2`, and so on.
+
+Calls use the current version by default. An outbound call can specify an earlier version without changing which version is current.
 
 A squad version saves the squad's configuration:
 
@@ -27,41 +29,130 @@ The assistant's own configuration, including its tools, belongs to the [assistan
 | Change | Creates a squad version? |
 | --- | --- |
 | You create a squad | Yes, `v1` |
-| You add or remove a member and save | Yes |
-| You pin a member to an assistant version, change the pin, or set it back to **Latest**, and save | Yes |
-| You create member overrides by changing a member's tools, model, handoffs, or other settings in the squad builder and save | Yes |
+| You add or remove a member and save the squad | Yes |
+| You pin a member to an assistant version, change the pin, or set it back to **Latest**, and save the squad | Yes |
+| You create member overrides by changing a member's tools, model, handoffs, or other settings in the squad builder and save the squad | Yes |
 | You edit an assistant's draft, such as its tools, prompt, or model, in the assistant editor | No |
 | An assistant in the squad publishes or restores a version, including changes to its tools | No |
 | A tool used by an assistant in the squad publishes a version | No |
 
-A squad that existed before squad versioning was enabled for your organization gets its first versions the next time you save it: the existing configuration becomes `v1` and your changes become `v2`.
+A squad that existed before squad versioning was enabled for your organization gets its first versions the next time you save a change: the existing configuration becomes `v1` and your changes become `v2`.
 
 ## Create a version
 
-<Steps>
-  <Step title="Edit the squad">
-    Open the [Dashboard](https://dashboard.vapi.ai), select **Squads**, and change the squad.
-  </Step>
-  <Step title="Save">
-    Select **Save**. Vapi creates the next version and makes it current.
-  </Step>
-</Steps>
+Create a squad to make `v1`. Later changes to its configuration create the next version when you save them.
 
-Through the API, each [create squad](/api-reference/squads/create) or [update squad](/api-reference/squads/update) request that changes the configuration creates a version.
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create a squad">
+        In the [Dashboard](https://dashboard.vapi.ai), select **Squads** in the sidebar, then **New Squad**. In **Build your Squad**, enter a name, choose a published assistant under **Add your first member**, and select **New Squad**. This creates `v1`.
+      </Step>
+      <Step title="Save another version">
+        Open the squad from **Squads**, change its configuration in the builder, and select **Save** in the upper-right corner. This creates the next version and makes it current.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Set your private API key">
+        ```bash
+        export VAPI_API_KEY="YOUR_VAPI_PRIVATE_KEY"
+        ```
+      </Step>
+      <Step title="Create a squad">
+        Replace the assistant IDs with IDs of saved assistants. The [create squad request](/api-reference/squads/create) creates `v1`.
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/squad \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "name": "Support squad",
+            "members": [
+              { "assistantId": "YOUR_TRIAGE_ASSISTANT_ID" },
+              { "assistantId": "YOUR_BILLING_ASSISTANT_ID" }
+            ]
+          }'
+        ```
+
+        Save the returned `id` as `SQUAD_ID` for the next request.
+      </Step>
+      <Step title="Update the squad">
+        This [update squad request](/api-reference/squads/update) changes the name of the squad you just created. Include its complete `members` array. The change creates `v2` and makes it current.
+
+        ```bash
+        export SQUAD_ID="ID_FROM_CREATE_RESPONSE"
+
+        curl --request PATCH \
+          --url "https://api.vapi.ai/squad/$SQUAD_ID" \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "name": "Customer support squad",
+            "members": [
+              { "assistantId": "YOUR_TRIAGE_ASSISTANT_ID" },
+              { "assistantId": "YOUR_BILLING_ASSISTANT_ID" }
+            ]
+          }'
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 ## View version history
 
-<Steps>
-  <Step title="Open the version menu">
-    Select the version number in the squad header to see recent versions. The current version is marked **Current**.
-  </Step>
-  <Step title="Open the full history">
-    Select **View full history** to see every version and when it was saved.
-  </Step>
-  <Step title="Review or export a version">
-    Select a version to see its details, or select the download icon to export it as JSON.
-  </Step>
-</Steps>
+Review the saved configuration of a squad version in the Dashboard or through the API. The Dashboard shows which version is **Current**, but does not offer a control to make an earlier version current.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the version menu">
+        In the [Dashboard](https://dashboard.vapi.ai), select **Squads** in the sidebar and open the squad. Select the version chip below the squad name to see recent versions. The newest version is marked **Current**.
+      </Step>
+      <Step title="Open the full history">
+        Select **View full history** to see every version and when it was saved.
+      </Step>
+      <Step title="Review or export a version">
+        In the history panel, select a version row to see its details. To download that version's JSON, hover over the row and select the download icon (**Export JSON**). The file contains that version's label, creation time, and saved squad configuration.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Set your private API key and squad ID">
+        ```bash
+        export VAPI_API_KEY="YOUR_VAPI_PRIVATE_KEY"
+        export SQUAD_ID="YOUR_SQUAD_ID"
+        ```
+      </Step>
+      <Step title="List the versions">
+        ```bash
+        curl --request GET \
+          --url "https://api.vapi.ai/squad/$SQUAD_ID/versions" \
+          --header "Authorization: Bearer $VAPI_API_KEY"
+        ```
+
+        The response contains `results` and pagination `metadata`. Use `metadata.nextCursor` to request the next page when `metadata.hasNextPage` is `true`.
+      </Step>
+      <Step title="Get a version's configuration">
+        Replace `v2` with the version you want to inspect.
+
+        ```bash
+        curl --request GET \
+          --url "https://api.vapi.ai/squad/$SQUAD_ID/versions/v2" \
+          --header "Authorization: Bearer $VAPI_API_KEY"
+        ```
+
+        The response includes the saved `members`, version label, and creation time. It also includes `membersOverrides` when the squad has them. To save the response as JSON, add `--output squad-version-v2.json` to the command.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 ## Pin a member's assistant version
 
@@ -69,6 +160,8 @@ Each member that uses a saved assistant has one of two settings:
 
 - **Latest**: The member uses the assistant's current published version when each call starts. This is the default.
 - **Pinned version**, such as **v3**: The member always uses that assistant version.
+
+To publish or review an assistant version before pinning it, see [Versioning with assistants](/assistants/versioning/versioning-assistants).
 
 A squad version saves each member's setting, not the assistant's configuration. When an assistant publishes a new version, the squad version stays the same:
 
@@ -85,30 +178,61 @@ For example, squad **v1** has assistant A pinned to **v5** and assistant B set t
 
 Squads pin assistant versions. Each assistant version keeps its own [tool version selections](/assistants/versioning/versioning-with-assistants-and-tools), so a pinned member uses the tool versions saved with that assistant version.
 
-To pin a member in the Dashboard:
+Set `assistantVersion` on a saved assistant member to pin it. Omit the field to use **Latest**.
 
-<Steps>
-  <Step title="Select the member">
-    Open the squad in the [Dashboard](https://dashboard.vapi.ai) and select the member.
-  </Step>
-  <Step title="Choose the version">
-    Choose **Latest** or a numbered version from the menu next to the member's name.
-  </Step>
-  <Step title="Save the squad">
-    Select **Save** to create a new squad version with the selection.
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Select the member">
+        In the [Dashboard](https://dashboard.vapi.ai), select **Squads** in the sidebar and open the squad. Select the assistant member on the builder canvas to open its settings panel.
+      </Step>
+      <Step title="Choose the version">
+        In the panel header, select the **Latest** or numbered version menu next to the member's name. Choose **Use latest version** or the published version you want to pin.
+      </Step>
+      <Step title="Save the squad">
+        Select **Save** in the upper-right corner to create a new squad version with the selection.
+      </Step>
+    </Steps>
+  </Tab>
 
-Through the API, set `assistantVersion` next to `assistantId` on the member. Omit `assistantVersion` to use **Latest**.
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Set your private API key and squad ID">
+        ```bash
+        export VAPI_API_KEY="YOUR_VAPI_PRIVATE_KEY"
+        export SQUAD_ID="YOUR_SQUAD_ID"
+        ```
+      </Step>
+      <Step title="Get the current squad">
+        ```bash
+        curl --request GET \
+          --url "https://api.vapi.ai/squad/$SQUAD_ID" \
+          --header "Authorization: Bearer $VAPI_API_KEY"
+        ```
 
-```json
-{
-  "members": [
-    { "assistantId": "triage-assistant-id", "assistantVersion": "v3" },
-    { "assistantId": "billing-assistant-id" }
-  ]
-}
-```
+        Copy the complete `members` array from the response. Keep the current order and any `assistantOverrides` for each member.
+      </Step>
+      <Step title="Update the member's version">
+        Include every current member in the [update squad request](/api-reference/squads/update). Set `assistantVersion` to a published version for the member you want to pin. Omit it for a member that should use **Latest**.
+
+        ```bash
+        curl --request PATCH \
+          --url "https://api.vapi.ai/squad/$SQUAD_ID" \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "members": [
+              { "assistantId": "YOUR_TRIAGE_ASSISTANT_ID", "assistantVersion": "v3" },
+              { "assistantId": "YOUR_BILLING_ASSISTANT_ID" }
+            ]
+          }'
+        ```
+
+        Replace the example `members` array with your complete current roster before sending the request. The changed pin creates a new squad version.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 <Tip>
 To make a squad version run the same configuration every time, pin each member, and pin the tools inside each of those assistant versions. A tool set to **Latest** in an assistant version uses the tool's newest published version.
@@ -119,7 +243,24 @@ To make a squad version run the same configuration every time, pin each member, 
 - **Inbound calls** use the squad's current version.
 - **Outbound calls** use the current version by default. To use a specific version, pass `squadVersion` with `squadId` in the [create call request](/api-reference/calls/create).
 
-When a call uses an earlier squad version, it runs the squad as it was saved in that version: the same members, member overrides, and pinned assistant versions. Members set to **Latest** are the exception. They use each assistant's current published version, not the version that was current when you saved the squad version.
+When a call uses an earlier squad version, it runs the squad as it was saved in that version: the same members, member overrides, and pinned assistant versions. Members set to **Latest** are the exception. They use each assistant's [current published version](/assistants/versioning/versioning-assistants), not the version that was current when you saved the squad version.
+
+To select a squad version for an outbound call, pass its version label with the saved squad's ID. Replace the phone number and IDs with your own values.
+
+```bash
+export VAPI_API_KEY="YOUR_VAPI_PRIVATE_KEY"
+
+curl --request POST \
+  --url https://api.vapi.ai/call \
+  --header "Authorization: Bearer $VAPI_API_KEY" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "squadId": "YOUR_SQUAD_ID",
+    "squadVersion": "v2",
+    "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+    "customer": { "number": "+14155550100" }
+  }'
+```
 
 ## Next steps
 
