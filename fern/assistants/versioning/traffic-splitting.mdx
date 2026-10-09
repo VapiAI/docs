@@ -8,7 +8,7 @@ slug: assistants/versioning/traffic-splitting
 <Note>
 **Beta.** Traffic splitting must be enabled for your Vapi organization. Request access through the [beta access form](https://forms.gle/6EfEcCFxvxJTZHDs8).
 
-The beta includes percentage splits across published versions, sticky routing for repeat callers, the dashboard traffic editor, and the API, which also returns the full history of allocation changes. It does not yet include per-version call metrics, side-by-side version comparisons, or a dashboard view of past splits. To compare versions today, use each call's `assistantVersion` field, which records the version that handled the call and is also a column in call exports.
+The beta includes percentage splits across published versions, sticky routing for repeat callers with a per-split opt-out, the dashboard traffic editor, and the API, which also returns the full history of allocation changes. It does not yet include per-version call metrics, side-by-side version comparisons, or a dashboard view of past splits. To compare versions today, use each call's `assistantVersion` field, which records the version that handled the call and is also a column in call exports.
 </Note>
 
 Traffic splitting routes a percentage of an assistant's live calls to each published version you choose. Instead of every call moving to a new version the moment you publish, you decide how much traffic the new version takes, watch how it behaves, and finish or cancel the rollout on your own schedule.
@@ -24,15 +24,53 @@ Publishing an assistant changes what every caller hears. A prompt rewrite that r
 ## How routing works
 
 - Percentages apply to **new calls** as they start; calls already in progress never switch versions.
-- Calls choose a version randomly, weighted by your percentages. Repeat callers are routed to the same version when possible; see [sticky routing](#sticky-routing-is-best-effort).
+- Calls choose a version randomly, weighted by your percentages. Repeat callers with a stable identity reach the same version; see [how stickiness works](#how-stickiness-works).
 - Shares are precise to **0.001%**, and a split always totals exactly 100%.
 - A split names up to **5 versions**. Below three versions taking traffic, a rollout stays easy to reason about; the dashboard will nudge you before a third version starts taking traffic.
 
-### Sticky routing is best effort
+### How stickiness works
 
-Repeat callers usually reach the same version because routing uses the caller's phone number or, for SIP calls, the SIP username. Calls without either identifier are routed independently each time, so a repeat caller might reach a different version. This includes web calls, calls from people who withhold their number, and calls with caller IDs that are not phone numbers.
+Vapi never stores an assignment between a caller and a version. Instead, every call recomputes the same deterministic math:
 
-Stickiness also depends on target order. Keep listing versions in the same order across updates, and ramp by growing a later version's share at the expense of an earlier one; reordering targets can move repeat callers to a different version.
+1. The call's **caller identity** (see the table below) is hashed together with the assistant's id into one of 100,000 **buckets**.
+2. Your split's targets own contiguous bucket ranges, in the order you listed them. A 90/10 split of v6 and v7 gives v6 buckets 0 through 89,999 and v7 buckets 90,000 through 99,999.
+3. The call runs the version whose range contains its bucket.
+
+The same identity always hashes to the same bucket, so while a split stays unchanged, a repeat caller always reaches the same version. There is nothing to expire and nothing to reset: stickiness is a property of the math, not a stored record.
+
+Because nothing is stored, **changing the split moves exactly the callers whose buckets change owners**, and no one else:
+
+| | v6 owns buckets | v7 owns buckets | a caller in bucket 72,431 reaches |
+|---|---|---|---|
+| 90/10 canary | 0 – 89,999 | 90,000 – 99,999 | v6 |
+| raised to 50/50 | 0 – 49,999 | 50,000 – 99,999 | v7 |
+| raised to 100% v7 | — | 0 – 99,999 | v7 |
+
+Ramping this way is one-directional for callers: growing a later version's share at the expense of an earlier one only ever moves callers forward onto the new version, never back and forth. Reordering targets re-deals the ranges and moves many callers at once, so keep versions in the same order across updates.
+
+### What counts as a caller identity
+
+| How the call arrives | Identity that feeds the bucket | Repeat calls |
+|---|---|---|
+| Phone call with a real caller number | The caller's phone number | Same version every time |
+| SIP call with a username in the From header | The SIP username (the domain is ignored, so the same caller sticks across carriers) | Same version every time |
+| Web call or websocket call | None | Fresh random draw per call |
+| Caller withheld their number | None | Fresh random draw per call |
+| Outbound call naming a saved customer by id | None today | Fresh random draw per call |
+
+For example, when Maria calls your support line twice during a 90/10 canary, both of her calls hash her phone number to the same bucket, so she hears the same version twice. A web visitor who starts two calls in the same split draws a fresh bucket each time and may hear both versions.
+
+One shared line is one identity: a front desk where many people dial out from the same number looks like a single caller to the hash, so everyone on that line reaches the same version.
+
+### Turning stickiness off
+
+Sometimes you want every call independently randomized, even from the same number: exercising both arms of a split from your own phone while testing, calls transferred into the assistant from a system that presents one number for many people, or an experiment where you want each call to be its own sample.
+
+In the dashboard, clear **Repeat caller stickiness** in the traffic editor, either from the traffic pill in the assistant header or in the Traffic step when you publish, and save. The dashboard keeps your choice: the next split you save or publish starts from the current split's setting.
+
+Through the API, create the allocation with `repeatCallerStickiness: false` and dispatch draws a fresh random bucket for every call, phone and SIP callers included. Target percentages are honored exactly as before; only the per-caller consistency goes away.
+
+The setting lives on the allocation, so it lasts until you post the next one, and it defaults to `true`: splits you created before the setting existed, and splits that do not mention it, keep sticky routing. It only applies to explicit splits; sending it with `allocationIntent: "follow-latest"` is rejected, since follow-latest routes every call to the newest version regardless.
 
 ### Follow latest, the default
 
@@ -68,7 +106,9 @@ The traffic pill in the assistant header shows where calls route now. Select the
 
 **An urgent fix during a rollout.** Remember that an explicit split pins traffic: publishing the fix does not route calls to it until you update the split. Publish at 100% if the fix should take everything, or add the fix's version to the split at the share you want.
 
-**Comparing versions fairly.** Give the candidates equal shares and let repeat-caller affinity keep each customer's experience consistent while the experiment runs.
+**Comparing versions fairly.** Give the candidates equal shares and let repeat-caller affinity keep each customer's experience consistent while the experiment runs. When you would rather treat every call as its own independent sample, even repeat calls from one number, create the split with `repeatCallerStickiness: false`.
+
+**Testing a split from your own phone.** With stickiness on, your number always lands on the same version, so you can never hear the other arm. Create the split with `repeatCallerStickiness: false` while you test, then post it again without the field to restore sticky routing.
 
 ## Splitting via the API
 
@@ -102,6 +142,21 @@ POST /traffic-allocations
 ```
 
 If concurrent editors are a concern, include `"expectedCurrentAllocationId"` with the allocation id you last read; the write then applies only while that allocation is still in effect, and conflicts return a 409 instead of letting the last write win.
+
+**Randomize every call** by turning stickiness off for this split. Omitting the field means `true`, so only splits that ask for it behave differently:
+
+```json
+POST /traffic-allocations
+{
+  "assistantId": "9d5f9d3a-...",
+  "targets": [
+    { "assistantVersion": "v6", "percentage": 50 },
+    { "assistantVersion": "v7", "percentage": 50 }
+  ],
+  "repeatCallerStickiness": false,
+  "description": "experiment: every call is an independent sample"
+}
+```
 
 **Stop splitting** by saying so. Ending a split is the one request that must name its intent, so a dropped `targets` field can never end a rollout by accident:
 
