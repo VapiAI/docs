@@ -94,7 +94,7 @@ test('corrupt entries fall back to original generation', (t) => {
 test('API and prose edits preserve the namespace while tooling changes invalidate it', (t) => {
   const { directory } = fixture(t);
   fs.mkdirSync(path.join(directory, 'fern/apis/api'), { recursive: true });
-  fs.writeFileSync(path.join(directory, 'fern/fern.config.json'), '{"version":"5.112.0"}');
+  fs.writeFileSync(path.join(directory, 'fern/fern.config.json'), '{"version":"5.151.1"}');
   fs.writeFileSync(path.join(directory, 'fern/apis/api/openapi.json'), '{}');
   const before = inputDigest(directory);
   fs.writeFileSync(path.join(directory, 'fern/overview.mdx'), 'new prose');

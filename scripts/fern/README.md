@@ -1,6 +1,6 @@
 # Fern example cache
 
-Fern 5.112.0 repeatedly generates examples for nested API properties during
+Fern 5.151.1 repeatedly generates examples for nested API properties during
 validation and publication. The GPT-Live docs publish spent about 24 minutes
 preparing validation and another 25 minutes building the API navigation. Its
 final deployment took six seconds.
@@ -49,7 +49,7 @@ original Fern commands also removes this optimization.
 ## Local verification
 
 ```sh
-npm install --prefix /tmp/vapi-fern --no-save fern-api@5.112.0
+npm install --prefix /tmp/vapi-fern --no-save fern-api@5.151.1
 export FERN_CLI_PATH=/tmp/vapi-fern/node_modules/fern-api/cli.cjs
 node --test scripts/fern/example-cache.test.cjs
 node scripts/fern/run.cjs check --local --log-level debug

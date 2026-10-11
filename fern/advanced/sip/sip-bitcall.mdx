@@ -1,0 +1,112 @@
+---
+title: Bitcall SIP integration
+subtitle: Connect a Bitcall SIP trunk to Vapi for outbound calls
+description: Configure a Bitcall SIP trunk with username and password authentication so your Vapi assistants can place outbound calls.
+slug: advanced/sip/bitcall
+---
+
+Connect your Bitcall SIP trunk to Vapi so your assistants can place outbound calls to phone numbers worldwide. Bitcall authenticates with a SIP username, password, and domain, so the setup is one SIP trunk credential and one caller ID.
+
+For SIP trunking concepts and network requirements, see the [SIP trunking guide](/advanced/sip/sip-trunk).
+
+<Note>
+Bitcall is outbound-only. It does not provide direct inward dialing (DID) phone numbers, so it cannot route inbound calls to Vapi. Use it for assistants that place calls, such as reminders, surveys, and outbound campaigns.
+</Note>
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- A [Bitcall account](https://bitcall.io) with a positive balance
+- A Bitcall SIP account (SIP username and password)
+- An outbound caller ID you are allowed to present on calls
+- A Vapi account and assistant
+
+<Warning>
+Use username and password authentication. Don't set up IP-based (Trusted IP) authentication on your Bitcall SIP account: Vapi places calls from SIP servers shared by many customers, so an IP allowlist can't identify your organization. Also don't set a Trusted IP and SIP credentials on the same Bitcall SIP account, because authentication then fails.
+</Warning>
+
+## Configure outbound calling
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create a Bitcall SIP trunk credential">
+        In the [Vapi dashboard](https://dashboard.vapi.ai), select your organization name, then go to **Settings → Integrations → SIP Trunk** and click **Configure New SIP Trunk**.
+
+        Configure the credential with your Bitcall SIP account details:
+
+        - **Name:** A descriptive name, such as `Bitcall`
+        - **IP Address / Domain:** `gateway.bitcall.io`
+        - **Username:** Your Bitcall SIP username
+        - **Password:** Your Bitcall SIP password
+
+        Save the credential and note its credential ID.
+      </Step>
+
+      <Step title="Add your outbound caller ID">
+        Vapi needs a phone number resource to use as the caller ID on outbound calls. Because Bitcall doesn't issue phone numbers, this is the caller ID you want to present, not a Bitcall number.
+
+        Go to [Phone Numbers](https://dashboard.vapi.ai/phone-numbers), click **Create Phone Number**, and select **BYO SIP Trunk Number**. Enter your caller ID in E.164 format and select the Bitcall credential in the **SIP Trunk Credential** dropdown. Save the phone number.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL" language="bash">
+    You can create the same resources with the API. Get a [Vapi private API key](/security-and-privacy/api-keys), then create the SIP trunk credential:
+
+    ```bash
+    curl -X POST "https://api.vapi.ai/credential" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+      -d '{
+        "provider": "byo-sip-trunk",
+        "name": "Bitcall",
+        "gateways": [
+          { "ip": "gateway.bitcall.io", "inboundEnabled": false }
+        ],
+        "outboundLeadingPlusEnabled": true,
+        "outboundAuthenticationPlan": {
+          "authUsername": "YOUR_BITCALL_SIP_USERNAME",
+          "authPassword": "YOUR_BITCALL_SIP_PASSWORD"
+        }
+      }'
+    ```
+
+    Then add your caller ID as a phone number, using the `id` returned above:
+
+    ```bash
+    curl -X POST "https://api.vapi.ai/phone-number" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+      -d '{
+        "provider": "byo-phone-number",
+        "name": "Bitcall caller ID",
+        "number": "YOUR_CALLER_ID",
+        "numberE164CheckEnabled": false,
+        "credentialId": "YOUR_CREDENTIAL_ID"
+      }'
+    ```
+
+  </Tab>
+</Tabs>
+
+## Test the integration
+
+1. In Vapi, select an assistant and the caller ID phone number you created.
+2. Place a test call to a phone you can answer.
+3. Verify that the call connects and displays the expected caller ID.
+
+## Troubleshooting
+
+- **The call fails with `401` or `403`:** Check the SIP username and password, and make sure the Bitcall SIP account doesn't also have a Trusted IP set.
+- **The caller ID is not shown or is replaced:** Caller ID handling depends on the destination country and operator. Present a number you are allowed to use.
+- **A destination can't be reached:** Dial numbers in E.164 format and check that your Bitcall balance covers the call.
+
+## Settings reference
+
+| Setting | Value |
+| --- | --- |
+| SIP domain | `gateway.bitcall.io` |
+| Port | `5060` |
+| Authentication | SIP username and password |
