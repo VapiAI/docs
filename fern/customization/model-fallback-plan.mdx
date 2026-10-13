@@ -1,36 +1,44 @@
 ---
 title: Model fallback configuration
 subtitle: Configure a backup language model that activates automatically if your primary model fails
-description: Configure fallbackModels in Vapi so a backup language model takes over automatically when your primary LLM fails. Covers which providers currently support model fallback and how it differs from voice and transcriber fallback.
+description: Configure fallbackModels for OpenAI and Anthropic Bedrock models in the Dashboard or API, and compare model fallback with voice and transcriber fallback.
 slug: customization/model-fallback-plan
 ---
 
-## Overview
-
-Model fallback lets a backup language model take over automatically if your primary model fails, so the call keeps going instead of ending in an error.
-
-<Note>
-  Model fallback is currently supported for the [OpenAI](/providers/model/openai) and [Anthropic Bedrock](/providers/model/anthropic-bedrock) providers only. It is not yet a cross-provider fallback like [voice fallback](/voice-fallback-plan) or [transcriber fallback](/customization/transcriber-fallback-plan), which can fall back to a different provider entirely. Without `fallbackModels` configured, your call ends with an error if your chosen model provider fails.
-</Note>
+Model fallback lets a backup language model take over automatically if your primary model fails, so the call can keep going. You can configure fallback models for the [OpenAI](/providers/model/openai) and [Anthropic Bedrock](/providers/model/anthropic-bedrock) providers. Vapi models fall back automatically, so you don't configure fallback models for them.
 
 ## How it works
 
 When a model failure occurs, Vapi will:
 
 1. Detect the failure of the primary model.
-2. If `fallbackModels` is configured, switch to the first fallback model in the list.
-3. For OpenAI, continue through the rest of your specified list if subsequent failures occur. For Anthropic Bedrock, only one fallback model can be configured, so Vapi tries that single model.
-4. Terminate the call only if every configured fallback has also failed.
+2. If `fallbackModels` is configured, choose a fallback model.
 
 Fallback models stay on the same provider as your primary model. To protect against a provider-wide outage, pair model fallback with [voice fallback](/voice-fallback-plan) and [transcriber fallback](/customization/transcriber-fallback-plan) on the other two pipeline components, which do support cross-provider fallback.
 
+## Configure via Dashboard
+
+You can configure a fallback model for Anthropic Bedrock in the Dashboard. To configure OpenAI fallback models, use the [API](#configure-via-api).
+
+<Steps>
+  <Step title="Open the assistant">
+    Open the [Dashboard](https://dashboard.vapi.ai/). Select **Assistants**, then select an assistant.
+  </Step>
+  <Step title="Open the model settings">
+    Select the **Model** card, then choose an Anthropic Bedrock model.
+  </Step>
+  <Step title="Add a fallback model">
+    Expand **Advanced**. Under **Fallback model**, select **Add fallback model**, then choose a model.
+  </Step>
+</Steps>
+
 ## Configure via API
 
-Add `fallbackModels` directly to your assistant's `model` object. There is no separate `fallbackPlan` wrapper for models — unlike `voice.fallbackPlan.voices` and `transcriber.fallbackPlan.transcribers`, `fallbackModels` is a sibling property of `model.model` itself.
+Add the `fallbackModels` field directly to your assistant's `model` object, next to `model.model`. Models don't use a `fallbackPlan` wrapper like `voice.fallbackPlan.voices` and `transcriber.fallbackPlan.transcribers`.
 
 ### OpenAI
 
-Set `model.fallbackModels` to an ordered list of OpenAI model IDs. Vapi tries them in order if the primary model fails.
+Set `model.fallbackModels` to an array of OpenAI model IDs. If the primary model fails, these models are tried, starting with the one expected to respond fastest. Configured fallback models might not be enabled for every account. See [`fallbackModels` for OpenAI](/api-reference/assistants/create#request.body.model.OpenAI.fallbackModels) in the API reference.
 
 ```json
 {
@@ -43,55 +51,54 @@ Set `model.fallbackModels` to an ordered list of OpenAI model IDs. Vapi tries th
 ```
 
 <Note>
-  You shouldn't need to set this unless you have a specific reason to — Vapi automatically finds the fastest fallback models that make sense for your primary model.
+  Most assistants don't need `fallbackModels`. The fastest fallback models that suit your primary model are found automatically.
 </Note>
 
 ### Anthropic Bedrock
 
-Set `model.fallbackModels` to at most one same-provider Claude model ID available through Bedrock.
+Set `model.fallbackModels` to an array with one Claude model ID available through Bedrock. Bedrock accepts at most one fallback model. See [`fallbackModels` for Anthropic Bedrock](/api-reference/assistants/create#request.body.model.AnthropicBedrock.fallbackModels) in the API reference.
 
 ```json
 {
   "model": {
     "provider": "anthropic-bedrock",
     "model": "claude-sonnet-4-6",
-    "fallbackModels": "claude-haiku-4-5-20251001"
+    "fallbackModels": ["claude-haiku-4-5-20251001"]
   }
 }
 ```
 
-<Note>
-  The fallback model is resolved using the call's Bedrock credential region (or `ANTHROPIC_BEDROCK_AWS_REGION`). A fallback name with no inference profile in that region is skipped and a warning is logged — Vapi never silently remaps it to a US or global profile. On Vapi EU, a fallback name without an EU inference profile is rejected at write time. `fallbackModels` cannot be combined with `thinking` in this release.
-</Note>
+## Verify the configuration
 
-## Other providers
-
-Vapi's other language model providers — including [Anthropic](/providers/model/anthropic) (non-Bedrock), [Google](/providers/model/gemini), [Groq](/providers/model/groq), [xAI](/providers/model/xai), [Mistral](/providers/model/mistral), [MiniMax](/providers/model/minimax), and [Custom LLM](/customization/custom-llm/fine-tuned-openai-models) — do not currently expose a `fallbackModels` field. If your primary model is on one of these providers and it fails, the call ends with an error unless you handle retries at the application layer.
+Retrieve the assistant with [Get Assistant](/api-reference/assistants/get) and confirm that `model.fallbackModels` lists your fallback models.
 
 ## FAQ
 
 <AccordionGroup>
   <Accordion title="Can I fall back from one provider to a different provider, like voice and transcriber fallback do?">
-    Not yet. `fallbackModels` only lets you specify backup models from the same provider as your primary model. Cross-provider model fallback isn't currently supported — use [voice fallback](/voice-fallback-plan) and [transcriber fallback](/customization/transcriber-fallback-plan) to protect those two pipeline components against a provider-wide outage.
+    Not yet. `fallbackModels` only lets you specify backup models from the same provider as your primary model. Use [voice fallback](/voice-fallback-plan) and [transcriber fallback](/customization/transcriber-fallback-plan) to protect those two pipeline components against a provider-wide outage.
   </Accordion>
   <Accordion title="Does fallback affect pricing?">
-    You're billed normally for whichever model actually generates the response, whether that's your primary model or a fallback.
+    Each model is billed at its normal rate. If the primary model uses tokens before it fails, that usage can be included in the call's cost along with the fallback model's usage.
   </Accordion>
   <Accordion title="Why am I not seeing a fallbackModels option for my provider?">
-    `fallbackModels` is currently only available on `OpenAIModel` and `AnthropicBedrockModel`. It isn't exposed for other providers yet.
+    `fallbackModels` is currently only available on `OpenAIModel` and `AnthropicBedrockModel`.
+  </Accordion>
+  <Accordion title="Can I use model fallback with GPT-Live?">
+    No. GPT-Live doesn't support model fallbacks, and a GPT-Live model can't be a fallback model. See [GPT-Live configuration](/gpt-live/configuration).
   </Accordion>
 </AccordionGroup>
 
 ## Related
 
-#### [Voice fallback configuration](/voice-fallback-plan)
-
-Configure fallback voices that activate automatically when your primary voice provider fails.
-
-#### [Transcriber fallback configuration](/customization/transcriber-fallback-plan)
-
-Configure fallback transcribers so calls keep working if your primary speech-to-text provider fails.
-
-#### [Model providers](/providers/model/overview)
-
-Compare every language model provider Vapi supports.
+<CardGroup cols={3}>
+  <Card title="Voice fallback configuration" href="/voice-fallback-plan">
+    Configure fallback voices that activate automatically when your primary voice provider fails.
+  </Card>
+  <Card title="Transcriber fallback configuration" href="/customization/transcriber-fallback-plan">
+    Configure fallback transcribers so calls keep working if your primary speech-to-text provider fails.
+  </Card>
+  <Card title="Model providers" href="/providers/model/overview">
+    Compare every language model provider Vapi supports.
+  </Card>
+</CardGroup>
