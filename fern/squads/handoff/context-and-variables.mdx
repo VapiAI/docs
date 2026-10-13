@@ -1,34 +1,32 @@
 ---
 title: Pass context and variables
-subtitle: Control which conversation history and extracted variables reach the next assistant
-description: Choose how much conversation history the receiving assistant sees, and extract variables so structured data follows the caller into the next assistant.
+subtitle: Control the history and values available after a handoff
+description: Choose the conversation history a destination receives and pass variables through handoff arguments, tool results, or extraction.
 slug: squads/handoff/context-and-variables
 ---
 
-When a call moves to another assistant, you control what travels with it. Context engineering decides how much conversation history the receiving assistant can see, and variable extraction captures specific values and forwards them explicitly.
+A handoff carries **conversation messages** and **variable values** separately. Set `contextEngineeringPlan` on the destination to choose which earlier messages its model sees. The destination gets its own system prompt in every mode.
+
+Values already collected in the call remain available to later assistants even if the destination receives no earlier messages.
 
 ## Context engineering
 
-Control what conversation history transfers to the next assistant or squad. Set **contextEngineeringPlan** on any destination.
+Set `contextEngineeringPlan` on an assistant or squad destination. It filters the messages sent to that destination; it does not clear saved variables.
 
-### All messages (default)
+| Type | Earlier messages the destination receives |
+| --- | --- |
+| `all` (default) | All earlier conversation messages, including tool calls and results. The previous system prompt is replaced by the destination's system prompt. |
+| `lastNMessages` | The most recent `maxMessages` messages. Use a positive value: `0` currently selects all messages. |
+| `userAndAssistantMessages` | User and assistant messages; tool calls and tool results are excluded. |
+| `previousAssistantMessages` | Messages from before the current assistant received its incoming handoff. On the first handoff, there is no earlier assistant context to carry. |
+| `none` | No earlier conversation messages. |
 
-Transfers the entire conversation history:
-
-```json
-{
-  "contextEngineeringPlan": {
-    "type": "all"
-  }
-}
-```
-
-### Last N messages
-
-Transfers only the most recent N messages. Use this to limit context size for performance:
+For example, this destination receives the ten most recent messages:
 
 ```json
 {
+  "type": "assistant",
+  "assistantName": "Specialist",
   "contextEngineeringPlan": {
     "type": "lastNMessages",
     "maxMessages": 10
@@ -36,226 +34,104 @@ Transfers only the most recent N messages. Use this to limit context size for pe
 }
 ```
 
-### User and assistant messages only
-
-Transfers only user and assistant messages, filtering out system messages, tool calls, and tool results. This gives the next assistant a clean view of the conversation without internal implementation details:
-
-```json
-{
-  "contextEngineeringPlan": {
-    "type": "userAndAssistantMessages"
-  }
-}
-```
-
-<Tip>
-Use `userAndAssistantMessages` when the destination assistant does not need to see tool call history or system prompts from the previous assistant. This produces a cleaner context and reduces token usage.
-</Tip>
-
-### Previous assistant messages
-
-Transfers only the conversation history from **before** the current assistant's session. This excludes the current assistant's own messages, tool calls, and tool results entirely, forwarding only the context that existed when the current assistant first received the call.
-
-```json
-{
-  "contextEngineeringPlan": {
-    "type": "previousAssistantMessages"
-  }
-}
-```
-
-This mode is particularly useful when the current assistant handles sensitive data (such as payment card numbers in a PCI-compliant flow). By excluding the current assistant's session from the forwarded context, you prevent sensitive tool call results from reaching the next assistant.
-
-<Tip>
-Use `previousAssistantMessages` when handing off from a sensitive assistant (e.g., one collecting payment data) to a non-sensitive assistant. It preserves useful conversation context from earlier in the call while ensuring the sensitive assistant's tool call data is not forwarded. See the [PCI Compliance - Handoff Context Configuration](/security-and-privacy/pci#handoff-context-configuration) guide for a complete walkthrough.
-</Tip>
-
-### No context
-
-Starts the next assistant with a blank conversation:
-
-```json
-{
-  "contextEngineeringPlan": {
-    "type": "none"
-  }
-}
-```
+<Warning>
+`previousAssistantMessages` and `none` filter the destination model's message history. They do not erase values already in the variable bag or remove messages from a full-history call artifact. If you handle sensitive information, control what is collected, stored, extracted, and passed in variables as well as message history.
+</Warning>
 
 ## Variable extraction
 
-Extract and pass structured data during handoff. Variables extracted by the Handoff tool are available to all subsequent assistants in the conversation chain. When a handoff extracts a variable with the same name as an existing one, the new value replaces the previous value.
+Choose how a value reaches the destination based on its source:
 
-### Extraction via `variableExtractionPlan` in destinations
+| Value source | When it runs | What reaches the destination |
+| --- | --- | --- |
+| Standard call and time values | Vapi makes supported values available for the call or channel. See [Dynamic variables](/assistants/dynamic-variables). | Available values such as `customer.number`, `call.id`, and `now` can render in the prompt. |
+| Initial custom values | Supply `assistantOverrides.variableValues` when starting the call. | Those named values can render in the destination prompt. |
+| Earlier tool response | Configure `variableExtractionPlan.aliases` on the **result-producing tool**; it selects fields when the tool returns. | Only selected alias values are saved. A JSON response alone is not copied into the variable bag. |
+| Handoff arguments | Define custom `function.parameters` on the handoff tool; the model fills them in the outgoing handoff tool call. | Every argument except `destination` is added to the bag. |
+| Conversation content | Define `variableExtractionPlan.schema` on the destination; a separate model request runs at handoff. | Top-level properties in the extracted object are added to the bag if extraction succeeds. |
+| Existing bag value | Liquid runs when the destination prompt is rendered. | A reference such as `{{customerName}}` reads the current value; it does not extract one. |
 
-This extraction method makes an OpenAI structured output request to extract variables. Use this when you have multiple destinations, each with different variables that need to be extracted.
+At handoff, Vapi adds tool arguments, then any schema-extracted values, then the chosen destination's `assistantOverrides.variableValues` or `squadOverrides.variableValues`. If the same key is set more than once, the later value wins.
+
+### Handoff arguments
+
+Use `function.parameters` when the outgoing assistant can provide a value as it decides to hand off. This tool passes `customerIntent` to `Specialist`:
 
 ```json
 {
-  "tools": [
+  "type": "handoff",
+  "destinations": [
     {
-      "type": "handoff",
-      "destinations": [
-        {
-          "type": "assistant",
-          "assistantName": "order-processing-assistant",
-          "description": "customer is ready to place an order",
-          "variableExtractionPlan": {
-            "schema": {
-              "type": "object",
-              "properties": {
-                "customerName": {
-                  "type": "string",
-                  "description": "Full name of the customer"
-                },
-                "email": {
-                  "type": "string",
-                  "format": "email",
-                  "description": "Customer's email address"
-                },
-                "productIds": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "List of product IDs customer wants to order"
-                },
-                "shippingAddress": {
-                  "type": "object",
-                  "properties": {
-                    "street": { "type": "string" },
-                    "city": { "type": "string" },
-                    "state": { "type": "string" },
-                    "zipCode": { "type": "string" }
-                  }
-                }
-              },
-              "required": ["customerName", "productIds"]
-            }
-          }
-        }
-      ]
+      "type": "assistant",
+      "assistantName": "Specialist",
+      "description": "Handle billing questions"
     }
-  ]
+  ],
+  "function": {
+    "name": "handoff_to_specialist",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "destination": {
+          "type": "string",
+          "enum": ["Specialist"]
+        },
+        "customerIntent": {
+          "type": "string",
+          "description": "The caller's reason for contacting billing"
+        }
+      },
+      "required": ["destination", "customerIntent"]
+    }
+  }
 }
 ```
 
-### Variable access patterns
+The destination can use `{{customerIntent}}` in its prompt. `destination` selects the target and is not saved as a variable. For fixed destinations, Vapi derives the allowed destination values from the configured destinations. Dynamic routing can leave `destination` optional so the webhook can resolve it. Since the model supplies custom arguments, verify critical IDs against a trusted source.
 
-Once extracted, variables are accessible using Liquid template syntax (`{{variableName}}`). The access pattern depends on the schema structure:
+### Destination schema extraction
 
-| Schema type | Access pattern | Example |
-|-------------|---------------|---------|
-| Simple property | `{{propertyName}}` | `{{customerName}}` |
-| Nested object | `{{object.property}}` | `{{name.first}}`, `{{name.last}}` |
-| Array item | `{{array[index]}}` | `{{zipCodes[0]}}`, `{{zipCodes[1]}}` |
-| Array of objects | `{{array[index].property}}` | `{{people[0].name}}`, `{{people[0].age}}` |
-| Nested array | `{{array[index].nestedArray[index]}}` | `{{people[0].zipCodes[1]}}` |
-
-<Note>
-Top-level object properties are extracted as direct global variables. For example, a schema with properties `name` and `age` produces `{{name}}` and `{{age}}` -- not `{{root.name}}`.
-</Note>
-
-### Variable aliases
-
-Use **aliases** to create additional variables derived from extracted values. Aliases support Liquid template syntax for transformations and compositions.
+Use `variableExtractionPlan.schema` on the destination when you need a separate request to extract information from the outgoing assistant's currently available conversation:
 
 ```json
 {
+  "type": "assistant",
+  "assistantName": "Specialist",
   "variableExtractionPlan": {
     "schema": {
       "type": "object",
       "properties": {
-        "firstName": {
+        "customerName": {
           "type": "string",
-          "description": "Customer's first name"
-        },
-        "lastName": {
-          "type": "string",
-          "description": "Customer's last name"
-        },
-        "company": {
-          "type": "string",
-          "description": "Customer's company name"
+          "description": "Name the caller gave during the conversation"
         }
-      }
-    },
-    "aliases": [
-      {
-        "key": "fullName",
-        "value": "{{firstName}} {{lastName}}"
       },
-      {
-        "key": "greeting",
-        "value": "Hello {{firstName}}, welcome to {{company}}!"
-      },
-      {
-        "key": "customerCity",
-        "value": "{{addresses[0].city}}"
-      }
-    ]
+      "required": ["customerName"]
+    }
   }
 }
 ```
 
-Each alias creates a new variable accessible as `{{key}}` during the call and stored in `call.artifact.variableValues` after the call. Alias keys must start with a letter and contain only letters, numbers, or underscores (max 40 characters).
+The destination can read the top-level property as `{{customerName}}`. A nested object can be read with a path such as `{{shippingAddress.city}}`. An earlier history filter can limit what the extraction request sees; it does not recover messages removed from the outgoing assistant's context.
 
-### Extraction via `tool.function`
+Extraction is best effort. Without a `schema`, the plan adds nothing. If the request fails or returns a non-object, the handoff continues without new extracted values. A required schema property is not guaranteed to be available in the destination prompt.
 
-You can also extract variables through the LLM tool call parameters (in addition to sending these parameters to your server in a `handoff-destination-request` for dynamic handoffs). Include the **destination** parameter with the assistant names or IDs in `enum` -- Vapi uses this to determine where to hand off the call. The `destination` parameter itself is not extracted as a variable. Add `destination` and all other required variables to the schema's `required` array.
+Use [tool-result aliases](/tools/static-variables-and-aliases/extract-and-chain) on the tool that produces a response when you need exact fields from that response. A handoff destination's `variableExtractionPlan` uses its **`schema`** for conversation extraction; aliases there are not applied by the current handoff path.
 
-```json
-{
-  "tools": [
-    {
-      "type": "handoff",
-      "destinations": [
-        {
-          "type": "assistant",
-          "assistantName": "order-processing-assistant",
-          "description": "customer is ready to place an order"
-        }
-      ],
-      "function": {
-        "name": "handoff_to_order_processing_assistant",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "destination": {
-              "type": "string",
-              "description": "The destination to handoff the call to.",
-              "enum": ["order-processing-assistant"]
-            },
-            "customerName": {
-              "type": "string",
-              "description": "Full name of the customer"
-            },
-            "email": {
-              "type": "string",
-              "format": "email",
-              "description": "Customer's email address"
-            },
-            "productIds": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "List of product IDs customer wants to order"
-            },
-            "shippingAddress": {
-              "type": "object",
-              "properties": {
-                "street": { "type": "string" },
-                "city": { "type": "string" },
-                "state": { "type": "string" },
-                "zipCode": { "type": "string" }
-              }
-            }
-          },
-          "required": ["destination", "customerName", "email"]
-        }
-      }
-    }
-  ]
-}
-```
+### Reuse values after another handoff
+
+Suppose assistant A passes `customerIntent` as a handoff argument to B. B extracts `customerName`, then hands off to C with `contextEngineeringPlan.type` set to `none`. C receives no earlier conversation messages, but can still use `{{customerIntent}}` and `{{customerName}}` from the shared variable bag. If B sets `customerIntent` again, its later value replaces A's value.
+
+## Configuration paths and verification
+
+The history and variable rules above apply to a completed assistant or squad handoff. Check how the handoff is configured:
+
+| Path | What to check |
+| --- | --- |
+| Saved squad, API or Dashboard | Use a handoff tool on the outgoing assistant, or configure a squad member's Handoff Tools. For custom `function.parameters`, configure the tool itself; the squad member Handoff Tools setting creates a tool without those parameters. |
+| Saved handoff tool in the Dashboard | The Tools page exposes function parameters for the handoff tool. Save the tool and attach it to the outgoing assistant. |
+| Standalone assistant in a live call | A destination can identify a saved assistant by `assistantId`, or provide an inline assistant. Verify the destination resolves in the call. |
+| `/chat` API | Assistant destinations require a squad context with more than one assistant. A standalone assistant's handoff tool call can return a handoff result without activating its destination. |
+| Dynamic destination | A `handoff-destination-request` webhook chooses the destination at runtime. Its returned destination can include context and extraction plans. See [Dynamic handoffs](/squads/handoff/destinations#dynamic-handoffs). |
+
+To confirm a handoff, inspect the call or chat transcript for the outgoing handoff tool call and the next assistant's response. For calls, use `call.id` to correlate records and inspect `artifact.variableValues` for values retained in the call. The active conversation used by analysis may differ from the artifact after context filtering; set [`artifactPlan.fullMessageHistoryEnabled`](/assistants/call-recording) if you need the full cross-assistant message history in the call artifact.
