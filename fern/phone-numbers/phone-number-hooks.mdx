@@ -1,12 +1,15 @@
 ---
 title: Phone Number Hooks
 slug: phone-numbers/phone-number-hooks
-description: Configure phone number hooks in Vapi to run actions on call events, currently the call.ringing event, by defining them in a phone number's hooks array.
+description: Configure phone number hooks in Vapi to run actions on the call.ringing and call.ending events by defining them in a phone number's hooks array.
 ---
 
 ## Overview
 
-Phone number hooks allow you to configure actions that will be performed when specific events occur during a call. Currently, hooks support the `call.ringing` event (which is triggered when a call is ringing).
+Phone number hooks allow you to configure actions that will be performed when specific events occur during a call. Hooks support two events:
+
+- `call.ringing`: triggered when an inbound call is ringing.
+- `call.ending`: triggered when an inbound call is about to end because the [assistant request](/server-url/events#retrieving-assistants) to your server failed.
 
 ## Usage
 
@@ -16,8 +19,9 @@ Hooks are defined in the `hooks` array of a phone number. Each hook consists of:
   Phone number hooks are configured through the API and are not currently available in the Dashboard.
 </Note>
 
-- `on`: The event that triggers the hook (supports `call.ringing`)
-- `do`: The actions to perform when the hook triggers (supports `transfer` and `say`)
+- `on`: The event that triggers the hook (`call.ringing` or `call.ending`)
+- `do`: The action to perform when the hook triggers (`transfer` or `say`). For `call.ringing`, `do` is an array and the first action runs. For `call.ending`, `do` is a single action object.
+- `filters` (optional): Conditions that must all match for the hook to run. See [Filter by caller prefix](#filter-by-caller-prefix) and [Fall back when the assistant request fails](#fall-back-when-the-assistant-request-fails).
 
 ## Example: Say Message on Call Ringing
 
@@ -80,6 +84,59 @@ curl -X PATCH "https://api.vapi.ai/phone-number/<id>" \
   }]
 }'
 ```
+
+## Filter by caller prefix
+
+A `call.ringing` hook can run only for callers whose number starts with given prefixes. Use a `startsWith` filter with `key` set to `number`, and list the prefixes without the leading `+`:
+
+```bash
+curl -X PATCH "https://api.vapi.ai/phone-number/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [{
+    "on": "call.ringing",
+    "filters": [{
+      "type": "startsWith",
+      "key": "number",
+      "startsWith": ["91", "86"]
+    }],
+    "do": [{
+      "type": "say",
+      "exact": "Sorry, we are unable to take calls from your region."
+    }]
+  }]
+}'
+```
+
+## Fall back when the assistant request fails
+
+If the phone number uses a server URL to choose the assistant and that request fails, the call would normally end. A `call.ending` hook can transfer the caller or play a message instead. Use a `oneOf` filter on `call.endedReason` to choose which failures trigger it. The allowed values are `assistant-request-failed`, `assistant-request-returned-error`, `assistant-request-returned-unspeakable-error`, `assistant-request-returned-invalid-assistant`, `assistant-request-returned-no-assistant`, and `assistant-request-returned-forwarding-phone-number`.
+
+```bash
+curl -X PATCH "https://api.vapi.ai/phone-number/<id>" \
+     -H "Authorization: Bearer <auth>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "hooks": [{
+    "on": "call.ending",
+    "filters": [{
+      "type": "oneOf",
+      "key": "call.endedReason",
+      "oneOf": ["assistant-request-failed", "assistant-request-returned-error"]
+    }],
+    "do": {
+      "type": "transfer",
+      "destination": {
+        "type": "number",
+        "number": "+1234567890"
+      }
+    }
+  }]
+}'
+```
+
+Without `filters`, the hook runs on any assistant request failure. When the hook runs, the call's ended reason is `call.ending.hook-executed-transfer` or `call.ending.hook-executed-say`. A `call.ending` hook does not run on calls that end for any other reason.
 
 Common use cases for phone number hooks include:
 - Disabling inbound calling by playing a message or transferring
