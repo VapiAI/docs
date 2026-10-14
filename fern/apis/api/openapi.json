@@ -267,6 +267,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Vapi Agents manages the assistant (see AssistantManagedConflictResponseDTO). Other 409s on this route carry a plain message instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -305,11 +315,25 @@
             }
           },
           "409": {
-            "description": "",
+            "description": "One of its versions is pinned (see AssistantPinnedConflictResponseDTO), or Vapi Agents manages the assistant (see AssistantManagedConflictResponseDTO).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AssistantPinnedConflictResponseDTO"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AssistantPinnedConflictResponseDTO"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "error",
+                    "mapping": {
+                      "assistant_pinned": "#/components/schemas/AssistantPinnedConflictResponseDTO",
+                      "assistant_managed_by_vapi_agents": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                    }
+                  }
                 }
               }
             }
@@ -2937,11 +2961,25 @@
             "description": "The source assistant does not exist."
           },
           "409": {
-            "description": "The provided expectedCurrentAllocationId no longer matches the allocation currently in effect. Omitting the field never conflicts.",
+            "description": "The provided expectedCurrentAllocationId no longer matches the allocation currently in effect (see TrafficAllocationStaleConflictResponseDTO; omitting the field never conflicts), or Vapi Agents manages the assistant (see AssistantManagedConflictResponseDTO).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrafficAllocationStaleConflictResponseDTO"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TrafficAllocationStaleConflictResponseDTO"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "error",
+                    "mapping": {
+                      "stale_allocation": "#/components/schemas/TrafficAllocationStaleConflictResponseDTO",
+                      "assistant_managed_by_vapi_agents": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                    }
+                  }
                 }
               }
             }
@@ -5768,6 +5806,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The write links or unlinks an assistant managed by Vapi Agents, which would rewrite its artifact plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -5860,6 +5908,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The write links or unlinks an assistant managed by Vapi Agents, which would rewrite its artifact plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -5893,6 +5951,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StructuredOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The write links or unlinks an assistant managed by Vapi Agents, which would rewrite its artifact plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
                 }
               }
             }
@@ -10559,6 +10627,72 @@
           "error",
           "message",
           "governingAllocationId"
+        ]
+      },
+      "AssistantPinnedConflictResponseDTO": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "assistant_pinned"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable reason the parent-assistant delete was rejected."
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ]
+      },
+      "AssistantManagedVapiAgentsDTO": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The Vapi Agents agent that manages the assistant."
+          },
+          "agentUrl": {
+            "type": "string",
+            "description": "The agent's page in Vapi Agents."
+          },
+          "mcpUrl": {
+            "type": "string",
+            "description": "The Vapi Agents MCP server, where an AI client makes the change instead."
+          }
+        },
+        "required": [
+          "agentId",
+          "agentUrl",
+          "mcpUrl"
+        ]
+      },
+      "AssistantManagedConflictResponseDTO": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "assistant_managed_by_vapi_agents"
+            ],
+            "description": "Vapi Agents manages the assistant. The lock refuses writes to the assistant itself (update, replace, delete, restore, version delete, traffic splits) and to outcomes, monitors and structured outputs that link or unlink it. It doesn't cover what changes a call without writing the assistant: call-level assistantOverrides or assistantVersion, squad member pins and overrides, which phone number points at it, edits to the tools or knowledge bases it references, or Vapi's own model-retirement sweep."
+          },
+          "message": {
+            "type": "string",
+            "description": "Why the write was rejected and how to make the change in Vapi Agents instead: the agent link, the Vapi Agents MCP URL with the steps to connect it, and which of its tools to call."
+          },
+          "vapiAgents": {
+            "$ref": "#/components/schemas/AssistantManagedVapiAgentsDTO"
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "vapiAgents"
         ]
       },
       "FallbackTranscriberPlan": {
@@ -42383,25 +42517,6 @@
           }
         }
       },
-      "AssistantPinnedConflictResponseDTO": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string",
-            "enum": [
-              "assistant_pinned"
-            ]
-          },
-          "message": {
-            "type": "string",
-            "description": "Human-readable reason the parent-assistant delete was rejected."
-          }
-        },
-        "required": [
-          "error",
-          "message"
-        ]
-      },
       "Squad": {
         "type": "object",
         "properties": {
@@ -53216,6 +53331,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53395,6 +53516,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53522,6 +53649,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53600,6 +53733,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53672,6 +53811,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -53815,6 +53960,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53899,6 +54050,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53976,6 +54133,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54052,6 +54215,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54144,6 +54313,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54250,6 +54425,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54322,6 +54503,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54420,6 +54607,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54533,6 +54726,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54631,6 +54830,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54711,6 +54916,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54783,6 +54994,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54857,6 +55074,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54929,6 +55152,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -55003,6 +55232,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -55075,6 +55310,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -55167,6 +55408,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -55239,6 +55486,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -55313,6 +55566,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -55386,6 +55645,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -55458,6 +55723,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -55560,6 +55831,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
