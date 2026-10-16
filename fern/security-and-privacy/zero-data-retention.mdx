@@ -1,139 +1,57 @@
 ---
 title: Zero Data Retention (ZDR)
-subtitle: Understand what Vapi retains and where to find call artifacts in your own storage
-description: Zero Data Retention (ZDR) is an organization-level setting that stops Vapi from storing call recordings, transcripts, messages, summaries, and logs after a call ends.
+subtitle: Understand what Vapi retains and where to retrieve your call data
+description: Learn what Zero Data Retention keeps in Vapi, how to retrieve recordings, transcripts, and logs from your own storage, and what to check when files are missing.
 slug: security-and-privacy/zero-data-retention
 ---
 
-Zero Data Retention (ZDR) is an organization-level setting that stops Vapi from storing call content after a call ends. ZDR applies across your entire organization once active. Use it when your organization must not retain recordings, transcripts, or logs in Vapi.
+**Zero Data Retention (ZDR)** stops Vapi from retaining call content after a call ends. Enable it for your organization in the Dashboard. ZDR applies to all calls in that organization and does not require a separate purchase.
 
-## How it works
+## What ZDR retains
 
-With ZDR active, Vapi processes each call in real time but does not save call content to its storage. Vapi does not retain recordings, transcripts, messages, or summaries. By default, Vapi also removes structured outputs. Vapi retains operational metadata, such as call history, cost, and latency, so those still appear in the Dashboard.
+Vapi processes calls in real time. After a call ends, it retains operational metadata so you can still see call history and usage.
 
-ZDR is enabled for an organization from the Dashboard. It is not a setting in the API.
-
-| Data | Retained by Vapi with ZDR enabled |
+| Data | Retained in Vapi with ZDR |
 | --- | --- |
-| Recordings | No |
-| Transcripts | No |
-| Messages | No |
-| Call summary | No |
-| Structured outputs | No by default. An explicit storage override can retain selected outputs. |
-| Detailed call logs | No |
-| Call history, cost, latency | Yes |
-| Billing and usage metadata | Yes |
+| Recordings, transcripts, messages, summaries, and detailed call logs | No |
+| Structured outputs | No by default |
+| Call history, cost, latency, billing, and usage metadata | Yes |
 
-Review each structured output's `compliancePlan.forceStoreOnHipaaEnabled` setting. Setting this override to `true` also allows Vapi to retain that output under ZDR. Leave it unset or `false` when Vapi must not retain extracted outputs. Only enable the override for outputs without sensitive data. This field does not enable HIPAA mode.
+A structured output with `compliancePlan.forceStoreOnHipaaEnabled: true` can still be retained under ZDR. Leave this override unset or `false` to prevent storage of that output.
 
 <Note>
-ZDR and HIPAA mode are mutually exclusive. HIPAA mode additionally supports a Business Associate Agreement (BAA), requires HIPAA-compliant providers, and lets you retrieve recordings and logs from private storage. To switch, disable one mode before enabling the other. See [HIPAA Compliance](/security-and-privacy/hipaa) to compare.
+ZDR and [HIPAA mode](/security-and-privacy/hipaa) are mutually exclusive. The structured-output override does not enable HIPAA mode.
 </Note>
-
-## Enable ZDR
-
-Enable **Zero data retention (ZDR)** for your organization from the Dashboard. ZDR does not require a separate purchase.
-
-<Tip>
-Keeping your own copy of call data is optional. To retain recording files, transcripts, and logs, configure a [storage bucket](/assistants/call-recording#storage-configuration). To save call content in your application, subscribe to the [`end-of-call-report` webhook](/server-url/events#end-of-call-report). Set this up before enabling ZDR because once ZDR is active, any call content you do not send to your own systems cannot be recovered.
-</Tip>
 
 ## Find recordings, transcripts, logs, and metadata
 
-**ZDR** controls what Vapi retains. **Custom storage** controls where you keep your own copy. Enabling ZDR does not create a bucket, enable recording, or configure artifact uploads.
+With ZDR, retrieve call content from **your own storage**. Empty recording URLs or transcripts in the Dashboard or call API are expected. They do not establish whether a copy exists in your bucket.
 
-A blank `recordingUrl` or `stereoRecordingUrl` on a call retrieved from the API does not prove that no recording exists. With ZDR, Vapi removes the retained artifact URLs and call content. Check your own storage and the webhook payloads your application saved.
+Before the call:
 
-| What you need | Where to look with ZDR |
+1. Connect a bucket using the [storage setup guide](/assistants/call-recording#storage-configuration) or [S3 guide](/providers/cloud/s3).
+2. Enable recording, transcription, and logging for the artifacts you need in the assistant's **Recording & Artifacts** settings. Keep custom storage enabled for those artifacts. Recording also depends on any [consent plan](/security-and-privacy/recording-consent-plan).
+3. Confirm the storage settings belong to the organization handling the call. Use the [matching region](/security-and-privacy/eu-region) for its API key and endpoints.
+
+Enabling ZDR alone does not configure uploads. Without custom storage, Vapi does not retain these files for you.
+
+| What you need | Where to look in your bucket |
 | --- | --- |
-| Audio recording | Your configured storage bucket, if recording and custom storage were enabled and the upload succeeded |
-| Final transcript and conversation messages | The call JSON uploaded to your bucket, or the `message.artifact` in an `end-of-call-report` your application saved |
-| Detailed call logs | Compressed `.jsonl.gz` objects in your configured logging path, if logging and custom storage were enabled and the upload succeeded |
-| Full call JSON, including available artifacts and analysis | Your bucket's call report object, described below. Audio and logs have separate files |
-| Call history, cost, latency, and billing metadata | Vapi Dashboard and call API. ZDR retains this operational data |
+| Audio recording | The configured recording path, as WAV or MP3 files |
+| Transcript, messages, and available analysis | The call JSON at `<credential-prefix>/vapi/call/<call-id>.json` |
+| Detailed call logs | The configured logging path, as `.jsonl.gz` files |
 
-### Configure your copy before the call
+The storage credential's prefix combines with the assistant's `recordingPath` or `loggingPath`. These are bucket-relative paths, such as `/recordings` and `/logs`. Search the configured location using the call ID as a filename prefix. Audio and log filenames also contain generated timestamps and UUIDs, so you cannot derive a complete filename from the call ID alone.
 
-<Steps>
-  <Step title="Confirm the organization and region">
-    Select the organization that handles the call. Confirm its ZDR setting. Check its storage credential, bucket, and prefix. Credentials and settings in another organization do not establish where this call's artifacts go. Keep API keys and endpoints in the [same region](/security-and-privacy/eu-region) as the organization.
-  </Step>
-  <Step title="Connect storage and enable the artifacts you need">
-    Follow the [S3 setup guide](/providers/cloud/s3) or the [storage configuration guide](/assistants/call-recording#storage-configuration). For audio, set `artifactPlan.recordingEnabled` to `true`. Check that any [recording consent plan](/security-and-privacy/recording-consent-plan) allows recording. For logs, enable `artifactPlan.loggingEnabled`. For a final transcript, enable `artifactPlan.transcriptPlan.enabled`.
+<Tip>
+You can also save the [`end-of-call-report` webhook](/server-url/events#end-of-call-report) in your own application. Its `message.artifact` can contain the transcript and recording URLs available for the call. Save the payload when it arrives because later call API responses do not retain that content under ZDR.
+</Tip>
 
-    Leave `recordingUseCustomStorageEnabled` and `loggingUseCustomStorageEnabled` enabled for the artifacts you want to upload. With ZDR, setting either to `false` prevents uploads of that artifact. Vapi storage is also unavailable for that artifact.
-  </Step>
-  <Step title="Save webhooks in your own application">
-    Configure a [server URL](/server-url/setting-server-urls). Include `end-of-call-report` and `call.artifact.upload` in the assistant's `serverMessages`. Keep any other events you need. Save the call ID with each payload to correlate events with objects in your bucket.
-  </Step>
-</Steps>
+## If you cannot find your data
 
-### Understand the two post-call events
+- **Check setup.** Confirm the relevant artifacts and custom storage were enabled before the call. A call JSON file does not guarantee that audio was recorded.
+- **Check the location.** Verify the organization, bucket, credential prefix, and assistant paths. If a prefix uses date templates, use the upload date.
+- **Check upload and access.** Allow post-call processing to finish. Confirm upload success and bucket write permissions. Use an authenticated storage console, CLI, or SDK with read access to retrieve private files.
+- **Check your saved copies.** Vapi cannot reconstruct call content that was not successfully delivered to your own systems. Storage configured now applies to future calls.
 
-The **`end-of-call-report`** can carry the transcript, messages, analysis, and recording URLs generated for the call. Read `message.artifact` for this content. Under ZDR, the embedded `message.call.artifact` and later API responses do not retain the same call content.
-
-When present, use `message.artifact.recording.mono.combinedUrl` for combined mono audio and `message.artifact.recording.stereoUrl` for stereo audio. `message.artifact.recordingUrl` and `message.artifact.stereoRecordingUrl` are older fields. These fields depend on the artifacts produced and uploaded. They are not guaranteed on every report.
-
-The **`call.artifact.upload`** event reports customer-storage upload outcomes. Its `message.artifacts` array contains a `type` and a boolean `success` for each reported artifact. For example, an entry can have type `end-of-call-report`, `recording-mono`, `recording-stereo`, or `log`. The entries do not contain object keys or download URLs. Under ZDR, do not rely on this event's embedded call record to recover recording URLs.
-
-This event requires a subscription and at least one artifact targeting your own storage. An omitted artifact is not a successful upload. A `success: false` result needs investigation even if another artifact succeeded.
-
-Call end, webhook delivery, and storage completion are separate steps. Receiving an `end-of-call-report` is not confirmation that the call JSON has finished uploading. Do not assume the two events arrive in a fixed order. Allow post-call processing to complete, check the upload outcomes, and confirm the objects in your bucket.
-
-### Locate objects in S3
-
-For S3, Vapi joins the storage credential's prefix, the artifact-specific path, and the generated filename. The prefix is `s3PathPrefix` for a `provider: "s3"` credential and `bucketPlan.pathPrefix` for a `provider: "aws"` credential. Other storage providers use their own bucket path settings.
-
-| Object | Key within the configured bucket |
-| --- | --- |
-| Audio | `<credential-prefix>/<recordingPath>/<call-id>-<timestamp>-<uuid>-mono.<extension>` or the corresponding `-stereo.<extension>` |
-| Call logs | `<credential-prefix>/<loggingPath>/<call-id>-<uuid>-<timestamp>.jsonl.gz` |
-| Call JSON | `<credential-prefix>/vapi/call/<call-id>.json` |
-
-`recordingPath` and `loggingPath` come from the assistant's `artifactPlan`. Use bucket-relative paths such as `/recordings` and `/logs`. These fields do not accept full bucket URLs. Empty path components are omitted and repeated slashes are normalized. For audio, the extension is `.wav` by default or `.mp3` when configured. If your prefix uses date templates, search the rendered prefix for the upload date.
-
-A complete audio or log key requires the call ID, generated timestamp, and UUID. Use a URL captured in your own end-of-call report, or list objects using the call ID as a filename prefix. The call JSON has a deterministic key once you know the credential prefix. It can be written more than once during call finalization, so an early copy may not contain the final artifacts.
-
-For example, if your S3 credential prefix is `call-data` and your assistant uses `recordingPath: "/recordings"` and `loggingPath: "/logs"`, these read-only commands list matching audio and logs and fetch the call JSON:
-
-```bash title="Look up a call in your own S3 bucket"
-export BUCKET="YOUR_BUCKET_NAME"
-export CALL_ID="YOUR_CALL_ID"
-
-aws s3 ls "s3://${BUCKET}/call-data/recordings/${CALL_ID}-"
-aws s3 ls "s3://${BUCKET}/call-data/logs/${CALL_ID}-"
-aws s3 cp "s3://${BUCKET}/call-data/vapi/call/${CALL_ID}.json" ./call.json
-```
-
-Replace `call-data`, `recordings`, and `logs` with your actual configuration. The prefix `call-data/` is an example. Use the prefix configured for your organization. Inspect `artifact.transcript`, `artifact.messages`, and `artifact.recording` in the downloaded JSON when those artifacts are available. The call JSON contains the transcript. The audio key identifies the audio file.
-
-<Note>
-An object URL identifies a location. Private buckets require authentication. Use your storage provider's authenticated console, CLI, SDK, or a signed URL generated by your application. For S3, the identity running these examples needs `s3:ListBucket` for the relevant prefixes and `s3:GetObject` for downloads. Encrypted objects may also require permission to decrypt with the bucket's KMS key. The credential Vapi uses to upload needs write access to every configured artifact prefix. Do not make the bucket public to resolve an access error.
-</Note>
-
-### Troubleshoot missing artifacts
-
-| Symptom | What to check |
-| --- | --- |
-| Empty recording or transcript in the Dashboard or call API | Expected under ZDR. Look in your bucket or saved end-of-call report. |
-| Audio missing but call JSON exists | Confirm recording was enabled, consent allowed it, audio was produced, custom storage was enabled, and the audio upload succeeded. The call JSON upload is separate. |
-| No `call.artifact.upload` event | Check the server URL, the assistant's event subscription, webhook delivery, and whether any artifact targeted custom storage. The event is not sent when nothing targets your storage. |
-| A reported upload fails | Check the storage credential, bucket region, write permissions for the full key, encryption policy, and any configured storage fallback. |
-| Objects not found under the expected prefix | Confirm the call's organization, credential prefix, assistant paths, rendered date prefix, and configured audio format. Check each configured storage destination if you use fallback credentials. |
-| URL returns access denied | Authenticate to the bucket with read permissions. A URL alone does not authorize access. |
-| An older ZDR call has no customer-side copy | Vapi cannot reconstruct call content that was not successfully delivered to your own systems. Configuring storage now applies to future calls. |
-
-## Verify it works
-
-Place a test call, then open it in the Dashboard. The call appears in your call history with cost and latency, but the transcript, recording, and analysis are empty. If you configured your own storage, verify the audio, logs, and final call JSON in that bucket. Check the webhooks saved by your application.
-
-## Related
-
-<CardGroup cols={2}>
-  <Card title="HIPAA Compliance" href="/security-and-privacy/hipaa">
-    Compare ZDR with HIPAA-compliant storage and the BAA option.
-  </Card>
-  <Card title="Data flow" href="/security-and-privacy/data-flow">
-    How call data moves through Vapi and customer-managed storage.
-  </Card>
-</CardGroup>
+After setup, place a test call. Confirm that its files appear in your bucket. Check that the call appears in Vapi's history with cost and latency.
