@@ -1,0 +1,268 @@
+---
+title: Warm outbound numbers with campaigns
+subtitle: Build answered-call history on production numbers and measure which calls count
+description: Use recurring outbound campaigns to place small batches of real conversations from your production numbers, classify every call with a structured output, and aggregate the results per campaign and per number through the API.
+slug: outbound-campaigns/number-warming
+---
+
+Carriers and call-analytics services judge a number partly by how people respond to its calls. You can build a healthier call history by using campaigns to place small, recurring batches of calls from the numbers you use in production, to people who expect the call and will answer and talk with the assistant.
+
+Number warming works alongside caller identification. Register your numbers, use STIR/SHAKEN attestation, and add provider-supported branded calling where it is available. See [Trusted calling and caller ID](/calls/outbound-calling#trusted-calling-and-caller-id) for setup.
+
+<Warning>
+  Only real conversations help. Agent-to-agent call loops and silent connected calls have no established effect on carrier reputation, and repeated calls to a small fixed set of numbers can look like the traffic you are trying to avoid. There is no universal warming percentage and no single cross-carrier reputation score.
+</Warning>
+
+The organization running the campaigns owns the approved contacts, the recurring schedule, the daily attempt budgets, the retry rules, and the review process. Vapi places the calls and records what happened on each one.
+
+## Choose approved contacts
+
+- Call people who agreed to take part, or existing contacts who expect a useful service call.
+- Agree on calling windows with them in advance.
+- Where you can, include contacts on the receiving networks your real audience uses.
+- Rotate contacts across batches instead of calling the same small group repeatedly.
+
+All outbound calling must follow consent rules. See the [TCPA consent guide](/tcpa-consent).
+
+## Set up each campaign
+
+<Steps>
+  <Step title="Choose the caller and source number">
+    Select the assistant and the production number you want to warm. Use a single `phoneNumberId` per campaign so every result belongs to one source number.
+  </Step>
+  <Step title="Add contacts and a calling window">
+    Upload the approved contacts and set a [schedule](/outbound-campaigns/scheduling-and-lifecycle) inside the windows you agreed on. Start with a few numbers and small batches.
+  </Step>
+  <Step title="Handle voicemail and call screening">
+    Configure [voicemail and call screening](/outbound-campaigns/voicemail-and-call-screening) before launch, so mailboxes and screeners are handled and classified instead of held open.
+  </Step>
+  <Step title="Keep conversations purposeful">
+    Give the assistant a real purpose for the call and end the conversation when that purpose is complete.
+  </Step>
+</Steps>
+
+## Schedule recurring batches
+
+A campaign runs once, so warming uses a series of campaigns. Run an external scheduler that creates each new batch, for example by [duplicating](/outbound-campaigns/overview#how-campaigns-work) the previous campaign with a fresh contact list.
+
+The scheduler is also responsible for:
+
+- Daily attempt limits per number, with retries counted against those limits.
+- Duplicate protection and opt-outs.
+- Permitted local calling windows.
+- A pause control and a spend cap.
+
+Campaign **Max concurrency** only limits how many calls run at once. It does not cap how many calls a number places per day, so daily volume needs its own budget in your scheduler. Record each campaign ID your scheduler creates; you need those IDs to report on results.
+
+## Classify each call with a structured output
+
+The campaign summary reports connected calls and the pick-up rate. A pickup alone does not tell you whether a person had the conversation you intended, so classify every call with a [structured output](/assistants/structured-outputs).
+
+The labels below are a custom classification for your report. They are not built-in Vapi statuses.
+
+| Outcome | Meaning |
+| --- | --- |
+| `live_success` | A person took part and the intended conversation completed. |
+| `live_incomplete` | A person spoke, but the intended conversation did not complete. |
+| `voicemail` | The assistant reached a mailbox. No live conversation. |
+| `screening_only` | A call screener answered and no person joined. |
+| `other_automated` | An IVR or other automated system answered. No live conversation. |
+| `unknown` | Evidence is insufficient, or the classification is missing or pending. Never count it as success. |
+
+Record `screeningEncountered` as a separate flag. When a screener hands the call to a person and that conversation completes, the outcome is `live_success` and the flag keeps the screening event. Count each call once.
+
+Define what a completed conversation means for this assistant before you create the output, and put that definition in the `live_success` description. Then create the structured output:
+
+```bash
+curl -X POST "https://api.vapi.ai/structured-output" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Call outcome",
+    "type": "ai",
+    "description": "Classifies what answered the call and whether the intended conversation completed.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["live_success", "live_incomplete", "voicemail", "screening_only", "other_automated", "unknown"],
+          "description": "live_success: a person took part and the intended conversation completed (replace with your definition, for example the appointment was confirmed or rescheduled). live_incomplete: a person spoke but the intended conversation did not complete. voicemail: a mailbox answered. screening_only: a call screener answered and no person joined. other_automated: an IVR or other automated system answered. unknown: the transcript does not support any other label."
+        },
+        "screeningEncountered": {
+          "type": "boolean",
+          "description": "True if an automated call screener answered at any point, even if a person joined afterward."
+        },
+        "evidence": {
+          "type": "string",
+          "description": "One sentence citing what in the transcript supports the outcome."
+        }
+      },
+      "required": ["outcome", "screeningEncountered"]
+    }
+  }'
+```
+
+Attach the returned ID to the campaign assistant through `artifactPlan.structuredOutputIds`:
+
+```json
+{
+  "artifactPlan": {
+    "structuredOutputIds": ["YOUR_STRUCTURED_OUTPUT_ID"]
+  }
+}
+```
+
+Vapi extracts the output after each call ends and stores it in `call.artifact.structuredOutputs`, keyed by the structured output ID. Calls with little or no transcript may skip extraction. For those calls, the call's `endedReason` supplies the no-answer or failure result.
+
+## Measure warming per campaign
+
+<Note>
+  Structured outputs do not appear as columns or summary totals on the campaign page. To see them, open an individual call record, or aggregate them through the API as shown below.
+</Note>
+
+Every call a campaign places records the campaign in `call.campaignId`, and the campaign's contact list links each dialed contact to its `callId`. To measure how many calls in a campaign counted toward warming:
+
+1. List the campaign's contacts with [`GET /v2/campaign/{id}/contacts`](/api-reference/campaigns/campaign-controller-get-campaign-v-2-contacts). Contacts that were skipped or failed before dialing have no `callId`; keep them out of the dialed count.
+2. Fetch each dialed call with [`GET /call/{id}`](/api-reference/calls/get) and read `artifact.structuredOutputs[YOUR_STRUCTURED_OUTPUT_ID].result`.
+3. Fall back to `endedReason` when no output exists, and leave anything unresolved as `unknown`.
+4. Count outcomes and compute the completed conversation rate.
+
+```typescript title="campaign-outcomes.ts"
+const API = "https://api.vapi.ai";
+const headers = { Authorization: `Bearer ${process.env.VAPI_API_KEY}` };
+
+const CAMPAIGN_ID = "YOUR_CAMPAIGN_ID";
+const OUTCOME_OUTPUT_ID = "YOUR_STRUCTURED_OUTPUT_ID";
+
+// Ended reasons that mean nobody answered or the call failed to connect.
+// Extend this set from the call end reasons reference for your provider.
+const NO_ANSWER_OR_FAILURE = new Set([
+  "customer-did-not-answer",
+  "customer-busy",
+  "twilio-failed-to-connect-call",
+  "vonage-failed-to-connect-call",
+  "vonage-rejected",
+]);
+
+async function get(path: string) {
+  const res = await fetch(`${API}${path}`, { headers });
+  if (!res.ok) throw new Error(`${res.status} on GET ${path}`);
+  return res.json();
+}
+
+function classify(call: any): string {
+  if (call.status !== "ended") return "unknown"; // still in progress
+  const result = call.artifact?.structuredOutputs?.[OUTCOME_OUTPUT_ID]?.result;
+  if (result?.outcome) return result.outcome;
+  if (NO_ANSWER_OR_FAILURE.has(call.endedReason)) return "no_answer_or_failure";
+  if (call.endedReason === "voicemail") return "voicemail";
+  return "unknown"; // output missing or not ready yet: re-fetch later
+}
+
+// 1. Collect every contact in the campaign.
+const LIMIT = 1000;
+const contacts: any[] = [];
+for (let page = 1; ; page++) {
+  const res = await get(`/v2/campaign/${CAMPAIGN_ID}/contacts?limit=${LIMIT}&page=${page}`);
+  contacts.push(...res.results);
+  if (page * LIMIT >= res.metadata.totalItems) break;
+}
+
+// 2. Fetch and classify each call that was actually dialed.
+const counts: Record<string, number> = {};
+let screeningEncountered = 0;
+let liveSuccessSeconds = 0;
+let totalCost = 0;
+const dialed = contacts.filter((c) => c.callId);
+
+for (const contact of dialed) {
+  const call = await get(`/call/${contact.callId}`);
+  const outcome = classify(call);
+  counts[outcome] = (counts[outcome] ?? 0) + 1;
+  totalCost += call.cost ?? 0;
+
+  const result = call.artifact?.structuredOutputs?.[OUTCOME_OUTPUT_ID]?.result;
+  if (result?.screeningEncountered) screeningEncountered++;
+  if (outcome === "live_success" && call.startedAt && call.endedAt) {
+    liveSuccessSeconds += (Date.parse(call.endedAt) - Date.parse(call.startedAt)) / 1000;
+  }
+}
+
+// 3. Report.
+const liveSuccess = counts.live_success ?? 0;
+console.log({
+  campaignId: CAMPAIGN_ID,
+  contacts: contacts.length,
+  dialed: dialed.length,
+  outcomes: counts,
+  screeningEncountered,
+  completedConversationRate: dialed.length ? liveSuccess / dialed.length : 0,
+  avgLiveSuccessSeconds: liveSuccess ? liveSuccessSeconds / liveSuccess : 0,
+  totalCost,
+});
+```
+
+The example fetches calls one at a time to stay well within API rate limits. For large campaigns, add retries with backoff and save each call's classification as you go.
+
+To capture results as calls finish instead of polling afterward, subscribe the campaign to the `contact.completed` and `contact.failed` [campaign events](/outbound-campaigns/webhooks#receive-campaign-events), which carry the `campaignId` and `callId`, and configure the assistant to send [`end-of-call-report`](/server-url/events), whose artifact includes `structuredOutputs`. Join the two on `callId` to store one classified row per call as it arrives.
+
+### Store one row per call
+
+Save these fields for each call, updating one record per call ID:
+
+- Call ID, source `phoneNumberId`, and campaign ID
+- Date, `endedReason`, duration, and cost
+- Outcome and `screeningEncountered`
+
+Re-fetch outputs that are not ready yet, and leave unresolved calls as `unknown`. Review a sample of recordings each cycle and correct mislabels.
+
+## Report per number
+
+Each campaign uses one source number, but warming a number takes many campaigns. Combine the stored rows by `phoneNumberId` to report, for each source number:
+
+- Dial attempts
+- `live_success`, `live_incomplete`, `voicemail`, `screening_only`, `other_automated`, no answer or failure, and `unknown`
+- Average call duration for `live_success` calls
+- Total cost
+
+**Completed conversation rate** = `live_success` / calls actually dialed. Skipped contacts and pre-dial failures stay out of the denominator.
+
+This rate is stricter than the campaign page's **Pick up rate**, which counts any call a person picked up, whether or not the intended conversation completed.
+
+## Check number reputation
+
+Vapi call results show what happened during each call. Carrier and analytics services show spam labels and reputation for the networks they cover. A higher completion rate on its own does not prove that a label changed, so check reputation directly and save the date and network coverage with each check.
+
+- **Hiya:** Create a [Hiya business account](https://www.hiya.com/products/registration). Number Registration and Caller Reputation are free. Register your outbound numbers, then select one to see its spam status and reputation report card. Hiya covers networks that use its labeling, including AT&T. Branded calling is a separate paid product.
+- **Twilio:** If your numbers run through a Twilio account with Voice Insights Advanced Features, open **Monitor > Insights > Voice > Trust & engagement** in the Twilio Console to review delivery, answer, and blocking trends. See [Trust & Engagement Insights](https://www.twilio.com/docs/voice/voice-insights/voice-insights-trust-engagement-insights).
+
+Coverage varies by provider and analytics service. Ask your telephony provider about the other networks your audience uses. Number registration and label remediation go through your provider.
+
+## Review on a schedule
+
+Assign an owner who reviews the per-number outcome report and the reputation checks on a fixed schedule.
+
+- Compare similar audiences and time windows.
+- Pause a number when its labels worsen or its completed conversations drop.
+- Review contact quality and retry rules, and work with your provider before you raise volume.
+- Set the next batch budget from those results.
+
+To get started, choose the approved contact group, calling windows, source numbers, attempt and spend limits, and reporting owner. Register the numbers and capture a baseline reputation check, configure outcome classification, then schedule the first small batches.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configure trusted calling" icon="shield-check" href="/calls/outbound-calling#trusted-calling-and-caller-id">
+    Set up STIR/SHAKEN, CNAM, and caller reputation registrations.
+  </Card>
+  <Card title="Handle voicemail and call screening" icon="voicemail" href="/outbound-campaigns/voicemail-and-call-screening">
+    Keep mailboxes and screeners from holding calls open.
+  </Card>
+  <Card title="Create structured outputs" icon="brackets-curly" href="/assistants/structured-outputs">
+    Define schemas and read extracted results from call artifacts.
+  </Card>
+  <Card title="Receive campaign webhooks" icon="webhook" href="/outbound-campaigns/webhooks">
+    Store call results as each call ends.
+  </Card>
+</CardGroup>

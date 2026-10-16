@@ -6717,10 +6717,19 @@
         "summary": "Create Simulation Run",
         "parameters": [
           {
-            "name": "user-agent",
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Makes the request safe to retry. A retry with the same key and the same body returns the run the first request created, with `reused: true`, instead of starting another. Reusing a key with a different body returns 409. Up to 255 printable ASCII characters, scoped to your organization; a key stays bound to its run while the run exists.",
             "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user-agent",
             "in": "header",
             "description": "Identifies the client starting the simulation run",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -6756,6 +6765,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The Idempotency-Key was already used with a different request body, or a concurrent request with the same key did not complete."
           }
         },
         "tags": [
@@ -22722,13 +22734,13 @@
           },
           "serviceTier": {
             "type": "string",
-            "description": "This is the OpenAI service tier used for chat completions requests.\n\n- `fast`: OpenAI's fast processing tier (renamed from `priority` on 2026-07-30; both values are accepted and billed identically) — up to ~2.5x faster inference at 2x the standard token rates. OpenAI may silently downgrade a fast request to standard processing under ramp limits; when that happens the response reports the served tier and the request is billed at standard rates.\n- `auto`: uses the service tier configured for the OpenAI project.\n- `default`: standard processing and billing.\n\nOnly applies to models that support fast processing: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5. Ignored for other models.\n\n@default undefined (uses the service tier configured for the OpenAI project)",
             "enum": [
               "auto",
               "default",
               "fast",
               "priority"
-            ]
+            ],
+            "description": "This is the OpenAI service tier to request.\n\n- `fast`: requests Fast mode, which gives faster responses at a higher per-token rate. How much faster depends on the model.\n- `priority`: the old name for `fast`, accepted and billed the same.\n- `default`: standard processing.\n- `auto`: the default when unset. On Vapi's OpenAI keys this is standard processing; on your own OpenAI key, OpenAI applies your project's default tier.\n\nOpenAI sets Fast mode rates per model, and they are not a fixed multiple of the standard rates. Vapi bills them only when OpenAI reports that it served the request in Fast mode. Otherwise the request is billed at standard rates, for example when Fast mode isn't available for the model on Vapi, OpenAI downgrades the request, or the request runs on Azure OpenAI.\n\nSupported models and their Fast mode rates: https://docs.vapi.ai/providers/model/openai"
           },
           "reasoningEffort": {
             "type": "string",
@@ -45213,6 +45225,40 @@
           "cost"
         ]
       },
+      "ModelCostServiceTierBreakdown": {
+        "type": "object",
+        "properties": {
+          "serviceTier": {
+            "type": "string",
+            "description": "This is the service tier OpenAI reported serving a request that asked for Fast mode, in Vapi's names: `fast` when Fast mode was served, otherwise the tier served, such as `default`. It is absent on the row for usage with no reported tier: requests that did not ask for Fast mode, requests that ended before OpenAI reported a tier, and other providers."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost in USD of the usage at this tier, rounded to 8 decimal places."
+          },
+          "promptTokens": {
+            "type": "number",
+            "description": "This is the number of prompt tokens used at this tier."
+          },
+          "completionTokens": {
+            "type": "number",
+            "description": "This is the number of completion tokens generated at this tier."
+          },
+          "cachedPromptTokens": {
+            "type": "number",
+            "description": "This is the number of cached prompt tokens used at this tier. This is a subset of `promptTokens`, not an addition to it."
+          },
+          "reasoningTokens": {
+            "type": "number",
+            "description": "This is the number of reasoning tokens generated at this tier. This is a subset of `completionTokens`, not an addition to it."
+          }
+        },
+        "required": [
+          "cost",
+          "promptTokens",
+          "completionTokens"
+        ]
+      },
       "ModelCost": {
         "type": "object",
         "properties": {
@@ -45250,6 +45296,13 @@
           "reasoningTokens": {
             "type": "number",
             "description": "This is the number of reasoning tokens generated in the call. This is only applicable to reasoning models (e.g., OpenAI o-series, GPT-5) on providers that report them.\n\nThis is a **subset of `completionTokens`**, not an addition to it: reasoning tokens are already counted in `completionTokens` and are already billed at the output-token rate. It is reported separately for visibility only and does not affect `cost`."
+          },
+          "serviceTierBreakdown": {
+            "description": "This is the cost split by OpenAI service tier. It is only set on call costs, and only when OpenAI reported the tier it served for a request that asked for Fast mode.\n\nThere is one row per reported tier, plus one row without `serviceTier` for usage with no reported tier. The rows add up to the token counts above, and to `cost` within rounding.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelCostServiceTierBreakdown"
+            }
           },
           "cost": {
             "type": "number",
@@ -61824,6 +61877,10 @@
             "type": "string",
             "description": "Dashboard URL for viewing the simulation run. When acting on behalf of a user, present this URL to them.",
             "format": "uri"
+          },
+          "reused": {
+            "type": "boolean",
+            "description": "True when the request carried an `Idempotency-Key` that an earlier request already used with the same body: this is the run that request created, and no new run was started. False or absent when this request created the run."
           }
         },
         "required": [
@@ -67821,9 +67878,32 @@
           }
         }
       },
-      "User": {
+      "UserWithRole": {
         "type": "object",
         "properties": {
+          "role": {
+            "description": "This is the user's role in the org: a built-in role, the HIPAA special role, or a custom WorkOS role slug prefixed with `org-`.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "editor",
+                  "viewer",
+                  "hipaa-special"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^org-[a-z0-9-]+$"
+              }
+            ]
+          },
+          "lastActiveAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of the user's most recent sign-in to the org's identity provider (WorkOS). It is a property of the user, not of this org membership, so a sign-in to another WorkOS org counts. Only returned to org admins; absent when the requester is not an admin, no sign-in has been recorded, or the org is not linked to WorkOS."
+          },
           "id": {
             "type": "string",
             "description": "This is the unique identifier for the profile or user."
@@ -67848,6 +67928,7 @@
           }
         },
         "required": [
+          "role",
           "id",
           "createdAt",
           "updatedAt",
