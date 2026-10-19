@@ -9,6 +9,8 @@ Assistant-based warm transfer places the customer on hold while a transfer assis
 
 Use this mode when the destination must accept the call or receive context before speaking with the customer. For a direct transfer without an operator conversation, use the [Transfer Call tool](/tools/transfer-call) with its default blind-transfer mode.
 
+Assistant-based warm transfer works on Twilio phone numbers when the destination is a phone number, and on Vapi numbers and bring-your-own SIP trunks for phone-number and SIP destinations. On a Twilio call, a SIP destination is transferred without the transfer assistant.
+
 ## Prerequisites
 
 Before you configure the transfer, prepare:
@@ -26,7 +28,7 @@ When the original assistant invokes the transfer call tool:
 2. Vapi calls the destination and starts the transfer assistant.
 3. The transfer assistant speaks with the operator and uses the previous conversation as context by default.
 4. The transfer assistant calls `transferSuccessful` to connect the parties or `transferCancel` to return the customer to the original assistant.
-5. If the destination is busy, unreachable, or not human, the fallback plan determines what the customer hears and whether the call ends.
+5. With `transferAssistant` configured, a busy or unanswered destination rolls back to the configured fallback. The transfer assistant can also cancel when an operator declines or it reaches voicemail or an automated system. A transfer that doesn't finish within `transferAssistant.maxDurationSeconds` (120 seconds by default) rolls back.
 
 The `transferSuccessful` and `transferCancel` tools are always available to the transfer assistant. You can customize them through the API, but you do not need to add them to a basic configuration.
 
@@ -155,7 +157,7 @@ Use these fields to control the transfer assistant and the two call legs. See th
 | `transferAssistant.model` | Model and instructions used for the operator conversation | Required when you configure `transferAssistant` |
 | `holdAudioUrl` | MP3 or WAV audio played to the customer while on hold | Default hold audio |
 | `transferCompleteAudioUrl` | MP3 or WAV audio played to the destination after the introduction | No custom completion audio |
-| `fallbackPlan` | Customer message and end-call behavior when the transfer fails | Default fallback behavior when omitted |
+| `fallbackPlan` | Customer message and end-call behavior after a failed warm transfer | If omitted, "Could not transfer the call." plays and the original assistant continues |
 | `summaryPlan` | Operator summary content and generation timeout | Configure with `enabled`, `messages`, and `timeoutSeconds` |
 | `contextEngineeringPlan` | Conversation context provided to the transfer assistant | All previous messages |
 
@@ -166,7 +168,7 @@ Use these fields to control the transfer assistant and the two call legs. See th
 Keep the transfer assistant's system message focused on the operator conversation. Define when to use each built-in tool:
 
 - Call `transferSuccessful` after a human operator confirms that they will take the call
-- Call `transferCancel` for voicemail, a busy signal, no answer, an IVR or automated hold queue, or an operator who declines
+- Call `transferCancel` when the assistant hears voicemail, an interactive voice response (IVR) system, an automated hold queue, or an operator declining the call
 - Answer questions about the transfer or give a brief customer summary
 - Avoid unrelated conversation and complete the decision before `maxDurationSeconds`
 
@@ -176,7 +178,11 @@ For example:
 Call transferCancel if the destination plays an IVR message, automated queue announcement, or hold message. Call transferSuccessful only after a live operator responds and accepts the call.
 ```
 
-The transfer assistant receives the previous conversation by default. Set `contextEngineeringPlan.type` to `none` when the operator must not receive that context, or use `lastNMessages` to limit it.
+Busy and no-answer call statuses can trigger rollback before the transfer assistant speaks. The transfer assistant receives the previous conversation by default. Set `contextEngineeringPlan.type` to `none` when the operator must not receive that context, or use `lastNMessages` to limit it.
+
+When you configure the transfer through the API, set `fallbackPlan.endCallEnabled`. `false` plays the fallback message and returns the caller to the original assistant. `true` plays the message and ends the call. If omitted, the caller stays on the call with the original assistant.
+
+Keep `transferPlan.transferAssistant` configured when you depend on no-answer fallback or a transfer timeout. In the current Dashboard flow, disabling Summary generation can remove that configuration and prevent a no-answer event from starting the fallback. Keep Summary generation enabled or configure `transferAssistant` through the API, then verify the result with a controlled call.
 
 ## Verify the warm transfer
 
@@ -187,7 +193,7 @@ Place a test call and trigger the transfer. Confirm that:
 3. Accepting the call connects the customer and operator.
 4. Declining the call or reaching voicemail returns the customer to the original assistant or ends the call according to `fallbackPlan`.
 
-In [**Logs → Calls**](/observability/logs/call-logs), inspect the original call, destination call leg, transcript, and ended reason. To retrieve these details through the API, see the [Get Call API reference](/api-reference/calls/get). An `assistant-forwarded-call` ended reason confirms that the transfer was initiated; it does not confirm that the destination answered.
+In [**Logs → Calls**](/observability/logs/call-logs), inspect the original call, any available destination-leg record, transcript, and ended reason. To retrieve call details through the API, see the [Get Call API reference](/api-reference/calls/get). An `assistant-forwarded-call` ended reason alone does not confirm that the destination answered.
 
 ## Troubleshooting
 
@@ -196,7 +202,7 @@ In [**Logs → Calls**](/observability/logs/call-logs), inspect the original cal
 | The customer is transferred without an operator conversation | The destination uses a blind or non-assistant warm-transfer mode | Set `transferPlan.mode` to `warm-transfer-experimental`. |
 | The transfer assistant never speaks | `firstMessage` is omitted or `firstMessageMode` waits for the operator | Set `firstMessage` and use `assistant-speaks-first`, or let the operator speak first. |
 | The transfer assistant talks but never connects the parties | The prompt does not require `transferSuccessful` | Tell the transfer assistant to call `transferSuccessful` immediately after the operator accepts. |
-| Voicemail, an IVR, a hold queue, or a declined transfer connects anyway | The prompt does not define cancellation conditions | Require `transferCancel` for non-human destinations, busy signals, no answer, and declined transfers. |
+| Voicemail, an IVR, a hold queue, or a declined transfer connects anyway | The prompt does not define cancellation conditions | Require `transferCancel` for non-human destinations and declined transfers. Busy and no-answer call statuses can trigger rollback before the transfer assistant speaks. |
 | The customer hears summary text instead of the fallback message | The transfer produced unexpected `warm-transfer-experimental` behavior | Record the affected call ID, the message the customer heard, whether `summaryPlan` was enabled, and the `endedReason`, then contact support. |
 | The customer hears the wrong audio | Hold audio was configured as a tool message | Put customer hold audio in `transferPlan.holdAudioUrl`. Use `transferCompleteAudioUrl` for audio played to the destination after the introduction. |
 | The customer cannot continue after a failed transfer | `fallbackPlan.endCallEnabled` is `true` | Set it to `false` so the original assistant remains on the call. |

@@ -193,11 +193,37 @@ The transfer mode controls what happens on the destination call leg before the c
 
 Use [Dynamic call transfers](/calls/call-dynamic-transfers) when the destination is selected at runtime. Dynamic destination selection is separate from the transfer mode.
 
+## Understand transfer outcomes and fallback
+
+The `assistant-forwarded-call` ended reason means Vapi initiated a transfer or delegated call control to your server. By itself, it does not confirm that the destination answered or that the caller and destination spoke. Check the provider's call record to confirm the downstream result.
+
+| Transfer mode | Caller state before connection | Recovery behavior |
+| --- | --- | --- |
+| `blind-transfer` | The transfer starts without an operator introduction. | The transfer call tool does not wait for operator acceptance. A busy line, no answer, or voicemail does not by itself return the caller to the original assistant. |
+| `blind-transfer-add-summary-to-sip-header` | The transfer starts with a generated summary in the `X-Transfer-Summary` SIP header. | The summary is not spoken. The transfer call tool does not wait for operator acceptance. |
+| `warm-transfer-say-message` | The destination hears a fixed message before the caller is connected. | This mode does not run an assistant that can accept or cancel the transfer. |
+| `warm-transfer-say-summary` | The destination hears a generated summary before the caller is connected. | This mode does not run an assistant that can accept or cancel the transfer. |
+| `warm-transfer-twiml` | The destination call leg executes the configured TwiML before the caller is connected. | The TwiML controls the introduction; this mode does not run a transfer assistant. |
+| `warm-transfer-wait-for-operator-to-speak-first-and-then-say-message` | The destination speaks before hearing the fixed message. | `transferPlan.timeout` limits the wait for destination speech. It is not a failed-transfer fallback. |
+| `warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary` | The destination speaks before hearing the generated summary. | `transferPlan.timeout` limits the wait for destination speech. It is not a failed-transfer fallback. |
+| `warm-transfer-experimental` | The caller waits on hold while the destination call leg runs. | The transfer assistant can connect or cancel. A failed attempt can play the configured fallback message, then continue or end the caller's call. See [Assistant-based warm transfer](/calls/assistant-based-warm-transfer). |
+
+The non-assistant warm modes require supported Twilio telephony for the destination introduction. Test the selected mode with the same phone provider and destination used in production. For a transfer that requires an operator to accept the caller, configure [assistant-based warm transfer](/calls/assistant-based-warm-transfer) and an explicit `fallbackPlan`.
+
+## Choose an escalation pattern
+
+| Need | Configure | Expected result and recovery |
+| --- | --- | --- |
+| Escalate when the caller asks or the assistant reaches a capability boundary | Add a transfer destination and describe the trigger in the tool description and assistant prompt. Require caller agreement when appropriate. | The model must invoke `transferCall`; speech alone does not start a transfer. Use [call logs](/observability/logs/call-logs) to confirm invocation. |
+| Route to a specialist | Give each stored destination a distinct description, or use a [lookup-based transfer](/calls/transfer-calls-with-api-lookup). | The selected destination receives the transfer attempt. Confirm the selected route in the tool call and provider record. |
+| Give an operator context before connecting | Use a supported [warm transfer mode](/tools/transfer-call/warm-transfer) with a message or summary. | The destination hears the introduction before connection. These modes do not ask an assistant to confirm acceptance. |
+| Require a person to accept a high-stakes escalation | Use [assistant-based warm transfer](/calls/assistant-based-warm-transfer). Prompt the transfer assistant to call `transferSuccessful` only after acceptance and `transferCancel` when it should decline. Set `fallbackPlan.endCallEnabled` explicitly. | The caller waits on hold during the operator conversation. A canceled attempt or handled operator-leg failure follows the configured fallback; test busy, no-answer, and voicemail outcomes with the production provider. |
+
 ## Verify the transfer
 
 Place a test call and ask for the destination described in the tool. Confirm that the call log contains a `transferCall` tool invocation and that the destination rings or answers.
 
-The `assistant-forwarded-call` ended reason confirms that Vapi initiated the transfer. It does not confirm that the downstream telephony provider completed it, so check the provider's call logs when the destination does not receive the call.
+The `assistant-forwarded-call` ended reason confirms that Vapi initiated or delegated the transfer. It does not confirm that the downstream telephony provider completed it, so check the provider's call logs when the destination does not receive the call.
 
 ## Troubleshooting
 
