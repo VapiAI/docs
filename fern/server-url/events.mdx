@@ -49,17 +49,20 @@ Example assistant configuration (excerpt):
   "model": {
     "provider": "openai",
     "model": "gpt-4o",
-    "functions": [
+    "tools": [
       {
-        "name": "sendEmail",
-        "description": "Used to send an email to a client.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "emailAddress": { "type": "string" },
-            "message": { "type": "string" }
-          },
-          "required": ["emailAddress", "message"]
+        "type": "function",
+        "function": {
+          "name": "sendEmail",
+          "description": "Used to send an email to a client.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "emailAddress": { "type": "string" },
+              "message": { "type": "string" }
+            },
+            "required": ["emailAddress", "message"]
+          }
         }
       }
     ]
@@ -74,14 +77,29 @@ When tools are triggered, your Server URL receives a `tool-calls` message:
   "message": {
     "type": "tool-calls",
     "call": { /* Call Object */ },
-    "toolWithToolCallList": [
+    "toolCallList": [
       {
-        "name": "sendEmail",
-        "toolCall": { "id": "abc123", "parameters": { "emailAddress": "john@example.com", "message": "Hi!" } }
+        "id": "abc123",
+        "type": "function",
+        "function": {
+          "name": "sendEmail",
+          "arguments": { "emailAddress": "john@example.com", "message": "Hi!" }
+        }
       }
     ],
-    "toolCallList": [
-      { "id": "abc123", "name": "sendEmail", "parameters": { "emailAddress": "john@example.com", "message": "Hi!" } }
+    "toolWithToolCallList": [
+      {
+        "type": "function",
+        "function": { "name": "sendEmail", "parameters": { /* tool parameters schema */ } },
+        "toolCall": {
+          "id": "abc123",
+          "type": "function",
+          "function": {
+            "name": "sendEmail",
+            "arguments": { "emailAddress": "john@example.com", "message": "Hi!" }
+          }
+        }
+      }
     ]
   }
 }
@@ -409,16 +427,50 @@ Respond with a destination and optionally a message:
 
 ### Transfer Update
 
-Fires whenever a transfer occurs.
+For voice calls, `transfer-update` is sent by the legacy `transferCall` path when transferring to an assistant destination. It includes `destination`, `fromAssistant`, and `toAssistant`. It is not sent for every assistant handoff, phone transfer, or SIP transfer, and it does not report ringing, connection, or transfer failure.
+
+Example payload excerpt for an assistant destination:
 
 ```json
 {
   "message": {
     "type": "transfer-update",
-    "destination": { /* assistant | number | sip */ }
+    "destination": {
+      "type": "assistant",
+      "assistantName": "Support"
+    },
+    "fromAssistant": { "name": "Receptionist" },
+    "toAssistant": { "name": "Support" }
   }
 }
 ```
+
+#### Phone and SIP transfers
+
+Vapi-managed phone and SIP transfers send a `status-update` with `status: "forwarding"` when the transfer starts. This includes [assistant-based warm transfers](/calls/assistant-based-warm-transfer) (`warm-transfer-experimental`). This event is sent before the transfer is attempted; it does not confirm that the destination rang, answered, or accepted the caller.
+
+Example payload excerpt for a phone destination:
+
+```json
+{
+  "message": {
+    "type": "status-update",
+    "status": "forwarding",
+    "destination": {
+      "type": "number",
+      "number": "+14155550100"
+    }
+  }
+}
+```
+
+The forwarding payload also includes `messages`, `messagesOpenAIFormatted`, `transcript`, and an optional `summary`. The deprecated `forwardingPhoneNumber` field contains the destination number or SIP URI; use `destination` instead.
+
+Use [call logs](/observability/logs/call-logs) and your telephony provider's call records to investigate the transfer outcome.
+
+#### Subscribe to transfer events
+
+To receive these events, configure a [Server URL](/server-url/setting-server-urls) and include the event type in `assistant.serverMessages`. `status-update` is included by default; `transfer-update` is not. Adding `transfer-update` to the subscription does not make phone or SIP transfers send it.
 
 ### User Interrupted
 

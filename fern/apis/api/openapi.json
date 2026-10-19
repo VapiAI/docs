@@ -267,6 +267,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Vapi Agents manages the assistant (see AssistantManagedConflictResponseDTO). Other 409s on this route carry a plain message instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -305,11 +315,25 @@
             }
           },
           "409": {
-            "description": "",
+            "description": "One of its versions is pinned (see AssistantPinnedConflictResponseDTO), or Vapi Agents manages the assistant (see AssistantManagedConflictResponseDTO).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AssistantPinnedConflictResponseDTO"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AssistantPinnedConflictResponseDTO"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "error",
+                    "mapping": {
+                      "assistant_pinned": "#/components/schemas/AssistantPinnedConflictResponseDTO",
+                      "assistant_managed_by_vapi_agents": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                    }
+                  }
                 }
               }
             }
@@ -2937,11 +2961,25 @@
             "description": "The source assistant does not exist."
           },
           "409": {
-            "description": "The provided expectedCurrentAllocationId no longer matches the allocation currently in effect. Omitting the field never conflicts.",
+            "description": "The provided expectedCurrentAllocationId no longer matches the allocation currently in effect (see TrafficAllocationStaleConflictResponseDTO; omitting the field never conflicts), or Vapi Agents manages the assistant (see AssistantManagedConflictResponseDTO).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrafficAllocationStaleConflictResponseDTO"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TrafficAllocationStaleConflictResponseDTO"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "error",
+                    "mapping": {
+                      "stale_allocation": "#/components/schemas/TrafficAllocationStaleConflictResponseDTO",
+                      "assistant_managed_by_vapi_agents": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                    }
+                  }
                 }
               }
             }
@@ -5768,6 +5806,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The write links or unlinks an assistant managed by Vapi Agents, which would rewrite its artifact plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -5860,6 +5908,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The write links or unlinks an assistant managed by Vapi Agents, which would rewrite its artifact plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -5893,6 +5951,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StructuredOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The write links or unlinks an assistant managed by Vapi Agents, which would rewrite its artifact plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantManagedConflictResponseDTO"
                 }
               }
             }
@@ -6649,10 +6717,19 @@
         "summary": "Create Simulation Run",
         "parameters": [
           {
-            "name": "user-agent",
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Makes the request safe to retry. A retry with the same key and the same body returns the run the first request created, with `reused: true`, instead of starting another. Reusing a key with a different body returns 409. Up to 255 printable ASCII characters, scoped to your organization; a key stays bound to its run while the run exists.",
             "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user-agent",
             "in": "header",
             "description": "Identifies the client starting the simulation run",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -6688,6 +6765,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The Idempotency-Key was already used with a different request body, or a concurrent request with the same key did not complete."
           }
         },
         "tags": [
@@ -10561,6 +10641,72 @@
           "governingAllocationId"
         ]
       },
+      "AssistantPinnedConflictResponseDTO": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "assistant_pinned"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable reason the parent-assistant delete was rejected."
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ]
+      },
+      "AssistantManagedVapiAgentsDTO": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The Vapi Agents agent that manages the assistant."
+          },
+          "agentUrl": {
+            "type": "string",
+            "description": "The agent's page in Vapi Agents."
+          },
+          "mcpUrl": {
+            "type": "string",
+            "description": "The Vapi Agents MCP server, where an AI client makes the change instead."
+          }
+        },
+        "required": [
+          "agentId",
+          "agentUrl",
+          "mcpUrl"
+        ]
+      },
+      "AssistantManagedConflictResponseDTO": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "assistant_managed_by_vapi_agents"
+            ],
+            "description": "Vapi Agents manages the assistant. The lock refuses writes to the assistant itself (update, replace, delete, restore, version delete, traffic splits) and to outcomes, monitors and structured outputs that link or unlink it. It doesn't cover what changes a call without writing the assistant: call-level assistantOverrides or assistantVersion, squad member pins and overrides, which phone number points at it, edits to the tools or knowledge bases it references, or Vapi's own model-retirement sweep."
+          },
+          "message": {
+            "type": "string",
+            "description": "Why the write was rejected and how to make the change in Vapi Agents instead: the agent link, the Vapi Agents MCP URL with the steps to connect it, and which of its tools to call."
+          },
+          "vapiAgents": {
+            "$ref": "#/components/schemas/AssistantManagedVapiAgentsDTO"
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "vapiAgents"
+        ]
+      },
       "FallbackTranscriberPlan": {
         "type": "object",
         "properties": {
@@ -13052,6 +13198,7 @@
             "type": "string",
             "description": "This is the model that will be used for the transcription.",
             "enum": [
+              "gemini-3.8-flash",
               "gemini-3.5-flash",
               "gemini-3.1-flash-lite",
               "gemini-3-flash-preview",
@@ -16104,6 +16251,7 @@
             "type": "string",
             "description": "This is the model that will be used for the transcription.",
             "enum": [
+              "gemini-3.8-flash",
               "gemini-3.5-flash",
               "gemini-3.1-flash-lite",
               "gemini-3-flash-preview",
@@ -19134,6 +19282,7 @@
             "type": "string",
             "description": "The model to use for the knowledge base",
             "enum": [
+              "gemini-3.8-flash",
               "gemini-3.5-flash",
               "gemini-3.1-flash-lite",
               "gemini-3-flash-preview",
@@ -19909,7 +20058,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -20100,7 +20249,20 @@
               "claude-sonnet-4-5-20250929",
               "claude-sonnet-4-6",
               "claude-sonnet-5",
-              "claude-haiku-4-5-20251001"
+              "claude-haiku-4-5-20251001",
+              "claude-haiku-5-5"
+            ]
+          },
+          "reasoningEffort": {
+            "type": "string",
+            "description": "Reasoning effort for claude-haiku-5-5. `none` turns thinking off. `low` to `max`\nuse adaptive thinking at that effort; higher effort can add latency before the\nmodel speaks. Unset means `none`. Rejected for every other model.",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
             ]
           },
           "provider": {
@@ -20126,7 +20288,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -20303,6 +20465,7 @@
               "claude-sonnet-4-5-20250929",
               "claude-sonnet-4-6",
               "claude-haiku-4-5-20251001",
+              "claude-haiku-5-5",
               "global.anthropic.claude-haiku-4-5-20251001-v1:0"
             ]
           },
@@ -20324,6 +20487,7 @@
               "claude-sonnet-4-5-20250929",
               "claude-sonnet-4-6",
               "claude-haiku-4-5-20251001",
+              "claude-haiku-5-5",
               "global.anthropic.claude-haiku-4-5-20251001-v1:0"
             ],
             "maxItems": 1,
@@ -20347,9 +20511,22 @@
                 "claude-sonnet-4-5-20250929",
                 "claude-sonnet-4-6",
                 "claude-haiku-4-5-20251001",
+                "claude-haiku-5-5",
                 "global.anthropic.claude-haiku-4-5-20251001-v1:0"
               ]
             }
+          },
+          "reasoningEffort": {
+            "type": "string",
+            "description": "Reasoning effort for claude-haiku-5-5. `none` turns thinking off. `low` to `max`\nuse adaptive thinking at that effort; higher effort can add latency before the\nmodel speaks. Unset means `none`. Rejected for every other model.",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
           },
           "thinking": {
             "description": "Optional configuration for Anthropic's thinking feature.\nOnly applicable for claude-3-7-sonnet-20250219 model.\nIf provided, maxTokens must be greater than thinking.budgetTokens.",
@@ -20367,7 +20544,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -20541,7 +20718,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -20745,7 +20922,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -20916,7 +21093,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -21092,7 +21269,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -21317,6 +21494,7 @@
             "type": "string",
             "description": "This is the Google model that will be used.",
             "enum": [
+              "gemini-3.8-flash",
               "gemini-3.5-flash",
               "gemini-3.1-flash-lite",
               "gemini-3-flash-preview",
@@ -21358,7 +21536,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -21544,7 +21722,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -21717,7 +21895,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -21890,7 +22068,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -22556,13 +22734,13 @@
           },
           "serviceTier": {
             "type": "string",
-            "description": "This is the OpenAI service tier used for chat completions requests.\n\n- `fast`: OpenAI's fast processing tier (renamed from `priority` on 2026-07-30; both values are accepted and billed identically) — up to ~2.5x faster inference at 2x the standard token rates. OpenAI may silently downgrade a fast request to standard processing under ramp limits; when that happens the response reports the served tier and the request is billed at standard rates.\n- `auto`: uses the service tier configured for the OpenAI project.\n- `default`: standard processing and billing.\n\nOnly applies to models that support fast processing: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5. Ignored for other models.\n\n@default undefined (uses the service tier configured for the OpenAI project)",
             "enum": [
               "auto",
               "default",
               "fast",
               "priority"
-            ]
+            ],
+            "description": "This is the OpenAI service tier to request.\n\n- `fast`: requests Fast mode, which gives faster responses at a higher per-token rate. How much faster depends on the model.\n- `priority`: the old name for `fast`, accepted and billed the same.\n- `default`: standard processing.\n- `auto`: the default when unset. On Vapi's OpenAI keys this is standard processing; on your own OpenAI key, OpenAI applies your project's default tier.\n\nOpenAI sets Fast mode rates per model, and they are not a fixed multiple of the standard rates. Vapi bills them only when OpenAI reports that it served the request in Fast mode. Otherwise the request is billed at standard rates, for example when Fast mode isn't available for the model on Vapi, OpenAI downgrades the request, or the request runs on Azure OpenAI.\n\nSupported models and their Fast mode rates: https://docs.vapi.ai/providers/model/openai"
           },
           "reasoningEffort": {
             "type": "string",
@@ -22584,7 +22762,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -22754,7 +22932,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -22924,7 +23102,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -23094,7 +23272,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -23144,7 +23322,7 @@
         "type": "object",
         "properties": {
           "messages": {
-            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. Message contents support LiquidJS templating with the following variables:\n- `{{transcript}}` or `{{messages}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\n`{{messages}}` is the full message history including tool calls; `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
+            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. For text extraction, message contents support LiquidJS templating with the following variables:\n- `{{transcript}}`, `{{messages}}`, or `{{messagesWithConfidence}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\nIn structured outputs, `{{messages}}` includes conversation text and tool calls/results, but omits caller transcription-confidence fields. For text extraction, `{{messagesWithConfidence}}` includes the original message history with transcription confidence for outputs that explicitly need it. These variables also apply in structured-output schema descriptions. Audio-targeted (`messages-with-audio`) extraction ignores custom messages. Stored call artifacts and API messages retain their confidence data. `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OpenAIMessage"
@@ -23337,7 +23515,7 @@
         "type": "object",
         "properties": {
           "messages": {
-            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. Message contents support LiquidJS templating with the following variables:\n- `{{transcript}}` or `{{messages}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\n`{{messages}}` is the full message history including tool calls; `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
+            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. For text extraction, message contents support LiquidJS templating with the following variables:\n- `{{transcript}}`, `{{messages}}`, or `{{messagesWithConfidence}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\nIn structured outputs, `{{messages}}` includes conversation text and tool calls/results, but omits caller transcription-confidence fields. For text extraction, `{{messagesWithConfidence}}` includes the original message history with transcription confidence for outputs that explicitly need it. These variables also apply in structured-output schema descriptions. Audio-targeted (`messages-with-audio`) extraction ignores custom messages. Stored call artifacts and API messages retain their confidence data. `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OpenAIMessage"
@@ -23369,7 +23547,8 @@
               "claude-sonnet-4-5-20250929",
               "claude-sonnet-4-6",
               "claude-sonnet-5",
-              "claude-haiku-4-5-20251001"
+              "claude-haiku-4-5-20251001",
+              "claude-haiku-5-5"
             ]
           },
           "thinking": {
@@ -23402,7 +23581,7 @@
         "type": "object",
         "properties": {
           "messages": {
-            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. Message contents support LiquidJS templating with the following variables:\n- `{{transcript}}` or `{{messages}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\n`{{messages}}` is the full message history including tool calls; `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
+            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. For text extraction, message contents support LiquidJS templating with the following variables:\n- `{{transcript}}`, `{{messages}}`, or `{{messagesWithConfidence}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\nIn structured outputs, `{{messages}}` includes conversation text and tool calls/results, but omits caller transcription-confidence fields. For text extraction, `{{messagesWithConfidence}}` includes the original message history with transcription confidence for outputs that explicitly need it. These variables also apply in structured-output schema descriptions. Audio-targeted (`messages-with-audio`) extraction ignores custom messages. Stored call artifacts and API messages retain their confidence data. `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OpenAIMessage"
@@ -23434,6 +23613,7 @@
               "claude-sonnet-4-5-20250929",
               "claude-sonnet-4-6",
               "claude-haiku-4-5-20251001",
+              "claude-haiku-5-5",
               "global.anthropic.claude-haiku-4-5-20251001-v1:0"
             ]
           },
@@ -23467,7 +23647,7 @@
         "type": "object",
         "properties": {
           "messages": {
-            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. Message contents support LiquidJS templating with the following variables:\n- `{{transcript}}` or `{{messages}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\n`{{messages}}` is the full message history including tool calls; `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
+            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. For text extraction, message contents support LiquidJS templating with the following variables:\n- `{{transcript}}`, `{{messages}}`, or `{{messagesWithConfidence}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\nIn structured outputs, `{{messages}}` includes conversation text and tool calls/results, but omits caller transcription-confidence fields. For text extraction, `{{messagesWithConfidence}}` includes the original message history with transcription confidence for outputs that explicitly need it. These variables also apply in structured-output schema descriptions. Audio-targeted (`messages-with-audio`) extraction ignores custom messages. Stored call artifacts and API messages retain their confidence data. `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OpenAIMessage"
@@ -23485,6 +23665,7 @@
             "description": "This is the name of the model. Ex. cognitivecomputations/dolphin-mixtral-8x7b",
             "maxLength": 100,
             "enum": [
+              "gemini-3.8-flash",
               "gemini-3.5-flash",
               "gemini-3.1-flash-lite",
               "gemini-3-flash-preview",
@@ -23526,7 +23707,7 @@
         "type": "object",
         "properties": {
           "messages": {
-            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. Message contents support LiquidJS templating with the following variables:\n- `{{transcript}}` or `{{messages}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\n`{{messages}}` is the full message history including tool calls; `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
+            "description": "These are the messages used to customize the prompt used for structured output extraction.\n\nWhen provided, these messages replace the default prompts. For text extraction, message contents support LiquidJS templating with the following variables:\n- `{{transcript}}`, `{{messages}}`, or `{{messagesWithConfidence}}` to reference the conversation (one is required)\n- `{{structuredOutput.name}}`, `{{structuredOutput.description}}`, or `{{structuredOutput.schema}}` to reference the structured output definition (one is required)\n- `{{systemPrompt}}`, `{{callEndedReason}}`, `{{duration}}`, `{{startedAt}}`, `{{endedAt}}`, and any `assistantOverrides.variableValues`\n\nIn structured outputs, `{{messages}}` includes conversation text and tool calls/results, but omits caller transcription-confidence fields. For text extraction, `{{messagesWithConfidence}}` includes the original message history with transcription confidence for outputs that explicitly need it. These variables also apply in structured-output schema descriptions. Audio-targeted (`messages-with-audio`) extraction ignores custom messages. Stored call artifacts and API messages retain their confidence data. `{{transcript}}` is the spoken text only, which uses significantly fewer tokens.\n\nIf not provided, default system and user prompts are used.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OpenAIMessage"
@@ -25525,7 +25706,7 @@
             "maxLength": 1000
           },
           "model": {
-            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nBetween the system or user messages, you must reference either 'transcript' or 'messages' with the `{{}}` syntax to access the conversation history.\nBetween the system or user messages, you must reference a variation of the structured output with the `{{}}` syntax to access the structured output definition.\ni.e.:\n`{{structuredOutput}}`\n`{{structuredOutput.name}}`\n`{{structuredOutput.description}}`\n`{{structuredOutput.schema}}`\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
+            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nFor text extraction, you must reference 'transcript', 'messages', or 'messagesWithConfidence' with the `{{}}` syntax to access the conversation history.\nIn structured outputs, `{{messages}}` includes conversation text and tool calls/results but omits caller transcription-confidence fields. Text extraction can use `{{messagesWithConfidence}}` when the output needs the original message history with transcription confidence. These variables also apply in structured-output schema descriptions. Audio-targeted (`messages-with-audio`) extraction ignores custom messages. Stored call artifacts and API messages retain their confidence data.\nBetween the system or user messages, you must reference a variation of the structured output with the `{{}}` syntax to access the structured output definition.\ni.e.:\n`{{structuredOutput}}`\n`{{structuredOutput.name}}`\n`{{structuredOutput.description}}`\n`{{structuredOutput.schema}}`\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/WorkflowOpenAIModel",
@@ -27090,7 +27271,7 @@
           },
           "maxTokens": {
             "type": "number",
-            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna no cap is applied unless you set one, because reasoning uses output tokens and a small cap can leave the reply empty.",
+            "description": "This is the max number of tokens that the assistant will be allowed to generate in each turn of the conversation. Default is 250. On gpt-6-luna and claude-haiku-5-5 no cap is applied unless you set one (claude-haiku-5-5 sends its 128,000-token maximum), because reasoning uses output tokens and a small cap can leave the reply empty.",
             "minimum": 50,
             "maximum": 10000
           },
@@ -27608,6 +27789,8 @@
             "enum": [
               "sonic-3.5",
               "sonic-3.5-2026-05-04",
+              "sonic-3.6",
+              "sonic-3.6-2026-08-27",
               "sonic-3",
               "sonic-3-2026-01-12",
               "sonic-3-2025-10-27",
@@ -27651,6 +27834,7 @@
               "ms",
               "nl",
               "no",
+              "or",
               "pa",
               "pl",
               "pt",
@@ -27664,6 +27848,7 @@
               "tl",
               "tr",
               "uk",
+              "ur",
               "vi",
               "zh"
             ],
@@ -30496,6 +30681,8 @@
             "enum": [
               "sonic-3.5",
               "sonic-3.5-2026-05-04",
+              "sonic-3.6",
+              "sonic-3.6-2026-08-27",
               "sonic-3",
               "sonic-3-2026-01-12",
               "sonic-3-2025-10-27",
@@ -30539,6 +30726,7 @@
               "ms",
               "nl",
               "no",
+              "or",
               "pa",
               "pl",
               "pt",
@@ -30552,6 +30740,7 @@
               "tl",
               "tr",
               "uk",
+              "ur",
               "vi",
               "zh"
             ],
@@ -42340,25 +42529,6 @@
           }
         }
       },
-      "AssistantPinnedConflictResponseDTO": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string",
-            "enum": [
-              "assistant_pinned"
-            ]
-          },
-          "message": {
-            "type": "string",
-            "description": "Human-readable reason the parent-assistant delete was rejected."
-          }
-        },
-        "required": [
-          "error",
-          "message"
-        ]
-      },
       "Squad": {
         "type": "object",
         "properties": {
@@ -45055,6 +45225,40 @@
           "cost"
         ]
       },
+      "ModelCostServiceTierBreakdown": {
+        "type": "object",
+        "properties": {
+          "serviceTier": {
+            "type": "string",
+            "description": "This is the service tier OpenAI reported serving a request that asked for Fast mode, in Vapi's names: `fast` when Fast mode was served, otherwise the tier served, such as `default`. It is absent on the row for usage with no reported tier: requests that did not ask for Fast mode, requests that ended before OpenAI reported a tier, and other providers."
+          },
+          "cost": {
+            "type": "number",
+            "description": "This is the cost in USD of the usage at this tier, rounded to 8 decimal places."
+          },
+          "promptTokens": {
+            "type": "number",
+            "description": "This is the number of prompt tokens used at this tier."
+          },
+          "completionTokens": {
+            "type": "number",
+            "description": "This is the number of completion tokens generated at this tier."
+          },
+          "cachedPromptTokens": {
+            "type": "number",
+            "description": "This is the number of cached prompt tokens used at this tier. This is a subset of `promptTokens`, not an addition to it."
+          },
+          "reasoningTokens": {
+            "type": "number",
+            "description": "This is the number of reasoning tokens generated at this tier. This is a subset of `completionTokens`, not an addition to it."
+          }
+        },
+        "required": [
+          "cost",
+          "promptTokens",
+          "completionTokens"
+        ]
+      },
       "ModelCost": {
         "type": "object",
         "properties": {
@@ -45092,6 +45296,13 @@
           "reasoningTokens": {
             "type": "number",
             "description": "This is the number of reasoning tokens generated in the call. This is only applicable to reasoning models (e.g., OpenAI o-series, GPT-5) on providers that report them.\n\nThis is a **subset of `completionTokens`**, not an addition to it: reasoning tokens are already counted in `completionTokens` and are already billed at the output-token rate. It is reported separately for visibility only and does not affect `cost`."
+          },
+          "serviceTierBreakdown": {
+            "description": "This is the cost split by OpenAI service tier. It is only set on call costs, and only when OpenAI reported the tier it served for a request that asked for Fast mode.\n\nThere is one row per reported tier, plus one row without `serviceTier` for usage with no reported tier. The rows add up to the token counts above, and to `cost` within rounding.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelCostServiceTierBreakdown"
+            }
           },
           "cost": {
             "type": "number",
@@ -53173,6 +53384,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53352,6 +53569,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53479,6 +53702,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53557,6 +53786,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53629,6 +53864,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -53772,6 +54013,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53856,6 +54103,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -53933,6 +54186,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54009,6 +54268,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54101,6 +54366,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54207,6 +54478,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54279,6 +54556,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54377,6 +54660,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54490,6 +54779,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54588,6 +54883,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54668,6 +54969,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54740,6 +55047,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54814,6 +55127,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -54886,6 +55205,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -54960,6 +55285,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -55032,6 +55363,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -55124,6 +55461,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -55196,6 +55539,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -55270,6 +55619,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -55343,6 +55698,12 @@
             "type": "string",
             "nullable": true
           },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
+          },
           "messages": {
             "type": "array",
             "description": "Messages spoken while the tool is running. Multiple request-start messages are variants. For request-response-delayed, same timing means variants and different timings mean staged updates.",
@@ -55415,6 +55776,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -55517,6 +55884,12 @@
           "latestVersion": {
             "type": "string",
             "nullable": true
+          },
+          "baselineVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-only baseline label returned by the tool list before a version is stored. Fetch version history to initialize it before using it as a pin.",
+            "readOnly": true
           },
           "messages": {
             "type": "array",
@@ -59400,7 +59773,7 @@
             "maxLength": 1000
           },
           "model": {
-            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nBetween the system or user messages, you must reference either 'transcript' or 'messages' with the `{{}}` syntax to access the conversation history.\nBetween the system or user messages, you must reference a variation of the structured output with the `{{}}` syntax to access the structured output definition.\ni.e.:\n`{{structuredOutput}}`\n`{{structuredOutput.name}}`\n`{{structuredOutput.description}}`\n`{{structuredOutput.schema}}`\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
+            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nFor text extraction, you must reference 'transcript', 'messages', or 'messagesWithConfidence' with the `{{}}` syntax to access the conversation history.\nIn structured outputs, `{{messages}}` includes conversation text and tool calls/results but omits caller transcription-confidence fields. Text extraction can use `{{messagesWithConfidence}}` when the output needs the original message history with transcription confidence. These variables also apply in structured-output schema descriptions. Audio-targeted (`messages-with-audio`) extraction ignores custom messages. Stored call artifacts and API messages retain their confidence data.\nBetween the system or user messages, you must reference a variation of the structured output with the `{{}}` syntax to access the structured output definition.\ni.e.:\n`{{structuredOutput}}`\n`{{structuredOutput.name}}`\n`{{structuredOutput.description}}`\n`{{structuredOutput.schema}}`\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/WorkflowOpenAIModel",
@@ -59604,7 +59977,7 @@
             }
           },
           "model": {
-            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nBetween the system or user messages, you must reference either 'transcript' or 'messages' with the `{{}}` syntax to access the conversation history.\nBetween the system or user messages, you must reference a variation of the structured output with the `{{}}` syntax to access the structured output definition.\ni.e.:\n`{{structuredOutput}}`\n`{{structuredOutput.name}}`\n`{{structuredOutput.description}}`\n`{{structuredOutput.schema}}`\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
+            "description": "This is the model that will be used to extract the structured output.\n\nTo provide your own custom system and user prompts for structured output extraction, populate the messages array with your system and user messages. You can specify liquid templating in your system and user messages.\nFor text extraction, you must reference 'transcript', 'messages', or 'messagesWithConfidence' with the `{{}}` syntax to access the conversation history.\nIn structured outputs, `{{messages}}` includes conversation text and tool calls/results but omits caller transcription-confidence fields. Text extraction can use `{{messagesWithConfidence}}` when the output needs the original message history with transcription confidence. These variables also apply in structured-output schema descriptions. Audio-targeted (`messages-with-audio`) extraction ignores custom messages. Stored call artifacts and API messages retain their confidence data.\nBetween the system or user messages, you must reference a variation of the structured output with the `{{}}` syntax to access the structured output definition.\ni.e.:\n`{{structuredOutput}}`\n`{{structuredOutput.name}}`\n`{{structuredOutput.description}}`\n`{{structuredOutput.schema}}`\n\nIf model is not specified, GPT-4.1 will be used by default for extraction, utilizing default system and user prompts.\nIf messages or required fields are not specified, the default system and user prompts will be used.",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/WorkflowOpenAIModel",
@@ -61504,6 +61877,10 @@
             "type": "string",
             "description": "Dashboard URL for viewing the simulation run. When acting on behalf of a user, present this URL to them.",
             "format": "uri"
+          },
+          "reused": {
+            "type": "boolean",
+            "description": "True when the request carried an `Idempotency-Key` that an earlier request already used with the same body: this is the run that request created, and no new run was started. False or absent when this request created the run."
           }
         },
         "required": [
@@ -64100,6 +64477,8 @@
               "call.hookTriggered",
               "call.hookSucceeded",
               "call.hookFailed",
+              "serverMessage.requestSucceeded",
+              "serverMessage.requestFailed",
               "call.statusReceived",
               "call.silenceTimeout",
               "call.microphoneTimeout",
@@ -64168,7 +64547,8 @@
               "pipeline.userSpeechStopped",
               "pipeline.endpointingTriggered",
               "pipeline.firstMessageStarted",
-              "pipeline.firstMessageCompleted"
+              "pipeline.firstMessageCompleted",
+              "pipeline.denoiserFailed"
             ]
           },
           "operation": {
@@ -65901,7 +66281,8 @@
               "claude-sonnet-4-5-20250929",
               "claude-sonnet-4-6",
               "claude-sonnet-5",
-              "claude-haiku-4-5-20251001"
+              "claude-haiku-4-5-20251001",
+              "claude-haiku-5-5"
             ]
           },
           "thinking": {
@@ -65954,6 +66335,7 @@
             "description": "This is the name of the model. Ex. gpt-4o",
             "maxLength": 100,
             "enum": [
+              "gemini-3.8-flash",
               "gemini-3.5-flash",
               "gemini-3.1-flash-lite",
               "gemini-3-flash-preview",
@@ -67496,9 +67878,32 @@
           }
         }
       },
-      "User": {
+      "UserWithRole": {
         "type": "object",
         "properties": {
+          "role": {
+            "description": "This is the user's role in the org: a built-in role, the HIPAA special role, or a custom WorkOS role slug prefixed with `org-`.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "editor",
+                  "viewer",
+                  "hipaa-special"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^org-[a-z0-9-]+$"
+              }
+            ]
+          },
+          "lastActiveAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "This is the ISO 8601 date-time string of the user's most recent sign-in to the org's identity provider (WorkOS). It is a property of the user, not of this org membership, so a sign-in to another WorkOS org counts. Only returned to org admins; absent when the requester is not an admin, no sign-in has been recorded, or the org is not linked to WorkOS."
+          },
           "id": {
             "type": "string",
             "description": "This is the unique identifier for the profile or user."
@@ -67523,6 +67928,7 @@
           }
         },
         "required": [
+          "role",
           "id",
           "createdAt",
           "updatedAt",
