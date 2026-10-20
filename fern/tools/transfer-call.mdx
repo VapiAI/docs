@@ -183,21 +183,49 @@ The transfer mode controls what happens on the destination call leg before the c
 | Dashboard mode | API value | What it does |
 | --- | --- | --- |
 | **Blind Transfer** | `blind-transfer` | Connects the customer without speaking to the destination. This is the default. See [Blind transfer](/tools/transfer-call/blind-transfer). |
-| **Blind Transfer with Summary in SIP Header** | `blind-transfer-add-summary-to-sip-header` | Adds a generated summary to the `X-Transfer-Summary` SIP header, then transfers immediately. See [Blind transfer](/tools/transfer-call/blind-transfer). |
-| **Warm Transfer with Message** | `warm-transfer-say-message` | Speaks a fixed message to the destination before connecting the customer. See [Warm transfer](/tools/transfer-call/warm-transfer). |
-| **Warm Transfer with Summary** | `warm-transfer-say-summary` | Speaks a generated conversation summary to the destination before connecting. See [Warm transfer](/tools/transfer-call/warm-transfer). |
-| **Warm Transfer with TwiML** | `warm-transfer-twiml` | Executes TwiML on the destination call leg before connecting. See [Warm transfer](/tools/transfer-call/warm-transfer). |
-| **Warm Transfer - Wait for Operator, Then Say Message** | `warm-transfer-wait-for-operator-to-speak-first-and-then-say-message` | Waits for destination speech, then delivers a fixed message. See [Warm transfer](/tools/transfer-call/warm-transfer). |
-| **Warm Transfer - Wait for Operator, Then Say Summary** | `warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary` | Waits for destination speech, then delivers a generated summary. See [Warm transfer](/tools/transfer-call/warm-transfer). |
-| **Warm Transfer - Experimental** | `warm-transfer-experimental` | Places the customer on hold and supports fallback, summaries, custom audio, or a transfer-assistant conversation. See [Assistant-based warm transfer](/calls/assistant-based-warm-transfer). |
+| **Blind Transfer with Summary in SIP Header** | `blind-transfer-add-summary-to-sip-header` | Adds a generated summary to the `X-Transfer-Summary` SIP header, then transfers immediately. See [Blind transfer](/tools/transfer-call/blind-transfer). Vapi numbers and bring-your-own SIP trunks only. Other providers transfer without the header. |
+| **Warm Transfer with Message** | `warm-transfer-say-message` | Speaks a fixed message to the destination before connecting the customer. See [Warm transfer](/tools/transfer-call/warm-transfer). Twilio only. Other providers transfer without the message. |
+| **Warm Transfer with Summary** | `warm-transfer-say-summary` | Speaks a generated conversation summary to the destination before connecting. See [Warm transfer](/tools/transfer-call/warm-transfer). Twilio only. Other providers transfer without the summary. |
+| **Warm Transfer with TwiML** | `warm-transfer-twiml` | Executes TwiML on the destination call leg before connecting. See [Warm transfer](/tools/transfer-call/warm-transfer). Twilio only. |
+| **Warm Transfer - Wait for Operator, Then Say Message** | `warm-transfer-wait-for-operator-to-speak-first-and-then-say-message` | Waits for destination speech, then delivers a fixed message. See [Warm transfer](/tools/transfer-call/warm-transfer). Twilio only. Other providers transfer without the message. |
+| **Warm Transfer - Wait for Operator, Then Say Summary** | `warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary` | Waits for destination speech, then delivers a generated summary. See [Warm transfer](/tools/transfer-call/warm-transfer). Twilio only. Other providers transfer without the summary. |
+| **Warm Transfer - Experimental** | `warm-transfer-experimental` | Places the customer on hold and supports fallback, summaries, custom audio, or a transfer-assistant conversation. See [Assistant-based warm transfer](/calls/assistant-based-warm-transfer). Works on Twilio (phone-number destinations), Vapi numbers, and bring-your-own SIP trunks. |
 
 Use [Dynamic call transfers](/calls/call-dynamic-transfers) when the destination is selected at runtime. Dynamic destination selection is separate from the transfer mode.
+
+## Understand transfer outcomes and fallback
+
+The `assistant-forwarded-call` ended reason means Vapi initiated a transfer or delegated call control to your server. By itself, it does not confirm that the destination answered or that the caller and destination spoke. Check the provider's call record to confirm the downstream result.
+
+| Transfer mode | Caller state before connection | If the transfer fails |
+| --- | --- | --- |
+| `blind-transfer` | The transfer starts without an operator introduction. | Doesn't wait for an answer. On Twilio, a busy or unanswered call ends. On Vapi numbers and bring-your-own SIP trunks, the caller can return to the assistant only if SIP transfer fallback is enabled and `fallbackPlan` is configured. |
+| `blind-transfer-add-summary-to-sip-header` | The transfer starts with a generated summary in the `X-Transfer-Summary` SIP header. | The summary is not spoken. The transfer call tool does not wait for operator acceptance. |
+| `warm-transfer-say-message` | The destination hears a fixed message before the caller is connected. | This mode does not run an assistant that can accept or cancel the transfer. |
+| `warm-transfer-say-summary` | The destination hears a generated summary before the caller is connected. | This mode does not run an assistant that can accept or cancel the transfer. |
+| `warm-transfer-twiml` | The destination call leg executes the configured TwiML before the caller is connected. | The TwiML controls the introduction; this mode does not run a transfer assistant. |
+| `warm-transfer-wait-for-operator-to-speak-first-and-then-say-message` | The destination speaks before hearing the fixed message. | `transferPlan.timeout` limits the wait for destination speech. It is not a failed-transfer fallback. |
+| `warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary` | The destination speaks before hearing the generated summary. | `transferPlan.timeout` limits the wait for destination speech. It is not a failed-transfer fallback. |
+| `warm-transfer-experimental` | The caller waits on hold while the destination call leg runs. | The transfer assistant can connect or cancel. After a failed attempt, the original assistant says the fallback message, then continues or ends the call. See [Assistant-based warm transfer](/calls/assistant-based-warm-transfer). |
+
+Test the selected mode with the same phone provider and destination used in production. For a transfer that requires an operator to accept the caller, configure [assistant-based warm transfer](/calls/assistant-based-warm-transfer) and an explicit `fallbackPlan`.
+
+## Common transfer scenarios
+
+Each scenario pairs a common reason for handing a caller to a person with the destination, transfer mode, and fallback settings that fit it. The scenarios differ in how much control you keep. A blind transfer connects the caller fastest but can't bring them back if no one answers. Assistant-based warm transfer confirms that a person accepted before connecting the caller. Start from the scenario that matches why the caller needs a person, then check that your phone provider [supports the transfer mode](#choose-a-transfer-mode) it uses.
+
+| Need | Configure | Expected result and recovery |
+| --- | --- | --- |
+| Escalate when the caller asks or the assistant reaches a capability boundary | Add a transfer destination and describe the trigger in the tool description and assistant prompt. Require caller agreement when appropriate. | The model must invoke `transferCall`; speech alone does not start a transfer. Use [call logs](/observability/logs/call-logs) to confirm invocation. |
+| Route to a specialist | Give each stored destination a distinct description, or use a [lookup-based transfer](/calls/transfer-calls-with-api-lookup). | The selected destination receives the transfer attempt. Confirm the selected route in the tool call and provider record. |
+| Give an operator context before connecting | Use a supported [warm transfer mode](/tools/transfer-call/warm-transfer) with a message or summary. | The destination hears the introduction before connection. These modes do not ask an assistant to confirm acceptance. |
+| Require a person to accept a high-stakes escalation | Use [assistant-based warm transfer](/calls/assistant-based-warm-transfer). Prompt the transfer assistant to call `transferSuccessful` only after acceptance and `transferCancel` when it should decline. Set `fallbackPlan.endCallEnabled` explicitly. | The caller waits on hold during the operator conversation. A canceled attempt or handled operator-leg failure follows the configured fallback; test busy, no-answer, and voicemail outcomes with the production provider. |
 
 ## Verify the transfer
 
 Place a test call and ask for the destination described in the tool. Confirm that the call log contains a `transferCall` tool invocation and that the destination rings or answers.
 
-The `assistant-forwarded-call` ended reason confirms that Vapi initiated the transfer. It does not confirm that the downstream telephony provider completed it, so check the provider's call logs when the destination does not receive the call.
+The `assistant-forwarded-call` ended reason confirms that Vapi initiated or delegated the transfer. It does not confirm that the downstream telephony provider completed it, so check the provider's call logs when the destination does not receive the call.
 
 ## Troubleshooting
 
@@ -210,7 +238,7 @@ The `assistant-forwarded-call` ended reason confirms that Vapi initiated the tra
 | The assistant transfers when it should continue helping | The prompt permits broad invocation | Narrow the prompt conditions. For tools configured through the API, you can also add a [tool rejection plan](/tools/tool-rejection-plan). |
 | An assistant-to-assistant transfer stalls or behaves like an external call | The transfer call tool is being used for assistant routing | Use the [handoff tool](/squads/handoff) for transfers between standalone assistants or assistants in a Squad. |
 
-For dropped calls, provider diagnostics, and SIP packet checks, follow [Troubleshoot call forwarding drops](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops). The [call ended reasons reference](/calls/call-ended-reason) lists transfer-specific outcomes such as `call.in-progress.error-transfer-failed`.
+For dropped calls, provider diagnostics, and SIP packet checks, follow [Troubleshoot call transfers](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops). The [call ended reasons reference](/calls/call-ended-reason) lists transfer-specific outcomes such as `call.in-progress.error-transfer-failed`.
 
 ## API reference
 
@@ -237,7 +265,7 @@ The [Create Tool API reference](/api-reference/tools/create) documents the publi
   <Card title="Handoff tool" icon="fa-light fa-arrow-right-arrow-left" href="/squads/handoff">
     Move the conversation to another assistant or Squad.
   </Card>
-  <Card title="Troubleshoot forwarding drops" icon="fa-light fa-phone-slash" href="/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops">
+  <Card title="Troubleshoot call transfers" icon="fa-light fa-phone-slash" href="/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops">
     Diagnose provider, SIP, and call-routing failures.
   </Card>
   <Card title="SIP trunking" icon="fa-light fa-network-wired" href="/advanced/sip/sip-trunk">
