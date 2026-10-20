@@ -6784,6 +6784,21 @@
         "summary": "List Simulation Runs",
         "parameters": [
           {
+            "name": "suiteId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by simulation suite ids",
+            "schema": {
+              "maxItems": 100,
+              "uniqueItems": true,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
             "name": "status",
             "required": false,
             "in": "query",
@@ -7256,10 +7271,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SimulationRunItem"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SimulationRunItem"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/SimulationRunItemsPaginatedResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -7457,7 +7479,38 @@
       "get": {
         "operationId": "SimulationSuiteController_findAll",
         "summary": "List Simulation Suites",
+        "description": "Returns a pagination envelope when page, limit, name, assistantId, or squadId is supplied; otherwise returns the legacy array.",
         "parameters": [
+          {
+            "name": "assistantId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by any assigned assistant ID. Supplying both assistant and squad filters requires both to match.",
+            "schema": {
+              "maxItems": 100,
+              "uniqueItems": true,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "squadId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by any assigned squad ID. Supplying both assistant and squad filters requires both to match.",
+            "schema": {
+              "maxItems": 100,
+              "uniqueItems": true,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
           {
             "name": "name",
             "required": false,
@@ -7602,10 +7655,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SimulationSuite"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SimulationSuite"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/SimulationSuitesPaginatedResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -13288,10 +13348,11 @@
           },
           "model": {
             "type": "string",
-            "description": "This is the model that will be used for the transcription.",
+            "description": "This is the model that will be used for the transcription.\nDigit formatting can differ by model: `gpt-transcribe` may write spoken digit strings as words (for example, \"four seven two\"), where `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` may write them as digits (\"472\"). Do not rely on either format.",
             "enum": [
               "gpt-4o-transcribe",
-              "gpt-4o-mini-transcribe"
+              "gpt-4o-mini-transcribe",
+              "gpt-transcribe"
             ]
           },
           "language": {
@@ -13356,6 +13417,20 @@
               "vi",
               "cy"
             ]
+          },
+          "keywords": {
+            "description": "These are words and phrases the model should recognize, such as names, brands, and product terms.\nSupported only by `gpt-transcribe`. Each keyword is one line and must not contain `<` or `>`. Maximum 16,384 keywords.",
+            "maxItems": 16384,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?=[^<>\\r\\n]*[^<>\\s])[^<>\\r\\n]*$"
+            }
+          },
+          "prompt": {
+            "type": "string",
+            "description": "This is free-text context for the transcription, such as the topic of the call or the expected vocabulary.\nMaximum length: 8,192 characters for `gpt-transcribe`, and 1,024 characters for `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`.",
+            "maxLength": 8192
           },
           "fallbackPlan": {
             "description": "This is the plan for transcriber provider fallbacks in the event that the primary transcriber provider fails.",
@@ -16333,10 +16408,11 @@
           },
           "model": {
             "type": "string",
-            "description": "This is the model that will be used for the transcription.",
+            "description": "This is the model that will be used for the transcription.\nDigit formatting can differ by model: `gpt-transcribe` may write spoken digit strings as words (for example, \"four seven two\"), where `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` may write them as digits (\"472\"). Do not rely on either format.",
             "enum": [
               "gpt-4o-transcribe",
-              "gpt-4o-mini-transcribe"
+              "gpt-4o-mini-transcribe",
+              "gpt-transcribe"
             ]
           },
           "language": {
@@ -16401,6 +16477,20 @@
               "vi",
               "cy"
             ]
+          },
+          "keywords": {
+            "description": "These are words and phrases the model should recognize, such as names, brands, and product terms.\nSupported only by `gpt-transcribe`. Each keyword is one line and must not contain `<` or `>`. Maximum 16,384 keywords.",
+            "maxItems": 16384,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?=[^<>\\r\\n]*[^<>\\s])[^<>\\r\\n]*$"
+            }
+          },
+          "prompt": {
+            "type": "string",
+            "description": "This is free-text context for the transcription, such as the topic of the call or the expected vocabulary.\nMaximum length: 8,192 characters for `gpt-transcribe`, and 1,024 characters for `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`.",
+            "maxLength": 8192
           }
         },
         "required": [
@@ -28203,45 +28293,45 @@
           },
           "similarityBoost": {
             "type": "number",
-            "description": "Defines the similarity boost for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the similarity boost for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 1,
             "example": 0.75
           },
           "style": {
             "type": "number",
-            "description": "Defines the style for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the style for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 1,
             "example": 0
           },
           "useSpeakerBoost": {
             "type": "boolean",
-            "description": "Defines the use speaker boost for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the use speaker boost for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "example": false
           },
           "speed": {
             "type": "number",
-            "description": "Defines the speed for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the speed for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0.7,
             "maximum": 1.2,
             "example": 0.9
           },
           "optimizeStreamingLatency": {
             "type": "number",
-            "description": "Defines the optimize streaming latency for voice settings. Defaults to 3. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the optimize streaming latency for voice settings. Defaults to 3. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 4,
             "example": 3
           },
           "enableSsmlParsing": {
             "type": "boolean",
-            "description": "This enables the use of https://elevenlabs.io/docs/speech-synthesis/prompting#pronunciation. Defaults to false to save latency. Ignored by `eleven_v4_turbo`.\n\n@default false",
+            "description": "This enables the use of https://elevenlabs.io/docs/speech-synthesis/prompting#pronunciation. Defaults to false to save latency. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.\n\n@default false",
             "example": false
           },
           "autoMode": {
             "type": "boolean",
-            "description": "Defines the auto mode for voice settings. Defaults to false. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the auto mode for voice settings. Defaults to false. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "example": false
           },
           "model": {
@@ -28255,13 +28345,14 @@
               "eleven_flash_v2_5",
               "eleven_monolingual_v1",
               "eleven_v3",
-              "eleven_v4_turbo"
+              "eleven_v4_turbo",
+              "eleven_v3_conversational"
             ],
             "example": "eleven_turbo_v2_5"
           },
           "language": {
             "type": "string",
-            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5, Flash v2.5 and v4 Turbo support language enforcement; other models ignore it."
+            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5, Flash v2.5 and the Text to Dialogue models support language enforcement; other models ignore it."
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -31053,45 +31144,45 @@
           },
           "similarityBoost": {
             "type": "number",
-            "description": "Defines the similarity boost for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the similarity boost for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 1,
             "example": 0.75
           },
           "style": {
             "type": "number",
-            "description": "Defines the style for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the style for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 1,
             "example": 0
           },
           "useSpeakerBoost": {
             "type": "boolean",
-            "description": "Defines the use speaker boost for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the use speaker boost for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "example": false
           },
           "speed": {
             "type": "number",
-            "description": "Defines the speed for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the speed for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0.7,
             "maximum": 1.2,
             "example": 0.9
           },
           "optimizeStreamingLatency": {
             "type": "number",
-            "description": "Defines the optimize streaming latency for voice settings. Defaults to 3. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the optimize streaming latency for voice settings. Defaults to 3. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 4,
             "example": 3
           },
           "enableSsmlParsing": {
             "type": "boolean",
-            "description": "This enables the use of https://elevenlabs.io/docs/speech-synthesis/prompting#pronunciation. Defaults to false to save latency. Ignored by `eleven_v4_turbo`.\n\n@default false",
+            "description": "This enables the use of https://elevenlabs.io/docs/speech-synthesis/prompting#pronunciation. Defaults to false to save latency. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.\n\n@default false",
             "example": false
           },
           "autoMode": {
             "type": "boolean",
-            "description": "Defines the auto mode for voice settings. Defaults to false. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the auto mode for voice settings. Defaults to false. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "example": false
           },
           "model": {
@@ -31105,13 +31196,14 @@
               "eleven_flash_v2_5",
               "eleven_monolingual_v1",
               "eleven_v3",
-              "eleven_v4_turbo"
+              "eleven_v4_turbo",
+              "eleven_v3_conversational"
             ],
             "example": "eleven_turbo_v2_5"
           },
           "language": {
             "type": "string",
-            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5, Flash v2.5 and v4 Turbo support language enforcement; other models ignore it."
+            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5, Flash v2.5 and the Text to Dialogue models support language enforcement; other models ignore it."
           },
           "pronunciationDictionaryLocators": {
             "description": "This is the pronunciation dictionary locators to use.",
@@ -47242,6 +47334,7 @@
               "pipeline-error-eleven-labs-voice-not-allowed-for-free-users",
               "pipeline-error-eleven-labs-max-character-limit-exceeded",
               "pipeline-error-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "pipeline-error-eleven-labs-unsupported-model",
               "pipeline-error-eleven-labs-500-server-error",
               "pipeline-error-eleven-labs-503-server-error",
               "call.in-progress.error-vapifault-eleven-labs-voice-not-found",
@@ -47264,6 +47357,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-vapifault-eleven-labs-unsupported-model",
               "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-blocked-concurrent-requests-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-voice-disabled-by-owner",
@@ -62767,6 +62861,24 @@
           "updatedAt"
         ]
       },
+      "SimulationRunItemsPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationRunItem"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
+        ]
+      },
       "SimulationSuiteTargetAssignment": {
         "type": "object",
         "properties": {
@@ -62892,6 +63004,24 @@
           "name",
           "simulationIds",
           "targetAssignments"
+        ]
+      },
+      "SimulationSuitesPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationSuite"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
         ]
       },
       "UpdateSimulationSuiteDTO": {
@@ -78149,6 +78279,7 @@
               "pipeline-error-eleven-labs-voice-not-allowed-for-free-users",
               "pipeline-error-eleven-labs-max-character-limit-exceeded",
               "pipeline-error-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "pipeline-error-eleven-labs-unsupported-model",
               "pipeline-error-eleven-labs-500-server-error",
               "pipeline-error-eleven-labs-503-server-error",
               "call.in-progress.error-vapifault-eleven-labs-voice-not-found",
@@ -78171,6 +78302,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-vapifault-eleven-labs-unsupported-model",
               "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-blocked-concurrent-requests-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-voice-disabled-by-owner",
@@ -79608,6 +79740,7 @@
               "pipeline-error-eleven-labs-voice-not-allowed-for-free-users",
               "pipeline-error-eleven-labs-max-character-limit-exceeded",
               "pipeline-error-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "pipeline-error-eleven-labs-unsupported-model",
               "pipeline-error-eleven-labs-500-server-error",
               "pipeline-error-eleven-labs-503-server-error",
               "call.in-progress.error-vapifault-eleven-labs-voice-not-found",
@@ -79630,6 +79763,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-vapifault-eleven-labs-unsupported-model",
               "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-blocked-concurrent-requests-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-voice-disabled-by-owner",
