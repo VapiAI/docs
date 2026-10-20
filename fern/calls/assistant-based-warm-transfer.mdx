@@ -13,13 +13,11 @@ Use this mode when the destination must accept the call or receive context befor
 GPT-Live assistants cannot use assistant-based warm transfer. GPT-Live supports only blind transfers, and only on Twilio and Vapi SIP calls. See [GPT-Live compatibility](/gpt-live/configuration#compatibility) for the full list of supported and unsupported features.
 </Warning>
 
-Assistant-based warm transfer works on Twilio phone numbers when the destination is a phone number, and on Vapi numbers and bring-your-own SIP trunks for phone-number and SIP destinations. On a Twilio call, a SIP destination is transferred without the transfer assistant.
-
 ## Prerequisites
 
 Before you configure the transfer, prepare:
 
-- A Vapi assistant that handles phone calls
+- A Vapi assistant that handles phone calls on a Twilio number, a Vapi number, or a bring-your-own SIP trunk. On other phone providers, the call is transferred without the transfer assistant.
 - A destination phone number in E.164 format, for example, `+14155550100`
 - A [private Vapi API key](/security-and-privacy/api-keys) for the curl method
 - A publicly accessible MP3 or WAV file if you want custom hold or completion audio
@@ -161,7 +159,7 @@ Use these fields to control the transfer assistant and the two call legs. See th
 | `transferAssistant.model` | Model and instructions used for the operator conversation | Required when you configure `transferAssistant` |
 | `holdAudioUrl` | MP3 or WAV audio played to the customer while on hold | Default hold audio |
 | `transferCompleteAudioUrl` | MP3 or WAV audio played to the destination after the introduction | No custom completion audio |
-| `fallbackPlan` | Customer message and end-call behavior after a failed warm transfer | If omitted, "Could not transfer the call." plays and the original assistant continues |
+| `fallbackPlan` | Customer message and end-call behavior after a failed warm transfer | If omitted, the original assistant says "Could not transfer the call." and continues the conversation |
 | `summaryPlan` | Operator summary content and generation timeout | Configure with `enabled`, `messages`, and `timeoutSeconds` |
 | `contextEngineeringPlan` | Conversation context provided to the transfer assistant | All previous messages |
 
@@ -172,7 +170,7 @@ Use these fields to control the transfer assistant and the two call legs. See th
 Keep the transfer assistant's system message focused on the operator conversation. Define when to use each built-in tool:
 
 - Call `transferSuccessful` after a human operator confirms that they will take the call
-- Call `transferCancel` when the assistant hears voicemail, an interactive voice response (IVR) system, an automated hold queue, or an operator declining the call
+- Call `transferCancel` when it hears voicemail, an interactive voice response (IVR) system, an automated hold queue, or an operator declining the call
 - Answer questions about the transfer or give a brief customer summary
 - Avoid unrelated conversation and complete the decision before `maxDurationSeconds`
 
@@ -184,9 +182,11 @@ Call transferCancel if the destination plays an IVR message, automated queue ann
 
 Busy and no-answer call statuses can trigger rollback before the transfer assistant speaks. The transfer assistant receives the previous conversation by default. Set `contextEngineeringPlan.type` to `none` when the operator must not receive that context, or use `lastNMessages` to limit it.
 
-When you configure the transfer through the API, set `fallbackPlan.endCallEnabled`. `false` plays the fallback message and returns the caller to the original assistant. `true` plays the message and ends the call. If omitted, the caller stays on the call with the original assistant.
+When you configure the transfer through the API, set `fallbackPlan.endCallEnabled`. With `false`, the original assistant says the fallback message and continues the conversation. With `true`, it says the message and ends the call. If omitted, the caller stays on the call with the original assistant.
 
-Keep `transferPlan.transferAssistant` configured when you depend on no-answer fallback or a transfer timeout. In the current Dashboard flow, disabling Summary generation can remove that configuration and prevent a no-answer event from starting the fallback. Keep Summary generation enabled or configure `transferAssistant` through the API, then verify the result with a controlled call.
+<Warning>
+  Keep `transferPlan.transferAssistant` configured when you depend on no-answer fallback or a transfer timeout. In the Dashboard, turning off **Summary generation** can remove that configuration and prevent a no-answer event from starting the fallback. Keep **Summary generation** on or configure `transferAssistant` through the API, then verify the result with a controlled call.
+</Warning>
 
 ## Verify the warm transfer
 
@@ -207,7 +207,7 @@ In [**Logs → Calls**](/observability/logs/call-logs), inspect the original cal
 
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
-| The customer is transferred without an operator conversation | The destination uses a blind or non-assistant warm-transfer mode | Set `transferPlan.mode` to `warm-transfer-experimental`. |
+| The customer is transferred without an operator conversation | The destination uses a blind or non-assistant warm-transfer mode, the call uses an unsupported phone provider, or a Twilio call is transferring to a SIP address | Set `transferPlan.mode` to `warm-transfer-experimental`, and use a Twilio number, Vapi number, or bring-your-own SIP trunk. On Twilio, use a phone-number destination. |
 | The transfer assistant never speaks | `firstMessage` is omitted or `firstMessageMode` waits for the operator | Set `firstMessage` and use `assistant-speaks-first`, or let the operator speak first. |
 | The transfer assistant talks but never connects the parties | The prompt does not require `transferSuccessful` | Tell the transfer assistant to call `transferSuccessful` immediately after the operator accepts. |
 | Voicemail, an IVR, a hold queue, or a declined transfer connects anyway | The prompt does not define cancellation conditions | Require `transferCancel` for non-human destinations and declined transfers. Busy and no-answer call statuses can trigger rollback before the transfer assistant speaks. |
@@ -216,7 +216,7 @@ In [**Logs → Calls**](/observability/logs/call-logs), inspect the original cal
 | The customer cannot continue after a failed transfer | `fallbackPlan.endCallEnabled` is `true` | Set it to `false` so the original assistant remains on the call. |
 | The transfer ends during a long operator interaction | A duration or silence timeout is too short | Increase `maxDurationSeconds` or `silenceTimeoutSeconds` within the supported ranges. |
 
-Check the affected call's **Logs** tab in [**Logs → Calls**](/observability/logs/call-logs) for validation and transfer errors. If Vapi initiated the transfer but the destination never rings, inspect the telephony provider's call detail records and follow [Troubleshoot call forwarding drops](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops).
+Check the affected call's **Logs** tab in [**Logs → Calls**](/observability/logs/call-logs) for validation and transfer errors. If Vapi initiated the transfer but the destination never rings, inspect the telephony provider's call detail records and follow [Troubleshoot call transfers](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops).
 
 ## API reference
 
@@ -234,7 +234,7 @@ The [Create Tool API reference](/api-reference/tools/create) documents transfer 
   <Card title="Dynamic call transfers" icon="fa-light fa-route" href="/calls/call-dynamic-transfers">
     Choose a transfer destination at runtime.
   </Card>
-  <Card title="Troubleshoot forwarding drops" icon="fa-light fa-screwdriver-wrench" href="/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops">
+  <Card title="Troubleshoot call transfers" icon="fa-light fa-screwdriver-wrench" href="/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops">
     Diagnose failed or incomplete transfers.
   </Card>
 </CardGroup>

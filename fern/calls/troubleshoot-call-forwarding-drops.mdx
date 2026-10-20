@@ -1,31 +1,31 @@
 ---
-title: "Debug call forwarding drops"
+title: "Troubleshoot call transfers"
 subtitle: "Trace transfer attempts, failed connections, and caller recovery"
-description: Diagnose transfer tool invocation, provider routing, busy and unanswered destinations, fallback behavior, and the evidence to send Support.
+description: Diagnose and troubleshoot transfer tool invocation, provider routing, busy and unanswered destinations, fallback behavior, and the evidence to send support.
 ---
 
-An assistant saying it will transfer, Vapi starting a transfer, and the destination answering are separate events. Use the call record and provider logs to find where the attempt stopped.
+Use this page when a call transfer fails or doesn't behave as expected. A transfer has three separate stages: the assistant decides to transfer, Vapi starts the transfer, and the destination answers. Each stage leaves different evidence, so check both the Vapi call record and your phone provider's call logs to find the stage where the attempt stopped.
 
 ## Quick diagnosis
 
-| What you observe | Check next | Likely owner |
+| What you observe | Check next | Likely cause |
 | --- | --- | --- |
 | The assistant says it will transfer, but the call continues | Look for a `transferCall` invocation in the call's **Messages** tab | Assistant prompt or model decision |
 | The `transferCall` tool runs, but the transfer does not start | Inspect the call's **Logs** tab for a Tool or Transfer error | Tool configuration or Vapi transfer initiation |
 | The call ends with `assistant-forwarded-call`, but the destination does not answer | Match `phoneCallProviderId` to the provider's call record | Provider route, destination, or delegated call control |
 | A warm transfer returns to the original assistant or ends after a fallback message | Check `transferPlan.mode`, `fallbackPlan.endCallEnabled`, and the transfer attempt | Configured fallback or transfer-assistant decision |
 
-`assistant-forwarded-call` means Vapi started or handed off the transfer. It does not prove that the destination rang, answered, or spoke with the caller.
+The `assistant-forwarded-call` ended reason means Vapi started or handed off the transfer. It does not prove that the destination rang, answered, or spoke with the caller.
 
 ## Prerequisites
 
 Before you start debugging, ensure you have:
 
-- **Call ID** from the dropped call
-- **API access** to make GET requests to Vapi
-- **Access** to the call's **Messages** and **Logs** tabs, when logs were retained
-- **Access** to the phone provider's call record, if the transfer reached that provider
-- **A SIP trace or packet capture** when debugging a SIP transfer and one is available
+- The call ID of the failed transfer
+- A [private Vapi API key](/security-and-privacy/api-keys) to retrieve the call through the API
+- Access to the call's **Messages** and **Logs** tabs, if logs were retained
+- Access to your phone provider's call record, if the transfer reached that provider
+- A SIP trace or packet capture, if you're debugging a SIP transfer
 
 ## Troubleshooting workflow
 
@@ -60,18 +60,52 @@ print(f"End reason: {call.ended_reason}")
 
 </CodeBlocks>
 
+```json title="Example response (truncated)"
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "inboundPhoneCall",
+  "status": "ended",
+  "endedReason": "assistant-forwarded-call",
+  "phoneCallProvider": "twilio",
+  "phoneCallTransport": "pstn",
+  "phoneCallProviderId": "CA0123456789abcdef0123456789abcdef",
+  "destination": {
+    "type": "number",
+    "number": "+14155550100"
+  }
+}
+```
+
+For every field in the call object, see the [Get Call API reference](/api-reference/calls/get).
+
 **Interpret the result:**
 
-- No `transferCall` tool call: check the assistant prompt and tool assignment. The model did not invoke the transfer tool.
-- A `transferCall` tool call followed by a Tool or Transfer error: inspect the destination, transfer plan, and [call logs](/observability/logs/call-logs#logs).
+- No `transferCall` tool call: Check the assistant prompt and tool assignment. The model did not invoke the transfer tool.
+- A `transferCall` tool call followed by a Tool or Transfer error: Inspect the destination, transfer plan, and [call logs](/observability/logs/call-logs#logs).
 - `assistant-forwarded-call`: Vapi submitted the transfer to the phone provider or sent a `phone-call-control` request to your server. Check the downstream result before treating it as a connected call.
-- `call.in-progress.error-transfer-failed`, `call.forwarding.operator-busy`, or `call.forwarding.no-answer`: inspect the transfer attempt and provider result. These reasons do not all mean the assistant failed to invoke the tool.
+- `call.in-progress.error-transfer-failed`, `call.forwarding.operator-busy`, or `call.forwarding.no-answer`: Inspect the transfer attempt and provider result. These reasons do not all mean the assistant failed to invoke the tool.
 
 </Step>
 
 <Step title="Identify who controls the transfer">
 
-When `phoneCallProviderBypassEnabled` is `true`, or the assistant includes `phone-call-control` in `serverMessages`, Vapi sends a `phone-call-control` request to your server instead of directly transferring the provider call. Check your server's response and provider-side action before changing either setting.
+When the assistant includes `phone-call-control` in `serverMessages`, Vapi sends a `phone-call-control` request to your server instead of transferring the call itself. Your server then decides whether and how to transfer. Check your server's response and your phone provider's call record before changing this setting.
+
+<CodeBlocks>
+```json title="Vapi transfers the call"
+{
+  "serverMessages": ["status-update", "end-of-call-report", "tool-calls"]
+}
+```
+
+```json title="Your server controls the transfer"
+{
+  "serverMessages": ["status-update", "end-of-call-report", "tool-calls", "phone-call-control"]
+}
+```
+</CodeBlocks>
+
+Remove `phone-call-control` unless your server handles transfers. Setting `serverMessages` replaces the default list, so include every message type your server needs. See [server events](/server-url/events) for the full list.
 
 Use [Webhook logs](/observability/logs/webhook-logs) to inspect a recorded server-message delivery. If your application intentionally controls the provider call, its logs and provider call record are the source of the downstream outcome.
 
@@ -79,7 +113,13 @@ Use [Webhook logs](/observability/logs/webhook-logs) to inspect a recorded serve
 
 <Step title="Validate transfer scenario compatibility">
 
-The built-in phone and SIP transfer path requires a supported phone transport. A web call's WebSocket transport rejects both phone-number and SIP transfer destinations. A phone call can transfer to a phone number or SIP URI when its provider supports the configured route.
+Confirm that the call type supports the destination type:
+
+| Call type | To a phone number | To a SIP address |
+| --- | --- | --- |
+| Phone call on Twilio, Telnyx, a Vapi number, or a SIP trunk | Yes | Yes |
+| Phone call on Vonage | Yes | No |
+| Web call | No | No |
 
 For a SIP destination, check the inbound provider, `transferPlan.sipVerb`, and the receiving private branch exchange (PBX). For a phone-number destination, verify E.164 format and call the number directly to confirm it is reachable.
 
@@ -89,7 +129,28 @@ For a SIP destination, check the inbound provider, `transferPlan.sipVerb`, and t
 
 Use the call's `phoneCallProviderId` and timestamp to find the matching record in your phone provider's logs. Check whether the provider received the transfer command, dialed the destination, and recorded an answer, busy signal, no answer, rejection, or other failure.
 
-A successful API command to the provider is not proof that the downstream call connected. Compare the provider record with the Vapi call's `endedReason`, [Messages](/observability/logs/call-logs#messages), and [Logs](/observability/logs/call-logs#logs). A missing provider record may indicate a Vapi initiation or configuration problem; a provider error identifies a downstream failure to investigate with that provider.
+<Tabs>
+  <Tab title="Twilio">
+    1. Open [Twilio Console call logs](https://console.twilio.com/us1/monitor/logs/calls).
+    2. Search for the call SID from `phoneCallProviderId`. It starts with `CA`.
+    3. Check the call's status, its child calls, and any errors or warnings.
+  </Tab>
+  <Tab title="Vonage">
+    1. Sign in to the [Vonage API Dashboard](https://dashboard.nexmo.com/).
+    2. Find the call by the conversation UUID from `phoneCallProviderId` and the call's timestamp.
+    3. Check the call's status and any transfer errors.
+  </Tab>
+  <Tab title="Telnyx">
+    1. Sign in to the [Telnyx Mission Control Portal](https://portal.telnyx.com/).
+    2. Find the call's detail record by the call control ID from `phoneCallProviderId`.
+    3. Check the call's status and any transfer errors.
+  </Tab>
+  <Tab title="Vapi numbers and SIP trunks">
+    There's no separate provider console for a Vapi number. Use the call's [Logs](/observability/logs/call-logs#logs) tab and, if available, the packet capture in `artifact.pcapUrl` (see the next step). For a bring-your-own SIP trunk, also check your SIP provider's call records.
+  </Tab>
+</Tabs>
+
+A successful API command to the provider is not proof that the downstream call connected. Compare the provider record with the Vapi call's `endedReason`, [Messages](/observability/logs/call-logs#messages), and [Logs](/observability/logs/call-logs#logs). A missing provider record can point to a problem starting the transfer or a configuration problem. A provider error identifies a downstream failure to investigate with that provider.
 
 </Step>
 
@@ -97,14 +158,9 @@ A successful API command to the provider is not proof that the downstream call c
 
 For SIP trunking or bring-your-own-number setups, analyze the SIP signaling.
 
-**Check whether a packet capture is available:**
+**Check whether a packet capture is available:** Look for `artifact.pcapUrl` in the call record you retrieved in the first step.
 
-```bash title="Get the call record"
-curl -X GET "https://api.vapi.ai/call/{call_id}" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-For an eligible Vapi or bring-your-own SIP phone call, the completed call can contain `artifact.pcapUrl` when packet capture was enabled and retained. If present, download that URL and open the capture in a SIP analysis tool. A missing URL does not prove that no transfer command was sent.
+For an eligible Vapi or bring-your-own SIP phone call, the completed call can contain `artifact.pcapUrl` when packet capture was enabled and retained. If present, download that URL and open the capture in a SIP analysis tool. For example, Wireshark supports SIP. A missing URL does not prove that no transfer command was sent.
 
 **Filter for transfer packets:**
 
@@ -115,12 +171,15 @@ sip.Method == "REFER"
 **What to look for:**
 
 - **REFER request present:** The transfer request reached the SIP signaling path captured in this file.
-- **REFER response present:** Check the response code and any later NOTIFY or referred-call status. Acceptance of a REFER request alone does not prove that the destination answered.
-- **No REFER request:** Check whether the transfer used `sipVerb: "dial"` or `sipVerb: "bye"`, whether capture started before the transfer, and whether the tool was invoked. Vapi phone numbers always dial the destination, so look for the dial leg instead.
+- **202 Accepted response:** The SIP provider accepted the transfer request. Check any later NOTIFY or referred-call status, because acceptance alone doesn't prove that the destination answered.
+- **Error response (4xx or 5xx):** The SIP provider rejected the transfer request.
+- **No REFER request:** Check whether the transfer used `sipVerb: "dial"` or `sipVerb: "bye"`, whether capture started before the transfer, and whether the tool was invoked. Vapi numbers always dial the destination, so look for the dial leg instead.
 
-With `sipVerb: "dial"`, inspect the outbound dial leg instead of looking for a REFER. With `sipVerb: "bye"`, Vapi ends its leg without dialing the destination.
+<Info>
+  With `sipVerb: "refer"`, your SIP provider completes the transfer after it accepts the REFER request, so its logs show the outcome. With `sipVerb: "dial"`, Vapi calls the destination itself, so inspect the outbound dial leg instead of looking for a REFER. Vapi numbers always transfer this way. With `sipVerb: "bye"`, Vapi ends its leg without dialing the destination.
+</Info>
 
-For more details on SIP configuration, see our [SIP trunk documentation](https://docs.vapi.ai/advanced/sip/sip-trunk#inbound-call-test).
+For SIP configuration details, see the [SIP trunk inbound call test](/advanced/sip/sip-trunk#inbound-call-test).
 
 </Step>
 </Steps>
@@ -131,17 +190,54 @@ Recovery depends on the transfer mode. Check `transferPlan.mode` before changing
 
 | Mode or path | What to check | Caller recovery |
 | --- | --- | --- |
-| Blind transfer or non-assistant warm transfer | Provider call record for busy, no answer, rejection, voicemail, or a failed destination leg | On Twilio, Vapi hands the call to Twilio and ends with `assistant-forwarded-call`, even if the destination is busy or doesn't answer. The caller's call ends, and voicemail counts as answered. On Vapi numbers and SIP trunks, busy and no-answer can have their own ended reasons when outcome detection is enabled. Otherwise the call ends with `assistant-forwarded-call`. |
-| `warm-transfer-experimental` | Operator-leg status, `transferAssistant` configuration, transfer-assistant tool call, and timeout | With `transferAssistant` configured, busy and no-answer statuses roll back. `transferCancel` can roll back a declined call or detected voicemail. The configured fallback message plays after rollback. |
-| SIP cold transfer with organization-enabled fallback | Transfer outcome, `fallbackPlan`, and provider record | Recovery is conditional on organization enablement and the failure path. Confirm it with a controlled call before using it for a critical escalation. |
+| Blind transfer or non-assistant warm transfer | Provider call record for busy, no answer, rejection, voicemail, or a failed destination leg | **Twilio:** Vapi hands the call to Twilio and ends with `assistant-forwarded-call`, even if the destination is busy or doesn't answer. The caller's call ends, and voicemail counts as answered.<br /><br />**Vapi numbers and SIP trunks:** Busy and no-answer can have their own ended reasons when transfer outcome detection is enabled. Otherwise the call ends with `assistant-forwarded-call`. |
+| `warm-transfer-experimental` | Operator-leg status, `transferAssistant` configuration, transfer-assistant tool call, and timeout | With `transferAssistant` configured, busy and no-answer statuses roll back. `transferCancel` can roll back a declined call or detected voicemail. After rollback, the original assistant says the configured fallback message. |
+| Blind SIP transfer with SIP transfer fallback | Transfer outcome, `fallbackPlan`, and provider record | After a busy, unanswered, or failed transfer, the original assistant says the fallback message, then continues or ends the call. |
 
-For assistant-based warm transfer, set `fallbackPlan.endCallEnabled` explicitly. `false` keeps the original assistant on the call after the fallback message; `true` ends the call after the message. Voicemail or an automated queue requires the transfer assistant to cancel, or configured voicemail detection to identify a non-human destination. Do not assume that a standard message, summary, or TwiML introduction detects voicemail.
+For assistant-based warm transfer, set `fallbackPlan.endCallEnabled` explicitly. Set it to `false` to keep the original assistant on the call after the fallback message, or to `true` to end the call after the message.
 
-A failed transfer command can end with `call.in-progress.error-transfer-failed`. On an organization-enabled SIP cold transfer, a configured `fallbackPlan` can also handle a recoverable transfer-request failure while the caller is still connected to Vapi. It cannot recover a call that has already ended. An operator-leg busy or no-answer outcome can produce a different reason or return the caller to the original assistant, depending on the mode and recovery configuration. Read the call's messages and logs with the ended reason rather than using that field alone to decide where the failure occurred.
+When the destination is voicemail or an automated queue, the transfer assistant must cancel the transfer, or configured voicemail detection must identify the non-human destination. Do not assume that a standard message, summary, or TwiML introduction detects voicemail.
+
+Read the call's messages and logs with the ended reason rather than using that field alone to decide where the failure occurred.
+
+A failed transfer command can end with `call.in-progress.error-transfer-failed`. On a blind SIP transfer with SIP transfer fallback enabled, a configured `fallbackPlan` can also handle a recoverable transfer-request failure while the caller is still connected to Vapi. It cannot recover a call that has already ended.
+
+An operator-leg busy or no-answer outcome can produce a different reason or return the caller to the original assistant, depending on the mode and recovery configuration.
+
+## Common solutions
+
+### The transfer started but the destination never answered
+
+- Use E.164 format with the country code, for example `+14155550100`.
+- Call the destination directly from another phone to confirm it's reachable.
+- Check whether the destination blocks or screens incoming calls, for example with call blocking or spam filtering.
+- Find the call in your phone provider's logs to see why it didn't connect.
+
+### The assistant didn't transfer the call
+
+- Confirm the transfer tool is attached to the assistant and has a destination.
+- Describe when to transfer in both the tool description and the assistant prompt. The assistant saying it will transfer doesn't start a transfer.
+- Check that `phone-call-control` isn't in `serverMessages` unless your server handles transfers.
+- Confirm the call is a phone call. Web calls can't transfer to a phone number or SIP address.
+
+### The packet capture has no REFER request
+
+- Check `transferPlan.sipVerb`. With `dial`, look for the outbound call to the destination instead. Vapi numbers always use `dial`.
+- Confirm a SIP destination is a full SIP URI, for example `sip:support@example.com`.
+- Check that `phone-call-control` isn't sending the transfer to your server.
+
+## Limitations
+
+- **Web calls** can't transfer to a phone number or SIP address. The call ends with `call.in-progress.error-transfer-failed`.
+- **Vonage calls** can't transfer to a SIP address.
+- **Warm modes that speak a message or summary, or run TwiML,** work only on Twilio. Other providers transfer the call without the introduction.
+- **Assistant-based warm transfer on Twilio** needs a phone-number destination. A SIP destination is transferred without the transfer assistant.
+- **Transfer outcome detection and SIP transfer fallback** are available on Vapi numbers and SIP trunks.
+- **Your server completes transfers** when `serverMessages` includes `phone-call-control`. Vapi sends transfers to your server instead of transferring the call itself.
 
 ## When to contact support
 
-Contact Support when the tool was invoked with a supported configuration but the Vapi and provider records disagree, a transfer error has no clear cause, or the same failure persists across controlled calls.
+Contact support when the tool was invoked with a supported configuration but the Vapi and provider records disagree, a transfer error has no clear cause, or the same failure persists across controlled calls.
 
 **Include in your support request:**
 
@@ -150,11 +246,12 @@ Contact Support when the tool was invoked with a supported configuration but the
 - Expected caller and operator outcome, plus what each party heard
 - Relevant **Messages** and **Logs** entries, including the transfer tool call and fallback behavior
 - `phoneCallProviderId`, provider call record, error code, and SIP trace or `artifact.pcapUrl` when available
-- Whether `phoneCallProviderBypassEnabled` or `phone-call-control` delegates call control to your server
+- Whether `phone-call-control` in `serverMessages` sends transfers to your server
+- Screenshots of the transfer tool and transfer plan settings in the Dashboard
 
 ## Next steps
 
-Test the chosen transfer mode with a reachable operator, a busy destination, and an unanswered call before using it for production escalation. For SIP routing, compare the result with your [SIP trunk configuration](/advanced/sip/sip-trunk).
+Test the chosen transfer mode with a reachable operator, a busy destination, and an unanswered call before using it for production escalation. For SIP routing, compare the result with your [SIP trunk configuration](/advanced/sip/sip-trunk). To catch transfer failures early, set up [monitoring](/observability/monitoring-quickstart) with an Insight that tracks transfer-related ended reasons, such as `call.in-progress.error-transfer-failed` and `call.forwarding.no-answer`.
 
 <CardGroup cols={2}>
   <Card title="Transfer Call tool" icon="fa-light fa-phone-arrow-right" href="/tools/transfer-call">
