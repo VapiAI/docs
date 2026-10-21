@@ -3114,6 +3114,94 @@
         ]
       }
     },
+    "/traffic-allocations/metrics": {
+      "get": {
+        "operationId": "TrafficAllocationController_metricsGet",
+        "x-fern-availability": "beta",
+        "summary": "Get traffic split metrics",
+        "description": "Per-assistant-version call metrics over a time window: call counts, configured vs actual traffic share, duration, cost per minute, latency, ended reasons, a bucketed timeseries, and optional structured output aggregations. Calls with no assistant version are reported as an 'unversioned' row. Traffic splitting is in beta, rolling out to select organizations; requests from organizations without access receive a 403.",
+        "parameters": [
+          {
+            "name": "assistantId",
+            "required": true,
+            "in": "query",
+            "description": "The assistant whose per-version traffic metrics to return.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "Start of the metrics window (inclusive), ISO 8601 datetime.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "End of the metrics window (exclusive), ISO 8601 datetime. Must be later than from, and the window may hold at most 2000 buckets of the requested width.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "required": false,
+            "in": "query",
+            "description": "Bucket size for the timeseries. Defaults to 'day'.",
+            "schema": {
+              "enum": [
+                "hour",
+                "day"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "structuredOutputIds",
+            "required": false,
+            "in": "query",
+            "description": "Structured output ids to aggregate per version, as an array or a comma-separated string. At most 5.",
+            "schema": {
+              "maxItems": 5,
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrafficTabMetricsDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "assistantId is missing or not a UUID, from/to are missing, malformed, or inverted, the window spans more than 2000 buckets, or structuredOutputIds has more than 5 entries or a non-UUID entry."
+          },
+          "403": {
+            "description": "Traffic splitting is not enabled for your organization. The feature is in beta, rolling out to select organizations."
+          }
+        },
+        "tags": [
+          "Traffic Allocations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/traffic-allocations/{id}": {
       "get": {
         "operationId": "TrafficAllocationController_findOne",
@@ -6784,6 +6872,21 @@
         "summary": "List Simulation Runs",
         "parameters": [
           {
+            "name": "suiteId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by simulation suite ids",
+            "schema": {
+              "maxItems": 100,
+              "uniqueItems": true,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
             "name": "status",
             "required": false,
             "in": "query",
@@ -7256,10 +7359,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SimulationRunItem"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SimulationRunItem"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/SimulationRunItemsPaginatedResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -7457,7 +7567,38 @@
       "get": {
         "operationId": "SimulationSuiteController_findAll",
         "summary": "List Simulation Suites",
+        "description": "Returns a pagination envelope when page, limit, name, assistantId, or squadId is supplied; otherwise returns the legacy array.",
         "parameters": [
+          {
+            "name": "assistantId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by any assigned assistant ID. Supplying both assistant and squad filters requires both to match.",
+            "schema": {
+              "maxItems": 100,
+              "uniqueItems": true,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "squadId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by any assigned squad ID. Supplying both assistant and squad filters requires both to match.",
+            "schema": {
+              "maxItems": 100,
+              "uniqueItems": true,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
           {
             "name": "name",
             "required": false,
@@ -7602,10 +7743,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SimulationSuite"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SimulationSuite"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/SimulationSuitesPaginatedResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -13288,10 +13436,11 @@
           },
           "model": {
             "type": "string",
-            "description": "This is the model that will be used for the transcription.",
+            "description": "This is the model that will be used for the transcription.\nDigit formatting can differ by model: `gpt-transcribe` may write spoken digit strings as words (for example, \"four seven two\"), where `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` may write them as digits (\"472\"). Do not rely on either format.",
             "enum": [
               "gpt-4o-transcribe",
-              "gpt-4o-mini-transcribe"
+              "gpt-4o-mini-transcribe",
+              "gpt-transcribe"
             ]
           },
           "language": {
@@ -13356,6 +13505,20 @@
               "vi",
               "cy"
             ]
+          },
+          "keywords": {
+            "description": "These are words and phrases the model should recognize, such as names, brands, and product terms.\nSupported only by `gpt-transcribe`. Each keyword is one line and must not contain `<` or `>`. Maximum 16,384 keywords.",
+            "maxItems": 16384,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?=[^<>\\r\\n]*[^<>\\s])[^<>\\r\\n]*$"
+            }
+          },
+          "prompt": {
+            "type": "string",
+            "description": "This is free-text context for the transcription, such as the topic of the call or the expected vocabulary.\nMaximum length: 8,192 characters for `gpt-transcribe`, and 1,024 characters for `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`.",
+            "maxLength": 8192
           },
           "fallbackPlan": {
             "description": "This is the plan for transcriber provider fallbacks in the event that the primary transcriber provider fails.",
@@ -16333,10 +16496,11 @@
           },
           "model": {
             "type": "string",
-            "description": "This is the model that will be used for the transcription.",
+            "description": "This is the model that will be used for the transcription.\nDigit formatting can differ by model: `gpt-transcribe` may write spoken digit strings as words (for example, \"four seven two\"), where `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` may write them as digits (\"472\"). Do not rely on either format.",
             "enum": [
               "gpt-4o-transcribe",
-              "gpt-4o-mini-transcribe"
+              "gpt-4o-mini-transcribe",
+              "gpt-transcribe"
             ]
           },
           "language": {
@@ -16401,6 +16565,20 @@
               "vi",
               "cy"
             ]
+          },
+          "keywords": {
+            "description": "These are words and phrases the model should recognize, such as names, brands, and product terms.\nSupported only by `gpt-transcribe`. Each keyword is one line and must not contain `<` or `>`. Maximum 16,384 keywords.",
+            "maxItems": 16384,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?=[^<>\\r\\n]*[^<>\\s])[^<>\\r\\n]*$"
+            }
+          },
+          "prompt": {
+            "type": "string",
+            "description": "This is free-text context for the transcription, such as the topic of the call or the expected vocabulary.\nMaximum length: 8,192 characters for `gpt-transcribe`, and 1,024 characters for `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`.",
+            "maxLength": 8192
           }
         },
         "required": [
@@ -28203,45 +28381,45 @@
           },
           "similarityBoost": {
             "type": "number",
-            "description": "Defines the similarity boost for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the similarity boost for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 1,
             "example": 0.75
           },
           "style": {
             "type": "number",
-            "description": "Defines the style for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the style for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 1,
             "example": 0
           },
           "useSpeakerBoost": {
             "type": "boolean",
-            "description": "Defines the use speaker boost for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the use speaker boost for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "example": false
           },
           "speed": {
             "type": "number",
-            "description": "Defines the speed for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the speed for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0.7,
             "maximum": 1.2,
             "example": 0.9
           },
           "optimizeStreamingLatency": {
             "type": "number",
-            "description": "Defines the optimize streaming latency for voice settings. Defaults to 3. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the optimize streaming latency for voice settings. Defaults to 3. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 4,
             "example": 3
           },
           "enableSsmlParsing": {
             "type": "boolean",
-            "description": "This enables the use of https://elevenlabs.io/docs/speech-synthesis/prompting#pronunciation. Defaults to false to save latency. Ignored by `eleven_v4_turbo`.\n\n@default false",
+            "description": "This enables the use of https://elevenlabs.io/docs/speech-synthesis/prompting#pronunciation. Defaults to false to save latency. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.\n\n@default false",
             "example": false
           },
           "autoMode": {
             "type": "boolean",
-            "description": "Defines the auto mode for voice settings. Defaults to false. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the auto mode for voice settings. Defaults to false. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "example": false
           },
           "model": {
@@ -28255,13 +28433,14 @@
               "eleven_flash_v2_5",
               "eleven_monolingual_v1",
               "eleven_v3",
-              "eleven_v4_turbo"
+              "eleven_v4_turbo",
+              "eleven_v3_conversational"
             ],
             "example": "eleven_turbo_v2_5"
           },
           "language": {
             "type": "string",
-            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5, Flash v2.5 and v4 Turbo support language enforcement; other models ignore it."
+            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5, Flash v2.5 and the Text to Dialogue models support language enforcement; other models ignore it."
           },
           "chunkPlan": {
             "description": "This is the plan for chunking the model output before it is sent to the voice provider.",
@@ -31053,45 +31232,45 @@
           },
           "similarityBoost": {
             "type": "number",
-            "description": "Defines the similarity boost for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the similarity boost for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 1,
             "example": 0.75
           },
           "style": {
             "type": "number",
-            "description": "Defines the style for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the style for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 1,
             "example": 0
           },
           "useSpeakerBoost": {
             "type": "boolean",
-            "description": "Defines the use speaker boost for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the use speaker boost for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "example": false
           },
           "speed": {
             "type": "number",
-            "description": "Defines the speed for voice settings. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the speed for voice settings. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0.7,
             "maximum": 1.2,
             "example": 0.9
           },
           "optimizeStreamingLatency": {
             "type": "number",
-            "description": "Defines the optimize streaming latency for voice settings. Defaults to 3. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the optimize streaming latency for voice settings. Defaults to 3. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "minimum": 0,
             "maximum": 4,
             "example": 3
           },
           "enableSsmlParsing": {
             "type": "boolean",
-            "description": "This enables the use of https://elevenlabs.io/docs/speech-synthesis/prompting#pronunciation. Defaults to false to save latency. Ignored by `eleven_v4_turbo`.\n\n@default false",
+            "description": "This enables the use of https://elevenlabs.io/docs/speech-synthesis/prompting#pronunciation. Defaults to false to save latency. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.\n\n@default false",
             "example": false
           },
           "autoMode": {
             "type": "boolean",
-            "description": "Defines the auto mode for voice settings. Defaults to false. Ignored by `eleven_v4_turbo`.",
+            "description": "Defines the auto mode for voice settings. Defaults to false. Ignored by `eleven_v4_turbo` and `eleven_v3_conversational`.",
             "example": false
           },
           "model": {
@@ -31105,13 +31284,14 @@
               "eleven_flash_v2_5",
               "eleven_monolingual_v1",
               "eleven_v3",
-              "eleven_v4_turbo"
+              "eleven_v4_turbo",
+              "eleven_v3_conversational"
             ],
             "example": "eleven_turbo_v2_5"
           },
           "language": {
             "type": "string",
-            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5, Flash v2.5 and v4 Turbo support language enforcement; other models ignore it."
+            "description": "This is the language (ISO 639-1) that is enforced for the model. Currently only Turbo v2.5, Flash v2.5 and the Text to Dialogue models support language enforcement; other models ignore it."
           },
           "pronunciationDictionaryLocators": {
             "description": "This is the pronunciation dictionary locators to use.",
@@ -47242,6 +47422,7 @@
               "pipeline-error-eleven-labs-voice-not-allowed-for-free-users",
               "pipeline-error-eleven-labs-max-character-limit-exceeded",
               "pipeline-error-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "pipeline-error-eleven-labs-unsupported-model",
               "pipeline-error-eleven-labs-500-server-error",
               "pipeline-error-eleven-labs-503-server-error",
               "call.in-progress.error-vapifault-eleven-labs-voice-not-found",
@@ -47264,6 +47445,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-vapifault-eleven-labs-unsupported-model",
               "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-blocked-concurrent-requests-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-voice-disabled-by-owner",
@@ -51830,6 +52012,394 @@
         "required": [
           "error",
           "message"
+        ]
+      },
+      "GetTrafficTabMetricsDTO": {
+        "type": "object",
+        "properties": {
+          "assistantId": {
+            "type": "string",
+            "description": "The assistant whose per-version traffic metrics to return."
+          },
+          "from": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Start of the metrics window (inclusive), ISO 8601 datetime."
+          },
+          "to": {
+            "format": "date-time",
+            "type": "string",
+            "description": "End of the metrics window (exclusive), ISO 8601 datetime. Must be later than from, and the window may hold at most 2000 buckets of the requested width."
+          },
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day"
+            ],
+            "description": "Bucket size for the timeseries. Defaults to 'day'."
+          },
+          "structuredOutputIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 5,
+            "description": "Structured output ids to aggregate per version, as an array or a comma-separated string. At most 5."
+          }
+        },
+        "required": [
+          "assistantId",
+          "from",
+          "to"
+        ]
+      },
+      "TrafficTabMetricsWindowDTO": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Start of the window (inclusive), ISO 8601."
+          },
+          "to": {
+            "type": "string",
+            "description": "End of the window (exclusive), ISO 8601."
+          },
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day"
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "bucket"
+        ]
+      },
+      "TrafficTabDurationSecondsDTO": {
+        "type": "object",
+        "properties": {
+          "mean": {
+            "type": "number",
+            "nullable": true
+          },
+          "stddev": {
+            "type": "number",
+            "nullable": true
+          },
+          "p50": {
+            "type": "number",
+            "nullable": true
+          },
+          "p95": {
+            "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "TrafficTabCostBreakdownPerMinuteDTO": {
+        "type": "object",
+        "properties": {
+          "llm": {
+            "type": "number",
+            "nullable": true
+          },
+          "stt": {
+            "type": "number",
+            "nullable": true
+          },
+          "tts": {
+            "type": "number",
+            "nullable": true
+          },
+          "vapi": {
+            "type": "number",
+            "nullable": true
+          },
+          "transport": {
+            "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "TrafficTabCostPerMinuteDTO": {
+        "type": "object",
+        "properties": {
+          "mean": {
+            "type": "number",
+            "nullable": true
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/TrafficTabCostBreakdownPerMinuteDTO"
+          }
+        },
+        "required": [
+          "breakdown"
+        ]
+      },
+      "TrafficTabLatencyStatsDTO": {
+        "type": "object",
+        "properties": {
+          "mean": {
+            "type": "number",
+            "nullable": true
+          },
+          "p50": {
+            "type": "number",
+            "nullable": true
+          },
+          "p95": {
+            "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "TrafficTabLatencyMsDTO": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/TrafficTabLatencyStatsDTO"
+          },
+          "voice": {
+            "$ref": "#/components/schemas/TrafficTabLatencyStatsDTO"
+          },
+          "transcriber": {
+            "$ref": "#/components/schemas/TrafficTabLatencyStatsDTO"
+          },
+          "turn": {
+            "$ref": "#/components/schemas/TrafficTabLatencyStatsDTO"
+          }
+        },
+        "required": [
+          "model",
+          "voice",
+          "transcriber",
+          "turn"
+        ]
+      },
+      "TrafficTabEndedReasonCountDTO": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "reason",
+          "count"
+        ]
+      },
+      "TrafficTabTimeseriesPointDTO": {
+        "type": "object",
+        "properties": {
+          "bucketStart": {
+            "type": "string",
+            "description": "Start of the bucket, ISO 8601 (UTC)."
+          },
+          "calls": {
+            "type": "number"
+          },
+          "durationSecondsMean": {
+            "type": "number",
+            "nullable": true
+          },
+          "costPerMinuteMean": {
+            "type": "number",
+            "nullable": true
+          },
+          "turnLatencyMsMean": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "bucketStart",
+          "calls"
+        ]
+      },
+      "TrafficTabStructuredOutputNumericDTO": {
+        "type": "object",
+        "properties": {
+          "mean": {
+            "type": "number",
+            "nullable": true
+          },
+          "stddev": {
+            "type": "number",
+            "nullable": true
+          },
+          "p50": {
+            "type": "number",
+            "nullable": true
+          },
+          "p95": {
+            "type": "number",
+            "nullable": true
+          },
+          "sum": {
+            "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "TrafficTabStructuredOutputValueCountDTO": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "count"
+        ]
+      },
+      "TrafficTabStructuredOutputDTO": {
+        "type": "object",
+        "properties": {
+          "structuredOutputId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "number",
+              "string",
+              "boolean",
+              "unknown"
+            ]
+          },
+          "present": {
+            "type": "number",
+            "description": "Calls in the window where this output produced a result."
+          },
+          "numeric": {
+            "$ref": "#/components/schemas/TrafficTabStructuredOutputNumericDTO"
+          },
+          "valueCounts": {
+            "description": "Top 10 values by count, for string/boolean outputs.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrafficTabStructuredOutputValueCountDTO"
+            }
+          }
+        },
+        "required": [
+          "structuredOutputId",
+          "type",
+          "present"
+        ]
+      },
+      "TrafficTabVersionMetricsDTO": {
+        "type": "object",
+        "properties": {
+          "assistantVersionId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "assistantVersionLabel": {
+            "type": "string",
+            "nullable": true,
+            "description": "The published version label, such as \"v7\". Null when no version row resolves (unversioned calls, or a since-purged version)."
+          },
+          "unversioned": {
+            "type": "boolean",
+            "description": "True for the row aggregating calls with no assistant version (stored as SQL NULL)."
+          },
+          "calls": {
+            "type": "number"
+          },
+          "configuredPercentage": {
+            "type": "number",
+            "nullable": true,
+            "description": "The version's share in the currently-governing allocation. Null when the version is not in the current split — never rendered as 0%."
+          },
+          "actualPercentage": {
+            "type": "number",
+            "description": "calls / totalCalls * 100 over the window, rounded to 3 decimals."
+          },
+          "durationSeconds": {
+            "$ref": "#/components/schemas/TrafficTabDurationSecondsDTO"
+          },
+          "costPerMinute": {
+            "$ref": "#/components/schemas/TrafficTabCostPerMinuteDTO"
+          },
+          "latencyMs": {
+            "$ref": "#/components/schemas/TrafficTabLatencyMsDTO"
+          },
+          "endedReasons": {
+            "description": "Full per-reason counts; the UI unions and top-Ns.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrafficTabEndedReasonCountDTO"
+            }
+          },
+          "timeseries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrafficTabTimeseriesPointDTO"
+            }
+          },
+          "structuredOutputs": {
+            "description": "Present only when structuredOutputIds was given.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrafficTabStructuredOutputDTO"
+            }
+          }
+        },
+        "required": [
+          "calls",
+          "actualPercentage",
+          "durationSeconds",
+          "costPerMinute",
+          "latencyMs",
+          "endedReasons",
+          "timeseries"
+        ]
+      },
+      "TrafficTabMetricsDTO": {
+        "type": "object",
+        "properties": {
+          "window": {
+            "$ref": "#/components/schemas/TrafficTabMetricsWindowDTO"
+          },
+          "totalCalls": {
+            "type": "number",
+            "description": "All calls for the assistant in the window, every version."
+          },
+          "currentAllocation": {
+            "nullable": true,
+            "description": "The allocation currently governing the assistant. Null when traffic splitting was never configured.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TrafficAllocation"
+              }
+            ]
+          },
+          "versions": {
+            "description": "One row per version with calls in the window, plus the unversioned row when it has any. Ordered by calls descending, then by version label (numeric-aware), the unversioned row last among equals.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrafficTabVersionMetricsDTO"
+            }
+          }
+        },
+        "required": [
+          "window",
+          "totalCalls",
+          "versions"
         ]
       },
       "ByoPhoneNumber": {
@@ -62767,6 +63337,24 @@
           "updatedAt"
         ]
       },
+      "SimulationRunItemsPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationRunItem"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
+        ]
+      },
       "SimulationSuiteTargetAssignment": {
         "type": "object",
         "properties": {
@@ -62892,6 +63480,24 @@
           "name",
           "simulationIds",
           "targetAssignments"
+        ]
+      },
+      "SimulationSuitesPaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationSuite"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "results",
+          "metadata"
         ]
       },
       "UpdateSimulationSuiteDTO": {
@@ -78149,6 +78755,7 @@
               "pipeline-error-eleven-labs-voice-not-allowed-for-free-users",
               "pipeline-error-eleven-labs-max-character-limit-exceeded",
               "pipeline-error-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "pipeline-error-eleven-labs-unsupported-model",
               "pipeline-error-eleven-labs-500-server-error",
               "pipeline-error-eleven-labs-503-server-error",
               "call.in-progress.error-vapifault-eleven-labs-voice-not-found",
@@ -78171,6 +78778,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-vapifault-eleven-labs-unsupported-model",
               "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-blocked-concurrent-requests-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-voice-disabled-by-owner",
@@ -79608,6 +80216,7 @@
               "pipeline-error-eleven-labs-voice-not-allowed-for-free-users",
               "pipeline-error-eleven-labs-max-character-limit-exceeded",
               "pipeline-error-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "pipeline-error-eleven-labs-unsupported-model",
               "pipeline-error-eleven-labs-500-server-error",
               "pipeline-error-eleven-labs-503-server-error",
               "call.in-progress.error-vapifault-eleven-labs-voice-not-found",
@@ -79630,6 +80239,7 @@
               "call.in-progress.error-vapifault-eleven-labs-voice-not-allowed-for-free-users",
               "call.in-progress.error-vapifault-eleven-labs-max-character-limit-exceeded",
               "call.in-progress.error-vapifault-eleven-labs-blocked-voice-potentially-against-terms-of-service-and-awaiting-verification",
+              "call.in-progress.error-vapifault-eleven-labs-unsupported-model",
               "call.in-progress.error-providerfault-eleven-labs-system-busy-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-blocked-concurrent-requests-and-requested-upgrade",
               "call.in-progress.error-providerfault-eleven-labs-voice-disabled-by-owner",
