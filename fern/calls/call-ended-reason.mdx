@@ -20,7 +20,7 @@ Start here if a call failed and you want to quickly understand what happened:
 | Phone never rang | `call.start.error-*`, `assistant-not-found`, `*-transport-never-connected` | Account/billing issue, bad configuration, or Vapi infrastructure error |
 | Phone rang but no answer | `customer-did-not-answer`, `customer-busy`, SIP 408/480 | Normal behavior — callee was unavailable |
 | Call dropped mid-conversation | `*-worker-died`, `phone-call-provider-closed-websocket`, `worker-shutdown` | Network issue or Vapi infrastructure error (usually transient) |
-| Assistant went silent or unresponsive | `*-llm-failed`, `*-voice-failed`, `*-transcriber-failed`, `*-429-*`, `*-500-*` | Provider outage or credential/quota issue — configure fallback providers for the 3 core services (TTS, LLM, STT) |
+| Assistant went silent or unresponsive | `*-llm-failed`, `*-voice-failed`, `*-transcriber-failed`, `*-429-*`, `*-500-*` | Provider error or credential/quota issue — configure fallback for the affected service, then inspect call logs and test the backup provider |
 | Call worked normally, then ended | `assistant-ended-call`, `customer-ended-call`, `silence-timed-out`, `exceeded-max-duration` | Expected behavior — adjust timeout settings if calls end too early |
 | Transfer failed | `*-transfer-failed`, `*-warm-transfer-*`, SIP 403/503 | Bad transfer destination or SIP configuration |
 
@@ -84,11 +84,11 @@ These occur before the call connects, during resource setup.
 
 These indicate the assistant intentionally ended the call — not errors.
 
-- `assistant-ended-call` — The assistant ended the call (via an end-call tool or function).
+- `assistant-ended-call` — The assistant ended the call (via the [Hang Up tool](/tools/hang-up) or function).
 - `assistant-ended-call-after-message-spoken` — The assistant ended the call after speaking its final message.
 - `assistant-ended-call-with-hangup-task` — The assistant ended the call using a hangup task.
 - `assistant-said-end-call-phrase` — The assistant said a phrase configured to trigger call termination.
-- `assistant-forwarded-call` — The assistant transferred the call to another number or service.
+- `assistant-forwarded-call` — The assistant started a transfer to another number or service. This reason doesn't confirm that the destination answered.
 - `assistant-join-timed-out` — The assistant failed to join the call within the expected timeframe.
 
 ## Customer actions
@@ -150,7 +150,7 @@ Common transcriber error patterns:
 - `*-returning-403-*` — Model access denied on the transcriber.
 - `*-returning-500-*` / `*-returning-502-*` — Transcriber provider server error.
 
-**Supported providers:** Deepgram, AssemblyAI, Gladia, Speechmatics, Talkscriber, Azure Speech, Google, OpenAI, Soniox, ElevenLabs, Custom Transcriber.
+**Supported providers:** Deepgram, AssemblyAI, Gladia, Speechmatics, Azure Speech, Google, OpenAI, Soniox, ElevenLabs, Custom Transcriber.
 
 ## Transfer errors
 
@@ -160,7 +160,7 @@ Common transcriber error patterns:
 - `call.in-progress.error-warm-transfer-silence-timeout` — Silence timeout during a warm transfer.
 - `call.in-progress.error-warm-transfer-microphone-timeout` — Microphone timeout during a warm transfer.
 
-For step-by-step transfer debugging, see [Debug forwarding drops](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops).
+For step-by-step transfer debugging, see [Troubleshoot call transfers](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops).
 
 ## Transport and connectivity
 
@@ -208,7 +208,8 @@ For SIP trunk setup issues, see [Troubleshoot SIP trunk credential errors](/adva
 - `call.ringing.hook-executed-transfer` — A transfer hook executed during ringing ended the call.
 - `call.ending.hook-executed-say` — A say hook executed during the ending phase.
 - `call.ending.hook-executed-transfer` — A transfer hook executed during the ending phase.
-- `call.forwarding.operator-busy` — The operator was busy during call forwarding.
+- `call.forwarding.operator-busy` — The destination of a blind transfer was busy, or an assistant-based warm transfer failed and the fallback ended the call. For blind transfers, this reason appears only when transfer outcome detection is enabled.
+- `call.forwarding.no-answer` — The destination of a blind transfer didn't answer. This reason appears only when transfer outcome detection is enabled.
 
 ## Other reasons
 

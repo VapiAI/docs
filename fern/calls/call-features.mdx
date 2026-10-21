@@ -79,6 +79,51 @@ curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/742
 }'
 ```
 
+Optional fields:
+
+- `endCallAfterSpoken`: end the call after the message is spoken.
+- `interruptionsEnabled`: let the caller interrupt the message. Defaults to `false`, which ignores the caller's audio while the message plays.
+- `interruptAssistantEnabled`: stop any speech already in progress or queued and say this message immediately. The assistant doesn't resume the interrupted response. Defaults to `false`, which waits until the assistant finishes speaking.
+
+#### Play an audio file
+
+To play a pre-recorded audio file instead of synthesized speech, set `content` to the file's URL.
+
+```bash
+curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
+-H 'content-type: application/json' \
+--data-raw '{
+  "type": "say",
+  "content": "https://example.com/audio/hold-message.wav"
+}'
+```
+
+<Note>
+Set `content` to a single `https://` URL with no other text. The text might be read out loud to the caller.
+</Note>
+
+| `content` value | Result |
+| --- | --- |
+| An `http://` URL | Spoken by the voice provider as text |
+| A URL with text before it | Spoken by the voice provider as text |
+| A URL with text after it | Nothing plays |
+
+The audio file must meet these requirements:
+
+- The URL is publicly reachable, or it's a presigned URL. Vapi doesn't send authentication headers when it downloads the file.
+- The file is WAV or MP3.
+- The file is short. Vapi downloads the whole file before playback starts, so shorter files start sooner.
+
+Audio is cached by URL. To change an audio file, publish the new version at a new URL, such as `hold-message-v2.wav`. If you replace the file at the same URL, calls can keep playing the old audio.
+
+Audio files aren't added to the call's `transcript`, `messages`, or `artifact.messages`.
+
+Each `say` request plays one audio file when you send it. Audio doesn't play automatically before each assistant turn. To play a sound at a specific point in the conversation, send a `say` request at that moment.
+
+<Note>
+If Vapi can't download or decode the file, nothing plays and the control request still returns a success response. Test each audio URL before you use it on live calls.
+</Note>
+
 ### 2. Add Message to Conversation
 Adds a message to the conversation history and optionally triggers a response.
 

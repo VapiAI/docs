@@ -1,0 +1,324 @@
+---
+title: Configure the Hang Up tool
+subtitle: Set the goodbye message, attach the tool to an assistant, and guard against calls that end too early
+description: Configure the Hang Up tool's goodbye message, attach it to an assistant, write prompt rules, add a rejection plan, and confirm how calls end with Dashboard and cURL examples.
+slug: tools/hang-up/configuration
+---
+
+This page shows how to configure each part of the Hang Up tool. To build a working assistant first, see the [Hang Up tool quickstart](/tools/hang-up/quickstart).
+
+## Prerequisites
+
+- A [Vapi account](https://dashboard.vapi.ai)
+- A Vapi API key for the cURL examples
+- An assistant to attach the tool to
+
+## Create the tool
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create a Hang Up tool">
+        Open the [Dashboard](https://dashboard.vapi.ai), select **Tools**, select **Create Tool**, then choose **Hang Up**.
+
+        The Dashboard creates the tool when you choose **Hang Up** and names it `end_call_tool`.
+
+        <Frame caption="Choose Hang Up from the Create Tool menu">
+          <img src="/static/images/tools/hang-up/01-create-tool-menu.png" alt="Vapi Dashboard Create Tool menu with Hang Up under Phone Call Tools" />
+        </Frame>
+      </Step>
+
+      <Step title="Describe the tool">
+        Under **Tool Settings**, use **Description** to say when the assistant should end the call. The model reads the description when it decides whether to call the tool.
+
+        ```txt title="Description" wordWrap
+        Ends the call. Use only after the caller confirms they have nothing else to ask.
+        ```
+
+        <Frame caption="Describe the Hang Up tool">
+          <img src="/static/images/tools/hang-up/02-tool-settings.png" alt="Vapi Dashboard Tool Settings with Tool Name endCall and a description" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the tool">
+        Select **Publish**, review the changes, select **Next**, then select **Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Set your API key">
+        ```bash
+        export VAPI_API_KEY="YOUR_VAPI_API_KEY"
+        ```
+      </Step>
+
+      <Step title="Create the tool">
+        Create the tool with a `POST` request. For every field the tool accepts, see [Create Tool](/api-reference/tools/create#request.body.endCall) in the API reference.
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/tool \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "type": "endCall",
+            "description": "Ends the call. Use only after the caller confirms they have nothing else to ask."
+          }'
+        ```
+
+        Copy the `id` from the response. The following examples use it as `YOUR_TOOL_ID`.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Set the goodbye message
+
+The tool's `request-start` message, set in the tool's [`messages`](/api-reference/tools/create#request.body.endCall) array, is what the assistant says before Vapi ends the call. If the tool has a `request-start` message, the assistant says that message and ignores its **End Call Message** ([`endCallMessage`](/api-reference/assistants/create#request.body.endCallMessage)).
+
+If the tool has no messages, the assistant says its end call message. If no end call message is set, the assistant says "Goodbye" in the transcriber's language.
+
+Use a `request-start` message for the goodbye. Request Failed and Request Response Delayed messages aren't used by the Hang Up tool.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Find the Request Start message">
+        Open the tool and expand **Messages**. A new Hang Up tool includes a **Request Start** message set to **Default**. If the tool has no **Request Start** message, select **Add Message**, then choose **Request Start**.
+      </Step>
+
+      <Step title="Enter the goodbye">
+        Set **Message Option** to **Custom**, then enter the goodbye:
+
+        ```txt title="Request Start" wordWrap
+        Thanks for calling. Goodbye.
+        ```
+
+        <Frame caption="Set a custom Request Start goodbye">
+          <img src="/static/images/tools/hang-up/03-request-start-message.png" alt="Vapi Dashboard Messages section with a Request Start message set to Custom: Thanks for calling. Goodbye." />
+        </Frame>
+
+        To vary the goodbye, add more variants. The assistant says one variant each time the tool runs.
+
+        To end the call without a goodbye, set **Message Option** to **None**. The **Default** option also ends the call without a goodbye, because it saves the message without content.
+
+        To use the assistant's **End Call Message** or "Goodbye" instead, don't add a **Request Start** message.
+      </Step>
+
+      <Step title="Publish the tool">
+        Select **Publish**, review the changes, select **Next**, then select **Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    Update the tool with a `PATCH` request. For every field the tool accepts, see [Update Tool](/api-reference/tools/update#request.body.endCall) in the API reference.
+
+    ```bash
+    curl --request PATCH \
+      --url "https://api.vapi.ai/tool/YOUR_TOOL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "Thanks for calling. Goodbye."
+          }
+        ]
+      }'
+    ```
+
+    To vary the goodbye, add more `request-start` messages. Vapi selects one each time the tool runs.
+
+    To end the call without a goodbye, set `content` to an empty string:
+
+    ```json
+    {
+      "messages": [
+        { "type": "request-start", "content": "" }
+      ]
+    }
+    ```
+
+    An empty `endCallMessage` on the assistant doesn't remove the goodbye. Set the empty message on the tool.
+
+    For multilingual assistants, use `contents` to set the goodbye for each language. The assistant says the variant for the active language:
+
+    ```json
+    {
+      "messages": [
+        {
+          "type": "request-start",
+          "contents": [
+            { "type": "text", "language": "en", "text": "Thanks for calling. Goodbye." },
+            { "type": "text", "language": "es", "text": "Gracias por llamar. Adiós." }
+          ]
+        }
+      ]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+Don't also tell the model to say goodbye in its system prompt. If the model says goodbye and then calls the tool, the caller hears two goodbyes.
+</Note>
+
+## Attach the tool to an assistant
+
+An assistant can have one Hang Up tool.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Add the tool">
+        Select **Assistants**, then select your assistant. Open the **Tools** tab, select **Add tool**, then choose the Hang Up tool.
+
+        <Frame caption="Choose the Hang Up tool from Add tool">
+          <img src="/static/images/tools/hang-up/04-add-tool-picker.png" alt="Vapi Dashboard assistant Tools tab with the Add tool picker showing endCall" />
+        </Frame>
+
+        <Frame caption="The Hang Up tool attached to the assistant">
+          <img src="/static/images/tools/hang-up/05-attached-tool.png" alt="Vapi Dashboard assistant Tools tab listing the endCall tool" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the assistant">
+        Select **Publish**, review the changes, then select **Quick Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    Update the assistant with a `PATCH` request. For every field, see [Update Assistant](/api-reference/assistants/update#request.body.model) in the API reference. Include the assistant's full [`model`](/api-reference/assistants/create#request.body.model) object, because the update replaces it. Add the tool's ID to `model.toolIds`.
+
+    ```bash
+    curl --request PATCH \
+      --url "https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4o-mini",
+          "toolIds": ["YOUR_TOOL_ID"],
+          "messages": [
+            {
+              "role": "system",
+              "content": "YOUR_SYSTEM_PROMPT"
+            }
+          ]
+        }
+      }'
+    ```
+
+    You can also define the tool inline in [`model.tools`](/api-reference/assistants/create#request.body.model) instead of creating it separately. Add it alongside the assistant's other tools:
+
+    ```json
+    {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "tools": [
+          {
+            "type": "endCall",
+            "messages": [
+              { "type": "request-start", "content": "Thanks for calling. Goodbye." }
+            ]
+          }
+        ]
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+With a [custom LLM](/customization/tool-calling-integration), return a tool call named `endCall` to end the call. The Hang Up tool must be attached to the assistant.
+</Note>
+
+## Tell the model when to end the call
+
+The model decides when to call the Hang Up tool, so most unexpected endings start in the system prompt. State when to end the call and when not to:
+
+```txt title="System prompt excerpt" wordWrap
+When the caller's request is resolved, ask whether they need anything else. If they say no, call the endCall tool. Do not say goodbye yourself; the tool says it.
+
+Do not end the call when the caller disagrees with you, asks a follow-up question, asks you to wait, or asks you to repeat something.
+```
+
+Refer to the tool by its **Tool Name**. Tools created in the Dashboard start with the name `end_call_tool`. Tools created through the API without a name use `endCall`. For more on writing tool instructions, see [Integrate tools and APIs](/prompting-guide#integrate-tools-and-apis) in the prompting guide.
+
+## Prevent early hang-ups with a rejection plan
+
+A rejection plan blocks the tool call when a condition matches recent messages. Use it as a guard in addition to prompt rules, not as a replacement for them. Configure rejection plans through the API with the tool's [`rejectionPlan`](/api-reference/tools/update#request.body.endCall) field.
+
+The following rejection plan blocks the Hang Up tool when the caller's most recent message asks the assistant to wait or says they have another question:
+
+```bash
+curl --request PATCH \
+  --url "https://api.vapi.ai/tool/YOUR_TOOL_ID" \
+  --header "Authorization: Bearer $VAPI_API_KEY" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "rejectionPlan": {
+      "conditions": [
+        {
+          "type": "regex",
+          "regex": "(?i)\\b(wait|hold on|one more question|another question)\\b",
+          "target": { "position": -1, "role": "user" }
+        }
+      ]
+    }
+  }'
+```
+
+When Vapi rejects the tool call, the call continues. See [Tool rejection plan](/tools/tool-rejection-plan) for regex, Liquid, and grouped conditions.
+
+## Add end call phrases as a fallback
+
+If the assistant sometimes says goodbye without calling the tool, add a few specific [end call phrases](/documentation/assistants/conversation-behavior/end-call-phrases) to the assistant with **End Call Phrases** under **Advanced** in the Dashboard, or the [`endCallPhrases`](/api-reference/assistants/create#request.body.endCallPhrases) field in the API. Use complete closing sentences, such as `Thanks for calling. Goodbye.`, so the phrase does not match ordinary speech.
+
+## Verify how the call ended
+
+<Tabs>
+  <Tab title="Dashboard">
+    Select **Logs**, then open the call. See [Call logs](/observability/logs/call-logs). When the Hang Up tool ended the call, the ended reason is `assistant-ended-call`.
+  </Tab>
+
+  <Tab title="cURL">
+    Get the call with a `GET` request and check [`endedReason`](/api-reference/calls/get#response.body.endedReason). See [Get Call](/api-reference/calls/get) in the API reference.
+
+    ```bash
+    curl --url "https://api.vapi.ai/call/YOUR_CALL_ID" \
+      --header "Authorization: Bearer $VAPI_API_KEY"
+    ```
+
+    When the Hang Up tool ended the call, `endedReason` is `assistant-ended-call`. A call ended by an end call phrase shows `assistant-said-end-call-phrase`.
+  </Tab>
+</Tabs>
+
+## Troubleshoot unexpected call endings
+
+| Symptom | Likely cause | What to check |
+| --- | --- | --- |
+| The assistant says goodbye but the call stays open | The model said goodbye in its own words and did not call the tool. | Tell the model to call the tool instead of saying goodbye, or add a specific end call phrase as a fallback. |
+| The call ends too early | The model called the tool while the caller still needed help. | Add "do not end the call when..." rules to the prompt and a rejection plan for the caller's last message. |
+| The caller hears two goodbyes | The prompt and the tool both say goodbye. | Remove the goodbye from the prompt and keep the tool's `request-start` message. |
+| The call ends without a goodbye | The tool's `request-start` message has no content, for example when **Message Option** is **None** or **Default**. | Set **Message Option** to **Custom** and enter the goodbye. |
+
+See [Call end reasons](/calls/call-ended-reason) for the complete list of ended reasons.
+
+## Related documentation
+
+- [Hang Up tool](/tools/hang-up)
+- [Hang Up tool quickstart](/tools/hang-up/quickstart)
+- [End call phrases](/documentation/assistants/conversation-behavior/end-call-phrases)
+- [Tool rejection plan](/tools/tool-rejection-plan)
+- [Create Tool API reference](/api-reference/tools/create#request.body.endCall)
+- [Update Tool API reference](/api-reference/tools/update#request.body.endCall)
+- [Update Assistant API reference](/api-reference/assistants/update)
+- [Get Call API reference](/api-reference/calls/get)
