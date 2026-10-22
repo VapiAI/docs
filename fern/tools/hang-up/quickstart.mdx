@@ -1,0 +1,202 @@
+---
+title: Hang Up tool quickstart
+subtitle: Create an assistant that answers a question and ends the call when the caller is done
+description: Build an assistant for the Vapi hardware store that answers a caller's question, confirms they have nothing else to ask, says goodbye, and ends the call with the Hang Up tool.
+slug: tools/hang-up/quickstart
+---
+
+Use this quickstart to create and test an assistant that ends a call with the Hang Up tool.
+
+## What you'll build
+
+An assistant for the Vapi hardware store that answers a caller's question about opening hours. When the caller has nothing else to ask, the assistant calls the Hang Up tool, says goodbye, and ends the call.
+
+## Prerequisites
+
+- A [Vapi account](https://dashboard.vapi.ai)
+- A Vapi API key for the cURL steps
+
+## 1. Create the Hang Up tool
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create the tool">
+        Open the [Dashboard](https://dashboard.vapi.ai), select **Tools**, select **Create Tool**, then choose **Hang Up**.
+      </Step>
+
+      <Step title="Configure the tool">
+        Under **Tool Settings**, enter the following values:
+
+        | Field | Value |
+        | --- | --- |
+        | **Tool Name** | `endCall` |
+        | **Description** | `Ends the call. Use only after the caller confirms they have nothing else to ask.` |
+
+        Replace the default name, `end_call_tool`, with `endCall`. The system prompt refers to the tool by this name.
+
+        <Frame caption="Name and describe the Hang Up tool">
+          <img src="/static/images/tools/hang-up/02-tool-settings.png" alt="Vapi Dashboard Tool Settings with Tool Name endCall and a description" />
+        </Frame>
+      </Step>
+
+      <Step title="Add the goodbye">
+        Expand **Messages**. Under **Request Start**, set **Message Option** to **Custom** and enter `Thanks for calling. Goodbye.`
+
+        <Frame caption="Set a custom Request Start goodbye">
+          <img src="/static/images/tools/hang-up/03-request-start-message.png" alt="Vapi Dashboard Messages section with a Request Start message set to Custom: Thanks for calling. Goodbye." />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the tool">
+        Select **Publish**, review the changes, select **Next**, then select **Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Set your API key">
+        ```bash
+        export VAPI_API_KEY="YOUR_VAPI_API_KEY"
+        ```
+      </Step>
+
+      <Step title="Create the tool">
+        Create the tool with a `POST` request. For every field the tool accepts, see [Create Tool](/api-reference/tools/create#request.body.endCall) in the API reference.
+
+        ```bash
+        curl --request POST \
+          --url https://api.vapi.ai/tool \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "type": "endCall",
+            "description": "Ends the call. Use only after the caller confirms they have nothing else to ask.",
+            "messages": [
+              {
+                "type": "request-start",
+                "content": "Thanks for calling. Goodbye."
+              }
+            ]
+          }'
+        ```
+
+        Copy the `id` from the response. You will use it as `YOUR_TOOL_ID` when you create the assistant.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## 2. Create the assistant
+
+Use this system prompt in either method:
+
+```txt title="System prompt" wordWrap
+You are a friendly assistant for the Vapi hardware store.
+
+Store hours:
+- Monday to Friday: 8 AM to 6 PM
+- Saturday: 9 AM to 5 PM
+- Sunday: closed
+
+Answer the caller's questions about store hours. If they ask about anything else, say you can only help with store hours.
+
+After you answer, ask whether they need anything else. If they say no, call the endCall tool. Do not say goodbye yourself; the tool says it.
+
+Do not end the call when the caller asks a follow-up question, asks you to wait, or asks you to repeat something.
+```
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create a blank assistant">
+        Select **Assistants**, then select **Create Assistant**.
+      </Step>
+
+      <Step title="Configure the assistant">
+        Set **Name** to `Vapi Hardware Store` and **First Message** to:
+
+        ```txt title="First message" wordWrap
+        Thanks for calling the Vapi hardware store. How can I help you?
+        ```
+
+        Replace **System Prompt** with the prompt above.
+      </Step>
+
+      <Step title="Attach the tool">
+        Open the **Tools** tab, select **Add tool**, then choose `endCall`.
+
+        <Frame caption="The Hang Up tool attached to the assistant">
+          <img src="/static/images/tools/hang-up/05-attached-tool.png" alt="Vapi Dashboard assistant Tools tab listing the endCall tool" />
+        </Frame>
+      </Step>
+
+      <Step title="Publish the assistant">
+        Select **Publish**, review the changes, then select **Quick Publish**.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL">
+    <Steps>
+      <Step title="Save the assistant configuration">
+        Replace `YOUR_TOOL_ID` with the tool ID returned in the previous section, then save the following as `hardware-store-assistant.json`:
+
+        ```json title="hardware-store-assistant.json" wordWrap
+        {
+          "name": "Vapi Hardware Store",
+          "firstMessage": "Thanks for calling the Vapi hardware store. How can I help you?",
+          "model": {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "toolIds": ["YOUR_TOOL_ID"],
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a friendly assistant for the Vapi hardware store.\n\nStore hours:\n- Monday to Friday: 8 AM to 6 PM\n- Saturday: 9 AM to 5 PM\n- Sunday: closed\n\nAnswer the caller's questions about store hours. If they ask about anything else, say you can only help with store hours.\n\nAfter you answer, ask whether they need anything else. If they say no, call the endCall tool. Do not say goodbye yourself; the tool says it.\n\nDo not end the call when the caller asks a follow-up question, asks you to wait, or asks you to repeat something."
+              }
+            ]
+          }
+        }
+        ```
+      </Step>
+
+      <Step title="Create the assistant">
+        Create the assistant with a `POST` request that sends the file. For every field, see [Create Assistant](/api-reference/assistants/create) in the API reference. The tool's ID goes in [`model.toolIds`](/api-reference/assistants/create#request.body.model):
+
+        ```bash
+        curl --fail-with-body https://api.vapi.ai/assistant \
+          --header "Authorization: Bearer $VAPI_API_KEY" \
+          --header "Content-Type: application/json" \
+          --data-binary @hardware-store-assistant.json
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## 3. Talk to the assistant
+
+In the Dashboard, open the `Vapi Hardware Store` assistant and select **Talk**.
+
+1. Ask when the store opens on Saturday.
+2. When the assistant asks whether you need anything else, ask whether it is open on Sunday.
+3. When it asks again, say no.
+
+The assistant should answer both questions and stay on the call after your follow-up. After you say no, it should say "Thanks for calling. Goodbye." and end the call.
+
+## 4. Check how the call ended
+
+Select **Logs**, then open the call. See [Call logs](/observability/logs/call-logs). The ended reason should be `assistant-ended-call`. Through the API, check [`endedReason`](/api-reference/calls/get#response.body.endedReason) on the call.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configure the Hang Up tool" icon="sliders" href="/tools/hang-up/configuration">
+    Set goodbye variants, add a rejection plan, and troubleshoot unexpected endings.
+  </Card>
+  <Card title="End call phrases" icon="phone-slash" href="/documentation/assistants/conversation-behavior/end-call-phrases">
+    End calls when the assistant says a configured phrase.
+  </Card>
+</CardGroup>

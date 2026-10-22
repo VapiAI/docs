@@ -1,0 +1,103 @@
+---
+title: Hang Up tool
+subtitle: Let an assistant decide when to end a call and say a goodbye before it disconnects
+description: Learn what the Hang Up tool does, when to use it instead of end call phrases, and how an assistant ends a call with a configured goodbye message.
+slug: tools/hang-up
+---
+
+The Hang Up tool is a built-in [tool](/tools) that lets an assistant end a call. The model decides when the conversation is complete and calls the tool. If a goodbye is configured, the assistant says it before the call ends.
+
+In the API, the Hang Up tool uses the [`endCall`](/api-reference/tools/create#request.body.endCall) tool type.
+
+## When to use the Hang Up tool
+
+Use the Hang Up tool when ending the call is a decision the model makes from the conversation, for example:
+
+- The assistant has completed the caller's request and the caller has nothing else to ask
+- The caller asks to end the call
+- The conversation meets a condition in your prompt, such as a caller who is abusive or repeatedly off-topic
+- The assistant reaches a point in its task where the call should end, such as after it confirms an appointment
+
+The model only ends the call when its prompt tells it when to. Describe the conditions for ending the call, and the conditions where it must not, in the assistant's system prompt. See [Integrate tools and APIs](/prompting-guide#integrate-tools-and-apis) in the prompting guide.
+
+## Compare the Hang Up tool and end call phrases
+
+Vapi offers two ways for an assistant to end a call. The Hang Up tool is a tool the model calls. [End call phrases](/documentation/assistants/conversation-behavior/end-call-phrases) are an assistant setting that ends the call when the assistant says a configured phrase.
+
+Use the Hang Up tool as the main way to end calls when the assistant must judge when the conversation is over. You can also add a few specific end call phrases as a fallback for calls where the assistant says goodbye without calling the tool. Test any phrase you add against the assistant's normal speech so it does not end calls early.
+
+| | Hang Up tool | End call phrases |
+| --- | --- | --- |
+| How the call ends | The model calls the tool. | Vapi finds a configured phrase in the assistant's transcript. |
+| Best for | Endings that depend on conversation context or conditions | Scripted endings where the assistant always says the same closing line |
+| Goodbye message | Configured on the tool as a `request-start` message | The configured phrase is the goodbye |
+| Guard against early endings | Prompt rules and a [rejection plan](/tools/tool-rejection-plan) | Specific, multi-word phrases |
+| Common failure | The assistant says goodbye but does not call the tool, so the call stays open. | A short phrase matches ordinary speech, such as a greeting, and ends the call too early. |
+| Where you configure it | A tool attached to the assistant | The assistant's **End Call Phrases** setting or [`endCallPhrases`](/api-reference/assistants/create#request.body.endCallPhrases) field |
+| Ended reason ([`endedReason`](/api-reference/calls/get#response.body.endedReason)) | `assistant-ended-call` | `assistant-said-end-call-phrase` |
+
+## How it works
+
+1. The model decides the call should end and calls the Hang Up tool.
+2. Vapi checks the tool's [rejection plan](/tools/tool-rejection-plan), if one is configured. If a condition matches, Vapi rejects the tool call and the conversation continues.
+3. The assistant says the tool's `request-start` message. If the tool has no messages, the assistant says its [`endCallMessage`](/api-reference/assistants/create#request.body.endCallMessage), or "Goodbye" in the transcriber's language.
+4. Vapi ends the call and records the `assistant-ended-call` [ended reason](/calls/call-ended-reason).
+
+In a [chat](/chat/quickstart), calling the Hang Up tool doesn't end the session. The goodbye is sent as a text message and the conversation continues.
+
+## Best practices
+
+### Hang Up tool
+
+- **Describe when to use the tool.** Set the tool's **Description** to the conditions for ending the call. The model reads it when it decides whether to call the tool.
+- **Write "end when" and "don't end when" rules.** In the system prompt, say when to end the call, and list the situations where the call must continue, such as a follow-up question or a request to wait.
+- **Confirm before ending.** Have the assistant ask whether the caller needs anything else before it calls the tool.
+- **Put the goodbye on the tool.** Set the goodbye as the tool's `request-start` message and tell the model not to say goodbye itself, so the caller hears one goodbye.
+- **Guard against early endings.** Add a [rejection plan](/tools/tool-rejection-plan) that blocks the tool call when the caller's last message asks the assistant to wait or says they have another question.
+
+### End call phrases
+
+- **Use complete closing sentences.** A phrase such as `Thanks for calling. Goodbye.` is less likely to match ordinary speech than `bye` or `thanks`.
+- **Keep the list short.** Each phrase is another chance to match unintended speech.
+- **Test phrases against normal speech.** Check that greetings, acknowledgments, and empathy statements don't contain a configured phrase.
+
+### Testing
+
+- **Test each ending.** Test the normal goodbye, a follow-up question just before the end, and a caller who asks the assistant to wait. You can automate these checks with [simulations](/observability/simulations-overview).
+- **Check the ended reason.** Open the call in [call logs](/observability/logs/call-logs), or check [`endedReason`](/api-reference/calls/get#response.body.endedReason) through the API, to confirm which method ended the call.
+
+## Other ways a call ends
+
+The Hang Up tool and end call phrases are the ways an assistant ends a call from the conversation. Vapi can also end a call in these ways:
+
+| Method | Ends the call when | Learn more |
+| --- | --- | --- |
+| Silence timeout and maximum duration | The caller is silent for too long, or the call reaches its maximum length | [Call timeout settings](/documentation/assistants/conversation-behavior/call-timeout-settings) |
+| Idle messages | The caller stays silent after the assistant's idle messages, and the final idle hook runs `endCall` | [Idle messages](/assistants/idle-messages) |
+| Assistant hooks | A call event fires, such as `customer.speech.timeout` or `call.timeElapsed`, and the hook runs `endCall` | [Assistant hooks](/assistants/assistant-hooks) and the [`hooks`](/api-reference/assistants/create#request.body.hooks) field |
+| Tool messages | A function or API Request tool speaks a `request-complete` or `request-failed` message with `endCallAfterSpokenEnabled` set to `true` | [Create Tool API reference](/api-reference/tools/create) |
+
+See [Call end reasons](/calls/call-ended-reason) for the ended reason each method records.
+
+## Start with a working example
+
+<CardGroup cols={2}>
+  <Card title="Vapi hardware store quickstart" icon="store" href="/tools/hang-up/quickstart">
+    Create an assistant that answers a question, confirms the caller is done, and ends the call.
+  </Card>
+  <Card title="Configure the Hang Up tool" icon="sliders" href="/tools/hang-up/configuration">
+    Set the goodbye message, attach the tool, write prompt rules, and add a rejection plan.
+  </Card>
+</CardGroup>
+
+## Related documentation
+
+- [End call phrases](/documentation/assistants/conversation-behavior/end-call-phrases)
+- [Tool rejection plan](/tools/tool-rejection-plan)
+- [Call end reasons](/calls/call-ended-reason)
+- [Built-in tools](/tools/default-tools)
+- [Prompting guide](/prompting-guide)
+- [Create Tool API reference](/api-reference/tools/create#request.body.endCall)
+- [Update Tool API reference](/api-reference/tools/update#request.body.endCall)
+- [Create Assistant API reference](/api-reference/assistants/create)
+- [Get Call API reference](/api-reference/calls/get)
