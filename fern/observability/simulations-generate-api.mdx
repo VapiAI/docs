@@ -1,0 +1,382 @@
+---
+title: Generate a simulation suite with the API
+subtitle: Draft requirements for an assistant, generate a simulation suite from them, edit it, and run it
+description: "Use the Simulations onboarding API to draft test requirements from an assistant's prompt and tools, generate a simulation suite with mocked tools, edit it, and run it."
+slug: observability/simulations-generate-api
+---
+
+The Simulations onboarding API builds a [**simulation suite**](/observability/simulations-overview) for an assistant from its prompt, tools, and handoffs. It runs the same flow as [**Composer**](/composer#generate-tests-for-an-assistant). Call these three endpoints from a script, a CI job, or a coding agent:
+
+| Step | Endpoint | Takes up to |
+| -- | -- | -- |
+| Draft requirements | `POST /eval/simulation/onboarding/requirements` | 2 minutes |
+| Generate a suite | `POST /eval/simulation/onboarding/suite` | 3 minutes |
+| Edit the suite | `PATCH /eval/simulation/onboarding/suite/{suiteId}` | 2 minutes |
+
+You then run the suite with the existing [`POST /eval/simulation/run`](/observability/simulations-quickstart) endpoint.
+
+<Note>
+  **Beta.** During the beta, private API keys can call these endpoints only for organizations enabled for access. Other organizations get a `404`. [Contact support](/support) to ask about access. This access setting is not required to use Composer or the Dashboard.
+</Note>
+
+## Prerequisites
+
+- An [**assistant**](/assistants) to test. Copy its ID from its page in the Dashboard.
+- A private API key in `VAPI_API_KEY`. The key needs permission to create and update simulation suites.
+- An HTTP client with a long timeout. Suite generation can take up to 3 minutes, so set a client timeout of at least 200 seconds.
+
+<Warning>
+  Generated simulations mock every tool in the assistant's tool list that would reach an external system. The response lists them in `mockedTools`. These can still contact live systems:
+
+  - Tools that only an assistant hook calls.
+  - Explicit scenario webhooks, and unmocked tool or destination requests to your server.
+  - Tools you add to a simulation later, or mocks you turn off.
+
+  Simulation lifecycle server messages, including the end-of-call report, are suppressed. That does not disable the requests above. See [**Mock tool responses**](/observability/simulations-advanced#mock-tool-responses).
+</Warning>
+
+## Generate and run a suite
+
+<Steps>
+  <Step title="Draft requirements">
+    Send the assistant ID. The endpoint reads the assistant's prompt, tools, and handoffs, and drafts the behaviors it must get right as numbered requirements, plus a few open questions.
+
+    ```bash
+    curl --fail-with-body -sS -X POST "https://api.vapi.ai/eval/simulation/onboarding/requirements" \
+      --max-time 200 \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{ "assistantId": "<assistant-id>" }' \
+      > draft.json
+    ```
+
+    The response is a draft:
+
+    ```json
+    {
+      "version": 1,
+      "sources": ["System prompt", "Tools: bookAppointment, checkAvailability"],
+      "requirements": [
+        { "id": "R1", "text": "Confirms the date, time, and time zone before booking." },
+        { "id": "R2", "text": "Offers another slot when the requested time is unavailable." },
+        {
+          "id": "R3",
+          "text": "Does not book outside office hours.",
+          "tag": "assumption",
+          "note": "Office hours are not in the prompt; assumed Monday to Friday, 9am to 5pm."
+        }
+      ],
+      "openQuestions": [
+        {
+          "id": "Q1",
+          "text": "What are the office hours?",
+          "why": "R3 depends on them."
+        }
+      ]
+    }
+    ```
+
+    Review the requirements and answer the open questions. A requirement tagged `assumption` is based on a guess. A requirement tagged `not-testable` is something a chat simulation can't check, such as pronunciation.
+  </Step>
+
+  <Step title="Revise the draft (optional)">
+    To change the draft, call the same endpoint again. Send the draft exactly as you received it in `previousDraft`, and what you want changed in `feedback`. The two fields must be sent together.
+
+    ```bash
+    jq -n --slurpfile draft draft.json '{
+      assistantId: "<assistant-id>",
+      previousDraft: $draft[0],
+      feedback: "Office hours are Monday to Friday, 8am to 6pm. Drop R2: we never offer another slot."
+    }' > revise.json
+
+    curl --fail-with-body -sS -X POST "https://api.vapi.ai/eval/simulation/onboarding/requirements" \
+      --max-time 200 \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d @revise.json \
+      > draft.json
+    ```
+
+    The new draft has a higher `version` and a `changeNote` describing what changed. Repeat until you agree with the requirements. Each revision counts toward the [daily limit](#limits).
+  </Step>
+
+  <Step title="Generate the suite">
+    Send the agreed requirements and an `idempotencyKey`. Use a new key for each agreed draft, and the same key for every retry of it. A retry with the same key never generates a second suite. See [**Idempotency and retries**](#idempotency-and-retries).
+
+    ```bash
+    jq -n --slurpfile draft draft.json '{
+      assistantId: "<assistant-id>",
+      idempotencyKey: "booking-agent-draft-2",
+      requirements: $draft[0].requirements
+    }' > suite.json
+
+    curl --fail-with-body -sS -X POST "https://api.vapi.ai/eval/simulation/onboarding/suite" \
+      --max-time 200 \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d @suite.json
+    ```
+
+    The endpoint plans scenarios that cover the requirements, writes each scenario and its success criteria, mocks the tools, then saves the suite and assigns it to the assistant. The response describes the saved suite:
+
+    ```json
+    {
+      "suite": { "id": "<suite-id>", "name": "Riley: core behaviors" },
+      "assistantId": "<assistant-id>",
+      "simulations": [
+        {
+          "id": "<simulation-id>",
+          "scenarioId": "<scenario-id>",
+          "name": "Books a slot inside office hours",
+          "personalityName": "Skeptical Sam",
+          "successCriteria": ["Did the assistant confirm the date, time, and time zone before booking?"],
+          "requirementIds": ["R1", "R3"],
+          "mockedTools": ["bookAppointment", "checkAvailability"]
+        }
+      ],
+      "coverage": {
+        "covered": 2,
+        "total": 3,
+        "gaps": [
+          { "requirementId": "R2", "reason": "budget", "detail": "It did not fit in this generation." }
+        ],
+        "retryable": 1
+      },
+      "requirements": [{ "id": "R1", "text": "Confirms the date, time, and time zone before booking." }],
+      "docs": { "bestPractices": "https://docs.vapi.ai/...", "toolMocks": "https://docs.vapi.ai/..." },
+      "reused": false
+    }
+    ```
+
+    Check `coverage.gaps` for requirements no simulation covers, and `toolGaps` for tool paths the simulations don't exercise. See [**Coverage gaps**](#coverage-gaps) and [**Tool gaps**](#tool-gaps).
+  </Step>
+
+  <Step title="Edit the suite (optional)">
+    Edit the suite with a new `patchKey` for each edit. In one request, you can:
+
+    - Remove simulations with `removeSimulationIds`. They are unlinked from the suite, not deleted.
+    - Rewrite up to 10 simulations with `edits`, each an instruction in your own words. Put every change for a simulation in one instruction.
+    - Set `retryFailed: true` to regenerate scenarios that failed or didn't fit. The `coverage.retryable` field is the number it would regenerate.
+
+    ```bash
+    curl --fail-with-body -sS -X PATCH "https://api.vapi.ai/eval/simulation/onboarding/suite/<suite-id>" \
+      --max-time 200 \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "patchKey": "booking-agent-edit-1",
+        "edits": [
+          {
+            "simulationId": "<simulation-id>",
+            "instruction": "Make the caller ask for 7pm first, then accept 5pm."
+          }
+        ],
+        "retryFailed": true
+      }'
+    ```
+
+    The response is the updated suite. If an edit could not be applied, for example because the rewrite did not generate in time, its simulation ID is listed in `failedEditSimulationIds`. Retry those with a new `patchKey`.
+  </Step>
+
+  <Step title="Run the suite">
+    Run the suite against the assistant with [`POST /eval/simulation/run`](/observability/simulations-quickstart). Send an `Idempotency-Key` header so a retried request returns the run the first request created instead of starting another.
+
+    ```bash
+    curl --fail-with-body -sS -X POST "https://api.vapi.ai/eval/simulation/run" \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -H "Idempotency-Key: booking-agent-run-1" \
+      -d '{
+        "simulations": [{ "type": "simulationSuite", "simulationSuiteId": "<suite-id>" }],
+        "target": { "type": "assistant", "assistantId": "<assistant-id>" },
+        "transport": { "provider": "vapi.webchat" },
+        "iterations": 5
+      }'
+    ```
+
+    Poll `GET /eval/simulation/run/<run-id>` until `status` is `ended`, as in the [**Simulations quickstart**](/observability/simulations-quickstart). Run five or more iterations before you trust a pass rate, and read the failed transcripts. See [**Test outcomes with Simulations**](/test/simulations-best-practices).
+  </Step>
+</Steps>
+
+## Request fields
+
+### Draft requirements
+
+| Field | Type | Description |
+| -- | -- | -- |
+| `assistantId` | string (UUID) | **Required.** The assistant to draft requirements for. |
+| `previousDraft` | object | The draft being revised, exactly as this endpoint returned it. Send it with `feedback`. |
+| `feedback` | string | What you want changed in `previousDraft`, up to 8,000 characters. Send it with `previousDraft`. |
+
+### Generate a suite
+
+| Field | Type | Description |
+| -- | -- | -- |
+| `assistantId` | string (UUID) | **Required.** The assistant the suite tests and is assigned to. |
+| `idempotencyKey` | string | **Required.** 1 to 200 characters. One key per agreed draft. |
+| `requirements` | array | **Required.** 1 to 50 requirements from the draft, each with a unique `id`. Pass them as the draft returned them. |
+
+### Edit a suite
+
+The `suiteId` in the path must be a suite generated by `POST /eval/simulation/onboarding/suite` (or by Composer) in your organization.
+
+| Field | Type | Description |
+| -- | -- | -- |
+| `patchKey` | string | **Required.** 1 to 200 characters. A new key for each edit. |
+| `removeSimulationIds` | array of UUIDs | Simulations to unlink from the suite, up to 100. |
+| `edits` | array | Up to 10 `{ simulationId, instruction }` objects, at most one per simulation. `instruction` is up to 8,000 characters. |
+| `retryFailed` | boolean | Regenerate the scenarios that failed or did not fit when the suite was generated. |
+
+## Response fields
+
+### Requirements draft
+
+| Field | Description |
+| -- | -- |
+| `version` | Draft version, `1` for a first draft. |
+| `changeNote` | What changed since the previous draft. |
+| `sources` | What the draft was based on, such as the prompt and tools. |
+| `requirements` | Up to 50 requirements. Each has an `id` (such as `R3`), `text` (one observable behavior), and optionally a `tag` (`assumption` or `not-testable`) and a `note` explaining what was assumed or why it can't be tested. |
+| `openQuestions` | Up to 3 questions to answer before you agree. Each has an `id` (such as `Q1`), `text`, and `why` (which requirement the answer changes, and how). |
+
+### Suite
+
+Generating and editing a suite both return this object.
+
+| Field | Description |
+| -- | -- |
+| `suite` | The suite's `id` and `name`. Pass the `id` to edit or run the suite. |
+| `assistantId` | The assistant the suite is assigned to. |
+| `simulations` | The suite's simulations, in order. Each has an `id`, `scenarioId`, `name`, optional `personalityName`, `successCriteria` (each as the yes/no question it is judged by), `requirementIds` (the requirements it covers), and `mockedTools`. |
+| `coverage` | `covered` and `total` requirements, `gaps` (requirements no simulation covers, each with a `requirementId`, `reason`, and optional `detail`), and `retryable` (planned scenarios an edit with `retryFailed` would regenerate). |
+| `requirements` | The agreed requirements the suite was generated from. |
+| `docs` | `bestPractices` and `toolMocks` documentation links. |
+| `reused` | `true` when the request matched one already applied (the same `idempotencyKey` or `patchKey`) and nothing changed. |
+| `toolGaps` | Tool paths the simulations don't exercise as configured. Each has a `toolName`, an `assistantName` when the tool belongs to a handoff destination, a `reason`, and optionally the `destinationNames` the simulations don't reach. Omitted when there are none. |
+| `failedEditSimulationIds` | Edit responses only. Simulations an edit asked to rewrite that were not rewritten. |
+
+## Coverage gaps
+
+A requirement with no simulation covering it appears in `coverage.gaps` with one of these reasons:
+
+| Reason | What it means | What to do |
+| -- | -- | -- |
+| `not-testable` | The requirement is tagged as something a chat simulation can't check, such as pronunciation or latency. | Test it another way, for example with a [voice run](/test/voice-testing). |
+| `unmapped` | No planned scenario exercises the requirement, or its simulation was removed from the suite. | Reword the requirement as an observable behavior and generate a new suite, or add a simulation by hand. |
+| `failed` | Its scenario could not be generated or saved in time. | Edit the suite with `retryFailed: true`. |
+| `budget` | It didn't fit in one generation's time budget. | Edit the suite with `retryFailed: true`. |
+
+## Tool gaps
+
+The `toolGaps` array lists tool paths the simulations don't exercise as configured. Most are handoffs or transfers that are mocked because running them could reach your server, a phone number, or a destination that couldn't be checked safely. A mocked handoff or transfer answers as if it succeeded, so the conversation continues, but the destination isn't tested. New reasons may be added.
+
+| Reason | What it means |
+| -- | -- |
+| `dynamic-handoff` | Your server chooses the handoff destination at call time, so the handoff is mocked. |
+| `destination-not-plain` | The destination assistant uses MCP tools, a pinned assistant version, or other configuration that generation doesn't resolve, so the handoff into it is mocked. |
+| `destination-unresolved` | The destination assistant couldn't be loaded, so the handoff into it is mocked. |
+| `destination-truncated` | The destination wasn't checked in time, either because the assistant has too many handoff destinations or because the destination loaded too slowly. The handoff into it is mocked. |
+| `transfer-external` | A `transferCall` can leave Vapi, to a phone number, a SIP address, or a destination your server chooses, so it is mocked. |
+| `destination-name-unscoped` | A handoff names a destination assistant outside a squad, which can't be resolved at runtime, so that destination is never reached. The handoff isn't mocked. |
+| `native-tool-shadowed` | A built-in tool, such as `endCall` or `transferCall`, has the same name as a mocked tool, so the mock answers it too. |
+
+To test a mocked path, run a separate simulation against the destination assistant, or replace the mock with a sandbox integration. See [**Mock tool responses**](/observability/simulations-advanced#mock-tool-responses).
+
+## Idempotency and retries
+
+**Suite generation.** Send one `idempotencyKey` per agreed draft, and retry with the same key:
+
+- **On a timeout or a `502`, `504`, or `524`**, retry with the same key. You get the saved suite, a `409` while it is still generating, or a fresh generation if the first one never saved.
+- **On a `409` with `SIMULATION_ONBOARDING_GENERATION_IN_PROGRESS`**, the first request is still generating. Wait `Retry-After` seconds (15) and retry with the same key until you get the suite.
+- **On a `409` with `SIMULATION_ONBOARDING_IDEMPOTENCY_KEY_REUSED`**, the key was already used for a different assistant or different requirements. Don't retry with it; send a new key.
+
+A retry that returns a saved suite sets `reused` to `true` and doesn't count toward your limits. To generate a new suite from a revised draft, use a new key.
+
+**Edits.** Send a new `patchKey` for each edit, and the same key to retry it after a timeout or a `5xx`. Replaying a remembered key changes nothing. It returns the current suite, with `failedEditSimulationIds` listing what that edit couldn't rewrite.
+
+A suite remembers only its last 50 applied patch keys. If you reuse a remembered key for a different edit, the new edit is ignored and the current suite is returned. After a key falls out of that history, a request with it can apply again. Never reuse a key for a different edit.
+
+**Drafts.** Drafting has no key. A retry that starts another model call drafts again and counts toward the limit.
+
+## Limits
+
+Each organization has a free daily allowance, shared by the API, the Dashboard, and Composer. Limits reset at 00:00 UTC.
+
+| Operation | Daily limit per organization |
+| -- | -- |
+| Requirement drafts and revisions | 60 |
+| Suite generations | 20 |
+| Suite edits | 60 |
+
+An organization can also have at most **2 suite generations** running at once.
+
+These don't count toward the daily limits:
+
+- A retry that returns a saved suite, or a replayed `patchKey`.
+- An edit that only removes simulations, or `retryFailed` when nothing is left to retry.
+- A request refused before generation starts, such as a `404` or a `422`.
+
+A request counts once generation starts, even if it later fails with a `502` or times out.
+
+The same limits apply to every plan, including Enterprise. There is no request field that raises them.
+
+When you reach a limit, the API returns `429`:
+
+| Code | Meaning | What to do |
+| -- | -- | -- |
+| `SIMULATION_ONBOARDING_QUOTA_EXCEEDED` | The organization used its daily allowance for this operation. | Don't retry. The limit resets at 00:00 UTC; `Retry-After` is the number of seconds until then. |
+| `SIMULATION_ONBOARDING_CONCURRENCY_LIMITED` | The organization already has 2 suites generating. | Wait `Retry-After` seconds (30), then retry. |
+
+## Errors
+
+The `409` and `429` responses carry a JSON body and a `Retry-After` header when waiting helps:
+
+```json
+{
+  "code": "SIMULATION_ONBOARDING_QUOTA_EXCEEDED",
+  "message": "This org has used its 20 free suite generations for today. The limit resets at 00:00 UTC.",
+  "retryAfterSeconds": 41230,
+  "limit": 20
+}
+```
+
+| Field | Description |
+| -- | -- |
+| `code` | Which refusal this is. Branch on it. |
+| `message` | What happened, written for the user. |
+| `retryAfterSeconds` | Seconds to wait before retrying, the same as `Retry-After`. For a daily limit, the seconds until 00:00 UTC. |
+| `limit` | The daily limit that was reached, on a daily-limit refusal only. |
+
+| Status | When | What to do |
+| -- | -- | -- |
+| `400` | The body is invalid. | Fix the request. |
+| `400` | The request sends only one of `previousDraft` and `feedback`. | Send both fields together. |
+| `400` | The generated or edited suite uses something your organization's data-region policy doesn't allow, so it isn't saved. | Use a configuration allowed in your data region. |
+| `401` | The API key is missing or invalid. | Use a valid private API key. |
+| `403` | The key can't create or edit simulation suites. | Use a key with that permission. |
+| `404` | The assistant wasn't found; the suite isn't a generated suite in your organization; or your organization doesn't have API access yet. | Check the ID, or [contact support](/support) to enable access. |
+| `409` | `SIMULATION_ONBOARDING_GENERATION_IN_PROGRESS` or `SIMULATION_ONBOARDING_IDEMPOTENCY_KEY_REUSED`. Suite generation only. | See [**Idempotency and retries**](#idempotency-and-retries). |
+| `422` | None of the requirements can be checked in a chat simulation. Applies to generation only. | Add a testable requirement. |
+| `422` | An MCP server's tools couldn't be listed, so simulations would call them for real instead of a mock. Applies to generation and edits. | Check that the MCP server is reachable, then retry. |
+| `429` | A daily limit or the concurrent-generation limit was reached. | See [**Limits**](#limits). |
+| `500` | The assistant, its tools, or the suite couldn't be read. | Retry. For generation and edits, retry with the same key. |
+| `502` | The model failed to generate a usable result. | Retry. For generation and edits, retry with the same key. |
+| `503` | Simulation generation is paused, or no AI tester personalities are configured. | Retry later. |
+| `504` | The request took too long. | Retry. For generation and edits, retry with the same key. A generation may still save. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Composer" icon="wand-magic-sparkles" href="/composer#generate-tests-for-an-assistant">
+    Generate the same suite through a conversation in the Dashboard.
+  </Card>
+  <Card title="Mock tool responses" icon="wrench" href="/observability/simulations-advanced#mock-tool-responses">
+    Review and change the mocks a generated suite uses.
+  </Card>
+  <Card title="Test outcomes with Simulations" icon="list-check" href="/test/simulations-best-practices">
+    Write observable criteria and repeat critical tests.
+  </Card>
+  <Card title="Manage simulations" icon="gear" href="/observability/simulations-manage">
+    Review and rerun results, and maintain the suite over time.
+  </Card>
+</CardGroup>
