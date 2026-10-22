@@ -8,6 +8,8 @@ slug: providers/observability/langfuse
 
 Vapi natively integrates with Langfuse, allowing you to send traces directly to Langfuse for enhanced telemetry monitoring. This integration enables you to gain deeper insights into your voice AI applications and improve their performance and reliability.
 
+This page covers connecting Langfuse to Vapi. For Langfuse's own guide to working with traces once they arrive, see the [Langfuse tracing documentation](https://langfuse.com/docs/tracing).
+
 <Frame>
   <div class="video-embed-wrapper">
     <iframe
@@ -76,6 +78,23 @@ To make the most out of this integration, you can now use Langfuse's [evaluation
 
 </Step>
 </Steps>
+
+## Server Version Detection and SDK Routing
+
+When you save a Langfuse credential, Vapi probes your server's `/api/public/health` endpoint and automatically resolves the Langfuse server version. The credential stores this resolved version, and Vapi uses it to pick the export path for your traces:
+
+- **Langfuse Cloud and self-hosted servers on version 3.63 or later** receive traces through the Langfuse JS SDK v5 OTLP export path.
+- **Self-hosted servers on versions earlier than 3.63** continue to receive traces through the legacy v3 ingestion API.
+
+You do not need to configure anything; routing follows the resolved server version. All Langfuse Cloud regions (`us.cloud.langfuse.com`, `hipaa.cloud.langfuse.com`, `jp.cloud.langfuse.com`, and `cloud.langfuse.com`) are fully supported, and self-hosted Langfuse v3 remains supported through the upstream v3 patch window ending January 31, 2027.
+
+If Vapi cannot reach your server when you save the credential, you can enter the server version manually. The next successful probe corrects the stored version automatically.
+
+## Troubleshooting
+
+**Host URL is refused when saving.** Host URLs that redirect to a different origin are rejected because trace exports do not follow redirects. For example, `https://eu.cloud.langfuse.com` redirects to `https://cloud.langfuse.com`, so use `https://cloud.langfuse.com` directly. The error message names the URL to use.
+
+**Traces stop appearing during calls.** If tracing fails during a call, for example because your server became unreachable or was upgraded or downgraded across the v3/v5 boundary, Vapi emits a call log error linking to the [credentials page](https://dashboard.vapi.ai/keys). Re-save your Langfuse credential there so Vapi can re-resolve the server version.
 
 ## Enrich Traces
 Vapi allows you to enrich Langfuse traces by integrating [Metadata](https://langfuse.com/docs/tracing-features/metadata) and [Tags](https://langfuse.com/docs/tracing-features/tags).
