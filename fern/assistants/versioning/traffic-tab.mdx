@@ -1,0 +1,231 @@
+---
+title: Compare versions on the Traffic tab
+subtitle: See how each assistant version performs on real calls while a split is live
+description: Use an assistant's Traffic tab to compare published versions on call volume, configured and actual share, duration, cost per minute, latency, and ended reasons, or read the same metrics from the API.
+slug: assistants/versioning/traffic-tab
+---
+
+The **Traffic** tab shows each version of an assistant side by side on the calls it actually handled, so you can tell whether a new version is better. Use it to decide whether to raise a canary's share, keep a test running, or roll back, without exporting call logs or building your own report.
+
+Every number on the tab comes from real calls in the window you choose. It does not change how calls are routed; to change the split itself, use the traffic editor described in [Traffic splitting](/assistants/versioning/traffic-splitting#editing-a-live-split).
+
+## What the tab shows
+
+The tab opens on the current split, from the moment it took effect until now. From top to bottom, it shows:
+
+| View | What it answers |
+| -- | -- |
+| **Flow** | Where calls went: from all calls, to each version, to how each call ended. |
+| **Calls per day** (or **Calls per hour**) | How much traffic each version took over time, with each version's total in the legend. |
+| **Configured and actual share** | Whether each version received the share you gave it. |
+| **Duration, cost, and latency** | How long calls ran, what they cost per minute, and how fast the assistant responded, per version. |
+| **Why calls ended** | The share of each version's calls that ended for each reason, with the count. |
+
+Each version keeps the same color in every view, so you can follow `v7` from the flow down to the last table without rereading labels.
+
+## Before you start
+
+- Traffic splitting must be enabled for your organization. The tab appears on assistants in organizations that have it.
+- To read the tab, your role needs permission to read both calls and traffic allocations. The metrics are built from call data, so a role that can only read splits can't open them.
+- The tab is most useful once the assistant has more than one published version and some calls. A split with a few dozen calls per version tells you far less than one with a few hundred.
+
+## Open the Traffic tab
+
+<Tabs>
+<Tab title="Dashboard">
+
+<Steps>
+  <Step title="Open the assistant">
+    In the [Vapi Dashboard](https://dashboard.vapi.ai), go to **Assistants** and select the assistant you're rolling out.
+  </Step>
+
+  <Step title="Select the Traffic tab">
+    Select **Traffic** in the tab strip, between **Logs** and **Tools**. The tab loads the current split's metrics, from when it took effect until now.
+  </Step>
+</Steps>
+
+If the assistant has never had a split, the tab says so instead of showing empty charts. If you can edit the assistant, select **Set up traffic split** to open the traffic editor right there; your first split's metrics appear on the tab as soon as calls arrive. An assistant that hasn't taken any calls yet shows **No calls yet** until it does.
+
+The range and the versions you pick are saved in the page URL, so a reload keeps your view and a link you share opens your teammate on exactly the same window and versions.
+
+</Tab>
+<Tab title="API">
+
+Read the same metrics with [Get traffic split metrics](/api-reference/traffic-allocations/traffic-allocation-controller-metrics-get). The request takes the assistant and a window, and returns one row per version that took calls in that window.
+
+To match the tab's default view, start the window when the current split took effect. First read the split in effect:
+
+```bash
+curl "https://api.vapi.ai/traffic-allocations/latest?assistantId=00000000-0000-4000-8000-000000000001" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Use the `createdAt` of the returned `allocation` as `from`, and now as `to`:
+
+```bash
+curl -G "https://api.vapi.ai/traffic-allocations/metrics" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  --data-urlencode "assistantId=00000000-0000-4000-8000-000000000001" \
+  --data-urlencode "from=2026-10-06T21:14:00Z" \
+  --data-urlencode "to=2026-10-23T18:00:00Z" \
+  --data-urlencode "bucket=day"
+```
+
+| Parameter | Required | Description |
+| -- | -- | -- |
+| `assistantId` | Yes | The assistant to report on. |
+| `from` | Yes | Start of the window, inclusive, as an RFC 3339 date-time. |
+| `to` | Yes | End of the window, exclusive. Must be later than `from`. |
+| `bucket` | No | `hour` or `day` (default) for the `timeseries`. A window can hold at most 2,000 buckets. |
+
+The response, trimmed to one version:
+
+```json
+{
+  "window": { "from": "2026-10-06T21:14:00.000Z", "to": "2026-10-23T18:00:00.000Z", "bucket": "day" },
+  "totalCalls": 1042,
+  "currentAllocation": {
+    "allocationIntent": "explicit",
+    "createdAt": "2026-10-06T21:14:00.000Z",
+    "targets": [
+      { "assistantVersion": "v6", "percentage": 90 },
+      { "assistantVersion": "v7", "percentage": 10 }
+    ]
+  },
+  "versions": [
+    {
+      "assistantVersionLabel": "v7",
+      "calls": 100,
+      "configuredPercentage": 10,
+      "actualPercentage": 9.597,
+      "durationSeconds": { "mean": 142.3, "p50": 131, "p95": 288 },
+      "costPerMinute": {
+        "mean": 0.118,
+        "breakdown": { "llm": 0.041, "stt": 0.012, "tts": 0.02, "vapi": 0.05, "transport": 0.008 }
+      },
+      "latencyMs": {
+        "turn": { "mean": 1180, "p50": 1090, "p95": 1720 },
+        "transcriber": { "mean": 310, "p50": 290, "p95": 460 },
+        "model": { "mean": 520, "p50": 470, "p95": 840 },
+        "voice": { "mean": 350, "p50": 330, "p95": 520 }
+      },
+      "endedReasons": [
+        { "reason": "customer-ended-call", "count": 71 },
+        { "reason": "assistant-forwarded-call", "count": 18 },
+        { "reason": "silence-timed-out", "count": 11 }
+      ],
+      "timeseries": [
+        { "bucketStart": "2026-10-06T00:00:00.000Z", "calls": 4, "durationSecondsMean": 150.1, "costPerMinuteMean": 0.121, "turnLatencyMsMean": 1210 }
+      ]
+    }
+  ]
+}
+```
+
+`configuredPercentage` is `null` for a version that isn't in the current split, rather than `0`, so "left out of the split" and "given 0%" stay distinguishable. Calls with no assistant version, such as calls made before the assistant was versioned, come back in a row with `unversioned: true`.
+
+</Tab>
+</Tabs>
+
+## Choose the time range
+
+The range menu at the top of the tab sets the window every view reads. It offers:
+
+- **Since split started**: the default. From the moment the current split took effect until now.
+- **Last 24 hours**, **Last 7 days**, and **Last 30 days**: fixed windows ending now.
+- **Previous splits**: the five most recent splits before the current one, newest first. Each is named by the dates it ran, such as **Split Oct 1 – Oct 6, 2026**, with the shares it sent underneath, such as `v3 90% · v4 10%`. Picking one shows that split exactly as it ran, from the moment it took effect until the moment it was replaced.
+
+**Last 24 hours**, and any previous split that ran for less than two days, are shown per hour. Every other range is shown per day.
+
+<Note>
+A fixed range such as **Last 7 days** can start before the current split did, and then it holds calls that an earlier split routed. When that happens, the tab shows only the share each version actually received and leaves out the configured share, because comparing calls against a split that wasn't in effect for all of them would look like misrouting. To compare configured and actual shares for an earlier split, pick it from the previous splits instead.
+</Note>
+
+## Focus on specific versions
+
+The versions menu, next to the range menu, lists every version that took calls in the window. Clear a version to hide it from every view at once; the menu then reads, for example, **2 of 3 versions**. At least one version always stays shown.
+
+You can also focus straight from the flow: select a version's card to show only that version, and select it again to bring the others back. Hovering a version in the flow highlights its rows in the tables below.
+
+When you hide versions, the flow's shares are recalculated over the versions still shown, so they keep adding up to 100%.
+
+## Read each view
+
+### Flow
+
+The flow is a diagram of the window's calls. On the left is every call the assistant received; in the middle, each version's card shows how many of those calls it handled and the share it was configured to take; on the right, those calls fan out into how they ended. A thick ribbon from a version into an unexpected ended reason is often the first sign a new version behaves differently.
+
+A version that isn't part of the current split says **Not in current split** on its card. When the assistant follows the latest published version rather than an explicit split, versions say **Follows latest version** instead.
+
+### Calls per day
+
+This chart shows how many calls each version received in each bucket, with each version's total in the legend. Use it to confirm traffic is actually flowing to a new version, and to spot a version that stopped receiving calls. Switch the card to its table view to see exact counts per day, or per hour on short ranges.
+
+### Configured and actual share
+
+This view puts the share each version was given next to the share of calls it actually received. Small gaps are normal. Repeat callers are kept on the same version where possible, and calls named for a specific version bypass the split, so actual shares drift from configured shares, especially on low volume. A large or growing gap is worth investigating.
+
+When no version shown has a configured share, the configured bar is replaced by a short note explaining why, for example **No configured share: every call goes to the newest published version.**
+
+### Duration, cost, and latency
+
+This table lists one row per version, with these columns:
+
+- **Duration**: how long calls lasted.
+- **Cost per minute**: the average cost of a minute of call. Expand it to see the parts: **LLM**, **STT**, **TTS**, **Vapi**, and **Transport**.
+- **Turn latency**: how long the assistant took to start responding after the caller finished speaking, averaged over each call. Expand it to see the **Transcriber**, **Model**, and **Voice** stages.
+
+Use the **p50** and **p95** toggle to switch duration and latency between the typical call and the slow tail. Sort any column to rank the versions by it. Each bar shows the value against the largest value in its column, so the slowest or most expensive version is easy to spot.
+
+<Tip>
+Check **p95** before you ramp. Two versions can share a typical latency while one of them is much slower for one caller in 20, and those slow calls are the ones customers complain about.
+</Tip>
+
+### Why calls ended
+
+This table lists each ended reason, such as **Customer ended call** or **Silence timed out**, with the share of each version's calls that ended that way and the count. Shading makes the larger shares stand out, so you can compare versions without reading every number. If some calls didn't record a reason, they appear in a **No ended reason recorded** row, so each version's column still accounts for all of its calls.
+
+For what each reason means, see [Call end reasons](/calls/call-ended-reason).
+
+## Example: decide whether to ramp a canary
+
+Say your scheduling assistant runs on `v6`, and a week ago you published `v7`, with a tighter rescheduling prompt, as a 10% canary. To decide what happens next:
+
+<Steps>
+  <Step title="Confirm the canary is getting traffic">
+    Open the **Traffic** tab on **Since split started**. In **Configured and actual share**, `v7` is configured at 10% and received 9.6% of 1,042 calls. That's close enough: the split is working, and `v7` has about 100 calls to judge.
+  </Step>
+
+  <Step title="Compare how the calls went">
+    In **Duration, cost, and latency**, `v7`'s calls run 20 seconds shorter at p50, which is what a tighter prompt should do. Switch to **p95**: turn latency is level with `v6`, so the change didn't slow anything down.
+  </Step>
+
+  <Step title="Look for new failure modes">
+    In **Why calls ended**, `v7` forwards 18% of its calls to a human, against 9% for `v6`. Hover `v7` in the flow to highlight its rows, then open a few of those forwarded calls from the assistant's **Logs** tab, filtered to version `v7`, to read the transcripts.
+  </Step>
+
+  <Step title="Decide">
+    If the extra transfers are customers asking for something `v7` can't do, fix the prompt and publish a new version at 0% before giving it a share. If the transfers are expected, raise `v7` to 50% from the traffic editor.
+  </Step>
+
+  <Step title="Look back at the canary">
+    After you raise the share, the tab resets to the new split. To review the canary as it ran, pick it from the range menu, for example **Split Oct 16 – Oct 23, 2026** with `v6 90% · v7 10%` underneath.
+  </Step>
+</Steps>
+
+## Good to know
+
+- **Metrics follow calls, not the split.** A version appears on the tab when it handled calls in the window, even if it's no longer in the split. A version in the split that took no calls in the window doesn't appear.
+- **Calls with no version aren't shown on the tab.** Calls the assistant handled before it was versioned are left out of the tab's views. The API still returns them in the `unversioned` row.
+- **Old splits stay in history.** The range menu reaches the current split and the five before it. Every split, however old, is listed in [traffic history](/assistants/versioning/traffic-history), and the API accepts any window.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Traffic splitting" icon="code-branch" href="/assistants/versioning/traffic-splitting">
+    Route a share of live calls to each published version.
+  </Card>
+  <Card title="Traffic history" icon="clock-rotate-left" href="/assistants/versioning/traffic-history">
+    Review every split change with who made it, when, and why.
+  </Card>
+</CardGroup>
