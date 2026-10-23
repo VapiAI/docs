@@ -92,6 +92,31 @@ curl -X GET "https://api.vapi.ai/eval/simulation/run/<run-id>" \
 
 The run includes `status` and `itemCounts` (`total`, `passed`, `failed`, and so on). Fetch the result for each simulation iteration with `GET /eval/simulation/run/<run-id>/item`. Each item's `results` holds its `evaluations` and, when the scenario sets latency limits, its `latencyEvaluations`. See [**Review latency results**](/observability/simulations-advanced#review-latency-results).
 
+Filter the lists with query parameters:
+
+| Endpoint | Filters |
+| --- | --- |
+| `GET /eval/simulation/run` | `suiteId` (repeat for up to 100 suites), `targetType` (`assistant` or `squad`), `targetId`, and `status` (`queued`, `running`, or `ended`). You can send `targetType` or `targetId` without the other. |
+| `GET /eval/simulation/run/<run-id>/item` | `status` (`queued`, `running`, `evaluating`, `passed`, `failed`, or `canceled`) and `simulationId`. |
+| `GET /eval/simulation/suite` | `assistantId` and `squadId` (repeat each for up to 100 IDs; if you send both, a suite must match both) and `name`, which matches part of the suite name. |
+
+```bash
+curl -X GET "https://api.vapi.ai/eval/simulation/run?suiteId=<suite-id>&status=ended" \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+Each list also accepts `limit` (default 100, maximum 1,000) and `page`.
+
+<Note>
+  Adding query parameters changes the response shape:
+
+  - With no query parameters, these endpoints return a plain array.
+  - The run and run item lists return `{ "metadata": { ... }, "results": [ ... ] }` when you send any query parameter.
+  - The suite list returns the same object when you send `limit`, `page`, `name`, `assistantId`, or `squadId`.
+
+  If your code expects an array, read `results` whenever you send a query parameter.
+</Note>
+
 </Tab>
 </Tabs>
 
@@ -121,6 +146,27 @@ curl -X POST "https://api.vapi.ai/eval/simulation/run" \
 
 Use `"provider": "vapi.websocket"` for voice.
 
+To retry a run request without starting a second run, send an `Idempotency-Key` header with a value you generate, such as a UUID:
+
+```bash
+curl -X POST "https://api.vapi.ai/eval/simulation/run" \
+  -H "Authorization: Bearer $VAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: <unique-key>" \
+  -d '{
+    "simulations": [{ "type": "simulationSuite", "simulationSuiteId": "<suite-id>" }],
+    "target": { "type": "assistant", "assistantId": "<assistant-id>" },
+    "transport": { "provider": "vapi.webchat" },
+    "iterations": 1
+  }'
+```
+
+- A retry with the same key and the same body returns the run the first request created, with `reused: true`. It doesn't start or bill the run again.
+- Reusing a key with a different body returns `409`. Use a new key for a different run.
+- If a request returns `503` with the code `SIMULATION_WORK_DISABLED`, simulations are paused across Vapi. Retry later. For any other `503`, retry with the same key.
+- A key is up to 255 printable ASCII characters and is scoped to your organization. An empty or invalid key returns `400`.
+- Keys don't expire. A key stays tied to its run for as long as the run exists.
+
 </Tab>
 </Tabs>
 
@@ -138,7 +184,7 @@ Create a regression test when you fix a defect or find an unexpected response. R
 
 ### Edge-case tests
 
-Test realistic variations such as an ambiguous request, an impatient customer, an unavailable appointment, a tool error, an interruption, or a handoff. Base AI tester personalities on the customer types the [**assistant**](/assistants) or [**squad**](/squads) handles. Synthetic callers don't reliably reproduce every interruption, silence, or background-noise condition. Keep controlled real-call checks for problems the simulation can't reproduce.
+Test realistic variations such as an ambiguous request, an impatient customer, an unavailable appointment, a tool error, an interruption, or a handoff. Base AI tester personalities on the customer types the [**assistant**](/assistants) or [**squad**](/squads) handles. Synthetic callers don't reliably reproduce every interruption, silence, or background-noise condition. Keep controlled real-call checks for problems the simulation can't reproduce. Some handoffs and transfers [behave differently in simulations](/observability/simulations-advanced#handoffs-and-transfers-in-simulations).
 
 ### Design evaluations
 

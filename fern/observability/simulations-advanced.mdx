@@ -41,6 +41,17 @@ Open a suite and select **Edit**, then **Next**. The review step contains the **
 
 During a simulation, the [**assistant**](/assistants) or [**squad**](/squads) under test runs its real [**tools**](/tools). Mock a tool to return fixed text instead, so that tool never calls its live service or API. A mock intercepts only the tool it names; every other tool the assistant or squad calls still runs for real.
 
+<Note>
+Suites that [Composer generates](/composer#generate-tests-for-an-assistant) come with mocks already set. Every tool in the assistant's tool list that would reach an external system is mocked, including handoffs and transfers that can't run safely. Tools that only end or route the conversation run normally, such as end call, voicemail, DTMF, and static handoffs.
+
+To change a generated mock, edit the suite and open **Tool mocks & webhooks**. Change the **Mock result**, or turn off **Enabled** to run the tool live. Suites you build yourself start with no mocks, so every tool runs for real until you add one.
+</Note>
+
+<Warning>
+
+Generated mocks don't cover everything. Tools that only an assistant [**hook**](/assistants/assistant-hooks) calls aren't mocked. Explicit [scenario webhooks](#send-webhooks-on-run-start-and-end), unmocked tools, and destination requests can still contact your server. Simulation lifecycle [server messages](/server-url), including the end-of-call report, are suppressed; that doesn't disable these other requests. Check them before running against production systems.
+</Warning>
+
 <Tabs>
 <Tab title="Dashboard">
 
@@ -125,6 +136,34 @@ Return plain text to test how the assistant handles a service that is unavailabl
 </Tabs>
 
 These strings replace the selected tool's output. They do not produce an HTTP error, add network latency, or cause a network timeout.
+
+## Handoffs and transfers in simulations
+
+In a simulation, a [**handoff**](/squads/handoff) with a fixed list of destinations runs only when the model picks one of them. If the model names no destination, asks for `dynamic`, or names an assistant that isn't on the list, the handoff is refused. The assistant doesn't switch, and the model is asked to try again with a listed destination. Your server isn't asked for a destination. On a live call, a missing or `dynamic` destination can instead trigger a request to your server.
+
+A [**dynamic handoff**](/squads/handoff/destinations#dynamic-handoffs) runs as it does on a live call, so it asks your server for a destination unless you [mock it](#mock-tool-responses).
+
+In a suite you build yourself, `transferCall` isn't mocked automatically. In a voice simulation, an external transfer ends the simulation without dialing the phone number or SIP destination, so it doesn't test that destination. If the tool asks your server to choose a destination, that lookup can still run. Mock the tool to avoid that request, and use a real test call to test the external transfer itself.
+
+### Gaps in generated suites
+
+When [Composer generates a suite](/composer#generate-tests-for-an-assistant), it lists each handoff or transfer the suite doesn't exercise as **Not tested**, with the reason:
+
+| Reason | What the suite does |
+| --- | --- |
+| Your server chooses the destination (a dynamic handoff) | Mocks the handoff. |
+| It transfers to a phone number or your server | Mocks the transfer. |
+| The destination assistant couldn't be checked. It uses MCP tools or a pinned version, it didn't load, or Composer reached its limit on how many assistants it reads. | Mocks the handoff into it. |
+| It hands off by assistant name outside a [**squad**](/squads) | Doesn't mock it. A name-based handoff can't resolve outside a squad, so the simulation never reaches it. |
+| A built-in tool, such as `endCall`, has the same name as a mocked tool | The mock answers both. |
+
+Other supported handoffs and assistant-to-assistant transfers run normally. Cover the paths above with test calls against sandbox systems.
+
+## Hooks and call endings
+
+Simulations run the [**hooks**](/assistants/assistant-hooks) on the assistant or squad under test, just like a real call. For example, a `call.ending` hook runs in a voice simulation. The exception is `customer.speech.timeout`. Those hooks are removed from the assistant and every squad member so the assistant doesn't prompt the AI tester when the tester pauses. To test re-engagement, set `targetOverrides.hooks` on the scenario. Those hooks are used exactly as set.
+
+If the AI tester hangs up first in a voice simulation, the call ends with `customer-ended-call`, just like a real caller hanging up. Anything that depends on a caller hang-up runs normally.
 
 ## Send webhooks on run start and end
 
@@ -351,6 +390,10 @@ For a transient scenario, set the same `targetOverrides` on the inline `scenario
 | There is no audio or recording | Check whether the run used chat mode. Use voice mode to test or record audio. |
 | Start or end webhooks do not trigger | Confirm the corresponding hook and its URL are configured on the scenario. |
 | A tool mock does not apply | Confirm that `toolName` matches the configured tool name exactly and that `enabled` is `true`. |
+| A handoff is refused in the transcript | The model gave no destination, `dynamic`, or an assistant the handoff doesn't list. Check the handoff's destinations and the prompt's routing instructions. See [**Handoffs and transfers in simulations**](#handoffs-and-transfers-in-simulations). |
+| A generated suite lists a handoff or transfer as **Not tested** | That path couldn't run safely, so Composer mocked it, or the simulation can't reach it. Cover it with a test call. See [**Gaps in generated suites**](#gaps-in-generated-suites). |
+| The assistant never asks whether the AI tester is still there | Simulations remove `customer.speech.timeout` hooks. To test them, set `targetOverrides.hooks` on the scenario. See [**Hooks and call endings**](#hooks-and-call-endings). |
+| A voice simulation's assistant call ends as `customer-ended-call` | The AI tester hung up first, which matches a real caller hanging up. |
 | A tool looks up the wrong caller | Set `customer.number` in the scenario's variable values. See [**Simulate a call from a specific phone number**](#simulate-a-call-from-a-specific-phone-number). |
 | A latency limit fails without a measured value | No turn in the call measured that metric. Confirm the run used voice mode and that the conversation completed at least one exchange. |
 | Latency limits show as skipped | Check whether the run used chat mode or the assistant under test uses GPT-Live. Both skip latency limits. |
