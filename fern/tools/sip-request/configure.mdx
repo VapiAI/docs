@@ -1,0 +1,219 @@
+---
+title: Configure the SIP Request tool
+subtitle: Create the tool, guide the assistant, and control what the caller hears
+slug: tools/sip-request/configure
+description: Configure the Vapi SIP Request tool in the dashboard or API, prompt the assistant, send requests from hooks, set tool messages and variables, and verify delivery.
+---
+
+Before you start, read [SIP Request tool](/tools/sip-request) for what the tool does, the call requirements, and how to choose a SIP method.
+
+## Create the tool
+
+Put everything your receiving system needs in the headers and body. For example, to tell your contact center the caller is verified, send an `X-Call-Event` header and a body with `accountNumber` and `reason` fields.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. In the [Dashboard](https://dashboard.vapi.ai), select **Tools**, then select **Create Tool**.
+    2. Select **SIP Request**.
+    3. Give the tool a name and description. The description tells the assistant when to send the request and which method to use.
+    4. Under **SIP verb**, select `INFO`, `MESSAGE`, or `NOTIFY`.
+    5. Under **Headers**, add the SIP headers to send. For each header, add a description so the assistant knows what value to fill in. To limit a header to specific values, add them under **Enum Values**.
+    6. Select **Lock schema** so the assistant can't add headers you didn't define.
+    7. Under **Body**, select one:
+       - **Raw string**: a fixed body, sent as written.
+       - **Schema builder**: a structured body. Define the fields and the assistant fills them in during the call.
+    8. Save the tool, then add it to your assistant.
+  </Tab>
+  <Tab title="API">
+    Create the tool with the [Create Tool](/api-reference/tools/create#request.body.sipRequest) endpoint, then add its ID to your assistant's `model.toolIds`.
+
+    This example sends a structured JSON body to a contact center when the caller is verified:
+
+    ```json
+    {
+      "type": "sipRequest",
+      "verb": "INFO",
+      "headers": {
+        "type": "object",
+        "properties": {
+          "X-Call-Event": {
+            "type": "string",
+            "description": "Event name. Use caller-verified after the caller confirms their identity."
+          }
+        }
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "accountNumber": {
+            "type": "string",
+            "description": "The caller's account number"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the caller is calling, in a few words"
+          }
+        },
+        "required": ["accountNumber"]
+      }
+    }
+    ```
+
+    To send a fixed body instead, set `body` to a string:
+
+    ```json
+    {
+      "type": "sipRequest",
+      "verb": "NOTIFY",
+      "body": "event=escalation-requested"
+    }
+    ```
+
+    To change an existing tool, use the [Update Tool](/api-reference/tools/update#request.body.sipRequest) endpoint.
+  </Tab>
+</Tabs>
+
+### Fields
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `type` | Yes | Set to `sipRequest`. |
+| `verb` | Yes | The SIP method: `INFO`, `MESSAGE`, or `NOTIFY`. |
+| `headers` | No | A JSON schema describing the headers the assistant fills in. |
+| `body` | No | A fixed string (up to 5,000 characters), or a JSON schema describing a structured body the assistant fills in. |
+| `messages` | No | What the assistant says when the request starts, completes, or fails. See [Tool messages](#tool-messages). |
+| `rejectionPlan` | No | Conditions that stop the tool from running. See [Tool rejection plan](/tools/tool-rejection-plan). |
+
+For the full schema, see [SIP Request tool in the Create Tool API reference](/api-reference/tools/create#request.body.sipRequest).
+
+## Tell the assistant when to use it
+
+Add instructions to your system prompt that say when to send the request and what to include. Refer to the tool by the name you gave it. For example:
+
+```txt wordWrap
+After the caller confirms their identity, use the send_caller_details tool to send their account number and the reason for their call. Don't tell the caller you are doing this.
+```
+
+Clear field descriptions in your `headers` and `body` schemas also help the assistant fill in the right values.
+
+## Send a request from an assistant hook
+
+To send a SIP request when a call event happens, instead of when the assistant decides to, run the tool from an [assistant hook](/assistants/assistant-hooks). For example, this hook sends a `timeout-transfer` event to your platform after the caller has been silent twice:
+
+```json
+{
+  "hooks": [
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 10,
+        "triggerMaxCount": 2
+      },
+      "do": [
+        {
+          "type": "tool",
+          "tool": {
+            "type": "sipRequest",
+            "verb": "INFO",
+            "headers": {
+              "type": "object",
+              "properties": {
+                "Content-Type": {
+                  "type": "string",
+                  "default": "application/json"
+                }
+              }
+            },
+            "body": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "default": "timeout-transfer"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+In a hook, header and body fields with a `default` value are sent as written. Any other field, including the method, is filled in by the assistant from the conversation, so the [method warning](/tools/sip-request#choose-a-sip-method) still applies.
+
+## Tool messages
+
+If you don't configure `messages`, the assistant says "The request was successful" out loud after the request is sent, and "Sorry, an unexpected error occurred" if it fails.
+
+This tool's messages all play after the request is sent, not before it. Vapi uses the first one that applies:
+
+1. **Request Failed** (`request-failed`), if the request returned an error.
+2. **Request Start** (`request-start`), if you set one. It plays instead of Request Complete.
+3. **Request Complete** (`request-complete`).
+
+Because nothing plays before the request, write any Request Start message as something the caller hears afterward, not "Sending that now."
+
+Most SIP requests are background signals the caller doesn't need to hear about. To keep the conversation natural, set your own `request-complete` and `request-failed` messages. With `role` set to `system`, the message content goes to the model as a hint instead of being spoken, and the assistant continues the conversation in its own words:
+
+```json
+"messages": [
+  {
+    "type": "request-complete",
+    "role": "system",
+    "content": "The details were sent. Continue the conversation without mentioning it."
+  },
+  {
+    "type": "request-failed",
+    "role": "system",
+    "content": "The details could not be sent. Continue the conversation without mentioning it."
+  }
+]
+```
+
+For all message options, see [SIP Request tool messages in the Create Tool API reference](/api-reference/tools/create#request.body.sipRequest).
+
+## Variables
+
+You can use [variables](/assistants/dynamic-variables) such as `{{customer.number}}` in the header schema, the body (string or schema), and tool messages. Vapi fills them in when the call starts.
+
+For example, this tool sends the call ID, the caller's number, and a campaign ID in a fixed string body:
+
+```json
+{
+  "type": "sipRequest",
+  "verb": "INFO",
+  "body": "call={{call.id}};caller={{customer.number}};campaign={{campaignId}}"
+}
+```
+
+The `{{call.id}}` and `{{customer.number}}` variables are built in. Pass `campaignId` in `assistantOverrides.variableValues` when you start the call.
+
+The SIP Request tool doesn't support [static parameters](/tools/static-variables-and-aliases/static-parameters).
+
+## Verify the request was sent
+
+Place a test call over your SIP connection and say whatever should make the assistant send the request. Then check these places:
+
+1. **The tool call and its result.** In the [Dashboard](https://dashboard.vapi.ai), select **Logs**, open the call, and select the [Messages](/observability/logs/call-logs#messages) tab. Find the SIP Request tool call to see the values the assistant generated for the request, and the result that came back. An error result explains why nothing was sent, for example when the call isn't on Vapi's SIP transport.
+2. **The call logs.** If the assistant's **Logging** setting is enabled, the call's [Logs](/observability/logs/call-logs#logs) tab includes a **Tool calls finished** entry under the **Tool** category, showing the tool's result or error.
+3. **The call's SIP signaling.** For calls on Vapi numbers and BYO SIP trunks, Vapi records a packet capture (PCAP) of the call's SIP signaling by default. Download it with **PCAP** on the call's page, or from `artifact.pcapUrl` on the call record, and open it in a SIP analysis tool such as Wireshark. See [Call recording](/assistants/call-recording) for the `pcapEnabled` setting.
+4. **Your receiving system.** A success result in Vapi doesn't confirm that the other end received or accepted the request. Check the logs on your PBX, SBC, or contact center platform to confirm it received the request and acted on it.
+
+If the request didn't work:
+
+| What you see | What to check |
+| --- | --- |
+| An error result saying the tool requires the `vapi.sip` transport | The call isn't on Vapi's SIP transport. See [Requirements](/tools/sip-request#requirements). |
+| Your system responds with `415 Unsupported Media Type` | The content type doesn't match what your system expects. See [How the tool works during a call](/tools/sip-request#how-the-tool-works-during-a-call). |
+| The request uses a different method than you configured | The assistant chose the method. See the [method warning](/tools/sip-request#choose-a-sip-method). |
+| No SIP Request tool call in the Messages tab | The assistant didn't call the tool. Make the system prompt and tool description more specific, or send the request from an [assistant hook](#send-a-request-from-an-assistant-hook). |
+
+## Related
+
+- [SIP Request tool overview](/tools/sip-request)
+- [SIP introduction](/advanced/sip)
+- [SIP trunking](/advanced/sip/sip-trunk)
+- [Built-in tools](/tools/default-tools)
+- [SIP Request tool in the Create Tool API reference](/api-reference/tools/create#request.body.sipRequest)
