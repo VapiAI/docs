@@ -63600,6 +63600,502 @@
           "coverageNotes"
         ]
       },
+      "SimulationOnboardingErrorDTO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Which refusal this is. Retry `SIMULATION_ONBOARDING_GENERATION_IN_PROGRESS` with the same key and `SIMULATION_ONBOARDING_CONCURRENCY_LIMITED` or `SIMULATION_ONBOARDING_QUOTA_UNAVAILABLE` after `retryAfterSeconds`, send a new key for `SIMULATION_ONBOARDING_IDEMPOTENCY_KEY_REUSED`, and stop for `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`.",
+            "enum": [
+              "SIMULATION_ONBOARDING_GENERATION_IN_PROGRESS",
+              "SIMULATION_ONBOARDING_IDEMPOTENCY_KEY_REUSED",
+              "SIMULATION_ONBOARDING_CONCURRENCY_LIMITED",
+              "SIMULATION_ONBOARDING_QUOTA_EXCEEDED",
+              "SIMULATION_ONBOARDING_QUOTA_UNAVAILABLE"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "What happened, written for the user."
+          },
+          "retryAfterSeconds": {
+            "type": "number",
+            "description": "Seconds to wait before retrying, the same value as the `Retry-After` header. For a daily limit, the seconds until 00:00 UTC."
+          },
+          "limit": {
+            "type": "number",
+            "description": "The daily limit that was reached, on a daily-limit refusal only."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "SimulationOnboardingRequirementDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable requirement id, e.g. `R3`."
+          },
+          "text": {
+            "type": "string",
+            "description": "One observable behaviour the assistant must get right.",
+            "maxLength": 1000
+          },
+          "tag": {
+            "type": "string",
+            "description": "Why this requirement needs the user's attention, when it does.",
+            "enum": [
+              "assumption",
+              "not-testable",
+              "voice-only"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "What was assumed, why only a voice run can check it, or why it cannot be tested.",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ]
+      },
+      "SimulationOnboardingOpenQuestionDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Question id within its draft, e.g. `Q1`."
+          },
+          "text": {
+            "type": "string",
+            "description": "The question to ask your user.",
+            "maxLength": 1000
+          },
+          "why": {
+            "type": "string",
+            "description": "Which requirement the answer changes, and how.",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "why"
+        ]
+      },
+      "SimulationOnboardingRequirementsDraftDTO": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "description": "Draft version, 1 for a first draft.",
+            "minimum": 1
+          },
+          "changeNote": {
+            "type": "string",
+            "description": "What changed since the previous draft.",
+            "maxLength": 1000
+          },
+          "sources": {
+            "description": "What the draft was based on, e.g. the prompt and tools.",
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requirements": {
+            "description": "The requirements, for your user to review.",
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOnboardingRequirementDTO"
+            }
+          },
+          "openQuestions": {
+            "description": "Questions to ask your user before they agree.",
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOnboardingOpenQuestionDTO"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "sources",
+          "requirements",
+          "openQuestions"
+        ]
+      },
+      "SimulationOnboardingRequirementsCreateDTO": {
+        "type": "object",
+        "properties": {
+          "assistantId": {
+            "type": "string",
+            "description": "Assistant to draft requirements for.",
+            "format": "uuid"
+          },
+          "previousDraft": {
+            "description": "The draft being revised, exactly as this endpoint returned it. Send it with `feedback`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SimulationOnboardingRequirementsDraftDTO"
+              }
+            ]
+          },
+          "feedback": {
+            "type": "string",
+            "description": "What your user wants changed in `previousDraft`, in the user's own words. Send it with `previousDraft`.",
+            "maxLength": 8000
+          }
+        },
+        "required": [
+          "assistantId"
+        ]
+      },
+      "SimulationOnboardingSuiteCreateDTO": {
+        "type": "object",
+        "properties": {
+          "assistantId": {
+            "type": "string",
+            "description": "Assistant the suite tests and is assigned to.",
+            "format": "uuid"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "One key per agreed draft. Retrying with the same key returns the suite already saved, or a 409 while it is still generating, instead of generating another.",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "requirements": {
+            "description": "The requirements your user agreed to, from the requirements draft. Each id at most once.",
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOnboardingRequirementDTO"
+            }
+          }
+        },
+        "required": [
+          "assistantId",
+          "idempotencyKey",
+          "requirements"
+        ]
+      },
+      "SimulationOnboardingSuiteRefDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Suite id; pass it to edit or run the suite."
+          },
+          "name": {
+            "type": "string",
+            "description": "Suite name."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "SimulationOnboardingSuiteSimulationDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Simulation id; pass it back to edit or remove the simulation."
+          },
+          "scenarioId": {
+            "type": "string",
+            "description": "Scenario the simulation runs."
+          },
+          "name": {
+            "type": "string",
+            "description": "Scenario name."
+          },
+          "personalityName": {
+            "type": "string",
+            "description": "Name of the simulated caller's personality."
+          },
+          "successCriteria": {
+            "description": "Each success criterion, as the yes/no question it is judged by.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requirementIds": {
+            "description": "Requirement ids this simulation covers, e.g. `R3`.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mockedTools": {
+            "description": "Tools the scenario mocks.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "scenarioId",
+          "name",
+          "successCriteria",
+          "requirementIds",
+          "mockedTools"
+        ]
+      },
+      "SimulationOnboardingCoverageGapDTO": {
+        "type": "object",
+        "properties": {
+          "requirementId": {
+            "type": "string",
+            "description": "Requirement the gap is for, e.g. `R4`."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why no simulation covers it. `failed` and `budget` gaps are regenerated by an edit with `retryFailed`.",
+            "enum": [
+              "not-testable",
+              "unmapped",
+              "failed",
+              "budget"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "A short explanation for the user."
+          }
+        },
+        "required": [
+          "requirementId",
+          "reason"
+        ]
+      },
+      "SimulationOnboardingSuiteCoverageDTO": {
+        "type": "object",
+        "properties": {
+          "covered": {
+            "type": "number",
+            "description": "Requirements at least one simulation covers."
+          },
+          "total": {
+            "type": "number",
+            "description": "Requirements in the agreed draft."
+          },
+          "gaps": {
+            "description": "Requirements no simulation covers, and why.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOnboardingCoverageGapDTO"
+            }
+          },
+          "retryable": {
+            "type": "number",
+            "description": "Planned scenarios an edit with `retryFailed` would regenerate."
+          }
+        },
+        "required": [
+          "covered",
+          "total",
+          "gaps",
+          "retryable"
+        ]
+      },
+      "SimulationOnboardingSuiteDocsDTO": {
+        "type": "object",
+        "properties": {
+          "bestPractices": {
+            "type": "string",
+            "description": "Link to testing best practices."
+          },
+          "toolMocks": {
+            "type": "string",
+            "description": "Link explaining why tools are mocked by default."
+          }
+        },
+        "required": [
+          "bestPractices",
+          "toolMocks"
+        ]
+      },
+      "SimulationOnboardingToolGapDTO": {
+        "type": "object",
+        "properties": {
+          "toolName": {
+            "type": "string",
+            "description": "Function name of the tool, e.g. `handoff_to_group_1` or `transferCall`."
+          },
+          "assistantName": {
+            "type": "string",
+            "description": "Assistant the tool belongs to, when it is a handoff destination's tool. Unset for the assistant's own tools."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the path is not exercised: a reason the simulations mock the tool, or why a native path is never reached. New reasons may be added.",
+            "enum": [
+              "dynamic-handoff",
+              "destination-not-plain",
+              "destination-unresolved",
+              "destination-truncated",
+              "transfer-external",
+              "destination-name-unscoped",
+              "native-tool-shadowed"
+            ]
+          },
+          "destinationNames": {
+            "description": "Static destinations the simulations do not reach through this tool.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "toolName",
+          "reason"
+        ]
+      },
+      "SimulationOnboardingSuiteViewDTO": {
+        "type": "object",
+        "properties": {
+          "suite": {
+            "description": "The suite.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SimulationOnboardingSuiteRefDTO"
+              }
+            ]
+          },
+          "assistantId": {
+            "type": "string",
+            "description": "Assistant the suite is assigned to."
+          },
+          "simulations": {
+            "description": "The suite's simulations, in order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOnboardingSuiteSimulationDTO"
+            }
+          },
+          "coverage": {
+            "description": "Coverage of the agreed requirements.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SimulationOnboardingSuiteCoverageDTO"
+              }
+            ]
+          },
+          "requirements": {
+            "description": "The agreed requirements the suite was generated from, to name the gaps.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOnboardingRequirementDTO"
+            }
+          },
+          "docs": {
+            "description": "Documentation to link when you summarize the suite.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SimulationOnboardingSuiteDocsDTO"
+              }
+            ]
+          },
+          "reused": {
+            "type": "boolean",
+            "description": "True when the request matched one already applied (same `idempotencyKey` or `patchKey`) and nothing changed."
+          },
+          "failedEditSimulationIds": {
+            "description": "Simulations an edit asked to rewrite that were not rewritten, for example because the rewrite did not generate in time. Retry them with a new `patchKey`.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "toolGaps": {
+            "description": "Tool paths the suite's simulations do not exercise as configured, such as a tool mocked although it runs natively. Omitted when there are none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOnboardingToolGapDTO"
+            }
+          }
+        },
+        "required": [
+          "suite",
+          "assistantId",
+          "simulations",
+          "coverage",
+          "requirements",
+          "docs",
+          "reused"
+        ]
+      },
+      "SimulationOnboardingSuiteEditDTO": {
+        "type": "object",
+        "properties": {
+          "simulationId": {
+            "type": "string",
+            "description": "Simulation in the suite whose scenario is rewritten.",
+            "format": "uuid"
+          },
+          "instruction": {
+            "type": "string",
+            "description": "The user's requested change, in their own words.",
+            "maxLength": 8000
+          }
+        },
+        "required": [
+          "simulationId",
+          "instruction"
+        ]
+      },
+      "SimulationOnboardingSuiteUpdateDTO": {
+        "type": "object",
+        "properties": {
+          "patchKey": {
+            "type": "string",
+            "description": "A new key for each edit. Replaying an applied key changes nothing and returns the current suite. A suite remembers its last 50 keys, so never reuse one.",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "removeSimulationIds": {
+            "description": "Simulations to take out of the suite. They are unlinked, not deleted.",
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "edits": {
+            "description": "Simulations to rewrite in place, at most one edit per simulation: put every change for a simulation in one instruction.",
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOnboardingSuiteEditDTO"
+            }
+          },
+          "retryFailed": {
+            "type": "boolean",
+            "description": "Regenerate the scenarios that failed or did not fit when the suite was generated."
+          }
+        },
+        "required": [
+          "patchKey"
+        ]
+      },
       "CreateSimulationDTO": {
         "type": "object",
         "properties": {
