@@ -1,0 +1,78 @@
+---
+title: SIP Request tool
+subtitle: Send SIP INFO, MESSAGE, or NOTIFY requests on a live call
+slug: tools/sip-request
+description: Use the SIP Request tool to let a Vapi assistant send SIP INFO, MESSAGE, or NOTIFY requests mid-call to your PBX, SBC, or contact center platform on SIP calls.
+---
+
+The SIP Request tool lets your assistant send a Session Initiation Protocol (SIP) INFO, MESSAGE, or NOTIFY request to the system on the other end of the call. It doesn't transfer the call, end it, or change who's on it.
+
+Use it to tell your telephony system something during the call, at the moment your assistant learns it.
+
+<Note>
+The SIP Request tool only works on calls that run over Vapi's SIP transport, such as calls to a Vapi SIP URI or calls through a [BYO SIP trunk](/advanced/sip/sip-trunk). See [Requirements](#requirements).
+</Note>
+
+## When to use the SIP Request tool
+
+Use the SIP Request tool when a system that's already in the SIP call path needs information from the conversation, and that system listens for SIP requests. Common examples:
+
+- **Pass caller details to your contact center.** Your assistant collects an account number, the reason for the call, or a verification result. It sends them to your private branch exchange (PBX) or contact center platform, which records them against the call in real time, uses them to route a transfer, or shows them to the human agent who picks up.
+- **Signal call milestones.** Your assistant tells your system when something happens, such as "caller verified," "consent captured," or "escalation requested," so the system can react while the call is still live.
+- **Send a short text payload to a SIP endpoint.** Your assistant sends a MESSAGE request that the receiving device or application can display or log.
+
+### Why use SIP instead of an HTTP request
+
+You could send the same information to a webhook with an [API request](/tools/api-request) or [Function](/tools/custom-tools) tool. The SIP Request tool is a better fit when:
+
+- **The receiving system speaks SIP, not HTTP.** Many PBXs, session border controllers (SBCs), and contact center platforms act on in-call SIP requests but don't expose an HTTP API for live calls.
+- **The data needs to stay tied to the call.** The request travels inside the same SIP dialog as the call, so the receiving system knows which call it belongs to. You don't need to match call IDs across systems.
+- **You don't want to host an endpoint.** No server URL or webhook is involved.
+
+For other tool types, see the [tools overview](/tools).
+
+## Requirements
+
+The call must run over Vapi's SIP transport (`vapi.sip`). That includes calls to a [Vapi SIP URI](/advanced/sip) and calls through a [BYO SIP trunk](/advanced/sip/sip-trunk).
+
+On other calls, such as web calls or calls on phone numbers imported with Twilio, Vonage, or Telnyx API credentials, the tool doesn't send anything. It returns an error to the assistant instead.
+
+The system on the other end must also accept the SIP method you choose. Check which methods, headers, and body formats your PBX, SBC, or platform expects before you configure the tool.
+
+## Choose a SIP method
+
+| Method | Typical use |
+| --- | --- |
+| `INFO` | Pass application data during a call. This is the most common choice for sending call details to a PBX or contact center. |
+| `MESSAGE` | Send a short text message to the endpoint. |
+| `NOTIFY` | Report that an event happened. |
+
+Use the method your receiving system expects. If you're not sure, start with `INFO`.
+
+<Warning>
+The assistant can choose a different method than the one you configured. If your system only accepts one method, a request sent with another one can be rejected or ignored, so your system never gets the data. Name the method in the tool description and in your system prompt, such as "Always send this as a SIP INFO request."
+</Warning>
+
+## How the tool works during a call
+
+When your assistant calls the tool, it chooses the values to send:
+
+- **Method.** The assistant can choose the method. If it doesn't, Vapi uses the `verb` you configured. See [Choose a SIP method](#choose-a-sip-method).
+- **Headers.** The assistant fills in the headers you described in `headers`.
+- **Body.** With a schema body, the assistant fills in the fields and Vapi sends them as JSON. With a fixed string body, Vapi uses your string as the default value, and the assistant can still replace it.
+
+The content type of the request is set like this:
+
+1. If you include a `Content-Type` header, Vapi uses it.
+2. If the body is JSON, Vapi sets `Content-Type: application/json`.
+3. Otherwise, Vapi sends the body as `text/plain`.
+
+Match the format your receiving system expects. If your system expects JSON sent as `text/plain` and responds with `415 Unsupported Media Type`, use a **Raw string** body containing the JSON and don't add a `Content-Type` header.
+
+The assistant gets back a short result: success, or an error. The SIP response from the other end, such as `200 OK`, isn't passed back to the assistant.
+
+## Next steps
+
+<Card title="Configure the SIP Request tool" icon="sliders" href="/tools/sip-request/configure">
+  Create the tool, tell the assistant when to use it, send requests from hooks, set tool messages and variables, and verify the request was sent.
+</Card>

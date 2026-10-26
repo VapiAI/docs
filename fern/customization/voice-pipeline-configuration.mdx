@@ -30,7 +30,7 @@ For implementation examples, see **[Configuration examples](#configuration-examp
   </Step>
 
   <Step title="Configure when the assistant starts speaking">
-    In **Start Speaking Plan**, set **Wait Seconds**. Choose **Off**, **Vapi**, or **LiveKit** under **Smart Endpointing**, then set **On Punctuation Seconds**, **On No Punctuation Seconds**, and **On Number Seconds**.
+    In **Start Speaking Plan**, set **Wait Seconds**, then choose **Off**, **Vapi**, or **LiveKit** under **Smart Endpointing**. With **Off**, set **On Punctuation Seconds**, **On No Punctuation Seconds**, and **On Number Seconds**. With **LiveKit**, configure **Wait Function** instead.
   </Step>
 
   <Step title="Configure when the assistant stops speaking">
@@ -38,16 +38,16 @@ For implementation examples, see **[Configuration examples](#configuration-examp
   </Step>
 
   <Step title="Publish the assistant">
-    Select **publish** in the unsaved-changes message to apply the update.
+    Select **Publish** in the assistant header, review the changes, then select **Next**. Review the version and traffic settings, then select **Publish**.
   </Step>
 </Steps>
 
 <Frame caption="Configure when the assistant starts speaking.">
-  <img src="../static/images/customization/voice-pipeline-configuration/start-speaking-plan-dashboard.png" />
+  <img src="../static/images/customization/voice-pipeline-configuration/start-speaking-plan-dashboard.png" alt="Start Speaking Plan controls for wait time and smart endpointing" />
 </Frame>
 
 <Frame caption="Configure how the assistant responds to interruptions.">
-  <img src="../static/images/customization/voice-pipeline-configuration/stop-speaking-plan-dashboard.png" />
+  <img src="../static/images/customization/voice-pipeline-configuration/stop-speaking-plan-dashboard.png" alt="Stop Speaking Plan controls for interruptions" />
 </Frame>
 
 ## Quick start
@@ -118,10 +118,10 @@ User Audio → VAD → Transcription → Start Speaking Decision → LLM → TTS
     Voice Activity Detection (VAD) detects utterance-stop
   </Step>
   <Step title="Endpointing decision">
-    System evaluates completion in this order and stops at the first step that applies:
+    The system evaluates completion in this order and stops at the first step that applies:
     1. **Transcriber EOT detection** (if the transcriber has built-in EOT and no `smartEndpointingPlan` is set, or the plan's provider is the transcriber itself). The turn ends on the transcriber's final transcript, and custom rules are not evaluated.
     2. **Custom Rules** (if a rule matches, its timeout is used)
-    3. **Smart Endpointing Plan** (LiveKit for English, Vapi for non-English), or the heuristic `transcriptionEndpointingPlan` when no smart endpointing applies
+    3. **Smart Endpointing Plan** (LiveKit for English, or a `custom-endpointing-model` server). Otherwise, the heuristic `transcriptionEndpointingPlan` is used, including for the `vapi` provider and for non-English conversations.
   </Step>
   <Step title="Response generation">
     LLM request sent immediately → TTS processes → waitSeconds applied →
@@ -155,7 +155,7 @@ The start speaking plan determines when your assistant begins responding after a
 Analyzes transcription text to determine user completion based on patterns like punctuation and numbers.
 
 <Note>
-This plan is only used if `smartEndpointingPlan` is not set and transcriber does not have built-in endpointing capabilities. If both are provided, `smartEndpointingPlan` takes precedence. This plan will also be overridden by any matching `customEndpointingRules`.
+This plan is used when the transcriber's end-of-turn detection isn't in use and smart endpointing doesn't apply. Smart endpointing doesn't apply when `smartEndpointingPlan` is not set, when its provider is `vapi`, or when LiveKit is set but the conversation isn't in English. Any matching `customEndpointingRules` override this plan.
 </Note>
 
 <Tabs>
@@ -215,14 +215,14 @@ Uses AI models to analyze speech patterns, context, and audio cues to predict wh
   <Tab title="Providers">
     **Text-based providers:**
     - **livekit**: Advanced model trained on conversation data (English only)
-    - **vapi**: VAPI-trained model (non-English conversations or LiveKit alternative)
+    - **vapi**: Vapi's heuristic endpointing, which uses your `transcriptionEndpointingPlan` settings. See [Vapi heuristic endpointing](#vapi-heuristic-endpointing).
     
     **Custom providers:**
     - **custom-endpointing-model**: Sends each endpointing decision to your own server, which returns a `timeoutSeconds` value
     
     **Audio-text based providers:**
     - **deepgram-flux**: Deepgram's latest transcriber model with built-in conversational speech recognition. Use `flux-general-en` for English-only conversations or `flux-general-multi` for multilingual conversations.
-    - **assembly**: Transcriber with built-in end-of-turn detection for Universal-Streaming English, Universal-Streaming Multilingual, and Universal 3.5 Pro
+    - **assembly**: Transcriber with built-in end-of-turn detection for Universal-Streaming English, Universal-Streaming Multilingual, and Universal 3.6 Pro
 
     <hr />
   </Tab>
@@ -234,7 +234,7 @@ Uses AI models to analyze speech patterns, context, and audio cues to predict wh
 - **Deepgram Flux**: English and Multi-lingual conversations using Deepgram as a transcriber. 
 - **AssemblyAI**: Use when AssemblyAI is already your transcriber provider and you want integrated end-of-turn detection
 - **LiveKit**: English conversations where Deepgram is not the transcriber of choice.
-- **Vapi**: Non-English conversations with default stop speaking plan settings
+- **Vapi**: Non-English conversations, or when you want predictable, rule-based endpointing
 - **Custom endpointing model**: When your own server should decide the endpointing timeout for each turn
 
 ### Deepgram Flux configuration

@@ -1,0 +1,88 @@
+---
+title: Review traffic history
+subtitle: See every split an assistant has had, who made it, and why
+description: Review every traffic split change for an assistant, with its shares, note, author, and time, then open a split's metrics or list the history from the API.
+slug: assistants/versioning/traffic-history
+---
+
+Traffic history is the record of every traffic split an assistant has had, newest first. Each entry shows which versions the split routed calls to and at what share, the note left with the change, when it took effect, and who made it. Use it to answer questions like "when did `v7` go to 50%?" or "who rolled back last night, and why?", and to jump straight to how any recent split performed.
+
+Nothing in the history is ever edited or removed. Each change to a split adds a new entry, and the newest entry is the one routing calls.
+
+## Open traffic history
+
+<Tabs>
+<Tab title="Dashboard">
+
+<Steps>
+  <Step title="Open the assistant">
+    In the [Vapi Dashboard](https://dashboard.vapi.ai), go to **Assistants** and select the assistant.
+  </Step>
+
+  <Step title="Open the More actions menu">
+    In the assistant header, select **More actions** (the ⋮ button), then select **Traffic history**. The history opens in the panel on the right, next to the assistant.
+  </Step>
+</Steps>
+
+Entries are grouped by the day they took effect, such as **Today**, **Yesterday**, or a date. Select **Load more** at the bottom of the panel to see older entries. An assistant that has never had a split shows **No traffic history yet**, because every call still goes to the latest published version.
+
+</Tab>
+<Tab title="API">
+
+List the history with [List traffic allocations](/api-reference/traffic-allocations/traffic-allocation-controller-find-all-paginated). Each split change is one allocation, newest first:
+
+```bash
+curl -G "https://api.vapi.ai/traffic-allocations" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  --data-urlencode "assistantId=00000000-0000-4000-8000-000000000001"
+```
+
+Each allocation in the response carries:
+
+| Field | Description |
+| -- | -- |
+| `allocationIntent` | `explicit` for a split across `targets`, or `follow-latest` when every call goes to the latest published version. |
+| `targets` | The versions and their `percentage`, in the order the split lists them. Empty for `follow-latest`. |
+| `description` | The note given with the change, if any. |
+| `createdAt` | When the split took effect. |
+| `actorType`, `actorEmail` | Who made the change: a user (with their email at the time), an API key, or `system` when Vapi made it automatically. |
+
+To read only the split in effect now, use [Get latest traffic allocation](/api-reference/traffic-allocations/traffic-allocation-controller-latest-get).
+
+</Tab>
+</Tabs>
+
+## Read an entry
+
+Each entry in the panel shows, from top to bottom:
+
+- **The split**: each version with its share, such as `v6` **90%** and `v7` **10%**, or **Follows the latest version** when the assistant routed every call to its latest published version. The entry in effect now is marked **Current**.
+- **The note**: the description left with the change, if one was given.
+- **When and who**: the time the split took effect and who made it. Changes made through the API show **API key**. Changes Vapi made on its own, such as moving a follow-latest assistant to a version you just published, show **Vapi**.
+
+<Tip>
+Leave a note every time you change a split, such as "canary: tightened refund prompt" or "rollback: v8 transfers spiking". Notes appear in the history and in the API, so whoever looks next, including you, knows why the split existed.
+</Tip>
+
+## See how a split performed
+
+Select an entry to open the [Traffic tab](/assistants/versioning/traffic-tab) over exactly the window that split governed, from when it took effect until it was replaced. The entry the tab is showing stays highlighted, so the panel works as a second way to pick the tab's range.
+
+You can open the current split and the five before it this way, the same splits the Traffic tab's range menu offers. Older entries stay in the history as a record but can't be opened on the tab. To read metrics for an older split, request its window with [Get traffic split metrics](/api-reference/traffic-allocations/traffic-allocation-controller-metrics-get), using its `createdAt` as `from` and the next split's `createdAt` as `to`.
+
+## Change the current split
+
+The current entry has an **Edit split** button (the pencil). Select it to open the traffic editor on today's routing, the same editor the **Traffic** entry in the assistant header opens. Saving a change adds a new entry to the top of the history; the old one stays as it was.
+
+For how the editor works, see [Editing a live split](/assistants/versioning/traffic-splitting#editing-a-live-split).
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Compare versions on the Traffic tab" icon="chart-column" href="/assistants/versioning/traffic-tab">
+    Compare versions on volume, share, duration, cost, latency, and ended reasons.
+  </Card>
+  <Card title="Traffic splitting" icon="code-branch" href="/assistants/versioning/traffic-splitting">
+    Route a share of live calls to each published version.
+  </Card>
+</CardGroup>
