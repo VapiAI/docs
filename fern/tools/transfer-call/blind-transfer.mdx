@@ -129,14 +129,16 @@ The SIP verb affects only calls running on SIP telephony. Other telephony provid
 
 Do not use `bye` when you expect Vapi to dial the destination. It intentionally places no destination call.
 
-## Call state after a dial transfer
+## Call state after a SIP transfer
 
-`refer` and `dial` leave the call in different states once the transfer starts.
+The `refer` and `dial` verbs leave the call in different states once the transfer starts.
 
-- **`refer`** hands the call off with a SIP REFER. Vapi's call leg — and its recording, if enabled — ends once the destination accepts, and the destination continues the call independently of Vapi.
-- **`dial`** bridges a new outbound leg while Vapi stays in the call path for the bridged call. Because Vapi remains on the call, recording configured on the original call continues to capture the bridged leg. There is no built-in way to unbridge a `dial` transfer and return the caller to the original assistant; the caller and destination stay connected through Vapi until either side hangs up.
+- **`refer`** hands the call off with a SIP REFER. Vapi leaves the call when the transfer starts, and the destination continues the call without Vapi.
+- **`dial`** bridges a new outbound leg to the destination. The SIP layer keeps the caller and destination connected until either side hangs up, but the assistant leaves the call when the transfer starts. You can't unbridge a connected `dial` transfer and return the caller to the original assistant.
 
-An unanswered `dial` transfer has no automatic fallback to the original assistant when `dialTimeout` elapses; the transfer fails instead. To resume the original assistant after a failed or declined transfer, use [assistant-based warm transfer](/calls/assistant-based-warm-transfer), where the transfer assistant can call `transferCancel`, or route the destination choice through server-side logic with the `transfer-destination-request` webhook.
+With either verb, Vapi's recording and transcript stop when the transfer starts. To capture the rest of the call, record it in a system that stays in the media path, such as your SIP provider or PBX.
+
+If a `refer` or `dial` transfer is busy, unanswered, or fails, the caller doesn't return to the original assistant by default. If SIP transfer fallback is enabled and the destination's `transferPlan` has a `fallbackPlan`, the assistant speaks the fallback message. It then ends the call or keeps helping the caller. See [Understand transfer outcomes and fallback](/tools/transfer-call#understand-transfer-outcomes-and-fallback).
 
 ## Verify the transfer
 
@@ -153,7 +155,8 @@ An `assistant-forwarded-call` ended reason confirms that Vapi initiated the tran
 | The original call ends, but the destination never rings | The SIP system rejected or did not receive the REFER | Check the affected call's **Logs** tab in [**Logs → Calls**](/observability/logs/call-logs), then inspect the provider or PBX SIP logs and packet capture. Confirm required SIP signaling addresses are allowed. |
 | The call ends without dialing a destination | `sipVerb` is set to `bye` | Use `refer` or `dial` when Vapi should place or initiate the transfer. |
 | A dial transfer stops ringing too soon | `dialTimeout` is too short | Increase `dialTimeout` within the 1–600 second range. |
-| The caller can't return to the original assistant after a `dial` transfer | `dial` has no automatic fallback on no-answer or failure | Use `refer` if the SIP trunk supports SIP REFER, or configure [assistant-based warm transfer](/calls/assistant-based-warm-transfer) with an explicit fallback plan. |
+| The caller doesn't return to the assistant after a failed transfer | The destination has no `fallbackPlan`, or SIP transfer fallback isn't enabled | Add a `fallbackPlan` to the destination's `transferPlan`. See [Understand transfer outcomes and fallback](/tools/transfer-call#understand-transfer-outcomes-and-fallback). |
+| The recording or transcript stops at the transfer | Vapi's recording and transcript end when the transfer starts for both `refer` and `dial` | Record the full call in your SIP provider or PBX. |
 | The summary header is missing | The standard blind mode is selected or summary generation is disabled | Use `blind-transfer-add-summary-to-sip-header` and enable `summaryPlan`. Inspect the receiving SIP system rather than the audio transcript. |
 | The summary contains the wrong information | The summary prompt is broad or uses the wrong template variable | Give `summaryPlan.messages` a focused instruction and include `{{transcript}}` in the user message. |
 | Vapi shows `assistant-forwarded-call`, but the transfer failed | Vapi initiated the downstream transfer but did not observe its final result | Use the telephony provider's call detail record and SIP signaling as the source of truth for downstream completion. |
