@@ -7891,49 +7891,11 @@
         ]
       }
     },
-    "/eval/simulation/scenario/generate": {
-      "post": {
-        "operationId": "SimulationGenerateController_generate",
-        "summary": "Generate Scenarios with AI",
-        "description": "Uses AI to analyze an assistant or squad configuration and generate test scenarios",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenerateScenariosDTO"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenerateScenariosResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Simulations"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
     "/eval/simulation/onboarding/requirements": {
       "post": {
         "operationId": "SimulationOnboardingController_requirementsDraft",
         "summary": "Draft simulation requirements",
-        "description": "Drafts the behaviours an assistant must get right, as numbered requirements plus open questions, from its prompt, tools and handoffs. This is the first step of building a simulation suite.\n\n1. Show the draft to your user and ask its open questions.\n2. To revise it, call again with `previousDraft` set to the draft and `feedback` set to what the user said, verbatim. Repeat until they agree.\n3. Generate the suite from the agreed requirements with `POST /eval/simulation/onboarding/suite`.\n\nTakes up to 2 minutes. Each org can draft 60 times per UTC day, shared with the dashboard. On a 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`, don't retry: tell your user the limit resets at 00:00 UTC.",
+        "description": "Generate draft test requirements from an assistant's prompt, tools, and handoff configuration. The response includes numbered requirements describing expected behavior and open questions about behavior that needs clarification. Use this endpoint before generating a simulation suite.\n\nReview the requirements and resolve any open questions. To revise a draft, send it as `previousDraft` together with natural-language `feedback` describing the changes or answers. Once the requirements are ready, pass them to `POST /eval/simulation/onboarding/suite`.\n\nRequests can take up to 2 minutes. Each organization can draft requirements 60 times per UTC day, shared with the dashboard. A 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED` response means the daily limit has been reached. Wait until the limit resets at 00:00 UTC before retrying.",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -8034,7 +7996,7 @@
           }
         },
         "tags": [
-          "Simulations"
+          "Simulation Suites"
         ],
         "security": [
           {
@@ -8047,7 +8009,7 @@
       "post": {
         "operationId": "SimulationOnboardingController_suiteCreate",
         "summary": "Generate a simulation suite",
-        "description": "Generates a simulation suite from requirements your user agreed to, saves it and assigns it to the assistant. Takes up to 3 minutes, so set a client timeout of at least 200 seconds.\n\nSend one `idempotencyKey` per agreed draft. Retrying with the same key never generates a second suite:\n- On a timeout or a 5xx (502, 504, 524), retry with the same key. You get the saved suite, a 409 while it is still generating, or a fresh generation if the first one never saved.\n- On a 409 `SIMULATION_ONBOARDING_GENERATION_IN_PROGRESS`, the first request is still generating. Wait `Retry-After` seconds (15) and retry with the same key.\n- On a 409 `SIMULATION_ONBOARDING_IDEMPOTENCY_KEY_REUSED`, the key was used for other requirements. Send a new key.\n\nThen review the suite with your user, edit it with `PATCH /eval/simulation/onboarding/suite/{suiteId}`, and run it with `POST /eval/simulation/run`.\n\nEach org can generate 20 suites per UTC day, shared with the dashboard, and 2 at a time. A retry that returns a saved suite doesn't count. On a 429 `SIMULATION_ONBOARDING_CONCURRENCY_LIMITED`, wait `Retry-After` seconds (30). On a 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`, don't retry: the limit resets at 00:00 UTC.",
+        "description": "Generate and save a simulation suite from reviewed test requirements, and assign it to an assistant. First draft requirements with `POST /eval/simulation/onboarding/requirements`. The response includes the saved suite, its simulations, and requirement coverage, including any gaps.\n\nRequests can take up to 3 minutes. Set a client timeout of at least 200 seconds.\n\nUse a unique `idempotencyKey` for each suite generation request. Retrying with the same key does not create a duplicate suite:\n- On a timeout or a 5xx (502, 504, 524), retry with the same key. You get the saved suite, a 409 while it is still generating, or a fresh generation if the first one never saved.\n- On a 409 `SIMULATION_ONBOARDING_GENERATION_IN_PROGRESS`, the first request is still generating. Wait `Retry-After` seconds (15) and retry with the same key.\n- On a 409 `SIMULATION_ONBOARDING_IDEMPOTENCY_KEY_REUSED`, the key was used for a different assistant or requirements. Send a new key.\n\nReview the generated simulations and coverage gaps. Revise the suite with `PATCH /eval/simulation/onboarding/suite/{suiteId}`, then run it with `POST /eval/simulation/run`.\n\nEach organization can generate 20 suites per UTC day, shared with the dashboard, and 2 at a time. A retry that returns a saved suite does not count toward these limits. On a 429 `SIMULATION_ONBOARDING_CONCURRENCY_LIMITED`, wait `Retry-After` seconds (30) before retrying. On a 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`, wait until the daily limit resets at 00:00 UTC before retrying.",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -8170,7 +8132,7 @@
           }
         },
         "tags": [
-          "Simulations"
+          "Simulation Suites"
         ],
         "security": [
           {
@@ -8183,7 +8145,7 @@
       "patch": {
         "operationId": "SimulationOnboardingController_suiteUpdate",
         "summary": "Edit a generated simulation suite",
-        "description": "Edits a generated suite: removes simulations, rewrites a simulation's scenario from your user's instruction, or regenerates the scenarios that failed or did not fit (`retryFailed`). Takes up to 2 minutes.\n\nSend a new `patchKey` for each edit. Replaying an applied key changes nothing and returns the current suite, with `failedEditSimulationIds` listing the simulations that edit could not rewrite, so retry a timeout or a 5xx with the same key. A suite remembers its last 50 keys, so never reuse one.\n\nEach org can make 60 edits per UTC day, shared with the dashboard. Removals and replays don't count. On a 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`, don't retry: the limit resets at 00:00 UTC.",
+        "description": "Revise a suite created by `POST /eval/simulation/onboarding/suite`. Remove simulations, rewrite scenarios using natural-language instructions, or set `retryFailed` to regenerate scenarios that failed or exceeded generation limits. The response includes the updated suite and requirement coverage.\n\nRequests can take up to 2 minutes.\n\nSend a new `patchKey` for each edit. Replaying an applied key changes nothing and returns the current suite, with `failedEditSimulationIds` listing the simulations that edit could not rewrite, so retry a timeout or a 5xx with the same key. A suite remembers its last 50 keys, so never reuse one.\n\nEach organization can make 60 edits per UTC day, shared with the dashboard. Requests that only remove simulations and replays of applied edits do not count toward this limit. On a 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`, wait until the daily limit resets at 00:00 UTC before retrying.",
         "parameters": [
           {
             "name": "suiteId",
@@ -8296,7 +8258,7 @@
           }
         },
         "tags": [
-          "Simulations"
+          "Simulation Suites"
         ],
         "security": [
           {
@@ -27071,6 +27033,18 @@
               "gpt-4.1:australiaeast",
               "gpt-4o:australiaeast",
               "gpt-5.4-mini:australiaeast"
+            ]
+          },
+          "reasoningEffort": {
+            "type": "string",
+            "description": "This is the reasoning effort for structured output extraction. It applies to the primary extraction attempt only; the GPT-4.1 and Gemini fallbacks run without it. Other features that use this model type ignore it.\n\nOnly reasoning models accept it, and each accepts only the efforts OpenAI supports for it (for example `none` and `xhigh` on gpt-5.6, `minimal` on gpt-5). When unset, OpenAI's default effort for the model applies, except on GPT-6 models, which Vapi sends with `none`.\n\nReasoning tokens are billed as output tokens.",
+            "enum": [
+              "minimal",
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
             ]
           },
           "temperature": {
@@ -46942,6 +46916,10 @@
           "cachedPromptTokens": {
             "type": "number",
             "description": "This is the number of cached prompt tokens used to evaluate this structured output. This is a subset of `promptTokens`, not an addition to it."
+          },
+          "reasoningTokens": {
+            "type": "number",
+            "description": "This is the number of reasoning tokens the model generated for this structured output. This is a subset of `completionTokens`, not an addition to it: reasoning tokens are already billed at the output-token rate, so this is for visibility only and does not affect `cost`."
           }
         },
         "required": [
@@ -46987,6 +46965,10 @@
           "cachedPromptTokens": {
             "type": "number",
             "description": "This is the number of cached prompt tokens used in the analysis. This is only applicable to certain providers (e.g., OpenAI, Azure OpenAI) that support prompt caching. Cached tokens are billed at a discounted rate."
+          },
+          "reasoningTokens": {
+            "type": "number",
+            "description": "This is the number of reasoning tokens generated in the analysis, reported only by reasoning models (e.g., GPT-5) on providers that report them. This is a subset of `completionTokens`, not an addition to it: reasoning tokens are already billed at the output-token rate, so this is for visibility only and does not affect `cost`."
           },
           "structuredOutputBreakdown": {
             "description": "This is the per-structured-output breakdown of this cost. The `cost`, `promptTokens`, `completionTokens` and `cachedPromptTokens` above are the sums of these rows.\n\nThis is only set when `analysisType` is `structuredOutput`, and it is omitted entirely rather than partially populated, so when it is present the rows always reconcile to the totals above.\n\nA structured output that was skipped, or that extracts via regex, makes no LLM call and so has no row here — this is not a complete list of the call's configured structured outputs. There is one row per evaluation, so a `structuredOutputId` can appear more than once if it was evaluated more than once; sum the rows rather than indexing them by id.",
@@ -64998,7 +64980,7 @@
           },
           "tag": {
             "type": "string",
-            "description": "Why this requirement needs the user's attention, when it does.",
+            "description": "Indicates an assumption, a requirement that needs a voice simulation, or a requirement that cannot be tested.",
             "enum": [
               "assumption",
               "not-testable",
@@ -65025,7 +65007,7 @@
           },
           "text": {
             "type": "string",
-            "description": "The question to ask your user.",
+            "description": "A question about expected assistant behavior that needs clarification.",
             "maxLength": 1000
           },
           "why": {
@@ -65062,7 +65044,7 @@
             }
           },
           "requirements": {
-            "description": "The requirements, for your user to review.",
+            "description": "Draft test requirements describing the expected assistant behavior. Review and refine these before generating a simulation suite.",
             "maxItems": 50,
             "minItems": 1,
             "type": "array",
@@ -65071,7 +65053,7 @@
             }
           },
           "openQuestions": {
-            "description": "Questions to ask your user before they agree.",
+            "description": "Questions about ambiguous or missing assistant behavior to resolve before generating a simulation suite.",
             "maxItems": 3,
             "type": "array",
             "items": {
@@ -65104,7 +65086,7 @@
           },
           "feedback": {
             "type": "string",
-            "description": "What your user wants changed in `previousDraft`, in the user's own words. Send it with `previousDraft`.",
+            "description": "Natural-language instructions for revising the requirements in `previousDraft`, including answers to open questions. Required when `previousDraft` is provided.",
             "maxLength": 8000
           }
         },
@@ -65122,12 +65104,12 @@
           },
           "idempotencyKey": {
             "type": "string",
-            "description": "One key per agreed draft. Retrying with the same key returns the suite already saved, or a 409 while it is still generating, instead of generating another.",
+            "description": "A unique key for this suite generation request. Retrying with the same key returns the saved suite, or a 409 while generation is in progress. Use a new key for a different assistant or requirements.",
             "maxLength": 200,
             "minLength": 1
           },
           "requirements": {
-            "description": "The requirements your user agreed to, from the requirements draft. Each id at most once.",
+            "description": "The reviewed test requirements to generate simulations for, from the requirements draft. Each requirement must have a unique id.",
             "maxItems": 50,
             "minItems": 1,
             "type": "array",
@@ -65324,7 +65306,7 @@
         "type": "object",
         "properties": {
           "suite": {
-            "description": "The suite.",
+            "description": "The generated simulation suite id and name.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/SimulationOnboardingSuiteRefDTO"
@@ -65343,7 +65325,7 @@
             }
           },
           "coverage": {
-            "description": "Coverage of the agreed requirements.",
+            "description": "Counts of covered and total requirements, uncovered requirements, and scenarios available to retry.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/SimulationOnboardingSuiteCoverageDTO"
@@ -65351,14 +65333,14 @@
             ]
           },
           "requirements": {
-            "description": "The agreed requirements the suite was generated from, to name the gaps.",
+            "description": "The test requirements used to generate the suite. Match their ids to `coverage.gaps` to identify uncovered requirements.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SimulationOnboardingRequirementDTO"
             }
           },
           "docs": {
-            "description": "Documentation to link when you summarize the suite.",
+            "description": "Links to simulation testing best practices and tool mocking documentation.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/SimulationOnboardingSuiteDocsDTO"
@@ -65404,7 +65386,7 @@
           },
           "instruction": {
             "type": "string",
-            "description": "The user's requested change, in their own words.",
+            "description": "Natural-language instructions for revising this simulation's scenario, such as \"Have the caller ask for a refund after 30 days.\"",
             "maxLength": 8000
           }
         },
@@ -69762,6 +69744,131 @@
             }
           }
         }
+      },
+      "GoalEvaluationCurrentDTO": {
+        "type": "object",
+        "properties": {
+          "assistantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "goalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "goalVersion": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$",
+            "description": "Current immutable goal revision, encoded as a decimal bigint string."
+          },
+          "callEndedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "processingState": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "parked",
+              "unavailable",
+              "excluded",
+              "completed"
+            ]
+          },
+          "goalOutcome": {
+            "type": "string",
+            "enum": [
+              "goal_met",
+              "goal_not_met",
+              "ineligible"
+            ],
+            "description": "Absent until a semantic result is accepted. Processing failures are never goal_not_met."
+          }
+        },
+        "required": [
+          "assistantId",
+          "goalId",
+          "goalVersion",
+          "callEndedAt",
+          "processingState"
+        ]
+      },
+      "GoalEvaluationCurrentCallResponseDTO": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "goalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "currentGoalVersion": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$",
+            "description": "Current revision of the requested goal for a visible call. Absent when that goal does not belong to the source assistant or the source is hidden. An absent evaluation does not imply queued or pending work."
+          },
+          "currentEvaluation": {
+            "$ref": "#/components/schemas/GoalEvaluationCurrentDTO"
+          }
+        },
+        "required": [
+          "callId",
+          "goalId"
+        ]
+      },
+      "GoalEvaluationCurrentCallRequestDTO": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "goalId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "callId",
+          "goalId"
+        ]
+      },
+      "GoalEvaluationCurrentBatchRequestDTO": {
+        "type": "object",
+        "properties": {
+          "evaluations": {
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true,
+            "description": "Explicit call/goal pairs. The organization comes from the authenticated caller.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoalEvaluationCurrentCallRequestDTO"
+            }
+          }
+        },
+        "required": [
+          "evaluations"
+        ]
+      },
+      "GoalEvaluationCurrentBatchResponseDTO": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "maxItems": 100,
+            "description": "One entry per requested call/goal pair, in request order, including entries without a current evaluation.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoalEvaluationCurrentCallResponseDTO"
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
       },
       "CreateOrgDTO": {
         "type": "object",
