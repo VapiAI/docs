@@ -8267,6 +8267,382 @@
         ]
       }
     },
+    "/eval/simulation/onboarding/requirements": {
+      "post": {
+        "operationId": "SimulationOnboardingController_requirementsDraft",
+        "summary": "Draft simulation requirements",
+        "description": "Drafts the behaviours an assistant must get right, as numbered requirements plus open questions, from its prompt, tools and handoffs. This is the first step of building a simulation suite.\n\n1. Show the draft to your user and ask its open questions.\n2. To revise it, call again with `previousDraft` set to the draft and `feedback` set to what the user said, verbatim. Repeat until they agree.\n3. Generate the suite from the agreed requirements with `POST /eval/simulation/onboarding/suite`.\n\nTakes up to 2 minutes. Each org can draft 60 times per UTC day, shared with the dashboard. On a 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`, don't retry: tell your user the limit resets at 00:00 UTC.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationOnboardingRequirementsCreateDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOnboardingRequirementsDraftDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is invalid, or `previousDraft` and `feedback` were not sent together."
+          },
+          "403": {
+            "description": "The key can't create simulation suites."
+          },
+          "404": {
+            "description": "The assistant wasn't found, or the org doesn't have API access to these endpoints yet."
+          },
+          "429": {
+            "description": "`SIMULATION_ONBOARDING_QUOTA_EXCEEDED`: the org drafted 60 times today. Don't retry; the limit resets at 00:00 UTC (`Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when retrying is useful.",
+                "required": false,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOnboardingErrorDTO"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The model failed to generate a usable result. Retry."
+          },
+          "503": {
+            "description": "Simulation generation is paused, no caller personalities are configured, or the quota store is unavailable for a private-key request. Quota outages return SIMULATION_ONBOARDING_QUOTA_UNAVAILABLE with Retry-After; retry with the same key.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when retrying is useful.",
+                "required": false,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SimulationOnboardingErrorDTO"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "statusCode",
+                        "message",
+                        "error"
+                      ],
+                      "properties": {
+                        "statusCode": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Drafting took too long. Retry."
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/onboarding/suite": {
+      "post": {
+        "operationId": "SimulationOnboardingController_suiteCreate",
+        "summary": "Generate a simulation suite",
+        "description": "Generates a simulation suite from requirements your user agreed to, saves it and assigns it to the assistant. Takes up to 3 minutes, so set a client timeout of at least 200 seconds.\n\nSend one `idempotencyKey` per agreed draft. Retrying with the same key never generates a second suite:\n- On a timeout or a 5xx (502, 504, 524), retry with the same key. You get the saved suite, a 409 while it is still generating, or a fresh generation if the first one never saved.\n- On a 409 `SIMULATION_ONBOARDING_GENERATION_IN_PROGRESS`, the first request is still generating. Wait `Retry-After` seconds (15) and retry with the same key.\n- On a 409 `SIMULATION_ONBOARDING_IDEMPOTENCY_KEY_REUSED`, the key was used for other requirements. Send a new key.\n\nThen review the suite with your user, edit it with `PATCH /eval/simulation/onboarding/suite/{suiteId}`, and run it with `POST /eval/simulation/run`.\n\nEach org can generate 20 suites per UTC day, shared with the dashboard, and 2 at a time. A retry that returns a saved suite doesn't count. On a 429 `SIMULATION_ONBOARDING_CONCURRENCY_LIMITED`, wait `Retry-After` seconds (30). On a 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`, don't retry: the limit resets at 00:00 UTC.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationOnboardingSuiteCreateDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOnboardingSuiteViewDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is invalid, or the generated suite uses something the org's data-region policy doesn't allow, so it isn't saved."
+          },
+          "403": {
+            "description": "The key can't create simulation suites."
+          },
+          "404": {
+            "description": "The assistant wasn't found, or the org doesn't have API access to these endpoints yet."
+          },
+          "409": {
+            "description": "`SIMULATION_ONBOARDING_GENERATION_IN_PROGRESS`: a request with this key is still generating; retry with the same key after `Retry-After`. `SIMULATION_ONBOARDING_IDEMPOTENCY_KEY_REUSED`: the key was used for other requirements; send a new key.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when retrying is useful.",
+                "required": false,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOnboardingErrorDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "None of the requirements can be checked in a chat simulation, or an MCP server's tools could not be listed, so simulations would call them for real. Fix the requirements or the server and retry."
+          },
+          "429": {
+            "description": "`SIMULATION_ONBOARDING_CONCURRENCY_LIMITED`: the org already has 2 suites generating; retry after `Retry-After`. `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`: the org generated 20 suites today; don't retry, the limit resets at 00:00 UTC.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when retrying is useful.",
+                "required": false,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOnboardingErrorDTO"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The model failed to generate a usable result. Retry."
+          },
+          "503": {
+            "description": "Simulation generation is paused, no caller personalities are configured, or the quota store is unavailable for a private-key request. Quota outages return SIMULATION_ONBOARDING_QUOTA_UNAVAILABLE with Retry-After; retry with the same key.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when retrying is useful.",
+                "required": false,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SimulationOnboardingErrorDTO"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "statusCode",
+                        "message",
+                        "error"
+                      ],
+                      "properties": {
+                        "statusCode": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Generation took too long. Retry with the same `idempotencyKey`: it may still save."
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/eval/simulation/onboarding/suite/{suiteId}": {
+      "patch": {
+        "operationId": "SimulationOnboardingController_suiteUpdate",
+        "summary": "Edit a generated simulation suite",
+        "description": "Edits a generated suite: removes simulations, rewrites a simulation's scenario from your user's instruction, or regenerates the scenarios that failed or did not fit (`retryFailed`). Takes up to 2 minutes.\n\nSend a new `patchKey` for each edit. Replaying an applied key changes nothing and returns the current suite, with `failedEditSimulationIds` listing the simulations that edit could not rewrite, so retry a timeout or a 5xx with the same key. A suite remembers its last 50 keys, so never reuse one.\n\nEach org can make 60 edits per UTC day, shared with the dashboard. Removals and replays don't count. On a 429 `SIMULATION_ONBOARDING_QUOTA_EXCEEDED`, don't retry: the limit resets at 00:00 UTC.",
+        "parameters": [
+          {
+            "name": "suiteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationOnboardingSuiteUpdateDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOnboardingSuiteViewDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is invalid, or the edited suite uses something the org's data-region policy doesn't allow, so it isn't saved."
+          },
+          "403": {
+            "description": "The key can't edit simulation suites."
+          },
+          "404": {
+            "description": "The suite wasn't generated by `POST /eval/simulation/onboarding/suite` in this org, or the org doesn't have API access to these endpoints yet."
+          },
+          "422": {
+            "description": "An MCP server's tools could not be listed, so simulations would call them for real instead of a mock. Check the server is reachable and retry."
+          },
+          "429": {
+            "description": "`SIMULATION_ONBOARDING_QUOTA_EXCEEDED`: the org made 60 edits today. Don't retry; the limit resets at 00:00 UTC.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when retrying is useful.",
+                "required": false,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOnboardingErrorDTO"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The model failed to generate a usable result. Retry."
+          },
+          "503": {
+            "description": "Simulation generation is paused, no caller personalities are configured, or the quota store is unavailable for a private-key request. Quota outages return SIMULATION_ONBOARDING_QUOTA_UNAVAILABLE with Retry-After; retry with the same key.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when retrying is useful.",
+                "required": false,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SimulationOnboardingErrorDTO"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "statusCode",
+                        "message",
+                        "error"
+                      ],
+                      "properties": {
+                        "statusCode": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "The edit took too long. Retry with the same `patchKey`."
+          }
+        },
+        "tags": [
+          "Simulations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/eval/simulation": {
       "post": {
         "operationId": "SimulationController_create",
