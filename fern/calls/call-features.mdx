@@ -1,105 +1,193 @@
 ---
-title: Live Call Control
+title: Live call control
+subtitle: Send commands to an active call
 slug: calls/call-features
-description: Control live Vapi calls in real time with Call Control to inject conversation elements and Call Listen to stream call audio over a WebSocket connection.
+description: Use a call's controlUrl to speak, add messages, mute, transfer, hand off, or end a live Vapi call from your server.
 ---
 
-Vapi offers two main features that provide enhanced control over live calls:
+Live call control lets your server change a call while it's in progress. You send each command as an HTTPS POST to the call's `controlUrl`. Commands can make the assistant speak, add context to the conversation, mute either side, transfer the call, hand it off to another assistant or squad, or end it.
 
-1. **Call Control**: This feature allows you to inject conversation elements dynamically during an ongoing call.
-2. **Call Listen**: This feature enables real-time audio data streaming using WebSocket connections.
+To stream a call's audio and events instead, see [Listen to live calls](/calls/call-listen).
 
-To use these features, you first need to obtain the URLs specific to the live call. These URLs can be retrieved by triggering a `/call` endpoint, which returns the `listenUrl` and `controlUrl` within the `monitor` object.
+<Note>
+The control URL doesn't require authentication by default. Turn on [authentication](#require-authentication) so only requests with your public API key can control the call.
+</Note>
 
-## Obtaining URLs for Call Control and Listen
+## Get the control URL
 
-To initiate a call and retrieve the `listenUrl` and `controlUrl`, send a POST request to the `/call` endpoint.
+Every call has its control URL in `call.monitor.controlUrl`. Read the URL from the call object instead of building it yourself. The host can change between calls.
 
-### Sample Request
+The control URL accepts commands while the call is in progress. You can get it from the create call response, from server messages, or from the call record.
+
+### From the create call response
+
+For outbound calls, the [Create Call](/api-reference/calls/create) response includes `monitor.controlUrl`:
 
 ```bash
-curl 'https://api.vapi.ai/call' \
--H 'authorization: Bearer YOUR_API_KEY' \
--H 'content-type: application/json' \
---data-raw '{
-  "assistantId": "5b0a4a08-133c-4146-9315-0984f8c6be80",
-  "customer": {
-    "number": "+12345678913"
-  },
-  "phoneNumberId": "42b4b25d-031e-4786-857f-63b346c9580f"
-}'
-
+curl https://api.vapi.ai/call \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "assistantId": "00000000-0000-4000-8000-000000000002",
+    "phoneNumberId": "00000000-0000-4000-8000-000000000003",
+    "customer": {
+      "number": "+14155550100"
+    }
+  }'
 ```
 
-### Sample Response
-
-```json
+```json title="Response"
 {
-  "id": "7420f27a-30fd-4f49-a995-5549ae7cc00d",
-  "assistantId": "5b0a4a08-133c-4146-9315-0984f8c6be80",
-  "phoneNumberId": "42b4b25d-031e-4786-857f-63b346c9580f",
+  "id": "00000000-0000-4000-8000-000000000001",
+  "assistantId": "00000000-0000-4000-8000-000000000002",
+  "phoneNumberId": "00000000-0000-4000-8000-000000000003",
   "type": "outboundPhoneCall",
-  "createdAt": "2024-09-10T11:14:12.339Z",
-  "updatedAt": "2024-09-10T11:14:12.339Z",
-  "orgId": "eb166faa-7145-46ef-8044-589b47ae3b56",
+  "createdAt": "2026-10-28T17:00:00.000Z",
+  "updatedAt": "2026-10-28T17:00:00.000Z",
+  "orgId": "00000000-0000-4000-8000-000000000009",
   "cost": 0,
   "customer": {
-    "number": "+12345678913"
+    "number": "+14155550100"
   },
   "status": "queued",
   "phoneCallProvider": "twilio",
-  "phoneCallProviderId": "CA4c6793d069ef42f4ccad69a0957451ec",
+  "phoneCallProviderId": "CA00000000000000000000000000000001",
   "phoneCallTransport": "pstn",
   "monitor": {
-    "listenUrl": "wss://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/transport",
-    "controlUrl": "<https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control>"
+    "listenUrl": "wss://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/listen",
+    "controlUrl": "https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/control"
   }
 }
-
 ```
 
+### From server messages
+
+For inbound calls, read the control URL from a [server message](/server-url/events). Server messages that include the call object carry it at `message.call.monitor.controlUrl`. The first `status-update` message with `status` set to `in-progress` arrives as soon as the call connects:
+
+```json title="status-update message (trimmed)"
+{
+  "message": {
+    "type": "status-update",
+    "status": "in-progress",
+    "call": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "monitor": {
+        "listenUrl": "wss://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/listen",
+        "controlUrl": "https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/control"
+      }
+    }
+  }
+}
+```
+
+The `tool-calls` server message also includes the control URL, so a [Function tool](/tools/custom-tools) handler can control the call it's running in. The `assistant-request` message doesn't include the control URL.
+
 <Note>
-GPT-Live supports a subset of live call control: HTTP `end-call`, `append-context` for speaker commentary, thinking, or instructions, and cold `transfer` on supported phone connections. The `say`, `add-message`, and mute/unmute controls below aren't supported by GPT-Live. Use the [GPT-Live live call control guide](/gpt-live/configuration#live-call-control) for its request examples and limits.
+The `status-update` message is in the default `serverMessages` list. If you set `serverMessages` on your assistant, include `status-update`, because your list replaces the default.
 </Note>
 
-## Call Control Features
+### From the call record
 
-Once you have the `controlUrl`, you can use various control features during a live call. Here are all the available control options:
+[Get Call](/api-reference/calls/get) returns `monitor.controlUrl` for any call. The URL stays on the call record after the call ends, so check that `status` is `in-progress` before you send a command.
 
-### 1. Say Message
-Makes the assistant say a specific message during the call.
+## Control settings
+
+Live call control is configured in the assistant's `monitorPlan`. It's on by default and doesn't require authentication by default.
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `controlEnabled` | `true` | Issues a `controlUrl` for the assistant's calls |
+| `controlAuthenticationEnabled` | `false` | Requires a public API key on every control command |
+
+For the Call Listen fields, see [Listen settings](/calls/call-listen#listen-settings).
+
+### Turn live call control on or off
+
+Set `controlEnabled` to `false` to turn off live call control for an assistant. If any assistant on a call has `controlEnabled` set to `false` when the call starts, the call has no `controlUrl`.
+
+A call that starts with control on can later reach an assistant with control off, such as after a handoff. From then on, every command returns `400` with this error:
+
+```text
+Couldn't Control Call. One of the assistants has `assistant.monitorPlan.controlEnabled` set to false.
+```
+
+### Require authentication
+
+Set `controlAuthenticationEnabled` to `true` to require your public API key on every command:
+
+```json
+{
+  "monitorPlan": {
+    "controlAuthenticationEnabled": true
+  }
+}
+```
+
+Then send the public API key in the `Authorization` header:
 
 ```bash
-curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
--H 'content-type: application/json' \
---data-raw '{
-  "type": "say",
-  "content": "Welcome to Vapi, this message was injected during the call.",
-  "endCallAfterSpoken": false
-}'
+curl -X POST "$CONTROL_URL" \
+  -H "Authorization: Bearer YOUR_PUBLIC_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "end-call"}'
+```
+
+A request with no key, or with your private API key, returns `400` with `{"error":"Unauthorized"}`.
+
+Authentication applies to the whole call. If any assistant on the call has `controlAuthenticationEnabled` set to `true`, every command on that call needs the public API key, including after a handoff to an assistant that doesn't require it.
+
+## Control actions
+
+Send each command as a JSON body to the control URL. The examples on this page set `CONTROL_URL` to the call's control URL. If you turned on [authentication](#require-authentication), add the `Authorization` header to each request.
+
+A `200` response with `{"status":"ok"}` means the command was accepted. It doesn't mean the command finished. For example, a transfer can still fail after the `200` response.
+
+### Action reference
+
+| `type` | What it does | Fields |
+| --- | --- | --- |
+| `say` | Speaks text or plays an audio file | `content`, `endCallAfterSpoken`, `interruptionsEnabled`, `interruptAssistantEnabled` |
+| `add-message` | Adds a message to the conversation history | `message`, `triggerResponseEnabled` |
+| `control` | Mutes or unmutes the assistant or the customer, or says the first message | `control` |
+| `end-call` | Ends the call | None |
+| `transfer` | Transfers the call to a phone number or Session Initiation Protocol (SIP) URI | `destination`, `content` |
+| `handoff` | Hands the call to another assistant or a squad | `destination`, `content` |
+
+### Speak a message
+
+Send a `say` command to make the assistant speak exact text:
+
+```bash
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "say",
+    "content": "Thanks for waiting. Your order is ready.",
+    "endCallAfterSpoken": false
+  }'
 ```
 
 Optional fields:
 
-- `endCallAfterSpoken`: end the call after the message is spoken.
-- `interruptionsEnabled`: let the caller interrupt the message. Defaults to `false`, which ignores the caller's audio while the message plays.
-- `interruptAssistantEnabled`: stop any speech already in progress or queued and say this message immediately. The assistant doesn't resume the interrupted response. Defaults to `false`, which waits until the assistant finishes speaking.
+- `endCallAfterSpoken`: End the call after the message is spoken.
+- `interruptionsEnabled`: Let the caller interrupt the message. Defaults to `false`, which ignores the caller's audio while the message plays.
+- `interruptAssistantEnabled`: Stop any speech already in progress or queued and say this message immediately. The assistant doesn't resume the interrupted response. Defaults to `false`, which waits until the assistant finishes speaking.
 
-#### Play an audio file
+### Play an audio file
 
-To play a pre-recorded audio file instead of synthesized speech, set `content` to the file's URL.
+To play a pre-recorded audio file instead of synthesized speech, set `content` to the file's URL:
 
 ```bash
-curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
--H 'content-type: application/json' \
---data-raw '{
-  "type": "say",
-  "content": "https://example.com/audio/hold-message.wav"
-}'
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "say",
+    "content": "https://example.com/audio/hold-message.wav"
+  }'
 ```
 
 <Note>
-Set `content` to a single `https://` URL with no other text. The text might be read out loud to the caller.
+Set `content` to a single `https://` URL with no other text. Other values are spoken as text or don't play, as the following table shows.
 </Note>
 
 | `content` value | Result |
@@ -124,135 +212,278 @@ Each `say` request plays one audio file when you send it. Audio doesn't play aut
 If Vapi can't download or decode the file, nothing plays and the control request still returns a success response. Test each audio URL before you use it on live calls.
 </Note>
 
-### 2. Add Message to Conversation
-Adds a message to the conversation history and optionally triggers a response.
+### Add a message to the conversation
+
+Send an `add-message` command to add a message to the conversation history. The `message` object takes a `role` of `system`, `user`, or `assistant`, and a `content` string.
+
+The `triggerResponseEnabled` field controls what happens next:
+
+- `true` (default): The assistant responds right away.
+- `false`: The message is added silently. The assistant uses it on its next turn.
+
+This example adds a system message and has the assistant respond:
 
 ```bash
-curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
--H 'content-type: application/json' \
---data-raw '{
-  "type": "add-message",
-  "message": {
-    "role": "system",
-    "content": "New message added to conversation"
-  },
-  "triggerResponseEnabled": true
-}'
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "add-message",
+    "message": {
+      "role": "system",
+      "content": "New message added to conversation"
+    },
+    "triggerResponseEnabled": true
+  }'
 ```
 
-### 3. Assistant Control
-Control the assistant's behavior during the call.
+This example adds context without interrupting the conversation:
 
 ```bash
-curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
--H 'content-type: application/json' \
---data-raw '{
-  "type": "control",
-  "control": "mute-assistant"  // Options: "mute-assistant", "unmute-assistant", "say-first-message"
-}'
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "add-message",
+    "message": {
+      "role": "system",
+      "content": "The caller is a premium customer. Offer free shipping."
+    },
+    "triggerResponseEnabled": false
+  }'
 ```
 
-### 4. End Call
-Programmatically end the ongoing call.
+If the caller is speaking when a triggered response starts, the caller can interrupt it.
+
+### Mute or unmute the assistant
+
+Send a `control` command with `mute-assistant` to stop the assistant from speaking. Send `unmute-assistant` to let it speak again.
 
 ```bash
-curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
--H 'content-type: application/json' \
---data-raw '{
-  "type": "end-call"
-}'
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "control",
+    "control": "mute-assistant"
+  }'
 ```
 
-### 5. Transfer Call
-Transfer the call to a different destination.
+While the assistant is muted, it still hears and transcribes the caller.
+
+### Mute or unmute the customer
+
+Send a `control` command with `mute-customer` to stop the assistant from hearing the caller. Send `unmute-customer` to let it hear the caller again.
 
 ```bash
-curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
--H 'content-type: application/json' \
---data-raw '{
-  "type": "transfer",
-  "destination": {
-    "type": "number",
-    "number": "+1234567890"
-  },
-  "content": "Transferring your call now"
-}'
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "control",
+    "control": "mute-customer"
+  }'
 ```
 
-You can also transfer to a SIP URI:
+Muting the customer doesn't change what anyone on the call hears. The assistant stops listening, and the caller's speech isn't transcribed. The caller gets no signal that they're muted, so send a `say` command first if the caller should know.
+
+<Note>
+The customer stays muted until you send `unmute-customer`. If you never unmute, the assistant can't hear the caller for the rest of the call.
+</Note>
+
+### Say the first message
+
+Send a `control` command with `say-first-message` to make the assistant say its first message. Use it when video recording is on and the conversation starts only after your client starts recording.
 
 ```bash
-curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
--H 'content-type: application/json' \
---data-raw '{
-  "type": "transfer",
-  "destination": {
-    "type": "sip",
-    "sipUri": "sip:+transferPhoneNumber@sip.telnyx.com"
-  },
-  "content": "Testing transfer call."
-}'
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "control",
+    "control": "say-first-message"
+  }'
 ```
 
-### 6. Handoff Call
-Handoff the call to a different assistant.
+### End the call
+
+Send an `end-call` command to end the call:
 
 ```bash
-curl -X POST 'https://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/control' \
--H 'content-type: application/json' \
---data-raw '{
-  "type": "handoff",
-  "destination": {
-    "type": "assistant",
-    "contextEngineeringPlan": "none",
-    "assistant": {
-        "name": "new_assistant",
-        "voice": {
-            "provider": "vapi",
-            "version": 2,
-            "voiceId": "Elliot"
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "end-call"}'
+```
+
+The call ends with the `assistant-ended-call-after-message-spoken` ended reason. To say goodbye first, send a `say` command with `endCallAfterSpoken` set to `true` instead.
+
+### Transfer the call
+
+Send a `transfer` command to transfer the call to a phone number or a SIP URI. The optional `content` field is spoken to the caller before the transfer.
+
+```bash
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "transfer",
+    "destination": {
+      "type": "number",
+      "number": "+14155550101"
+    },
+    "content": "Transferring your call now."
+  }'
+```
+
+To transfer to a SIP URI, set the destination `type` to `sip`:
+
+```bash
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "transfer",
+    "destination": {
+      "type": "sip",
+      "sipUri": "sip:+14155550101@sip.example.com"
+    },
+    "content": "Transferring your call now."
+  }'
+```
+
+With `content`, the transfer starts after the message is spoken. Without `content`, the transfer starts right away.
+
+The `destination` object takes the same fields as a [Transfer Call tool](/tools/transfer-call) destination.
+
+### Hand off to an assistant or squad
+
+Send a `handoff` command to move the call to another assistant or to a squad. The optional `content` field is spoken to the caller before the handoff.
+
+To hand off to a saved assistant, set `assistantId`:
+
+```bash
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "handoff",
+    "destination": {
+      "type": "assistant",
+      "assistantId": "00000000-0000-4000-8000-000000000004"
+    },
+    "content": "Connecting you to our billing assistant."
+  }'
+```
+
+To hand off to an assistant defined inline, set `assistant`. This example also sets `contextEngineeringPlan` so the new assistant starts without the earlier conversation:
+
+```bash
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "handoff",
+    "destination": {
+      "type": "assistant",
+      "contextEngineeringPlan": {
+        "type": "none"
+      },
+      "assistant": {
+        "name": "Billing assistant",
+        "firstMessage": "Hi, this is the billing assistant.",
+        "model": {
+          "provider": "openai",
+          "model": "gpt-4.1",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You help callers with billing questions. Keep replies short."
+            }
+          ]
         },
-    }                                    
-  },
-  "content": "Handing off your call now"
-}'
+        "voice": {
+          "provider": "vapi",
+          "voiceId": "Elliot"
+        }
+      }
+    },
+    "content": "Handing off your call now."
+  }'
 ```
 
+To hand off to a squad, set the destination `type` to `squad` and pass a `squadId` or an inline `squad`. This example defines the squad inline:
 
-## Call Listen Feature
-
-The `listenUrl` allows you to connect to a WebSocket and stream the audio data in real-time. You can either process the audio directly or save the binary data to analyze or replay later.
-
-### Example: Saving Audio Data from a Live Call
-
-Here is a simple implementation for saving the audio buffer from a live call using Node.js:
-
-```jsx
-const WebSocket = require('ws');
-const fs = require('fs');
-
-let pcmBuffer = Buffer.alloc(0);
-
-const ws = new WebSocket("wss://aws-us-west-2-production1-phone-call-websocket.vapi.ai/7420f27a-30fd-4f49-a995-5549ae7cc00d/transport");
-
-ws.on('open', () => console.log('WebSocket connection established'));
-
-ws.on('message', (data, isBinary) => {
-  if (isBinary) {
-    pcmBuffer = Buffer.concat([pcmBuffer, data]);
-    console.log(`Received PCM data, buffer size: ${pcmBuffer.length}`);
-  } else {
-    console.log('Received message:', JSON.parse(data.toString()));
-  }
-});
-
-ws.on('close', () => {
-  if (pcmBuffer.length > 0) {
-    fs.writeFileSync('audio.pcm', pcmBuffer);
-    console.log('Audio data saved to audio.pcm');
-  }
-});
-
-ws.on('error', (error) => console.error('WebSocket error:', error));
-
+```bash
+curl -X POST "$CONTROL_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "handoff",
+    "destination": {
+      "type": "squad",
+      "squad": {
+        "members": [
+          {
+            "assistant": {
+              "name": "Support assistant",
+              "firstMessage": "Hi, this is the support team.",
+              "model": {
+                "provider": "openai",
+                "model": "gpt-4.1",
+                "messages": [
+                  {
+                    "role": "system",
+                    "content": "You help callers with support questions. Keep replies short."
+                  }
+                ]
+              },
+              "voice": {
+                "provider": "vapi",
+                "voiceId": "Lily"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "content": "Connecting you to our support team."
+  }'
 ```
+
+Use `contextEngineeringPlan` to choose the conversation history the destination receives. For every destination field, see [Configure handoff destinations](/squads/handoff/destinations) and [Pass context and variables](/squads/handoff/context-and-variables).
+
+## GPT-Live support
+
+GPT-Live calls support a subset of live call control:
+
+- HTTP `end-call`
+- `append-context` to add speaker commentary, thinking, or instructions
+- Cold `transfer` on supported phone connections
+
+The `say`, `add-message`, `control`, and `handoff` commands aren't supported on GPT-Live calls. For request examples and limits, see the [GPT-Live live call control guide](/gpt-live/configuration#live-call-control).
+
+## What live call control can't do
+
+Live call control has a fixed set of actions. It can't do these things:
+
+- **Pause and resume a call:** There's no pause action. Muting both the assistant and the customer is the closest option.
+- **Change the assistant's settings:** There's no action to change the model, voice, or prompt mid-call. Add context with [`add-message`](#add-a-message-to-the-conversation), or [hand off](#hand-off-to-an-assistant-or-squad) to an assistant that has the settings you need.
+- **Control a call that has ended:** Commands only work while the call is in progress.
+
+## Troubleshoot control commands
+
+Each entry starts with the response or symptom you see, then gives the cause and fix.
+
+<AccordionGroup>
+  <Accordion title="Commands return Unauthorized">
+    A `400` response with `{"error":"Unauthorized"}` means the call requires authentication. Send your public API key in the `Authorization` header. A private API key is refused. See [Require authentication](#require-authentication).
+  </Accordion>
+  <Accordion title="Commands return a control-disabled error">
+    This error means an assistant on the call has `controlEnabled` set to `false`:
+
+    ```text
+    Couldn't Control Call. One of the assistants has `assistant.monitorPlan.controlEnabled` set to false.
+    ```
+
+    Set `controlEnabled` to `true` on every assistant the call can reach. See [Turn live call control on or off](#turn-live-call-control-on-or-off).
+  </Accordion>
+  <Accordion title="Commands return Call Not Active">
+    A `400` response with ``Call `<id>` Not Active.`` means the call is no longer in progress. Don't retry; check the call's `status` and `endedReason` with [Get Call](/api-reference/calls/get).
+  </Accordion>
+  <Accordion title="Commands return failed to route call">
+    A `500` response with `failed to route call` usually means the call has ended. This response can take about 30 seconds to arrive, so set your client timeout above 30 seconds. Retry once after 1 to 2 seconds. If it fails again, treat the call as ended.
+  </Accordion>
+  <Accordion title="A triggered response isn't heard">
+    An `add-message` command with `triggerResponseEnabled` set to `true` returns `200`, but the caller doesn't hear a reply. The caller was likely speaking when the response started and interrupted it. Send the command when the caller is quiet, or use a `say` command with exact text instead.
+  </Accordion>
+</AccordionGroup>
