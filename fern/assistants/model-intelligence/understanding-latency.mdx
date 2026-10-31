@@ -9,15 +9,36 @@ Voice-to-voice latency is the gap between when a caller finishes speaking and wh
 
 ## Voice-to-voice latency sequence
 
-Voice-to-voice latency combines five stages that run in sequence. Each stage begins after the previous one.
+Voice-to-voice latency combines five stages. After the caller stops speaking, each stage begins when the previous one ends.
 
 1. **Transport:** The caller's audio travels over the network for processing.
-2. **Endpointing:** Vapi detects that the caller has finished speaking.
-3. **Transcription:** The transcriber converts the caller's speech to text.
+2. **Transcription:** The transcriber finishes converting the caller's last words to text.
+3. **Endpointing:** Vapi decides that the caller has finished their turn and sends the transcript to the model.
 4. **Model response:** The model reads the transcript and begins generating a reply. Vapi measures this stage as time to first token.
 5. **Speech synthesis:** The voice provider turns the reply into audio. Vapi measures this stage as time to first audio.
 
-A caller's total voice-to-voice latency is roughly the sum of all five stages.
+A caller's total voice-to-voice latency is roughly the sum of all five stages, plus the time the reply takes to reach the caller.
+
+## Per-turn latency on a call
+
+Each call records one latency entry per turn in `artifact.performanceMetrics.turnLatencies`. The call's **Latency Summary** tab, the [**Traffic** tab](/assistants/versioning/traffic-tab), and [simulation latency limits](/observability/simulations-advanced#set-latency-limits) are all built from these entries.
+
+| Field | Starts when | Ends when |
+| --- | --- | --- |
+| `transcriberLatency` | The caller's last voice activity, normally when they stop speaking | The transcriber returns the words of that speech |
+| `endpointingLatency` | The transcriber returns the words | Vapi decides the turn is over and sends it to the model |
+| `modelLatency` | The turn's model stage starts, before knowledge base retrieval and request routing | The model returns its first output token |
+| `voiceLatency` | The model returns its first output token | The first reply audio reaches Vapi's turn-taking buffer, after any sample-rate conversion |
+| `turnLatency` | The caller's last voice activity | Vapi starts sending the reply audio to the caller |
+
+Keep these points in mind when you read the numbers:
+
+- **The fields don't add up to `turnLatency`.** `turnLatency` is `transcriberLatency` plus `endpointingLatency` plus the time from that decision to the reply starting. Model and voice latency happen inside that last stretch, alongside other work such as handing the turn to the model and buffering the reply audio before it plays.
+- **Model and voice latency include more than the provider.** `modelLatency` includes knowledge base retrieval and request routing before the provider request. `voiceLatency` includes collecting enough of the reply to send the first voice request, as set by `voice.chunkPlan` (`minCharacters` and punctuation boundaries), and any sample-rate conversion after the provider returns audio.
+- **Vapi measures on its servers.** None of the fields include network time to or from the caller, or playback on the caller's device.
+- **Only replies to the caller are recorded.** Turns where the assistant didn't speak, for example because the caller interrupted first, have no entry. When the assistant speaks first, its first message has no entry either. When it waits for the caller (`firstMessageMode` set to `assistant-waits-for-user`), the first message is recorded as a reply, with `endpointingLatency` as `0`.
+- **`0` can mean "not measured".** A stage that didn't run or wasn't measured on a turn is recorded as `0` rather than left out. For example, when a turn's first audio is a static tool message rather than model output, `modelLatency` and `voiceLatency` are `0`. When `transcriberLatency` is `0` because it wasn't measured, `turnLatency` leaves that interval out too.
+- **Averages count every turn.** The call's `modelLatencyAverage`, `voiceLatencyAverage`, and other averages divide by every entry, including those zeros. Simulation latency limits ignore a `0` for `modelLatency` and `voiceLatency`, so a simulation's model or voice result can be higher than the call's average for the same call.
 
 ## What the displayed latency measures
 
@@ -26,6 +47,8 @@ A caller's total voice-to-voice latency is roughly the sum of all five stages.
 Vapi calculates each median from production calls, which reflect a typical call - half of calls are faster and half are slower. Individual calls can vary.
 
 The displayed total excludes [endpointing](/customization/speech-configuration) and transport time. Both contribute to the delay a caller experiences. Endpointing can account for a meaningful share of that delay. Improving endpointing can make an assistant feel more responsive even though it is not included in the displayed total.
+
+The displayed total is a sum of component medians across many calls, so it isn't comparable to a call's `turnLatency`, which is measured end to end on each turn and includes endpointing. See [per-turn latency on a call](#per-turn-latency-on-a-call).
 
 ## Model capability and latency
 

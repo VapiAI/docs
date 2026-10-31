@@ -323,11 +323,15 @@ curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
 
 ### Metrics and aggregations
 
-| Metric | What it measures |
-| --- | --- |
-| `turn` | Total time from the end of the AI tester's speech to the start of the assistant's reply |
-| `model` | Time for the model to return its first token |
-| `voice` | Time for the voice provider to return the first audio |
+Each metric reads one field of the per-turn latency that every call records, measured the same way as on a live call. See [per-turn latency on a call](/assistants/model-intelligence/understanding-latency#per-turn-latency-on-a-call) for exactly where each one starts and ends.
+
+| Metric | Field | What it measures |
+| --- | --- | --- |
+| `turn` | `turnLatency` | Time from the end of the AI tester's speech to the assistant starting its reply |
+| `model` | `modelLatency` | Time from the start of the turn's model stage, including knowledge base retrieval, to the model's first output token |
+| `voice` | `voiceLatency` | Time from the model's first output token to the first reply audio being ready, including the voice provider and any sample-rate conversion |
+
+`model` and `voice` happen inside `turn`, so they don't add up to it. Turns that recorded `0` for `model` or `voice` didn't measure it and are left out of those metrics. The AI tester speaks with clean synthetic audio, so transcription, endpointing, and turn latency can run faster than with real callers.
 
 The aggregation reduces the call's turns to one value: `mean`, `median`, `p95`, or `max`. `p95` uses the nearest-rank method, so on a call with fewer than 20 turns it equals `max`. Measured values are rounded to the nearest millisecond before they are compared with the limit.
 
