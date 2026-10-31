@@ -37,8 +37,14 @@ Keep these points in mind when you read the numbers:
 - **Model and voice latency include more than the provider.** `modelLatency` includes knowledge base retrieval and request routing before the provider request. `voiceLatency` includes collecting enough of the reply to send the first voice request, as set by `voice.chunkPlan` (`minCharacters` and punctuation boundaries), and any sample-rate conversion after the provider returns audio.
 - **Vapi measures on its servers.** None of the fields include network time to or from the caller, or playback on the caller's device.
 - **Only replies to the caller are recorded.** Turns where the assistant didn't speak, for example because the caller interrupted first, have no entry. When the assistant speaks first, its first message has no entry either. When it waits for the caller (`firstMessageMode` set to `assistant-waits-for-user`), the first message is recorded as a reply, with `endpointingLatency` as `0`.
-- **`0` can mean "not measured".** A stage that didn't run or wasn't measured on a turn is recorded as `0` rather than left out. For example, when a turn's first audio is a static tool message rather than model output, `modelLatency` and `voiceLatency` are `0`. When `transcriberLatency` is `0` because it wasn't measured, `turnLatency` leaves that interval out too.
-- **Averages count every turn.** The call's `modelLatencyAverage`, `voiceLatencyAverage`, and other averages divide by every entry, including those zeros. Simulation latency limits ignore a `0` for `modelLatency` and `voiceLatency`, so a simulation's model or voice result can be higher than the call's average for the same call.
+- **`unmeasured` tells a missing value from a real `0`.** A stage that didn't run or wasn't measured on a turn is recorded as `0`, and the entry's `unmeasured` array names it. A `0` for a component that isn't listed is a real 0 ms. The array is left out when every component was measured. Entries recorded before `unmeasured` existed don't have it, so a `0` there can mean either. A component is listed when:
+  - `transcriber`: voice activity detection saw no speech for the turn, the sample was too stale to use, or the transcript committed before voice activity detection saw the end of speech, so the value was measured from the start of speech.
+  - `endpointing`: no caller transcript was sent to the model that turn, for example the first message or a reply to a tool result.
+  - `model`: the model sent no output token that turn, for example when the first audio is a static tool message or a guardrail held the reply.
+  - `voice`: there was no model output to time the voice from.
+
+  When `transcriberLatency` is unmeasured, `turnLatency` leaves that interval out too.
+- **Averages count every turn.** The call's `modelLatencyAverage`, `voiceLatencyAverage`, and other averages divide by every entry, including those zeros. Simulation latency limits leave out turns that list the metric in `unmeasured`, and a `0` for `modelLatency` or `voiceLatency` on older entries, so a simulation's result can be higher than the call's average for the same call.
 
 ## What the displayed latency measures
 

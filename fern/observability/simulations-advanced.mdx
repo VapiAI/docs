@@ -293,7 +293,7 @@ Latency limits work alongside structured-output evaluations. A scenario still ne
 On the **Success criteria** tab, under **Latency expectations**, select **Add latency expectation**. Configure each limit with four fields:
 
 - **Aggregation**: How the call's turns are combined: **Median**, **Mean**, **P95**, or **Max**.
-- **Metric**: **Turn latency**, **Model latency**, or **Voice latency**.
+- **Metric**: **Turn latency**, **Model latency**, **Voice latency**, **Transcriber latency**, or **Endpointing latency**.
 - **Limit**: The maximum in milliseconds, as a whole number from 1 to 60,000.
 - **Required**: Turn off to make the limit informational. An optional limit is reported but never fails the simulation.
 
@@ -311,7 +311,8 @@ curl -X PATCH "https://api.vapi.ai/eval/simulation/scenario/<scenario-id>" \
   -d '{
     "latencyExpectations": [
       { "metric": "turn", "aggregation": "median", "thresholdMs": 1200 },
-      { "metric": "model", "aggregation": "p95", "thresholdMs": 800, "required": false }
+      { "metric": "model", "aggregation": "p95", "thresholdMs": 800, "required": false },
+      { "metric": "endpointing", "aggregation": "median", "thresholdMs": 600 }
     ]
   }'
 ```
@@ -330,8 +331,10 @@ Each metric reads one field of the per-turn latency that every call records, mea
 | `turn` | `turnLatency` | Time from the end of the AI tester's speech to the assistant starting its reply |
 | `model` | `modelLatency` | Time from the start of the turn's model stage, including knowledge base retrieval, to the model's first output token |
 | `voice` | `voiceLatency` | Time from the model's first output token to the first reply audio being ready, including the voice provider and any sample-rate conversion |
+| `transcriber` | `transcriberLatency` | Time from the AI tester's last voice activity, normally the end of its speech, to the transcriber returning the words |
+| `endpointing` | `endpointingLatency` | Time from the transcriber returning the words to Vapi deciding the AI tester's turn is over |
 
-`model` and `voice` happen inside `turn`, so they don't add up to it. Turns that recorded `0` for `model` or `voice` didn't measure it and are left out of those metrics. The AI tester speaks with clean synthetic audio, so transcription, endpointing, and turn latency can run faster than with real callers.
+`turn` is `transcriber` plus `endpointing` plus the time until the reply starts, and `model` and `voice` happen inside that last part, so the metrics don't add up to `turn`. A turn counts toward a metric unless its per-turn `unmeasured` list names that metric: a real 0 ms counts, and a turn that didn't measure the component is left out. `turn` counts every turn. See [`unmeasured`](/assistants/model-intelligence/understanding-latency#per-turn-latency-on-a-call) for when each component is listed. The AI tester speaks with clean synthetic audio, so transcription, endpointing, and turn latency can run faster than with real callers.
 
 The aggregation reduces the call's turns to one value: `mean`, `median`, `p95`, or `max`. `p95` uses the nearest-rank method, so on a call with fewer than 20 turns it equals `max`. Measured values are rounded to the nearest millisecond before they are compared with the limit.
 
@@ -401,7 +404,7 @@ For a transient scenario, set the same `targetOverrides` on the inline `scenario
 | The assistant never asks whether the AI tester is still there | Simulations remove `customer.speech.timeout` hooks. To test them, set `targetOverrides.hooks` on the scenario. See [**Hooks and call endings**](#hooks-and-call-endings). |
 | A voice simulation's assistant call ends as `customer-ended-call` | The AI tester hung up first, which matches a real caller hanging up. |
 | A tool looks up the wrong caller | Set `customer.number` in the scenario's variable values. See [**Simulate a call from a specific phone number**](#simulate-a-call-from-a-specific-phone-number). |
-| A latency limit fails without a measured value | No turn in the call measured that metric. Confirm the run used voice mode and that the conversation completed at least one exchange. |
+| A latency limit fails without a measured value | No turn in the call measured that metric. Confirm the run used voice mode and that the conversation completed at least one exchange. For `transcriber` and `endpointing`, check each turn's `unmeasured` list in the target call's `artifact.performanceMetrics.turnLatencies`. |
 | Latency limits show as skipped | Check whether the run used chat mode or the assistant under test uses GPT-Live. Both skip latency limits. |
 
 ## Next steps
