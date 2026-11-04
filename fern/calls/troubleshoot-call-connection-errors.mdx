@@ -1,0 +1,267 @@
+---
+title: Troubleshoot call connection errors
+subtitle: Find why a call ended before it connected and fix the cause yourself
+slug: calls/troubleshoot-call-connection-errors
+description: Troubleshoot inbound and outbound Vapi calls that never connected. Find the ended reason for a failed call and fix provider, phone number, and account causes.
+---
+
+A connection error ends a call before the assistant and the other person are talking. The phone might never ring, ring with no answer, or ring and then drop before the call connects. The cause depends on the call's direction, so this guide groups errors into outbound calls, inbound calls, and errors that affect every call type.
+
+**In this guide, you'll learn to:**
+
+- Find the `endedReason` and `endedMessage` for a failed call
+- Fix outbound calls that your provider refused or that didn't connect
+- Fix inbound calls that never reached your assistant
+- Fix account, configuration, and infrastructure errors that affect every call
+
+<Note>
+This guide covers calls that never connected. For calls that dropped or went silent after they connected, see [Troubleshoot call errors](/calls/troubleshoot-call-errors).
+</Note>
+
+## Find why the call ended
+
+<Steps>
+  <Step title="Check the response to your call request">
+    For an outbound call, if `POST /call` returned an error and no call ID, Vapi rejected the request. Go to [The call request is rejected](#the-call-request-is-rejected).
+  </Step>
+
+  <Step title="Get the call">
+    Retrieve the call with [Get call](/api-reference/calls/get):
+
+    ```bash
+    curl https://api.vapi.ai/call/YOUR_CALL_ID \
+      -H "Authorization: Bearer YOUR_API_KEY"
+    ```
+
+    Record the `type`, `endedReason`, and `endedMessage` fields. The `type` shows the call's direction, such as `outboundPhoneCall` or `inboundPhoneCall`.
+  </Step>
+
+  <Step title="Find the ended reason">
+    Search this page for the `endedReason`. Errors that only happen on one call direction are under [Outbound calls](#outbound-calls) or [Inbound calls](#inbound-calls). Errors that can end any call, and web call errors, are under [All call types](#all-call-types).
+  </Step>
+</Steps>
+
+<Tip>
+To learn whether a call failed, retrieve the call with the API. Your server might not receive an `end-of-call-report` for a call that fails before it connects.
+</Tip>
+
+## Outbound calls
+
+### The call request is rejected
+
+Vapi validates the request before it creates a call. When validation fails, `POST /call` returns a `400` error and no call is created, so the call doesn't appear in your call logs.
+
+The most common cause is a customer number that isn't in E.164 format:
+
+```text wordWrap
+customer.number must be a valid phone number in the E.164 format. Hot tip, you may be missing the country code (Eg. US: +1).
+```
+
+E.164 format is a `+`, the country code, and the subscriber number with no spaces or separators. For example, `+14155550100`. Numbers that come from a spreadsheet or automation tool often lose the `+` or gain spaces. Format the number before you send it.
+
+### The provider refused to place the call
+
+The `call.start.error-get-transport` ended reason means Vapi asked your telephony provider to place the call and the provider refused. The phone never rang and you weren't charged. The provider never created a call, so the attempt doesn't appear in your provider's call logs.
+
+The `endedMessage` field contains the reason. For Twilio, Telnyx, and Vonage, it includes the provider's own error message. For example:
+
+```text wordWrap
+Couldn't Create Twilio Call. Twilio Error: Account not authorized to call +61491570156. Perhaps you need to enable some international permissions: https://www.twilio.com/console/voice/calls/geo-permissions/low-risk
+```
+
+Find the provider's message in the sections below.
+
+#### Twilio
+
+The `endedMessage` starts with `Couldn't Create Twilio Call. Twilio Error:` and is followed by Twilio's message. Twilio's message doesn't include the error code, so match on the wording.
+
+| Twilio's message contains | Twilio error | Cause | Fix |
+|---|---|---|---|
+| `Trial accounts may only make calls to verified numbers` | [21219](https://www.twilio.com/docs/api/errors/21219) | Your Twilio account is on a trial, and trial accounts can only call verified numbers. | Verify the number you're calling in the Twilio Console, or upgrade your Twilio account. |
+| `Account not authorized to call` | [21215](https://www.twilio.com/docs/api/errors/21215) | Your Twilio account isn't allowed to call the destination country. | Enable the country in Twilio's [Voice geographic permissions](https://www.twilio.com/console/voice/calls/geo-permissions/low-risk). |
+| `Account not allowed to call` | [21216](https://www.twilio.com/docs/api/errors/21216) | Twilio blocked the call. Causes include a high-risk number range, a regulatory restriction, or a missing Primary Customer Profile for calls to `+1` numbers. | Follow the steps on Twilio's error page. For `+1` numbers, submit a Primary Customer Profile in Twilio's Trust Hub. |
+| `is not valid` | [21211](https://www.twilio.com/docs/api/errors/21211) | The number you called is invalid or incorrectly formatted. | Check the number for typos and use E.164 format. Make sure the customer number and your Twilio number are different. |
+| `Authenticate` | [20003](https://www.twilio.com/docs/api/errors/20003) | Twilio rejected the credentials stored on your imported number. The auth token was rotated or deleted, or the account is suspended. | Update the Twilio credentials on your phone number in Vapi, or re-import the number. |
+| `Voice calling has been disabled for this account` | | Voice calling is turned off on the Twilio account that owns the number. | If you imported the number, contact Twilio. If you bought the number through Vapi, contact [Vapi support](/support). |
+
+#### Telnyx
+
+The `endedMessage` starts with `Couldn't Make Telnyx Call. Error:` and is followed by the Telnyx response.
+
+If the message ends with `Request failed with status code 403`, Telnyx refused the request. Check these settings in Vapi and in your Telnyx account:
+
+- **API key:** The API key on your Telnyx credential in Vapi is still active. If you rotated or deleted it in Telnyx, update the credential in Vapi.
+- **Outbound voice profile:** The connection that Vapi uses is added to an outbound voice profile. Telnyx requires one to place outbound calls. See [Configuring outbound calling with Telnyx](/telnyx#configuring-outbound-calling-with-telnyx).
+
+If the message is `Couldn't Find Telnyx Credential.`, Vapi has no Telnyx credential for the phone number. See [Import number from Telnyx](/telnyx).
+
+#### Vonage
+
+The `endedMessage` starts with `Couldn't Make Vonage Call. Error:` and is followed by the Vonage response. Check that the API key and secret on your Vonage credential in Vapi are still valid.
+
+If the message is `Missing Vonage Credential.`, Vapi has no Vonage credential for the phone number. Attach a Vonage credential to the phone number.
+
+#### Your own SIP trunk
+
+For a phone number on your own SIP trunk, the `endedMessage` usually reads `Couldn't Make SIP Call.` without more detail. Check your SIP provider's logs for the response it returned, then follow [Troubleshoot SIP response codes](/advanced/sip/troubleshoot-sip-response-codes).
+
+If the message says the `credentialId` does not exist, the SIP trunk credential on the phone number was deleted. Attach an existing credential to the phone number.
+
+#### Vapi phone numbers
+
+If the `endedMessage` is `Vapi Numbers Can't Dial Outbound Yet.`, the phone number is a Vapi SIP number. Vapi SIP numbers support inbound calls only. To place outbound calls, use a phone number from Twilio, Telnyx, Vonage, or your own SIP trunk.
+
+If the `endedMessage` is `Couldn't Start Call On Vapi Number.`, contact [Vapi support](/support) with the call ID.
+
+#### Missing customer number
+
+If the `endedMessage` says the customer number is missing, the call request had no `customer.number`. Add the customer number to the request in E.164 format.
+
+### Free Vapi number limits
+
+Free Vapi numbers are for inbound calls. To place outbound calls, [import a number](/phone-numbers/import-twilio) from Twilio, Telnyx, Vonage, or your own SIP trunk.
+
+Some accounts can place a limited number of outbound calls from free Vapi numbers. These ended reasons mean a call from a free Vapi number reached one of those limits.
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `call.start.error-vapi-number-international` | Free Vapi numbers can only call US numbers | Use an imported number for international calls |
+| `call.start.error-vapi-number-outbound-daily-limit` | The account reached its daily limit for outbound calls from Vapi numbers | Use an imported number for outbound calls |
+
+### The call was dialed but didn't connect
+
+These ended reasons mean your provider accepted the call but the call didn't connect to the customer. Unlike a refused call, these attempts appear in your provider's call logs. Open the attempt there to see why it failed.
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `twilio-failed-to-connect-call` | Twilio reported that the call failed | Check the call in your Twilio call logs |
+| `vonage-failed-to-connect-call` | Vonage reported that the call failed | Check the call in your Vonage logs |
+| `call.in-progress.error-sip-outbound-call-failed-to-connect` | The outbound SIP call failed to connect | Check your SIP provider's logs for the response code |
+| `call.in-progress.error-providerfault-outbound-sip-*` | Your SIP provider returned an error response. The end of the code is the SIP response, such as `403-forbidden` or `480-temporarily-unavailable` | See [Troubleshoot SIP response codes](/advanced/sip/troubleshoot-sip-response-codes) |
+| `sip-outbound-unallocated-number` | The number you called is unallocated or out of service | Check the customer number |
+| `sip-outbound-carrier-released-call` | The carrier ended the call before it connected | This is usually temporary. Retry the call |
+| `call.in-progress.error-providerfault-transport-never-connected` | The provider's media connection never reached Vapi | Retry. Contact [support](/support) if persistent |
+
+### The customer didn't answer
+
+These ended reasons are results for the number you called, not errors in your setup.
+
+| Ended reason | Meaning | What to do |
+|---|---|---|
+| `customer-did-not-answer` | The customer didn't pick up | Normal behavior |
+| `customer-busy` | The line was busy | Normal behavior. Retry later. |
+
+<Tip>
+For outbound calls where you expect to reach an interactive voice response (IVR) or other automated system, configure your [voicemail detection](/calls/voicemail-detection) settings to keep the call from ending too early.
+</Tip>
+
+## Inbound calls
+
+When someone calls your phone number, Vapi gets the assistant from the phone number or from your server URL. Then it connects the caller to the assistant. An inbound connection error means one of those steps failed: the phone number has no assistant, your server URL didn't return a valid assistant, or the SIP call from your provider didn't connect.
+
+Some inbound ended reasons, like a caller hanging up while the call rings, are normal outcomes, not errors.
+
+### No assistant on the phone number
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `call-start-error-neither-assistant-nor-server-set` | The phone number has no assistant and no server URL | Assign an assistant to the phone number, or set a server URL that returns one |
+
+### Server URL errors
+
+If your phone number uses a server URL to choose the assistant, these errors mean your server didn't respond correctly.
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `assistant-request-failed` | Request to your server URL failed | Check your server is running and reachable |
+| `assistant-request-returned-error` | Server returned an error response | Check your server logs for the error |
+| `assistant-request-returned-invalid-assistant` | Server returned invalid assistant config | Validate the response matches the [assistant schema](/api-reference/assistants/create) |
+| `assistant-request-returned-no-assistant` | Server returned an empty response | Ensure your server returns an assistant object |
+| `assistant-request-returned-unspeakable-error` | Server returned a non-speakable error | Return a user-friendly error message |
+
+### SIP inbound failures
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `call.ringing.error-sip-inbound-call-failed-to-connect` | The inbound SIP call failed while ringing | Check your SIP provider or PBX logs. See [Troubleshoot SIP response codes](/advanced/sip/troubleshoot-sip-response-codes) |
+| `call.in-progress.error-sip-inbound-call-failed-to-connect` | The inbound SIP call failed to connect | Check your SIP provider or PBX logs for the response code |
+
+### Expected inbound outcomes
+
+These ended reasons are normal results, not errors in your setup.
+
+| Ended reason | Meaning | What to do |
+|---|---|---|
+| `call.ringing.sip-inbound-caller-hungup-before-call-connect` | The caller hung up while the call was ringing | Normal behavior |
+| `twilio-reported-customer-misdialed` | Twilio reported the inbound call as busy or unanswered | Normal behavior |
+| `call.ringing.hook-executed-say` | A [phone number hook](/phone-numbers/phone-number-hooks) spoke a message and ended the call while it was ringing | Expected if you configured the hook |
+| `call.ringing.hook-executed-transfer` | A [phone number hook](/phone-numbers/phone-number-hooks) transferred the call while it was ringing | Expected if you configured the hook |
+| `assistant-request-returned-forwarding-phone-number` | Your server returned a phone number to forward the call to | Expected if your server forwards the call |
+
+## All call types
+
+### Account and billing errors
+
+These are the most common cause of calls failing before they start.
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `call.start.error-subscription-frozen` | Payment failed, subscription frozen | Update payment method in [dashboard](https://dashboard.vapi.ai/) |
+| `call.start.error-subscription-insufficient-credits` | Not enough credits | Add credits or enable auto-reload |
+| `call.start.error-subscription-concurrency-limit-reached` | Too many simultaneous calls | Increase [concurrency capacity](/calls/call-concurrency#increase-your-concurrency-limit) or wait for active calls to end |
+| `call.start.error-fraud-check-failed` | Blocked by fraud detection | Contact [support](/support) |
+| `call.start.error-subscription-wallet-does-not-exist` | No billing wallet found | Contact [support](/support) |
+
+### Configuration errors
+
+The call couldn't start because something is missing or misconfigured.
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `assistant-not-found` | Assistant ID doesn't exist | Verify the assistant ID in your [dashboard](https://dashboard.vapi.ai/) |
+| `assistant-not-valid` | Assistant configuration is invalid | Check required fields on the assistant |
+| `call.start.error-get-assistant` | Error fetching the assistant | Verify the assistant ID exists and your API key is correct |
+| `call.start.error-get-phone-number` | Error fetching the phone number | Verify the number is imported and active |
+| `call.start.error-get-resources-validation` | Resources failed validation | Check assistant, tools, and provider configurations |
+| `call.start.error-get-org` | Error fetching organization | Verify your API key is correct |
+
+### Infrastructure errors
+
+These indicate a problem on Vapi's side. You are typically not charged.
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `call.in-progress.error-vapifault-transport-never-connected` | Transport never connected | Retry. Contact [support](/support) if persistent. |
+| `call.in-progress.error-vapifault-worker-not-available` | No call worker available | Retry. This is a transient capacity issue. |
+| `call.start.error-vapifault-worker-not-available` | The queue time expired before a call worker became available; the call was not placed | Retry the call. This is a transient capacity issue. |
+| `call.start.error-vapifault-database-error` | Internal database error | Retry. Contact [support](/support) if persistent. |
+
+### Web call errors
+
+| Ended reason | Meaning | Fix |
+|---|---|---|
+| `customer-did-not-give-microphone-permission` | User denied mic access | Ensure your UI requests microphone permissions before starting the call. |
+
+## Check your setup before going live
+
+**Outbound calls:**
+
+- **Number format:** Every customer number is in E.164 format, such as `+14155550100`.
+- **Phone number:** The call uses a phone number that supports outbound calls.
+- **Credentials:** The provider credentials on your phone number in Vapi are current.
+- **Twilio account limits:** If you use a Twilio trial account, the number you're calling is verified in Twilio. For any Twilio account, the destination country is enabled in Twilio's Voice geographic permissions.
+- **Telnyx outbound voice profile:** If you use Telnyx, the connection that Vapi uses is added to an outbound voice profile.
+- **Test call:** Place one test call to your own phone and confirm it rings.
+
+**Inbound calls:**
+
+- **Assistant:** The phone number has an assistant, or a server URL that returns one.
+- **Server URL:** If you use a server URL, it's reachable and returns a valid assistant.
+- **Test call:** Call the phone number and confirm the assistant answers.
+
+## Next steps
+
+- **[Troubleshoot call errors](/calls/troubleshoot-call-errors):** Diagnose calls that dropped or went silent after they connected.
+- **[Call end reasons](/calls/call-ended-reason):** See every `endedReason` value.
+- **[Troubleshoot SIP response codes](/advanced/sip/troubleshoot-sip-response-codes):** Find where a SIP request failed.
+- **[Import number from Twilio](/phone-numbers/import-twilio):** Connect a Twilio number to Vapi.
