@@ -1,7 +1,7 @@
 ---
 title: "Troubleshoot call transfers"
 subtitle: "Trace transfer attempts, failed connections, and caller recovery"
-description: Diagnose and troubleshoot transfer tool invocation, provider routing, busy and unanswered destinations, fallback behavior, and the evidence to send support.
+description: Diagnose transfer tool invocation, configuration and message problems, provider routing, busy and unanswered destinations, fallback behavior, and the evidence to send support.
 ---
 
 Use this page when a call transfer fails or doesn't behave as expected. A transfer has three separate stages: the assistant decides to transfer, Vapi starts the transfer, and the destination answers. Each stage leaves different evidence, so check both the Vapi call record and your phone provider's call logs to find the stage where the attempt stopped.
@@ -204,6 +204,20 @@ A failed transfer command can end with `call.in-progress.error-transfer-failed`.
 
 An operator-leg busy or no-answer outcome can produce a different reason or return the caller to the original assistant, depending on the mode and recovery configuration.
 
+## Fix transfer tool and message problems
+
+| Symptom | Likely cause | Resolution |
+| --- | --- | --- |
+| The assistant selects the wrong destination | Destination descriptions overlap or do not state a clear routing intent | Give every destination a distinct description and add matching routing rules to the system prompt. |
+| The tool returns a validation or configuration error | The destination is missing or malformed | Confirm that `destinations` is an array and that each item has a valid `type` and required value. Use E.164 format for PSTN phone numbers. |
+| The assistant transfers when it should continue helping | The prompt permits broad invocation | Narrow the prompt conditions. For tools configured through the API, you can also add a [tool rejection plan](/tools/tool-rejection-plan). |
+| The same request is transferred on some calls and refused on others | The prompt asks the model to apply several rules before it transfers, such as office hours, eligibility flags, or building the destination number | Move the rules to your server. Leave the destination off the tool so Vapi sends a [`transfer-destination-request`](/server-url/events#transfer-destination-request), then respond with a destination or an error. |
+| The assistant says it's transferring, then nothing happens | Your server refused the transfer, and the tool has no `request-failed` message, so the default `Transferring the call now` played | Add a [`request-failed` message](/tools/transfer-call/setup#respond-when-your-server-refuses-a-transfer) to the tool. |
+| The caller hears silence before the transfer message | Vapi is waiting for your server's response to `transfer-destination-request` | Respond faster, or store the destinations on the tool. The `request-response-delayed` message doesn't apply to transfers. |
+| A transfer you set up as silent still plays a message | The destination came from your server, and an empty `message` only silences destinations stored on the tool | Store the destination on the tool with `message` set to an empty string. |
+| The transcript repeats or cuts off the transfer message | The transcript can duplicate or truncate the assistant's last line before the transfer | Listen to the recording to confirm what the caller heard. |
+| An assistant-to-assistant transfer stalls or behaves like an external call | The transfer call tool is being used for assistant routing | Use the [handoff tool](/squads/handoff) for transfers between standalone assistants or assistants in a Squad. |
+
 ## Common solutions
 
 ### The transfer started but the destination never answered
@@ -212,6 +226,7 @@ An operator-leg busy or no-answer outcome can produce a different reason or retu
 - Call the destination directly from another phone to confirm it's reachable.
 - Check whether the destination blocks or screens incoming calls, for example with call blocking or spam filtering.
 - Find the call in your phone provider's logs to see why it didn't connect.
+- In the call's **Logs** tab, a **Transfer Completed** entry with `result` set to `unconfirmed` means Vapi received no final outcome. It doesn't confirm the destination answered or received the call.
 
 ### The assistant didn't transfer the call
 
@@ -255,7 +270,10 @@ Test the chosen transfer mode with a reachable operator, a busy destination, and
 
 <CardGroup cols={2}>
   <Card title="Transfer Call tool" icon="fa-light fa-phone-arrow-right" href="/tools/transfer-call">
-    Create a transfer call tool and configure its destinations.
+    How transfers work, transfer modes, and outcomes.
+  </Card>
+  <Card title="Set up the Transfer Call tool" icon="fa-light fa-screwdriver-wrench" href="/tools/transfer-call/setup">
+    Create the tool, add destinations and messages, and assign it to an assistant.
   </Card>
   <Card title="Blind transfer" icon="fa-light fa-phone" href="/tools/transfer-call/blind-transfer">
     Connect a caller immediately or add a summary to a SIP header.

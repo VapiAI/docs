@@ -7,7 +7,7 @@ slug: tools/transfer-call/blind-transfer
 
 Blind transfer sends the active call to a destination without speaking to the destination first. Use it when the destination can accept the call immediately and does not need a spoken introduction.
 
-This guide starts with an existing transfer call tool. To create the tool, configure destinations, and add it to an assistant, follow [Transfer Call tool](/tools/transfer-call).
+This guide starts with an existing transfer call tool. To create the tool, configure destinations, and add it to an assistant, follow [Set up the Transfer Call tool](/tools/transfer-call/setup).
 
 ## Choose a blind transfer mode
 
@@ -15,14 +15,49 @@ Both blind modes transfer the caller immediately. The summary variant adds conte
 
 | Dashboard mode | API value | Destination experience |
 | --- | --- | --- |
-| **Blind Transfer** | `blind-transfer` | Receives the call without a message or summary |
-| **Blind Transfer with Summary in SIP Header** | `blind-transfer-add-summary-to-sip-header` | Receives the call with a generated summary in the `X-Transfer-Summary` SIP header |
+| **Blind transfer** | `blind-transfer` | Receives the call without a message or summary |
+| **Blind transfer with summary in SIP header** | `blind-transfer-add-summary-to-sip-header` | Receives the call with a generated summary in the `X-Transfer-Summary` SIP header |
 
 Blind transfer is the default. If `transferPlan` is omitted, Vapi uses `blind-transfer`.
 
 Neither blind mode waits for an operator to accept the call. The `assistant-forwarded-call` ended reason means the transfer started, not that the destination answered.
 
-A busy line, no answer, or voicemail does not automatically return the caller to the original assistant through the transfer call tool. If SIP transfer fallback is enabled and the transfer has a `fallbackPlan`, the caller can return to the assistant after a busy, unanswered, or failed transfer. See [Understand transfer outcomes and fallback](/tools/transfer-call#understand-transfer-outcomes-and-fallback).
+## What the caller and destination hear
+
+1. The caller hears the transfer message. See [Configure transfer messages](/tools/transfer-call/setup#configure-transfer-messages).
+2. The original assistant leaves the call, and the transfer starts.
+3. The destination rings. When it answers, the caller and destination are connected. Neither one hears an introduction.
+
+How the transfer reaches the destination depends on the phone provider:
+
+| Phone provider | How the transfer reaches the destination |
+| --- | --- |
+| Twilio | Twilio dials a phone number destination. For a SIP destination, it sends a SIP REFER, or dials when `sipVerb` is `dial`. |
+| Vapi numbers | Vapi dials the destination, whatever `sipVerb` is set to. |
+| Bring-your-own SIP trunk | Vapi sends a SIP REFER by default. See [Choose a SIP verb](#choose-a-sip-verb). |
+| Telnyx | Telnyx transfers the call to the destination. |
+| Vonage | Vonage connects a phone number destination. Vonage can't transfer to a SIP address. |
+
+If voicemail answers, the transfer counts as answered and the caller is connected to the voicemail.
+
+With `blind-transfer-add-summary-to-sip-header`, the summary goes in the `X-Transfer-Summary` SIP header and is never spoken. Only Vapi numbers and bring-your-own SIP trunks send the header.
+
+## If the transfer fails
+
+The caller doesn't return to the original assistant by default. What happens depends on the phone provider.
+
+**Twilio, Telnyx, and Vonage:** Vapi leaves the call when the transfer starts, so a busy, unanswered, or failed destination can't return the caller to the assistant. The call ends with `assistant-forwarded-call`. Check the provider's call record to see whether the destination answered.
+
+**Vapi numbers and bring-your-own SIP trunks:** Vapi watches the transfer and records the outcome:
+
+| Outcome | `endedReason` |
+| --- | --- |
+| The destination is busy | `call.forwarding.operator-busy` |
+| The destination doesn't answer | `call.forwarding.no-answer` |
+| The destination rejects the call or the transfer fails | `call.in-progress.error-transfer-failed` |
+| Vapi receives no final outcome | `assistant-forwarded-call` |
+
+To return the caller to the assistant after a failed transfer, add a `fallbackPlan` to the destination's `transferPlan`. The assistant says `fallbackPlan.message`, which defaults to `Could not transfer the call.` If `endCallEnabled` is `false`, the assistant keeps helping the caller. If `endCallEnabled` is `true` or not set, the call ends. With the `bye` verb, Vapi can recover only from a failure it detects before it leaves the call. See [Return the caller to the assistant after a failed transfer](/tools/transfer-call#return-the-caller-to-the-assistant-after-a-failed-transfer).
 
 ## Configure blind transfer
 
@@ -36,15 +71,15 @@ Update the transfer plan on each destination that should use blind transfer.
       </Step>
 
       <Step title="Select the transfer mode">
-        Expand **Transfer Plan**. Under **Transfer Mode**, select **Blind Transfer** or **Blind Transfer with Summary in SIP Header**.
+        Expand **Transfer Plan**. Under **Transfer mode**, select **Blind transfer** or **Blind transfer with summary in SIP header**.
 
         <Frame caption="Select a blind transfer mode in the Dashboard">
           <img src="../../static/images/tools/transfer-call/transfer-mode-menu.png" alt="Transfer Mode menu showing the blind and warm transfer options" />
         </Frame>
       </Step>
 
-      <Step title="Choose the SIP behavior for a summary transfer">
-        Complete this step only if you selected **Blind Transfer with Summary in SIP Header**. Under **SIP Verb**, select the behavior required by your SIP infrastructure:
+      <Step title="Choose the SIP verb">
+        Under **SIP Verb**, select the behavior required by your SIP infrastructure:
 
         - **REFER — hand the call to the destination (default)** sends a SIP REFER.
         - **Dial — bridge a new outbound leg to the destination** keeps Vapi in the call path while dialing.
@@ -53,8 +88,8 @@ Update the transfer plan on each destination that should use blind transfer.
         If you select **Dial**, set **Dial Timeout (seconds)** from 1 to 600 seconds. The default is 60 seconds.
       </Step>
 
-      <Step title="Save the tool">
-        Click **Save**.
+      <Step title="Publish the tool">
+        Select **Publish** in the tool header. Review the changes, then select **Next**. Enter a **Version Name** and, optionally, a **Description**. Select **Publish** to make the tool version current.
       </Step>
     </Steps>
   </Tab>
@@ -138,7 +173,7 @@ The `refer` and `dial` verbs leave the call in different states once the transfe
 
 With either verb, Vapi's recording and transcript stop when the transfer starts. To capture the rest of the call, record it in a system that stays in the media path, such as your SIP provider or PBX.
 
-If a `refer` or `dial` transfer is busy, unanswered, or fails, the caller doesn't return to the original assistant by default. If SIP transfer fallback is enabled and the destination's `transferPlan` has a `fallbackPlan`, the assistant speaks the fallback message. It then ends the call or keeps helping the caller. See [Understand transfer outcomes and fallback](/tools/transfer-call#understand-transfer-outcomes-and-fallback).
+If a `refer` or `dial` transfer is busy, unanswered, or fails, see [If the transfer fails](#if-the-transfer-fails).
 
 ## Verify the transfer
 
@@ -150,18 +185,18 @@ An `assistant-forwarded-call` ended reason confirms that Vapi initiated the tran
 
 ## Troubleshooting
 
+For provider diagnostics and packet capture guidance, follow [Troubleshoot call transfers](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops).
+
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
 | The original call ends, but the destination never rings | The SIP system rejected or did not receive the REFER | Open the affected call in [**Calls**](/observability/logs/call-logs) under **Logs** and check its **Logs** tab, then inspect the provider or PBX SIP logs and packet capture. Confirm required SIP signaling addresses are allowed. |
 | The call ends without dialing a destination | `sipVerb` is set to `bye` | Use `refer` or `dial` when Vapi should place or initiate the transfer. |
 | A dial transfer stops ringing too soon | `dialTimeout` is too short | Increase `dialTimeout` within the 1–600 second range. |
-| The caller doesn't return to the assistant after a failed transfer | The destination has no `fallbackPlan`, or SIP transfer fallback isn't enabled | Add a `fallbackPlan` to the destination's `transferPlan`. See [Understand transfer outcomes and fallback](/tools/transfer-call#understand-transfer-outcomes-and-fallback). |
+| The caller doesn't return to the assistant after a failed transfer | The destination has no `fallbackPlan`, or the call uses Twilio, Telnyx, or Vonage | On Vapi numbers and bring-your-own SIP trunks, add a `fallbackPlan` to the destination's `transferPlan`. See [If the transfer fails](#if-the-transfer-fails). |
 | The recording or transcript stops at the transfer | Vapi's recording and transcript end when the transfer starts for both `refer` and `dial` | Record the full call in your SIP provider or PBX. |
 | The summary header is missing | The standard blind mode is selected or summary generation is disabled | Use `blind-transfer-add-summary-to-sip-header` and enable `summaryPlan`. Inspect the receiving SIP system rather than the audio transcript. |
 | The summary contains the wrong information | The summary prompt is broad or uses the wrong template variable | Give `summaryPlan.messages` a focused instruction and include `{{transcript}}` in the user message. |
 | Vapi shows `assistant-forwarded-call`, but the transfer failed | Vapi initiated the downstream transfer but did not observe its final result | Use the telephony provider's call detail record and SIP signaling as the source of truth for downstream completion. |
-
-For additional provider diagnostics and packet capture guidance, follow [Troubleshoot call transfers](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops).
 
 ## API reference
 
