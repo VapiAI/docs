@@ -18,7 +18,7 @@ GPT-Live assistants cannot use assistant-based warm transfer. GPT-Live supports 
 Before you configure the transfer, prepare:
 
 - A Vapi assistant that handles phone calls on a Twilio number, a Vapi number, or a bring-your-own SIP trunk. On other phone providers, the call is transferred without the transfer assistant.
-- A destination phone number in E.164 format, for example, `+14155550100`
+- A destination: a phone number in E.164 format, for example `+14155550100`, or a SIP URI. On Twilio, use a phone number.
 - A [private Vapi API key](/security-and-privacy/api-keys) for the curl method
 - A publicly accessible MP3 or WAV file if you want custom hold or completion audio
 
@@ -34,9 +34,33 @@ When the original assistant invokes the transfer call tool:
 
 The `transferSuccessful` and `transferCancel` tools are always available to the transfer assistant. You can customize them through the API, but you do not need to add them to a basic configuration.
 
+## What the caller and destination hear
+
+1. The caller hears the transfer message, then hold audio. Set `transferPlan.holdAudioUrl` to use your own hold audio.
+2. Vapi calls the destination. The caller stays on hold and doesn't hear the operator conversation.
+3. When the operator answers, they hear the summary if `transferPlan.summaryPlan.enabled` is `true`. Otherwise, they hear the destination's `message`. The transfer assistant then talks with them.
+4. If the transfer assistant calls `transferSuccessful`, `transferCompleteAudioUrl` plays to the operator if it's set, and the caller joins the call.
+
+The destination sees the caller's number where the phone provider allows it. See [Caller ID](/tools/transfer-call#caller-id).
+
+## If the transfer fails
+
+If the transfer doesn't complete, the caller returns to the original assistant, which says `fallbackPlan.message`. The default is `Could not transfer the call.` If `fallbackPlan.endCallEnabled` isn't set, the caller stays on the call with the original assistant.
+
+If the call ends after the fallback message, its `endedReason` shows why the transfer failed:
+
+| What happened | `endedReason` |
+| --- | --- |
+| The destination was busy, didn't answer, or the call to it failed | `call.forwarding.operator-busy` |
+| The transfer assistant called `transferCancel` | `call.in-progress.error-warm-transfer-assistant-cancelled` |
+| The operator conversation reached `maxDurationSeconds` | `call.in-progress.error-warm-transfer-max-duration` |
+| The operator was silent for `silenceTimeoutSeconds` | `call.in-progress.error-warm-transfer-silence-timeout` |
+
+Voicemail isn't detected automatically when a transfer assistant is configured. Prompt the transfer assistant to call `transferCancel` when it reaches voicemail. See [Prompt the transfer assistant](#prompt-the-transfer-assistant).
+
 ## Configure the warm transfer
 
-Create a reusable transfer call tool, configure a phone-number destination, and add the tool to the original assistant.
+Create a reusable transfer call tool, configure a phone-number or SIP destination, and add the tool to the original assistant.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -45,16 +69,16 @@ Create a reusable transfer call tool, configure a phone-number destination, and 
         In the Vapi Dashboard, open **Tools**, click **Create Tool**, and select **Transfer Call**. Enter a name and a description that state when the assistant should use the tool.
       </Step>
 
-      <Step title="Add a phone-number destination">
-        Under **Destinations**, click **Add Destination**, then select **Phone Number**. Enter the destination in E.164 format and describe when the assistant should select it.
+      <Step title="Add a destination">
+        Under **Destinations**, click **Add Destination**, then select **Phone Number** or **SIP**. Enter the destination and describe when the assistant should select it. For a phone number, use E.164 format. On Twilio, use a phone-number destination.
       </Step>
 
       <Step title="Select assistant-based warm transfer">
-        Expand **Transfer Plan**. Under **Transfer Mode**, select **Warm Transfer - Experimental**.
+        Expand **Transfer Plan**. Under **Transfer mode**, select **Warm transfer - experimental**.
       </Step>
 
       <Step title="Configure the operator experience">
-        Enter the **Message to Operator**. Under **Fallback Plan**, set the message spoken to the customer when the transfer fails and choose whether to end the call. Under **Summary Plan**, choose whether to generate a conversation summary for the operator.
+        Enter the **Message to Operator**. Under **Fallback Plan**, enter the **Fallback Message** spoken to the caller when the transfer fails, and choose whether to **End call if transfer fails**. Under **Summary Plan**, choose whether to generate a conversation summary for the operator.
       </Step>
 
       <Step title="Publish the tool">
@@ -134,7 +158,7 @@ Create a reusable transfer call tool, configure a phone-number destination, and 
       </Step>
 
       <Step title="Add the tool to the original assistant">
-        Replace `ASSISTANT_ID` and `TOOL_ID`, then update the assistant with the [Update Assistant endpoint](/api-reference/assistants/update).
+        Replace `YOUR_API_KEY`, `ASSISTANT_ID`, and `TOOL_ID`, and replace `EXISTING_TOOL_ID` with the IDs of any tools already on the assistant. Then update the assistant with the [Update Assistant endpoint](/api-reference/assistants/update).
 
         ```bash
         curl --request PATCH \
@@ -143,12 +167,18 @@ Create a reusable transfer call tool, configure a phone-number destination, and 
           --header 'Content-Type: application/json' \
           --data '{
             "model": {
-              "toolIds": ["TOOL_ID"]
+              "provider": "openai",
+              "model": "gpt-4o",
+              "toolIds": ["EXISTING_TOOL_ID", "TOOL_ID"]
             }
           }'
         ```
 
-        If the assistant already has reusable tools, include their IDs in `toolIds` so this update does not remove them.
+        The example uses an OpenAI model. Keep the assistant's current model configuration and include any existing tool IDs in the `toolIds` array. Updating the array replaces its current contents.
+      </Step>
+
+      <Step title="Update the assistant prompt">
+        In the original assistant's system prompt, define when to start the transfer and require the assistant to invoke the tool in the same response as its spoken acknowledgment.
       </Step>
     </Steps>
   </Tab>
@@ -184,7 +214,7 @@ Keep the transfer assistant's system message focused on the operator conversatio
 
 For example:
 
-```text title="System prompt"
+```text title="System prompt" wordWrap
 Call transferCancel if the destination plays an IVR message, automated queue announcement, or hold message. Call transferSuccessful only after a live operator responds and accepts the call.
 ```
 
@@ -213,6 +243,8 @@ In [**Calls**](/observability/logs/call-logs) under **Logs**, inspect the origin
 
 ## Troubleshooting
 
+Open the affected call in [**Calls**](/observability/logs/call-logs) under **Logs**, then check its **Logs** tab for validation and transfer errors. If Vapi initiated the transfer but the destination never rings, inspect the telephony provider's call detail records and follow [Troubleshoot call transfers](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops).
+
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
 | The customer is transferred without an operator conversation | The destination uses a blind or non-assistant warm-transfer mode, the call uses an unsupported phone provider, or a Twilio call is transferring to a SIP address | Set `transferPlan.mode` to `warm-transfer-experimental`, and use a Twilio number, Vapi number, or bring-your-own SIP trunk. On Twilio, use a phone-number destination. |
@@ -223,8 +255,6 @@ In [**Calls**](/observability/logs/call-logs) under **Logs**, inspect the origin
 | The customer hears the wrong audio | Hold audio was configured as a tool message | Put customer hold audio in `transferPlan.holdAudioUrl`. Use `transferCompleteAudioUrl` for audio played to the destination after the introduction. |
 | The customer cannot continue after a failed transfer | `fallbackPlan.endCallEnabled` is `true` | Set it to `false` so the original assistant remains on the call. |
 | The transfer ends during a long operator interaction | A duration or silence timeout is too short | Increase `maxDurationSeconds` or `silenceTimeoutSeconds` within the supported ranges. |
-
-Open the affected call in [**Calls**](/observability/logs/call-logs) under **Logs**, then check its **Logs** tab for validation and transfer errors. If Vapi initiated the transfer but the destination never rings, inspect the telephony provider's call detail records and follow [Troubleshoot call transfers](/phone-calling/in-call-control/transfer-calls/debug-forwarding-drops).
 
 ## API reference
 

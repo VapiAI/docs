@@ -1,291 +1,152 @@
 ---
 title: MCP tools
-subtitle: 'Connect your assistant to dynamic tools through MCP servers for enhanced capabilities'
+subtitle: Give a voice agent the tools from any MCP server, fetched when each call starts
 slug: tools/mcp
-description: Connect a Vapi assistant to MCP servers to access tools dynamically at runtime, letting it use any MCP-compatible server's capabilities during a call.
+description: Learn what the Vapi MCP tool does, when to use it, how Vapi fetches and calls an MCP server's tools, and how to create an MCP tool in the Dashboard or with cURL.
 ---
 
-The Model Context Protocol (MCP) integration allows your Vapi assistant to dynamically access tools from MCP servers during calls. This enables your assistant to:
+The MCP tool connects a voice agent to an external [Model Context Protocol](https://modelcontextprotocol.io/introduction) (MCP) server. When a call starts, Vapi asks the server which tools it has and gives each one to the model as a normal tool. When the model calls one of them, Vapi forwards the request to the server and returns the result to the model.
 
-1. Connect to any MCP-compatible server
-2. Access tools dynamically at runtime
-3. Execute actions through the MCP server
+## When to use an MCP tool
 
-This powerful integration allows your assistant to leverage a wide range of tools without requiring individual integrations for each service.
+Use an MCP tool when:
 
-<Note>
-  Vapi also provides its own MCP server that exposes Vapi APIs as callable tools. See the [Vapi MCP Server documentation](/sdk/mcp-server) to learn how to use it with Claude Desktop or custom applications.
-</Note>
+- **A server already provides the actions you need.** This can be a provider such as Zapier, Make, or Composio, or an MCP server you run yourself.
+- **You want many actions from one setup.** One MCP tool gives the voice agent the server's whole set of tools, with no per-tool setup in Vapi.
+- **The actions change often.** When the server adds or changes a tool, new calls pick up the change automatically.
+
+Use a [Function tool](/tools/custom-tools) or an [API Request tool](/tools/api-request) instead when:
+
+- **You need one specific action with a fixed name, description, and parameters** that you control in Vapi.
+- **Authentication needs a different value on each call.** MCP tools can't use variables in anything the server needs to list its tools. For more information, see [Use variables in headers](/tools/mcp/configure#use-variables-in-headers).
+
+## How MCP tools work
+
+1. **The call or chat starts.** Vapi connects to the MCP server and requests its tool list once.
+2. **Vapi adds the server's tools to the model.** Each tool gets a name prefix. The MCP tool itself is never shown to the model; it only tells Vapi which server to use. For more information, see [Tool names the model sees](/tools/mcp/configure#tool-names-the-model-sees).
+3. **The model calls a tool.** Vapi opens a new MCP session, sends the tool call, and closes the session. Every tool call uses its own session.
+4. **The server's result goes back to the model**, which uses it to reply to the caller.
+
+Vapi requests the tool list only at the start of each call or chat. It doesn't refresh the list during a conversation, so changes on the server show up on the next call.
+
+Pinned assistant versions and squad members also get the server's current tool list when the call starts, not the list from when the version was saved.
+
+Creating or updating an MCP tool doesn't contact the server. The first request happens when a call or chat uses the tool.
 
 ## Prerequisites
 
-Before you can use the MCP integration, you need to:
-1. Have access to the Vapi Dashboard
-2. Have an assistant created in Vapi
-3. Have access to an MCP server URL (e.g., from Make, Zapier, Composio, or other MCP providers)
+- An MCP server URL. The server must support Streamable HTTP, or Server-Sent Events (SSE) for older servers. For Zapier, Composio, and Make, see [MCP providers](/tools/mcp/providers).
+- Any authentication the server needs. See [Authentication](/tools/mcp/configure#authentication).
 
-## Setup Steps
+## Create an MCP tool
 
-### 1. Obtain MCP Server URL
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Create the tool">
+        Go to **Tools**, click **Create Tool**, and select **MCP**.
+      </Step>
+      <Step title="Name the tool">
+        Under **Tool Settings**, enter a **Tool Name** and **Description** so you and your team can identify this MCP tool.
+      </Step>
+      <Step title="Enter the server URL">
+        Under **Server Settings**, enter the **Server URL**.
+      </Step>
+      <Step title="Set the timeout (optional)">
+        Set **Timeout** to how long Vapi waits for each request to the server. The default is 20 seconds.
+      </Step>
+      <Step title="Add authentication (optional)">
+        If the server needs authentication, select a saved credential under **Authorization**, or add the auth header under **HTTP Headers**. See [Authentication](/tools/mcp/configure#authentication).
+      </Step>
+      <Step title="Add other headers (optional)">
+        Under **HTTP Headers**, add any other headers your server needs. Header values can use variables, which Vapi fills in for tool calls only. See [Use variables in headers](/tools/mcp/configure#use-variables-in-headers).
+      </Step>
+      <Step title="Encrypt sensitive arguments (optional)">
+        Under **Encryption Settings**, add the argument paths to encrypt. This needs a custom credential with encryption enabled. See [Encrypt sensitive arguments](/tools/mcp/configure#encrypt-sensitive-arguments).
+      </Step>
+      <Step title="Choose the protocol (optional)">
+        Under **MCP Settings**, keep **Streamable HTTP** unless your server only supports SSE. See [Transport](/tools/mcp/configure#transport).
+      </Step>
+      <Step title="Add spoken messages (optional)">
+        Under **Messages**, click **Add Message** to set what the caller hears while a tool runs. These messages apply to every tool from the server. See [Spoken messages during tool calls](/tools/mcp/messages-and-results#spoken-messages-during-tool-calls).
+      </Step>
+      <Step title="Save and check the connection">
+        Save the tool. Vapi then queries your MCP server for its list of tools and shows them in the **Available Tools** section, below **MCP Settings**. If the list is empty, check the URL and authentication, save again, and click refresh.
+      </Step>
+      <Step title="Add the tool to your voice agent">
+        Open your assistant, add the MCP tool to its tools, and publish.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="cURL">
+    Create the tool. Only `type` and `server.url` are required:
 
-First, you need to obtain an MCP server URL from your chosen provider:
-
-1. Sign up for an MCP-compatible service (e.g., Make, Zapier, Composio)
-2. Navigate to the MCP configuration section of your provider
-3. Generate or copy your MCP server URL
-
-<Note>
-  For Zapier MCP, visit https://mcp.zapier.com/mcp/?client=vapi? to generate your MCP server URL. This URL should be treated as a credential and kept secure.
-
-  For Make MCP, create an [MCP token](https://developers.make.com/mcp-server/connect-using-mcp-token) and construct the connection URL described in Make's documentation. Treat the token and any URL containing it as credentials.
-</Note>
-
-### 2. Create and Configure MCP Tool
-
-After obtaining your MCP server URL, create and configure the tool:
-
-1. Go to **Dashboard** > **Tools** page
-2. Click the **Create Tool** button
-3. Select **MCP** from the available options
-4. Provide a name and description explaining when it should be invoked
-5. Configure the tool with the following required field:
-   - **Server URL**: The URL of your MCP server
-
-The Dashboard labels this field **Server URL**. In an API request, configure the same value as `server.url`.
-
-<Note>
-  The MCP server URL should be treated as a credential and kept secure. It will be used to authenticate requests to the MCP server.
-</Note>
-
-### 3. Add Tool to Assistant
-
-Now, add the MCP tool to your assistant:
-
-1. Navigate to **Dashboard** > **Assistants** page
-2. Select your assistant
-3. Go to the **Tools** tab
-4. In the tools dropdown, select your MCP tool
-5. Click **Publish** to save your changes
-
-## How MCP Works
-
-The MCP integration follows these steps during a call or chat session:
-
-1. When a call or chat starts, Vapi connects to your configured MCP server using **Streamable HTTP** protocol by default, fetches the list of available tools, and dynamically adds them to your assistant's available tools
-2. The assistant can then use these tools during the interaction
-3. **Each time the model invokes a specific MCP tool**, Vapi creates a new connection to the MCP server and sends the request with the `X-Call-Id`/`X-Chat-Id` header to identify the call or chat
-4. The MCP server executes the action and returns the result
-5. This process repeats for every tool invocation, meaning **multiple MCP sessions are created per call or chat**
-
-<Note>
-  Vapi uses multiple MCP sessions throughout a single conversation to ensure consistent behavior across both calls and chat interactions. Each tool execution creates a separate connection to the MCP server, allowing for isolated and reliable tool execution. All tool invocations include the `X-Call-Id`/`X-Chat-Id` header to identify the specific call or chat.
-</Note>
-
-<Note>
-  The MCP tool itself is not meant to be invoked by the model. It serves as a configuration mechanism for Vapi to fetch and inject the specific tool definitions from the MCP server into the model's context.
-</Note>
-
-<Note>
-  The tools available through MCP are determined by your MCP server provider. Vapi imports the complete tool list exposed by the configured server and does not apply its own per-tool filter.
-</Note>
-
-<Warning>
-  Expose only the tools the assistant needs. Large tool lists consume model context and can increase latency and timeout risk. Use the MCP provider's access controls and least-privilege credentials to keep the tool surface focused.
-</Warning>
-
-### Request Headers
-
-MCP requests from Vapi include identifying headers to help with context and debugging:
-
-- **`X-Call-Id`**: Included in requests during voice calls to identify the specific call
-- **`X-Chat-Id`**: Included in requests during chat interactions to identify the specific chat
-- **`X-Session-Id`**: Included in requests during chat interaction if the chat is part of a session
-
-## Tool Configuration
-
-### MCP Tool
-
-This tool uses the following configuration options:
-
-**Required:**
-- `server.url`: The URL of your MCP server (e.g., https://mcp.zapier.com/api/mcp/s/********/mcp)
-
-**Optional:**
-- `server.headers`: Custom headers to include in requests to the MCP server
-- `metadata`: Additional configuration options for the MCP connection
-  - `protocol`: Communication protocol to use. Options are:
-    - `"shttp"` (default): Uses Streamable HTTP protocol
-    - `"sse"`: (deprecated) Uses Server-Sent Events protocol
-
-<Note>
-  The server URL should be treated as a credential and kept secure. It will be used to authenticate requests to the MCP server.
-</Note>
-
-## Example Usage
-
-Here's how the MCP tool can be used in your assistant's configuration:
-
-### Default Configuration (Streamable HTTP)
-
-```json
-{
-  "model": {
-    "provider": "openai",
-    "model": "gpt-4o",
-    "messages": [
-      {
-        "role": "system",
-        "content": "You are a helpful personal assistant named Alex. You can help users with various tasks through voice commands. You have access to tools that allow you to perform actions on the user's behalf.\n\nWhen a user requests an action, check if any of the available tools can help accomplish that task.\n\nCommon tasks you can help with include:\n- Scheduling appointments and meetings\n- Sending messages or emails\n- Creating or updating documents\n- Managing to-do lists and reminders\n- Searching for information\n- Making reservations\n- Ordering food or services\n- Checking account balances or transaction history\n- Controlling smart home devices\n\nAlways be polite, professional, and helpful. If a tool fails or isn't available, explain the situation to the user and suggest alternatives if possible."
-      }
-    ],
-    "tools": [
-      {
+    ```bash
+    curl -X POST https://api.vapi.ai/tool \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
         "type": "mcp",
-        "function": {
-          "name": "mcpTools"
-        },
         "server": {
-            "url": "https://mcp.zapier.com/api/mcp/s/********/mcp"
+          "url": "https://mcp.example.com/mcp"
         }
-      }
-    ]
-  }
-}
-```
+      }'
+    ```
 
-### Custom Configuration (SSE Protocol)
+    This example sets every common option:
 
-If you need to use Server-Sent Events protocol instead:
-
-```json
-{
-  "model": {
-    "provider": "openai",
-    "model": "gpt-4",
-    "messages": [
-      {
-        "role": "system",
-        "content": "You are a helpful personal assistant named Alex..."
-      }
-    ],
-    "tools": [
-      {
+    ```bash
+    curl -X POST https://api.vapi.ai/tool \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
         "type": "mcp",
-        "function": {
-          "name": "mcpTools"
-        },
         "server": {
-            "url": "https://mcp.zapier.com/api/mcp/s/********/mcp",
-            "headers": {
-              "Authorization": "Bearer your-token",
-              "X-Custom-Header": "your-value"
-            }
+          "url": "https://mcp.example.com/mcp",
+          "timeoutSeconds": 30,
+          "headers": {
+            "Authorization": "Bearer YOUR_MCP_SERVER_TOKEN",
+            "X-Customer-Id": "{{customerId}}"
+          }
         },
         "metadata": {
-          "protocol": "sse"
-        }
+          "protocol": "shttp"
+        },
+        "messages": [
+          { "type": "request-start", "content": "Let me check that for you." }
+        ],
+        "toolMessages": [
+          {
+            "name": "create_ticket",
+            "messages": [
+              { "type": "request-complete", "content": "Your ticket is created." }
+            ]
+          }
+        ]
+      }'
+    ```
+
+    To authenticate with a saved credential instead of a header, replace the `Authorization` header with `"credentialId": "YOUR_CREDENTIAL_ID"` in `server`. For every field, see the [Configuration reference](/tools/mcp/configure#configuration-reference).
+
+    Then add the returned tool ID to your assistant's `model.toolIds`:
+
+    ```json
+    {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4.1",
+        "toolIds": ["YOUR_MCP_TOOL_ID"]
       }
-    ]
-  }
-}
-```
+    }
+    ```
 
-## Best Practices
+    You can also define the tool inline in `model.tools` with the same fields.
+  </Tab>
+</Tabs>
 
-1. **Protocol Selection**: Use the default Streamable HTTP protocol. SSE is deprecated and should be used only when required by the server
-2. **Dynamic Tool Awareness**: Be aware that the available tools may change between calls
-3. **Clear Instructions**: Provide clear instructions in your assistant's system message about how to handle dynamic tools
-4. **Error Handling**: Include fallback responses for cases where tools fail or are unavailable
-5. **User Communication**: Explain to users what tools you're using and what actions you're taking
-6. **Security**: Treat the MCP server URL as a credential and keep it secure
+## Next steps
 
-## Example MCP Providers
-
-### Make MCP
-
-Make MCP can expose active, on-demand scenarios as tools and can expose account-management tools when the token has the corresponding scopes.
-
-<Steps>
-  <Step title="Prepare the scenarios">
-    Define the inputs and outputs for each scenario, then set its schedule to **On demand**.
-  </Step>
-  <Step title="Create an MCP token">
-    Create a [Make MCP token](https://developers.make.com/mcp-server/connect-using-mcp-token) with the minimum scopes required.
-  </Step>
-  <Step title="Limit scenario access">
-    Use Make's [scenarios as tools access control](https://developers.make.com/mcp-server/connect-using-mcp-token/scenarios-as-tools-access-control) to expose only the scenarios the assistant needs.
-  </Step>
-  <Step title="Add the server URL">
-    Add the resulting URL as the Vapi MCP tool's **Server URL** in the Dashboard, or as `server.url` through the API.
-  </Step>
-  <Step title="Use Streamable HTTP">
-    Keep **Streamable HTTP** selected.
-  </Step>
-</Steps>
-
-<Warning>
-  Scenario access-control parameters apply to scenario tools, not management tools. A broadly scoped token can expose management tools capable of modifying Make resources. Because Vapi imports every exposed tool, broad access also increases model context, latency, and timeout risk. Grant no management scopes unless the assistant needs them.
-</Warning>
-
-<Card title="Run the Make MCP example" icon="flask" href="https://github.com/VapiAI/vapi-labs/blob/main/projects/vapi-make-patterns/examples/mcp/README.md">
-  Provision a demo scenario, inspect the tools Make exposes, and verify the Vapi → Make → Vapi round trip.
-</Card>
-
-See [Connect Vapi to Make](/tools/integrations/make) to compare MCP with API Request and Function tools.
-
-### Zapier MCP
-
-Zapier offers an MCP server that provides access to thousands of app integrations:
-
-1. Go to https://mcp.zapier.com/mcp/?client=vapi?
-2. Generate your MCP server URL
-3. Add the URL to your MCP tool configuration
-4. Your assistant will now have access to Zapier's extensive integration network
-
-<Note>
-  Zapier MCP provides access to over 7,000+ apps and 30,000+ actions without requiring complex API integrations.
-</Note>
-
-### Composio MCP
-
-Composio also offers an MCP server for integration:
-
-1. Log in to the Composio dashboard at [dashboard.composio.dev](https://dashboard.composio.dev)
-2. Select the tool you want to integrate (e.g., Gmail)
-3. Enable the MCP server for the selected tool by connecting your account using authentication flow
-4. Create a server and copy the generated URL
-5. Add this URL as the **Server URL** in the Dashboard, or as `server.url` through the API
-6. Your assistant will now have access to the specific Composio tool integration
-
-<Note type="warning">
-  **Context Overflow Warning**: Some MCP server tool calls (eg: GitHub API queries) may return large amounts of data. This can exceed model context limits, affecting assistant performance and potentially causing failures, especially with models like GPT-4o.
-
-  **Best Practices**:
-  - Configure your MCP tools to return focused, relevant data
-  - Use filtering parameters when available to limit response size
-  - Test your integration with realistic queries before deploying
-  - Monitor token usage and context size during development
-</Note>
-
-## References
-
-- [Model Context Protocol Introduction](https://modelcontextprotocol.io/introduction)
-- [Zapier MCP](https://zapier.com/mcp)
-- [Make MCP](https://developers.make.com/mcp-server)
-
-<CardGroup cols={2}>
-  <Card
-    title="Need Help?"
-    icon="question-circle"
-    href="https://discord.gg/v5Ee6FhAZt"
-  >
-    Ask other developers about MCP integration in the Vapi Discord community
-  </Card>
-  <Card
-    title="API Reference"
-    icon="book"
-    href="/api-reference/tools/create"
-  >
-    View the complete API documentation for tools
-  </Card>
-</CardGroup> 
+- [Configure MCP tools](/tools/mcp/configure): set authentication, headers, variables, encryption, and transport.
+- [MCP tool messages and results](/tools/mcp/messages-and-results): control what the caller hears and what the model receives.
+- [Troubleshoot MCP tools](/tools/mcp/troubleshooting): fix common problems and follow best practices.
+- [MCP providers](/tools/mcp/providers): connect Zapier, Composio, or Make.
