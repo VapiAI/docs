@@ -16,14 +16,10 @@ Use this server to connect your AI workflows to real-world telephony, automate v
 </Note>
 
 <Tip>
-**Using the Vapi CLI?** Auto-configure MCP in your IDE with one command:
-
-```bash
-vapi mcp setup
-```
-
-This automatically configures Cursor, Windsurf, or VSCode with the Vapi MCP server. [Learn more →](/cli/mcp)
+  **Using the updated Vapi CLI?** Run `vapi mcp setup` to configure this v2 API server in your IDE. Use `vapi skills setup` to install public agent skills. Documentation search is planned through the v2 connection. Earlier CLI releases configured a local docs server under `vapi mcp setup`; see [CLI MCP integration](/cli/mcp) for migration details.
 </Tip>
+
+Use **Streamable HTTP** at `https://mcp-v2.vapi.ai/api/mcp` for remote connections. The legacy HTTP+SSE transport is deprecated; migrate existing remote configurations to this endpoint.
 
 ## Quickstart: Claude Desktop Config
 
@@ -44,8 +40,11 @@ This automatically configures Cursor, Windsurf, or VSCode with the Vapi MCP serv
         "vapi-mcp": {
           "command": "npx",
           "args": [
+            "-y",
             "mcp-remote",
-            "https://mcp.vapi.ai/mcp",
+            "https://mcp-v2.vapi.ai/api/mcp",
+            "--transport",
+            "http-only",
             "--header",
             "Authorization: Bearer ${VAPI_TOKEN}"
           ],
@@ -94,16 +93,16 @@ The Vapi MCP Server exposes these actions as MCP tools:
 ## Integration Options
 
 <Tabs>
-  <Tab title="Remote (streamable-HTTP)">
-    Connect to the Vapi-hosted MCP server using the streamable-HTTP protocol.
+  <Tab title="Remote (Streamable HTTP)">
+    Connect to the Vapi-hosted MCP server using the Streamable HTTP protocol.
     <Note> 
       Recommended for most production use cases.
     </Note>
     <Warning>
-      Use this for clients or SDKs that support streamable-HTTP transport.
+      Use this for clients or SDKs that support Streamable HTTP transport.
     </Warning>
     
-    - **Endpoint:** `https://mcp.vapi.ai/mcp`
+    - **Endpoint:** `https://mcp-v2.vapi.ai/api/mcp`
     - **Authentication:** Pass your Vapi API key as a bearer token:
       <br/><code>Authorization: Bearer YOUR_VAPI_API_KEY</code>
     
@@ -114,8 +113,11 @@ The Vapi MCP Server exposes these actions as MCP tools:
         "vapi-mcp": {
           "command": "npx",
           "args": [
+            "-y",
             "mcp-remote",
-            "https://mcp.vapi.ai/mcp",
+            "https://mcp-v2.vapi.ai/api/mcp",
+            "--transport",
+            "http-only",
             "--header",
             "Authorization: Bearer ${VAPI_TOKEN}"
           ],
@@ -126,38 +128,6 @@ The Vapi MCP Server exposes these actions as MCP tools:
       }
     }
     ```
-  </Tab>
-  <Tab title="Remote (SSE)">
-    Connect to the Vapi-hosted MCP server using Server-Sent Events (SSE).
-
-    <Warning>
-      Use this for clients or SDKs that support SSE transport.
-    </Warning>
-    
-    - **Endpoint:** `https://mcp.vapi.ai/sse`
-    - **Authentication:** Pass your Vapi API key as a bearer token:
-      <br/><code>Authorization: Bearer YOUR_VAPI_API_KEY</code>
-    
-    Example config for Claude:
-    ```json
-    {
-      "mcpServers": {
-        "vapi-sse": {
-          "command": "npx",
-          "args": [
-            "mcp-remote",
-            "https://mcp.vapi.ai/sse",
-            "--header",
-            "Authorization: Bearer ${VAPI_TOKEN}"
-          ],
-          "env": {
-            "VAPI_TOKEN": "YOUR_VAPI_API_KEY"
-          }
-        }
-      }
-    }
-    ```
-  
   </Tab>
   <Tab title="OpenAI responses API">
     <Note>
@@ -175,7 +145,7 @@ The Vapi MCP Server exposes these actions as MCP tools:
           {
             type: 'mcp',
             server_label: 'vapi-mcp',
-            server_url: 'https://mcp.vapi.ai/mcp',
+            server_url: 'https://mcp-v2.vapi.ai/api/mcp',
             headers: { "Authorization": "Bearer YOUR_VAPI_API_KEY" }
           },
         ],
@@ -195,7 +165,7 @@ The Vapi MCP Server exposes these actions as MCP tools:
             {
                 "type": "mcp",
                 "server_label": "vapi-mcp",
-                "server_url": "https://mcp.vapi.ai/mcp",
+                "server_url": "https://mcp-v2.vapi.ai/api/mcp",
                 "headers": {"Authorization": "Bearer YOUR_VAPI_API_KEY"}
             },
         ],
@@ -235,7 +205,7 @@ The Vapi MCP Server exposes these actions as MCP tools:
       Use this for clients or SDKs that support local command-based MCP servers.
     </Warning>
     
-    Connect your client or SDK to the local server endpoint (default: `http://localhost:3000`).
+    The client launches this server as a subprocess and communicates over **stdio**. This configuration does not start an HTTP endpoint.
   </Tab>
 </Tabs>
 
@@ -255,7 +225,7 @@ You can use any MCP-compatible client (SDKs available for multiple languages).
     - [C#](https://github.com/modelcontextprotocol/csharp-sdk)
   </Step>
   <Step title="Configure your connection">
-    Set up your SDK to connect to the Vapi MCP Server (<code>https://mcp.vapi.ai/sse</code>) and authenticate with your API key.
+    Set up your SDK to connect to <code>https://mcp-v2.vapi.ai/api/mcp</code> using **Streamable HTTP** and authenticate with your Vapi API key in the <code>Authorization: Bearer YOUR_VAPI_API_KEY</code> header.
   </Step>
   <Step title="Use MCP tools">
     Query available tools, list assistants, create calls, etc, via your SDK.
@@ -266,9 +236,6 @@ You can use any MCP-compatible client (SDKs available for multiple languages).
 
 ### Example: Build a client with Node.js
 
-<Tabs>
-  <Tab title="Streamable-HTTP">
-
 ```javascript
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -278,7 +245,7 @@ dotenv.config();
 
 const mcpClient = new Client({ name: 'vapi-client', version: '1.0.0' });
 const transport = new StreamableHTTPClientTransport(
-  new URL('https://mcp.vapi.ai/mcp'),
+  new URL('https://mcp-v2.vapi.ai/api/mcp'),
   { requestInit: { headers: { Authorization: `Bearer ${process.env.VAPI_TOKEN}` } } }
 );
 
@@ -291,40 +258,8 @@ async function main() {
 
 main();
 ```
-
-  </Tab>
-  <Tab title="SSE">
-
-```javascript
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
-const mcpClient = new Client({ name: 'vapi-client', version: '1.0.0' });
-const transport = new SSEClientTransport(
-  new URL('https://mcp.vapi.ai/sse'),
-  { requestInit: { headers: { Authorization: `Bearer ${process.env.VAPI_TOKEN}` } } }
-);
-
-async function main() {
-  await mcpClient.connect(transport);
-  const assistants = await mcpClient.callTool({ name: 'list_assistants', arguments: {} });
-  console.log(assistants);
-  await mcpClient.close();
-}
-
-main();
-```
-
-  </Tab>
-</Tabs>
 
 ### Detailed example: Build a client with Node.js
-
-<Tabs>
-  <Tab title="Streamable-HTTP">
 
 ```javascript
 #!/usr/bin/env node
@@ -348,8 +283,8 @@ async function main() {
       name: 'vapi-client-example',
       version: '1.0.0',
     });
-    // Create Streamable-HTTP transport for connection to remote Vapi MCP server
-    const serverUrl = 'https://mcp.vapi.ai/mcp';
+    // Create Streamable HTTP transport for connection to remote Vapi MCP server
+    const serverUrl = 'https://mcp-v2.vapi.ai/api/mcp';
     const headers = {
       Authorization: `Bearer ${process.env.VAPI_TOKEN}`,
     };
@@ -453,145 +388,6 @@ async function main() {
 
 main();
 ```
-
-  </Tab>
-  <Tab title="SSE">
-
-```javascript
-#!/usr/bin/env node
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import dotenv from 'dotenv';
-
-// Load environment variables from .env file
-dotenv.config();
-
-// Ensure API key is available
-if (!process.env.VAPI_TOKEN) {
-  console.error('Error: VAPI_TOKEN environment variable is required');
-  process.exit(1);
-}
-
-async function main() {
-  try {
-    // Initialize MCP client
-    const mcpClient = new Client({
-      name: 'vapi-client-example',
-      version: '1.0.0',
-    });
-    // Create SSE transport for connection to remote Vapi MCP server
-    const serverUrl = 'https://mcp.vapi.ai/sse';
-    const headers = {
-      Authorization: `Bearer ${process.env.VAPI_TOKEN}`,
-    };
-    const options = {
-      requestInit: { headers: headers },
-      eventSourceInit: {
-        fetch: (url, init) => {
-          return fetch(url, {
-            ...(init || {}),
-            headers: {
-              ...(init?.headers || {}),
-              ...headers,
-            },
-          });
-        },
-      },
-    };
-    const transport = new SSEClientTransport(new URL(serverUrl), options);
-    console.log('Connecting to Vapi MCP server via SSE...');
-    await mcpClient.connect(transport);
-    console.log('Connected successfully');
-
-    // Helper function to parse tool responses
-    function parseToolResponse(response) {
-      if (!response?.content) return response;
-      const textItem = response.content.find(item => item.type === 'text');
-      if (textItem?.text) {
-        try {
-          return JSON.parse(textItem.text);
-        } catch {
-          return textItem.text;
-        }
-      }
-      return response;
-    }
-
-    try {
-      // List available tools
-      const toolsResult = await mcpClient.listTools();
-      console.log('Available tools:');
-      toolsResult.tools.forEach((tool) => {
-        console.log(`- ${tool.name}: ${tool.description}`);
-      });
-
-      // List assistants
-      console.log('\nListing assistants...');
-      const assistantsResponse = await mcpClient.callTool({
-        name: 'list_assistants',
-        arguments: {},
-      });
-      const assistants = parseToolResponse(assistantsResponse);
-      if (!(Array.isArray(assistants) && assistants.length > 0)) {
-        console.log('No assistants found. Please create an assistant in the Vapi dashboard first.');
-        return;
-      }
-      console.log('Your assistants:');
-      assistants.forEach((assistant) => {
-        console.log(`- ${assistant.name} (${assistant.id})`);
-      });
-
-      // List phone numbers
-      console.log('\nListing phone numbers...');
-      const phoneNumbersResponse = await mcpClient.callTool({
-        name: 'list_phone_numbers',
-        arguments: {},
-      });
-      const phoneNumbers = parseToolResponse(phoneNumbersResponse);
-      if (!(Array.isArray(phoneNumbers) && phoneNumbers.length > 0)) {
-        console.log('No phone numbers found. Please add a phone number in the Vapi dashboard first.');
-        return;
-      }
-      console.log('Your phone numbers:');
-      phoneNumbers.forEach((phoneNumber) => {
-        console.log(`- ${phoneNumber.phoneNumber} (${phoneNumber.id})`);
-      });
-
-      // Create a call using the first assistant and first phone number.
-      // Outbound calls need an imported number. With free Vapi numbers, only inbound calls are supported.
-      const phoneNumberId = phoneNumbers[0].id;
-      const assistantId = assistants[0].id;
-      console.log(`\nCreating a call using assistant (${assistantId}) and phone number (${phoneNumberId})...`);
-      const createCallResponse = await mcpClient.callTool({
-        name: 'create_call',
-        arguments: {
-          assistantId: assistantId,
-          phoneNumberId: phoneNumberId,
-          customer: {
-            phoneNumber: "+1234567890"  // Replace with actual customer phone number
-          }
-          // Optional: schedule a call for the future
-          // scheduledAt: "2025-04-15T15:30:00Z"
-        },
-      });
-      const createdCall = parseToolResponse(createCallResponse);
-      console.log('Call created:', JSON.stringify(createdCall, null, 2));
-    } finally {
-      console.log('\nDisconnecting from server...');
-      await mcpClient.close();
-      console.log('Disconnected');
-    }
-  } catch (error) {
-    console.error('Error:', error);
-    process.exit(1);
-  }
-}
-
-main();
-```
-
-  </Tab>
-</Tabs>
 
 <Note> For more detailed examples and complete client implementations, see the [MCP Client Quickstart](https://modelcontextprotocol.io/quickstart/client). </Note>
 
