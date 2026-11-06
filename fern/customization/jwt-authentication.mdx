@@ -1,144 +1,247 @@
 ---
-title: JWT Authentication
-subtitle: Secure API authentication guide
+title: JWT authentication
+subtitle: Sign short-lived tokens on your server for Web SDK calls and API requests
 slug: customization/jwt-authentication
-description: Authenticate Vapi API requests securely with JWT, covering how to generate a JSON Web Token and use it to authorize your calls to the API.
+description: Create public and private Vapi JWTs signed with HS256 and your private API key, set the required claims, restrict origins and assistants, and fix 401 and 403 errors.
 ---
 
-This documentation provides an overview of JWT (JSON Web Token) Authentication and demonstrates how to generate a JWT token and use it to authenticate API requests securely.
+<Warning>
+Sign tokens only on your server. Never send your private API key to a browser, a mobile app, or any other client.
+</Warning>
+
+A Vapi JSON Web Token (JWT) is a short-lived credential that you sign on your server with your private API key. Vapi doesn't issue these tokens. Your server creates them, and Vapi checks the signature on each request.
+
+Use a public JWT in the Vapi Web SDK in place of a public API key. Each token expires within 1 hour and can carry its own origin and assistant restrictions.
+
+## How it works
+
+Your server signs a JWT with the HS256 algorithm, using your private API key as the secret. Your client sends the token in the `Authorization` header, or passes it to the [Vapi Web SDK](/quickstart/web). Vapi verifies the signature against each private API key in the organization named by the token's `orgId` claim.
+
+The `token.tag` claim sets what the token can be used for:
+
+| `token.tag` | Works with | Use it for |
+| --- | --- | --- |
+| `"public"` | Starting calls with the [Vapi Web SDK](/quickstart/web) | Browser apps |
+| `"private"` | All other API requests | Short-lived server-to-server access |
+
+A public JWT works only with the Web SDK, and a private JWT can't start Web SDK calls. If you leave out the `token` claim, the JWT is treated as public.
 
 ## Prerequisites
 
-Before you proceed, ensure you have the following:
+- A private API key and your [organization ID](/security-and-privacy/api-keys#find-your-organization-id)
+- A server that runs Node.js 18 or later, where you can store the private API key as a secret
+- An assistant to use in Web SDK calls
 
-- An environment that supports JWT generation and API calls (e.g., a programming language or framework)
-- An account with a service that requires JWT authentication
-- Environment variables set up for the necessary credentials (e.g., organization ID and private key, both can be found in your Vapi portal)
+## Signing requirements
 
-## Generating a JWT Token
+Every Vapi JWT must meet these requirements:
 
-The following steps outline how to generate a JWT token:
+| Requirement | Value |
+| --- | --- |
+| Algorithm | `HS256`. Other algorithms, including `HS384`, `HS512`, and `none`, are rejected. |
+| Signing secret | Your private API key, exactly as you copied it from the Dashboard. Don't Base64-decode or hex-decode it, and don't generate a separate key pair. A public API key can't sign tokens. |
+| `exp` claim | Required. A Unix timestamp in seconds, no more than 1 hour after the time of the request. |
+| `nbf` claim | Optional. If set, the token is rejected until this Unix timestamp in seconds. |
+| `orgId` claim | Required. Your organization ID, a UUID. |
+| `token` claim | Optional object with the token's tag and restrictions. Unknown fields inside it are rejected. |
 
-1. **Define the Payload**: The payload contains the data you want to include in the token. In this case, it includes an `orgId`.
-2. **Get the Private Key**: The private key (provided by Vapi) is used to sign the token. Ensure it is securely stored, often in environment variables.
-3. **Set Token Options**: Define options for the token, such as the expiration time (`expiresIn`).
-4. **Generate the Token**: Use a JWT library or built-in functionality to generate the token with the payload, key, and options.
+Don't set the `iss` claim to `https://api.vapi.ai`. That issuer is reserved for tokens Vapi creates, and your token fails verification. Other top-level claims are ignored.
 
-### JWT Token Scopes
+### Token claim fields
 
-The generated JWT token can have one of two scopes: `private` or `public`. The scope of the token will determine the actions that can be performed using the token.
+The `token` claim accepts these fields:
 
-For example, it can be used to restrict which API endpoints the token can access.
+| Field | Type | Description |
+| --- | --- | --- |
+| `tag` | `"public"` or `"private"` | What the token can be used for. Defaults to `"public"` when `token` is left out. |
+| `name` | string | Optional label for your own reference. |
+| `restrictions` | object | Limits for a public token. For more information, see [Restrict a public token](#restrict-a-public-token). |
 
-<Note>
-  As of writing, the only publicly scoped API endpoint is
-  https://api.vapi.ai/call/web, which is used for Web Call creation. All other
-  endpoints are privately scoped.
-</Note>
+## Create a public token
 
-### Example (generating a private JWT token)
+<Steps>
+  <Step title="Install a JWT library">
+    Install [`jsonwebtoken`](https://www.npmjs.com/package/jsonwebtoken) in your server project:
 
-```js
-// Define the payload
+    ```bash
+    npm install jsonwebtoken
+    ```
+  </Step>
+
+  <Step title="Store your credentials on the server">
+    Set your private API key and organization ID as environment variables on your server:
+
+    ```bash
+    export VAPI_PRIVATE_API_KEY="YOUR_PRIVATE_API_KEY"
+    export VAPI_ORG_ID="YOUR_ORG_ID"
+    ```
+  </Step>
+
+  <Step title="Sign the token">
+    Save this script as `create-public-token.mjs`, replace the example origin and assistant ID with your own, then run `node create-public-token.mjs`:
+
+    ```javascript title="JavaScript (Node.js): create-public-token.mjs"
+    import jwt from "jsonwebtoken";
+
+    const payload = {
+      orgId: process.env.VAPI_ORG_ID,
+      token: {
+        tag: "public",
+        restrictions: {
+          allowedOrigins: ["https://app.example.com"],
+          allowedAssistantIds: ["00000000-0000-4000-8000-000000000001"],
+        },
+      },
+    };
+
+    const token = jwt.sign(payload, process.env.VAPI_PRIVATE_API_KEY, {
+      algorithm: "HS256",
+      expiresIn: "1h",
+    });
+
+    console.log(token);
+    ```
+
+    In a real app, create the token in a server endpoint that your client calls, and return the token in the response.
+  </Step>
+
+  <Step title="Start a web call with the token">
+    If you haven't installed the Web SDK in your client project, run `npm install @vapi-ai/web`.
+
+    Pass the token to the Vapi Web SDK in place of a public API key:
+
+    ```javascript title="JavaScript (Web SDK)"
+    import Vapi from "@vapi-ai/web";
+
+    const vapi = new Vapi("YOUR_JWT");
+    vapi.start("00000000-0000-4000-8000-000000000001");
+    ```
+
+    Before each new call, request a fresh token from your server and create a new `Vapi` instance with it. The SDK keeps the token it received when constructed, so an existing instance will continue using an expired token.
+  </Step>
+</Steps>
+
+## Restrict a public token
+
+Restrictions limit where a public token works and which assistants it can use. Set them in `token.restrictions`. Restrictions apply only to public tokens, and a request that breaks one fails with a `403` response.
+
+| Field | Type | Effect |
+| --- | --- | --- |
+| `allowedOrigins` | string[] | The request's `Origin` header must match one of these origins. A request with no `Origin` header is rejected. |
+| `allowedAssistantIds` | string[] | The request's `assistantId` must be in this list. Requests for squads and transient assistants are rejected. If you set this field, include at least one ID. |
+| `allowTransientAssistant` | boolean | Set to `false` to reject [transient assistants](/assistants/concepts/transient-vs-permanent-configurations). This field has no effect when `allowedAssistantIds` is set. |
+| `enabled` | boolean | Set to `false` to reject every request that uses the token. Restrictions apply whether or not you set this field. |
+
+Allowed origins follow these rules:
+
+- Enter each origin as a scheme, host, and optional port. Any path is ignored.
+- Match the scheme, host, and port to the `Origin` header the browser sends.
+- Use `*` in place of one whole subdomain label. For example, `https://*.example.com` matches `https://app.example.com` but not `https://example.com` or `https://a.b.example.com`.
+- Don't use partial wildcards, such as `https://myapp-*.example.com`. They never match.
+
+## Create a private token
+
+A private JWT works with the same endpoints as a private API key. Use it to give another service short-lived API access without sharing your private API key.
+
+Sign it the same way as a public token, with `tag` set to `"private"`. Save this script as `create-private-token.mjs`, then run `node create-private-token.mjs`:
+
+```javascript title="JavaScript (Node.js): create-private-token.mjs"
+import jwt from "jsonwebtoken";
+
 const payload = {
-  orgId: process.env.ORG_ID,
+  orgId: process.env.VAPI_ORG_ID,
   token: {
-    // This is the scope of the token
     tag: "private",
   },
 };
 
-// Get the private key from environment variables
-const key = process.env.PRIVATE_KEY;
-
-// Define token options
-const options = {
+const token = jwt.sign(payload, process.env.VAPI_PRIVATE_API_KEY, {
+  algorithm: "HS256",
   expiresIn: "1h",
-};
+});
 
-// Generate the token using a JWT library or built-in functionality
-const token = generateJWT(payload, key, options);
+console.log(token);
 ```
 
-### Example (generating a public JWT token)
+Send the token in the `Authorization` header as a bearer token, the same way you send a private API key.
 
-```js
-// Define the payload
+## Verify it works
+
+To check a private token, sign one and use it to list your assistants. Save this script as `verify-private-token.mjs`, then run `node verify-private-token.mjs`:
+
+```javascript title="JavaScript (Node.js): verify-private-token.mjs"
+import jwt from "jsonwebtoken";
+
 const payload = {
-  orgId: process.env.ORG_ID,
-  // This is the scope of the token
+  orgId: process.env.VAPI_ORG_ID,
   token: {
-    tag: "public",
-    restrictions: {
-      enabled: true,
-      allowedOrigins: ["https://example.vapi.ai"],
-      allowedAssistantIds: ["1cbf8c70-5fd7-4f61-a220-376ab35be1b0"],
-      allowTransientAssistant: false,
-    },
+    tag: "private",
   },
 };
 
-// Get the private key from environment variables
-const key = process.env.PRIVATE_KEY;
-
-// Define token options
-const options = {
+const token = jwt.sign(payload, process.env.VAPI_PRIVATE_API_KEY, {
+  algorithm: "HS256",
   expiresIn: "1h",
-};
+});
 
-// Generate the token using a JWT library or built-in functionality
-const token = generateJWT(payload, key, options);
+const response = await fetch("https://api.vapi.ai/assistant", {
+  headers: { Authorization: `Bearer ${token}` },
+});
+
+console.log(response.status);
+console.log(await response.json());
 ```
 
-### Explanation
+A `200` status and a JSON list of your assistants confirm that your server signs tokens correctly.
 
-- **Payload**: The payload includes the `orgId` representing the organization ID and the `token` object with the scope of the token.
-- **Key**: The private key is used to sign the token, ensuring its authenticity.
-- **Options**: The `expiresIn` option specifies that the token will expire in 1 hour.
-- **Restrictions**: `allowedAssistantIds` and `allowTransientAssistant` control which assistants a call can be created with. They do not limit which calls the token can read.
-- **Token Generation**: The `generateJWT` function (a placeholder for the actual JWT generation method) creates the token using the provided payload, key, and options.
+<Note>
+If your organization has no assistants, a `200` response with an empty list (`[]`) still confirms that Vapi accepted the token.
+</Note>
 
-## Usage (Making an Authenticated API Request)
+To check a public token, start a web call from one of its allowed origins. The call starts if the token is valid. If the request fails with a `401` or `403` response, see [Troubleshoot token errors](#troubleshoot-token-errors).
 
-If you set the scope to `private`, you can use it to make authenticated API requests. The following steps outline how to make an authenticated request:
+## Troubleshoot token errors
 
-1. **Define the API Endpoint**: Specify the URL of the API you want to call.
-2. **Set the Headers**: Include the `Content-Type` and `Authorization` headers in your request. The `Authorization` header should include the generated JWT token prefixed with `Bearer`.
-3. **Make the API Call**: Use an appropriate method to send the request and handle the response.
+A `401` response means the token failed verification. A `403` response means a public token's restrictions rejected the request.
 
-### Example
+### 401 Unauthorized: token errors
 
-```js
-async function getAssistants() {
-  const response = await fetch("https://api.vapi.ai/assistant", {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
+| Error message | Cause | Fix |
+| --- | --- | --- |
+| `Couldn't verify JWT.` | The token wasn't signed with HS256 and one of the organization's private API keys. | Sign with `algorithm: "HS256"` and the private API key string, unchanged. |
+| `No Private Key Found.` | The `orgId` claim doesn't match an organization with a private API key. | Set `orgId` to the organization that owns the signing key. |
+| `JWT is missing exp claim.` | The token has no expiration. | Set `exp`, for example with `expiresIn: "1h"`. |
+| `JWT has expired.` | The `exp` time has passed. | Request a new token. |
+| `JWT can't have expiration more than an hour into the future.` | `exp` is more than 1 hour away, or is in milliseconds. | Set `exp` no more than 1 hour ahead, in seconds. |
+| `Invalid exp claim in JWT. Expected seconds since UNIX epoch.` | `exp` isn't a number. | Set `exp` to a Unix timestamp in seconds. |
+| `JWT is not yet valid.` | The `nbf` time is in the future. | Remove `nbf` or set it to the current time or earlier. |
+| `JWT is missing orgId.` or `Invalid orgId. Expected a UUID.` | The `orgId` claim is missing or isn't a UUID. | Set `orgId` to your organization ID. |
+| `Invalid JWT. token.tag must be one of the following values: private, public` | `token.tag` has another value. | Set `tag` to `"public"` or `"private"`. |
+| `Invalid JWT. token.property <field> should not exist` | The `token` claim has an unsupported field. | Use only the fields in [Token claim fields](#token-claim-fields) and [Restrict a public token](#restrict-a-public-token). |
+| `Invalid JWT. token.restrictions.allowedAssistantIds should not be empty` | `allowedAssistantIds` is an empty list. | Add at least one assistant ID, or remove the field. |
+| `Invalid JWT. Invalid aud claim.` | The `iss` claim is set to `https://api.vapi.ai`. | Remove `iss` or set it to your own issuer. |
+| ``JWT doesn't permit access. Hot tip, you may be setting the wrong `token.tag`.`` | The token's `tag` doesn't match the endpoint. | Use `"public"` for the Web SDK and `"private"` for other API requests. |
+| ``JWT doesn't permit access. Hot tip, you may be missing `token` in your JWT.`` | The token has no `token` claim, so it's treated as public. The endpoint requires `"private"`. | Add `token: { tag: "private" }`. |
 
-  const data = await response.json();
-  console.log(data);
-}
+### 403 Forbidden: restriction errors
 
-fetchData().catch(console.error);
-```
+| Error message | Cause | Fix |
+| --- | --- | --- |
+| `Key doesn't allow origin '...'.` | The `Origin` header is missing or isn't in `allowedOrigins`. | Add the origin to `allowedOrigins`, matching its scheme, host, and port. |
+| `Key doesn't allow assistantId '...'.` | The assistant isn't in `allowedAssistantIds`, or the request uses a squad. | Add the assistant ID, or remove `allowedAssistantIds`. |
+| `Key doesn't allow transient assistant.` | The request includes an `assistant` object. | Use a saved assistant's ID, or set `allowTransientAssistant` to `true`. |
+| `Key is disabled.` | The token sets `restrictions.enabled` to `false`. | Remove `enabled` or set it to `true`. |
 
-### Explanation
+## Related
 
-- **API Endpoint**: The URL of the API you want to call.
-- **Headers**: The `Content-Type` is set to `application/json`, and the `Authorization` header includes the generated JWT token.
-- **API Call**: The `fetchData` function makes an asynchronous GET request to the specified API endpoint and logs the response.
-
-### Usage (Web Client)
-
-If you set the scope to `public`, you can use it to make authenticated API requests using the Vapi Web Client.
-
-```javascript
-import Vapi from '@vapi-ai/web';
-
-const vapi = new Vapi('your-jwt-token');
-
-vapi.start('your-assistant-id');
-```
+<CardGroup cols={2}>
+  <Card title="API keys" icon="key" href="/security-and-privacy/api-keys">
+    Find your private API key and organization ID.
+  </Card>
+  <Card title="Web calls" icon="browser" href="/quickstart/web">
+    Start voice calls from a browser with the Vapi Web SDK.
+  </Card>
+  <Card title="Proxy server" icon="server" href="/security-and-privacy/proxy-server">
+    Keep API keys on your server by proxying client requests.
+  </Card>
+</CardGroup>
