@@ -1,0 +1,62 @@
+---
+title: Troubleshoot MCP tools
+subtitle: Fix common MCP tool problems and follow best practices for reliable tool calls
+slug: tools/mcp/troubleshooting
+description: Troubleshoot Vapi MCP tools, including missing tools, failed tool list requests, unfilled variables, credential and encryption errors, and messages that don't play.
+---
+
+This page lists best practices and common problems with MCP tools. For how MCP tools work, see [MCP tools](/tools/mcp).
+
+## Best practices
+
+- **Expose only the tools the voice agent needs.** Fewer tools means less context and fewer wrong tool choices.
+- **Keep results small and focused.** Return only the data the model needs to answer the caller.
+- **Write errors in plain language in `content`.** The model reads the text, not `isError`.
+- **Use fixed values or a credential for anything needed to list tools.** Variables aren't filled in for the tool list request.
+- **Give tools clear descriptions on the server.** Callers rarely say a tool's name, and speech-to-text can mishear it, so the model picks tools by their descriptions.
+- **Tell the voice agent what to do if a tool isn't available.** For example, offer to transfer the call or take a message.
+- **Treat server URLs and tokens as secrets.** Some providers put a token in the server URL.
+
+## Find what went wrong
+
+Start with the call or chat in the Dashboard, then check your MCP server's logs:
+
+- **Logs tab:** Open the call from [Call logs](/observability/logs/call-logs), or the chat from [Chat logs](/observability/logs/chat-logs). The call's **Logs** tab shows each MCP tool call and any errors when the assistant's **Logging** setting is enabled.
+- **Messages tab:** On the call's page, **Messages** shows each tool call as a `tool_calls` message with the name the model used, such as `example-lookup_order`. The result follows as a `tool_call_result` message with your server's `content` in `result`.
+- **Your MCP server's logs:** If the voice agent had no tools, the tool list request failed when the call started. Vapi's logs don't show this failure, so check your server's logs for the tool list request and any auth errors. Each request includes the `X-Call-Id` header, which you can match to the call. See [Headers Vapi sends](/tools/mcp/configure#headers-vapi-sends).
+
+## Test a tool in the Dashboard
+
+The Dashboard's Test panel lets you list a server's tools and call one with exact arguments, without starting a call.
+
+1. Open the MCP tool and click **Test** (the play icon) at the top of the page.
+2. Click **List MCP Tools** to get the server's tool list.
+3. Select a tool, enter its arguments as JSON, and click **Execute** to see the server's response.
+
+The Test panel has these limits:
+
+- **SSE only.** The Test panel supports MCP servers that use SSE. For a Streamable HTTP server, save the tool, check **Available Tools**, and place a test call.
+- **Headers only.** The Test panel sends the headers set on the tool. It doesn't use a saved credential, and it doesn't fill in variables.
+- **Short timeout.** Each test request waits up to 5 seconds.
+
+## Common problems
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| The voice agent says it can't do something, names a tool that doesn't exist, or reports an unknown command. | The tool list request failed when the call started, so the model got no tools. Vapi's call logs don't show this failure. | Check your MCP server's logs for the tool list request and any auth errors. Confirm the URL, protocol, and authentication. |
+| Tool calls work in testing, but the server rejects the tool list request. | The auth value uses a variable, which isn't filled in for the tool list request. | Use a fixed header or a credential for authentication. |
+| A header arrives as `{{name}}`. | The variable has no value for this call, or the header was on the tool list request. | Set the variable for the call. See [Use variables in headers](/tools/mcp/configure#use-variables-in-headers). |
+| The server never receives a tool call. | The model didn't choose the tool. | Improve the tool's description on the server, and check the system prompt. Confirm the tool appears in **Available Tools**. |
+| A tool call fails with a connection error. | Wrong URL or protocol, or the server took longer than the timeout. | Check the URL and `metadata.protocol`. Raise `server.timeoutSeconds` if the server is slow. |
+| The model ignores data in `structuredContent`. | Only `content` reaches the model. | Put the data in `content`. See [How results reach the model](/tools/mcp/messages-and-results#how-results-reach-the-model). |
+| The caller hears a default phrase even though `messages` is empty. | Expected. An empty list doesn't turn off the default phrase. | Set a `request-start` message to replace it. |
+| **Available Tools** is empty after you save the tool. | The Dashboard couldn't get the tool list from the server. | Check the URL, `metadata.protocol`, and authentication. |
+| Changes on the server don't show up. | Vapi requests the tool list only when a call starts. | Start a new call. |
+| Messages set in `toolMessages` don't play. | The `name` uses the prefixed name the model sees, such as `example-lookup_order`. | Use the tool's name on the server, such as `lookup_order`. |
+| The server rejects requests that use a credential. | The credential type doesn't work with MCP tools: HMAC has no effect, and OAuth 2.0 supports the client credentials grant only. | Use a bearer token or OAuth 2.0 client credentials, or add the auth header in `server.headers`. See [Authentication](/tools/mcp/configure#authentication). |
+| A tool call fails right away when `server.encryptedPaths` is set. | The tool's credential has no encryption enabled. | Use a custom credential with encryption enabled. See [Encrypt sensitive arguments](/tools/mcp/configure#encrypt-sensitive-arguments). |
+
+## Next steps
+
+- [Configure MCP tools](/tools/mcp/configure): review authentication, headers, and transport.
+- [MCP tool messages and results](/tools/mcp/messages-and-results): review messages and result handling.
