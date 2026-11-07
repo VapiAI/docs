@@ -260,6 +260,39 @@ The following examples are `assistant.model` fragments:
   cannot be managed through the dashboard or reused across calls.
 </Warning>
 
+### Model URLs on public-key requests
+
+A request authenticated with a public API key or a public JWT can't supply a model URL. This applies to `POST /call/web`, `POST /chat/web`, and `POST /chat/web/responses`, which are the endpoints the Vapi Web SDK and the chat widget use. A JWT with no `token` claim counts as a public JWT. For more information, see [JWT authentication](/customization/jwt-authentication).
+
+Vapi rejects the request when `model.url` appears anywhere in the request body, including:
+
+- a transient `assistant`
+- `assistantOverrides`, including a `tools:append` entry
+- a transient `squad` member, its overrides, or `squadOverrides`
+- the destinations of a handoff tool, at any depth
+- a transient `workflow` or one of its nodes
+
+A model URL stored on a saved assistant isn't affected. Neither are requests authenticated with a private API key, a private JWT, or a dashboard session.
+
+A rejected request returns a `403` response with this body:
+
+```json
+{
+  "message": "Supplying `model.url` in the request body is not permitted on public-key authenticated calls. Configure the model URL on a stored assistant instead.",
+  "error": "Forbidden",
+  "statusCode": 403
+}
+```
+
+To fix it, use one of these approaches:
+
+- **Save the assistant.** Set `model.url` on a saved assistant, then pass its `assistantId` from the browser. Keep per-call changes in `assistantOverrides` fields that don't set a model URL, such as `variableValues`.
+- **Start the call or chat from your server.** Send the request to `POST /call` or `POST /chat` with your private API key. A private API key can still supply a model URL.
+
+<Warning>
+Never send your private API key to a browser. If the model URL has to change per call, choose it on your server.
+</Warning>
+
 ## Permanent configurations
 
 Use **permanent configurations** for reusable setups that multiple teams can access and manage through the dashboard.
