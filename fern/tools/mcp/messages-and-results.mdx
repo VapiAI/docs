@@ -1,0 +1,92 @@
+---
+title: MCP tool messages and results
+subtitle: Control what the caller hears while an MCP tool runs and what the model receives back
+slug: tools/mcp/messages-and-results
+description: Set spoken messages for all or individual MCP tools in Vapi, and learn how an MCP server's content, structuredContent, and isError reach the model.
+---
+
+This page covers what happens around each MCP tool call: what the caller hears while it runs, and how the server's result reaches the model. To create a tool first, see [MCP tools](/tools/mcp).
+
+## Spoken messages during tool calls
+
+While a tool runs, Vapi can speak short messages to the caller. If you don't configure any, Vapi says a short default phrase, such as "Give me a moment," before each tool call.
+
+To set your own messages:
+
+- **`messages`** applies to every tool from the server. In the Dashboard, set these under **Messages** on the MCP tool.
+- **`toolMessages`** sets messages for individual tools by the tool's name on the server, without the prefix. Tools you don't list use `messages`. Per-tool messages are API only.
+
+Each message has one of these types:
+
+| Type | When it plays |
+|---|---|
+| `request-start` | When the tool call starts. |
+| `request-response-delayed` | When the server hasn't responded after `timingMilliseconds`. |
+| `request-complete` | When the server returns a result. |
+| `request-failed` | When the server returns an error (`isError: true`). Set `endCallAfterSpokenEnabled` to `true` to end the call after this message. |
+
+```json
+{
+  "type": "mcp",
+  "server": {
+    "url": "https://mcp.example.com/mcp"
+  },
+  "messages": [
+    { "type": "request-start", "content": "Let me check that for you." }
+  ],
+  "toolMessages": [
+    {
+      "name": "create_ticket",
+      "messages": [
+        { "type": "request-start", "content": "I'm creating your ticket now." },
+        { "type": "request-complete", "content": "Your ticket is created." },
+        { "type": "request-failed", "content": "I couldn't create the ticket right now." }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+An empty `messages` list removes your configured messages, but the default phrase still plays before the tool call. To replace the default phrase, set a `request-start` message.
+</Note>
+
+For more information about message types, see [Dynamic tool messages](/tools/dynamic-tool-messages).
+
+## How results reach the model
+
+Your server's result reaches the model as follows:
+
+- **`content`:** the model receives the result's `content` array as JSON text, for example `[{"type":"text","text":"Order 1042 shipped on May 3."}]`.
+- **`structuredContent`:** not passed to the model. Put anything the model needs in `content`.
+- **`isError`:** when the result has `isError: true`, Vapi marks the call as failed and plays your `request-failed` message. The model gets the same `content` text with no error flag, so write the error as a clear sentence the model can explain to the caller.
+- **Size:** Vapi doesn't shorten results. Large results use model context and can slow or break the conversation, so return only what the model needs.
+
+For example, your server returns this response to a `tools/call` request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "content": [
+      { "type": "text", "text": "Order 1042 shipped on May 3." }
+    ],
+    "structuredContent": { "orderId": "1042", "status": "shipped" },
+    "isError": false
+  }
+}
+```
+
+The model receives only the `content` array as the tool result:
+
+```json
+[{ "type": "text", "text": "Order 1042 shipped on May 3." }]
+```
+
+For the full result format, see [Tool result](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#tool-result) in the MCP specification.
+
+## Next steps
+
+- [Configure MCP tools](/tools/mcp/configure): set authentication, headers, and transport.
+- [Troubleshoot MCP tools](/tools/mcp/troubleshooting): fix common problems.
