@@ -369,6 +369,64 @@ curl -X POST "https://api.vapi.ai/call" \
 
 Replace the tool, credential, and assistant ID placeholders with values from the resources you created. The credential authenticates the API Request tool's call to the CRM endpoint.
 
+## Override a saved assistant for one call
+
+Use `assistantOverrides` to change a saved assistant's settings for a single request without editing the assistant. Overrides accept assistant settings such as the first message, voice, model, tools, and variable values. The saved assistant is unchanged, and the next call uses its saved settings again.
+
+Overrides apply when you reference a saved assistant with `assistantId`. If you define the assistant inline with `assistant`, put the settings in that object instead.
+
+### Outbound and web calls
+
+Add `assistantOverrides` next to `assistantId` in the create call request. This call changes the first message and passes a value for the `name` variable:
+
+```json
+{
+  "assistantId": "your-assistant-id",
+  "phoneNumberId": "your-phone-number-id",
+  "customer": {
+    "number": "+1234567890"
+  },
+  "assistantOverrides": {
+    "firstMessage": "Hello {{name}}, thanks for taking my call.",
+    "variableValues": {
+      "name": "John"
+    }
+  }
+}
+```
+
+A batch request with `customers` uses the same settings for every number. To send different overrides to each customer, send one request per customer. See [Variables](/assistants/dynamic-variables) for how `variableValues` fills prompts and messages.
+
+### Inbound calls
+
+For inbound calls, your server chooses the assistant in response to the `assistant-request` message. Return a saved `assistantId` and, optionally, `assistantOverrides`:
+
+```json
+{
+  "assistantId": "your-assistant-id",
+  "assistantOverrides": {
+    "variableValues": {
+      "customerName": "Jane",
+      "accountType": "premium"
+    }
+  }
+}
+```
+
+Leave the phone number's `assistantId` empty so Vapi sends the request to your server, and respond within 7.5 seconds. See [Personalization with user information](/assistants/personalization) for a full example.
+
+### Pin a published version
+
+To run a call on a specific published version of a saved assistant, send `assistantVersion` with `assistantId`. It is a separate field from `assistantOverrides`, and you can send both. `assistantVersion` works only with a saved `assistantId` and is rejected with an inline `assistant`. See [Versioning](/assistants/versioning).
+
+### Squads and handoffs
+
+A squad member that uses a saved assistant can have its own `assistantOverrides`. They apply only when the assistant runs in that squad. To change every member at once, use `memberOverrides`; in an `assistant-request` response the same setting is `squadOverrides`. An assistant destination on a handoff tool also supports `assistantOverrides`, which change the destination assistant when the call is handed off. If the same variable is set more than once during a handoff, the later value wins. See [Squads](/squads) and [Pass context and variables](/squads/handoff/context-and-variables#variable-extraction).
+
+<Note>
+Set overrides when the call starts. [Live call control](/calls/call-features#what-live-call-control-cant-do) can't change the model, voice, or prompt during a call.
+</Note>
+
 ## Mixed configurations
 
 Combine transient and permanent configurations for maximum flexibility:
