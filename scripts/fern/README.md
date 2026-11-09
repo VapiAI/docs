@@ -1,7 +1,7 @@
 # Fern example cache
 
-Fern 5.151.1 repeatedly generates examples for nested API properties during
-validation and publication. The GPT-Live docs publish spent about 24 minutes
+The previously pinned Fern 5.151.1 repeatedly generates examples for nested API
+properties during validation and publication. The GPT-Live docs publish spent about 24 minutes
 preparing validation and another 25 minutes building the API navigation. Its
 final deployment took six seconds.
 
@@ -49,13 +49,20 @@ original Fern commands also removes this optimization.
 ## Local verification
 
 ```sh
-npm install --prefix /tmp/vapi-fern --no-save fern-api@5.151.1
+npm install --prefix /tmp/vapi-fern --no-save fern-api@5.169.0
 export FERN_CLI_PATH=/tmp/vapi-fern/node_modules/fern-api/cli.cjs
-node --test scripts/fern/example-cache.test.cjs
+node --test scripts/fern/*.test.cjs
 node scripts/fern/run.cjs check --local --log-level debug
 node scripts/fern/run.cjs generate --docs --preview --log-level debug
 ```
 
+The CLI compatibility tests exercise the installed bundle when `FERN_CLI_PATH` is set;
+without it, the installed-bundle checks are skipped. The wrapper pins Fern 5.169.0
+and verifies CLI SHA-256
+`773ec0a808a2c4d03c894c81c6159f8e3fe8db5a873c287cdce5b140eed8b809`.
+The timing measurements below predate this upgrade.
+
+Preview generation publishes remotely and requires separate authorization.
 Only use `--preview` for verification. Production publishing remains in the
 existing main-branch workflow. Logs print cache hits, misses, and uncached
 diagnostic-producing calls at exit.

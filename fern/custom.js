@@ -5,10 +5,6 @@ const WIDGET_SCRIPT_URL = isLocalhost
   ? 'http://localhost:9001/widget.js'
   : 'https://docs-widget.vercel.app/widget.js';
 
-const HOCKEYSTACK_API_KEY = '96e358f635f3f5ea7fda26023b10da';
-const REO_CLIENT_ID = '0dc28e3fda800b9';
-const LINKEDIN_PARTNER_ID = '6951196';
-
 function injectVapiWidget() {
   console.log('[custom.js] injectVapiWidget called');
   if (document.querySelector(WIDGET_TAG)) {
@@ -34,106 +30,6 @@ function injectVapiWidget() {
   };
   document.body.appendChild(script);
   console.log('[custom.js] Widget script appended to DOM');
-}
-
-function initializeHockeyStack() {
-  if (isLocalhost) {
-    console.log('[custom.js] Skipping HockeyStack on localhost');
-    return;
-  }
-
-  var hsscript = document.createElement("script");
-  hsscript.id = "wphs";
-  hsscript.src = "https://cdn.jsdelivr.net/npm/hockeystack@latest/hockeystack.min.js";
-  hsscript.async = 1;
-  hsscript.dataset.apikey = HOCKEYSTACK_API_KEY;
-  hsscript.dataset.cookieless = 1;
-  hsscript.dataset.autoIdentify = 1;
-
-  document.getElementsByTagName('head')[0].append(hsscript);
-}
-
-function initializeReo() {
-  if (isLocalhost) {
-    console.log('[custom.js] Skipping Reo on localhost');
-    return;
-  }
-
-  var reoScript = document.createElement("script");
-  reoScript.type = "text/javascript";
-  reoScript.src = "https://static.reo.dev/" + REO_CLIENT_ID + "/reo.js";
-  reoScript.defer = true;
-  reoScript.onload = function() {
-    if (typeof Reo !== 'undefined') {
-      Reo.init({ clientID: REO_CLIENT_ID });
-    }
-  };
-  document.head.appendChild(reoScript);
-}
-
-function configurePostHog() {
-  if (isLocalhost) {
-    console.log('[custom.js] Skipping PostHog configuration on localhost');
-    return;
-  }
-
-  // Wait for PostHog to be initialized by Fern
-  const checkPostHog = setInterval(() => {
-    if (typeof window.posthog !== 'undefined') {
-      clearInterval(checkPostHog);
-      
-      // Configure cross-domain tracking
-      window.posthog.set_config({
-        cross_subdomain_cookie: true,
-        cross_domain: '.vapi.ai',
-        persistence: 'localStorage+cookie'
-      });
-      
-    }
-  }, 100);
-  
-}
-
-function initializeHubSpot() {
-
-  if (isLocalhost) {
-    console.log('[custom.js] Skipping HubSpot configuration on localhost');
-    return;
-  }
-
-  var hubSpotScript = document.createElement("script");
-  hubSpotScript.type = "text/javascript";
-  hubSpotScript.id = "hs-script-loader";
-  hubSpotScript.src = "https://js-na2.hs-scripts.com/244349038.js";
-  hubSpotScript.async = true;
-  hubSpotScript.defer = true;
-  document.getElementsByTagName('head')[0].appendChild(hubSpotScript);
-}
-
-function initializeLinkedIn() {
-  if (isLocalhost) {
-    console.log('[custom.js] Skipping LinkedIn Insight Tag on localhost');
-    return;
-  }
-
-  window._linkedin_partner_id = LINKEDIN_PARTNER_ID;
-  window._linkedin_data_partner_ids = window._linkedin_data_partner_ids || [];
-  window._linkedin_data_partner_ids.push(LINKEDIN_PARTNER_ID);
-
-  (function (l) {
-    if (!l) {
-      window.lintrk = function (a, b) {
-        window.lintrk.q.push([a, b]);
-      };
-      window.lintrk.q = [];
-    }
-    var s = document.getElementsByTagName('script')[0];
-    var b = document.createElement('script');
-    b.type = 'text/javascript';
-    b.async = true;
-    b.src = 'https://snap.licdn.com/li.lms-analytics/insight.min.js';
-    s.parentNode.insertBefore(b, s);
-  })(window.lintrk);
 }
 
 function initializeSubscribeForm() {
@@ -222,11 +118,6 @@ function initializeSubscribeForm() {
 }
 
 function initializeAll() {
-  initializeHockeyStack();
-  initializeReo();
-  initializeHubSpot();
-  initializeLinkedIn();
-  configurePostHog();
   initializeSubscribeForm();
   if (ENABLE_VOICE_WIDGET) {
     injectVapiWidget();

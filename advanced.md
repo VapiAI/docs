@@ -9,7 +9,7 @@ This repository contains our Fern Configuration:
 ## Setup
 
 ```sh
-npm install -g fern-api
+npm install -g fern-api@5.169.0
 ```
 
 ## Validating your OpenAPI Specs
@@ -59,12 +59,12 @@ fern docs dev
 
 To update your documentation on a hosted URL, run
 ```
-# npm install -g fern-api
+# npm install -g fern-api@5.169.0
 fern generate --docs
 ```
 To preview your documentation, run
 ```
-# npm install -g fern-api
+# npm install -g fern-api@5.169.0
 fern generate --docs --preview
 ```
 The repository contains GitHub workflows that will automatically run these commands for you. For example, when you make a PR a preview link will be auto-generated and when you merge to main the docs site will update.
