@@ -52,13 +52,26 @@ original Fern commands also removes this optimization.
 npm install --prefix /tmp/vapi-fern --no-save fern-api@5.151.1
 export FERN_CLI_PATH=/tmp/vapi-fern/node_modules/fern-api/cli.cjs
 node --test scripts/fern/example-cache.test.cjs
-node scripts/fern/run.cjs check --local --log-level debug
+node scripts/fern/run.cjs check --local --warnings --log-level debug
 node scripts/fern/run.cjs generate --docs --preview --log-level debug
 ```
 
 Only use `--preview` for verification. Production publishing remains in the
 existing main-branch workflow. Logs print cache hits, misses, and uncached
 diagnostic-producing calls at exit.
+
+The required internal-link rule in `fern/docs.yml` also builds the API navigation.
+This can be expensive on a cold cache. Keep it enabled when measuring cache
+performance; a check that skips links does not exercise the same work as a docs
+build.
+
+When upgrading Fern, update the pinned version in `fern/fern.config.json`,
+`.github/actions/setup-fern/action.yml`, and `run.cjs` together. Review the new
+bundle before updating its checksum and function markers. Run the safeguard tests,
+compare the unmodified CLI with cold and warm adapter checks (including warnings),
+and verify a preview publication before merging. Confirm the preview deletion and
+live-link commands still work with the new CLI. Do not update only the checksum
+to bypass an unexpected-bundle failure.
 
 ## Measured validation results
 

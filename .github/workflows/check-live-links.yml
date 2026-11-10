@@ -1,0 +1,44 @@
+name: Check Live Docs Links
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-live-docs-links
+  cancel-in-progress: false
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-fern
+
+      - name: Check published internal and external links
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+        run: |
+          node "$FERN_CLI_PATH" docs link check --url https://docs.vapi.ai --output json > "$RUNNER_TEMP/fern-links.json"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/fern-links.json`, 'utf8'));
+          if (report.summary.status !== 'complete') {
+            throw new Error('Fern returned an incomplete link scan; rerun the workflow.');
+          }
+          NODE
+
+      - name: Save link report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fern-live-links
+          path: ${{ runner.temp }}/fern-links.json
+          retention-days: 14
