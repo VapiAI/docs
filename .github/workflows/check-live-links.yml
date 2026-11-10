@@ -29,12 +29,35 @@ jobs:
       - name: Check published internal and external links
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+        run: node "$FERN_CLI_PATH" docs link check --url https://docs.vapi.ai --output json > "$RUNNER_TEMP/fern-links.json"
+
+      - name: Summarize link findings
+        if: always()
         run: |
-          node "$FERN_CLI_PATH" docs link check --url https://docs.vapi.ai --output json > "$RUNNER_TEMP/fern-links.json"
           node - <<'NODE'
           const fs = require('node:fs');
-          const report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/fern-links.json`, 'utf8'));
-          if (report.summary.status !== 'complete') {
+          const path = `${process.env.RUNNER_TEMP}/fern-links.json`;
+          if (!fs.existsSync(path) || fs.statSync(path).size === 0) {
+            throw new Error('Fern did not produce a link report; see the scan logs.');
+          }
+          const report = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const { summary, brokenLinks, blockedLinks } = report;
+          const lines = [
+            '## Live docs link scan',
+            '',
+            `Status: ${summary.status}. Scanned ${summary.totalPages} pages and ${summary.totalLinks} links.`,
+            `Reported ${summary.brokenLinks} broken and ${summary.blockedLinks} blocked links.`,
+          ];
+          for (const [label, links] of [['Broken links', brokenLinks], ['Blocked links (non-blocking)', blockedLinks]]) {
+            lines.push('', `### ${label}`, '');
+            for (const link of links) {
+              const sources = link.references.map(ref => ref.filePath ?? ref.slug).filter(Boolean).join(', ');
+              lines.push(`- ${link.statusCode ?? 'No response'}: ${link.url} — ${sources}`);
+            }
+            if (links.length === 0) lines.push('None.');
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          if (summary.status !== 'complete') {
             throw new Error('Fern returned an incomplete link scan; rerun the workflow.');
           }
           NODE
