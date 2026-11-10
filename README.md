@@ -59,11 +59,13 @@ update the preview and its PR comment, and closing or merging the PR deletes the
 preview. Fork PRs skip hosted previews because repository secrets are unavailable.
 
 The **Check Live Docs Links** workflow scans the published site daily at 08:00 UTC
-and can also be run manually. Broken links and incomplete scans fail the job.
+and can also be run manually. Changes to that workflow run the scan on
+same-repository PRs to verify its configuration before merge. Broken links and
+incomplete scans fail the job.
 Blocked URLs (such as HTTP 403 responses) are reported separately by Fern and do
 not fail the scan. Download the `fern-live-links` artifact for the JSON report,
 including source pages. This workflow monitors external URLs as well as deployed
-internal links; it is separate from PR validation.
+internal links; ordinary docs PRs use the local link validator.
 
 ### Required checks on main
 
