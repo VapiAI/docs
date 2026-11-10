@@ -9,7 +9,7 @@ description: Connect Codex, Claude Code, Hermes, Cursor, VS Code, or Claude Desk
 
 The **Vapi MCP server** gives AI agents Vapi tools over the Model Context Protocol (MCP). Once connected, your agent can search Vapi's documentation and manage your assistants, phone numbers, and calls.
 
-Vapi hosts the server at `https://mcp.vapi.ai/mcp`, using the **Streamable HTTP** transport. You connect by signing in with your Vapi account: your agent opens a browser, you sign in and pick an organization, and the agent receives a short-lived token. No API key is involved, and you don't need the Vapi CLI. You can also [run the server locally](#run-the-server-locally).
+Vapi hosts the server at `https://mcp.vapi.ai/mcp`, using the **Streamable HTTP** transport. You connect by [signing in with your Vapi account](#how-signing-in-works), not with an API key, and you don't need the Vapi CLI. You can also [run the server locally](#run-the-server-locally).
 
 <Note>
   Looking to use MCP tools *inside* a Vapi assistant? See [MCP tools](/tools/mcp).
@@ -106,7 +106,20 @@ The hosted server uses OAuth, so there's nothing to copy and paste. Add the URL 
   <Tab title="Claude Desktop">
     Claude Desktop connects to remote servers as a custom connector, so no local bridge is needed.
 
-    Open **Customize → Connectors**, click **+ Add**, then **Add custom connector**. Enter a name and `https://mcp.vapi.ai/mcp` as the remote MCP server URL, then click **Continue**. Leave the OAuth client option on **Register automatically**, finish with **Add**, then click **Connect** on the new connector and sign in to Vapi in your browser.
+    <Steps>
+      <Step title="Add a custom connector">
+        Open **Customize**, then **Connectors**. Click **+ Add**, then click **Add custom connector**.
+      </Step>
+      <Step title="Enter the server URL">
+        Enter a name, and enter `https://mcp.vapi.ai/mcp` as the remote MCP server URL. Click **Continue**.
+      </Step>
+      <Step title="Keep automatic registration">
+        Leave the OAuth client option on **Register automatically**, then click **Add**.
+      </Step>
+      <Step title="Connect and sign in">
+        Click **Connect** on the new connector and sign in to Vapi in your browser.
+      </Step>
+    </Steps>
 
     On Team and Enterprise plans, an organization Owner adds the connector under **Organization settings → Connectors**.
 
@@ -118,7 +131,7 @@ Once connected, try asking your agent: "List my Vapi assistants."
 
 ## How signing in works
 
-When your agent first connects, Vapi's server tells it where to sign in, and the agent opens that page in your browser. You sign in with your Vapi account — the same credentials, MFA, and SSO you use for the dashboard — and choose which organization the agent may act in. The agent then receives a short-lived access token and refreshes it as needed.
+When your agent first connects, Vapi's server tells it where to sign in, and the agent opens that page in your browser. You sign in with your Vapi account and choose which organization the agent may act in. Sign-in uses the same credentials, MFA, and SSO as the dashboard. The agent then receives a short-lived access token and refreshes it as needed.
 
 What this means day to day:
 
@@ -127,9 +140,19 @@ What this means day to day:
 - **Some actions are always off-limits.** The hosted server can't read or create API keys, provider credentials, or billing settings, even if you're an admin.
 - **Access follows your account.** Removing someone from your Vapi organization ends their agent's access; there's no separate key to find and rotate.
 
-<Note>
-  **Upgrading from API key authentication?** Before November 10, 2026, the hosted server accepted a Vapi API key in an `Authorization: Bearer` header, and also served the `https://mcp.vapi.ai/sse` endpoint. Both have been removed. Replace your existing `vapi` entry with the configuration for your agent above — delete the `headers` block or `--bearer-token-env-var` flag, keep the same `https://mcp.vapi.ai/mcp` URL, and sign in. If your agent uses `@vapi-ai/mcp-docs-server` from an earlier CLI release, replace that entry too; the hosted server includes documentation search. For documentation-only access with no sign-in at all, see [Search the docs without signing in](#search-the-docs-without-signing-in). Existing agent configurations are not changed automatically, and Vapi API keys continue to work for the [Vapi API](/api-reference) itself.
-</Note>
+## Upgrade from API key authentication
+
+Before November 10, 2026, the hosted server accepted a Vapi API key in an `Authorization: Bearer` header and also served the `https://mcp.vapi.ai/sse` endpoint. Both have been removed, and existing agent configurations don't update automatically.
+
+To upgrade an existing `vapi` entry:
+
+- Delete the `headers` block or the `--bearer-token-env-var` flag.
+- Keep the same `https://mcp.vapi.ai/mcp` URL.
+- Sign in using the steps for your agent in [Connect your agent](#connect-your-agent).
+
+If your agent uses `@vapi-ai/mcp-docs-server` from an earlier CLI release, replace that entry too, because the hosted server includes documentation search. For documentation-only access with no sign-in, see [Search the docs without signing in](#search-the-docs-without-signing-in).
+
+Vapi API keys still work for the [Vapi API](/api-reference).
 
 ## Run the server locally
 
@@ -263,7 +286,7 @@ Which tools succeed depends on your role in the organization you signed in to. A
 
 ## Use the server from your own code
 
-Any MCP client can connect to `https://mcp.vapi.ai/mcp` over Streamable HTTP, but it has to complete the same browser sign-in; the server rejects Vapi API keys. Requests without a valid token are answered with `401` and a `WWW-Authenticate` challenge pointing at the server's metadata at `https://mcp.vapi.ai/.well-known/oauth-protected-resource/mcp`, which is how clients discover where to sign in.
+Any MCP client can connect to `https://mcp.vapi.ai/mcp` over Streamable HTTP, but it has to complete the same browser sign-in. The server rejects Vapi API keys. A request without a valid token gets a `401` response with a `WWW-Authenticate` challenge. The challenge points to the server's metadata at `https://mcp.vapi.ai/.well-known/oauth-protected-resource/mcp`, which tells the client where to sign in.
 
 <Note>
   Signing in requires a person at a browser, and the resulting tokens are short-lived. For unattended server-to-server automation, call the [Vapi API](/api-reference) directly with an API key, or [run the server locally](#run-the-server-locally) with `VAPI_TOKEN`.
@@ -327,7 +350,7 @@ The token is short-lived and the platform does not store it, so send a current o
 
 ### MCP client SDKs
 
-Official MCP SDKs are available for [TypeScript](https://github.com/modelcontextprotocol/typescript-sdk), [Python](https://github.com/modelcontextprotocol/python-sdk), [Java](https://github.com/modelcontextprotocol/java-sdk), [Kotlin](https://github.com/modelcontextprotocol/kotlin-sdk), and [C#](https://github.com/modelcontextprotocol/csharp-sdk). They include OAuth helpers that run the sign-in and refresh tokens for you; see the [MCP authorization spec](https://modelcontextprotocol.io/specification/basic/authorization) for how the flow works.
+Official MCP SDKs are available for [TypeScript](https://github.com/modelcontextprotocol/typescript-sdk), [Python](https://github.com/modelcontextprotocol/python-sdk), [Java](https://github.com/modelcontextprotocol/java-sdk), [Kotlin](https://github.com/modelcontextprotocol/kotlin-sdk), and [C#](https://github.com/modelcontextprotocol/csharp-sdk). They include OAuth helpers that run the sign-in and refresh tokens for you; see the [MCP authorization spec](https://modelcontextprotocol.io/specification/latest/basic/authorization) for how the flow works.
 
 If you already hold a valid access token, pass it to the transport. This minimal Node.js client lists your assistants:
 
@@ -354,7 +377,7 @@ async function main() {
 main();
 ```
 
-`VAPI_MCP_ACCESS_TOKEN` is an access token from the sign-in flow, not a Vapi API key. It expires, so production clients should use an SDK OAuth provider that refreshes it instead of a token pasted into the environment.
+The `VAPI_MCP_ACCESS_TOKEN` variable holds an access token from the sign-in flow, not a Vapi API key. It expires, so production clients should use an SDK OAuth provider that refreshes it instead of a token pasted into the environment.
 
 This fuller example lists tools, assistants, and phone numbers, then creates a call:
 
