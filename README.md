@@ -58,7 +58,7 @@ Same-repository PRs receive a stable preview named `pr-<number>`. Subsequent pus
 update the preview and its PR comment, and closing or merging the PR deletes the
 preview. Fork PRs skip hosted previews because repository secrets are unavailable.
 
-The **Check Live Docs Links** workflow scans the published site daily at 08:00 UTC
+The **check-external-links** workflow scans the published site daily at 08:00 UTC
 and can also be run manually. Changes to that workflow run the scan on
 same-repository PRs to verify its configuration before merge. Broken links and
 incomplete scans fail the job.
