@@ -67,21 +67,3 @@ not fail the scan. The run summary lists findings and source pages; download the
 `fern-live-links` artifact for the JSON report. This workflow monitors external
 URLs as well as deployed internal links; ordinary docs PRs use the local link
 validator.
-
-### Required checks on main
-
-After merging the CI configuration and confirming that **fern-check** and
-**Docs Preview** appear on a PR, a repository administrator should apply the
-additive [Documentation CI ruleset](.github/required-checks.ruleset.json):
-
-```sh
-gh api --method POST repos/VapiAI/docs/rulesets \
-  --input .github/required-checks.ruleset.json
-```
-
-Apply this once. If a `Documentation CI` ruleset already exists, update that ruleset
-instead of creating a duplicate. It requires both checks from GitHub Actions on
-an up-to-date branch and leaves the existing review rules intact. **Docs Preview**
-is skipped successfully for forks; their **fern-check** must still pass. SDK
-preview jobs run only for matching paths, and the live scan runs on a schedule, so
-neither is a required check in this ruleset.
