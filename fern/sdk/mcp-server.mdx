@@ -1,33 +1,23 @@
 ---
 title: Vapi MCP Server
-subtitle: Connect Vapi to AI assistants with Model Context Protocol (MCP)
+subtitle: Connect your coding agent to Vapi with Model Context Protocol (MCP)
 slug: sdk/mcp-server
-description: Use the Vapi MCP Server to expose Vapi APIs as tools over the Model Context Protocol, managing assistants, phone numbers, and calls from any MCP client.
+description: Connect Codex, Claude Code, Cursor, VS Code, or Claude Desktop to the hosted Vapi MCP server to search Vapi documentation and manage assistants, phone numbers, and calls.
 ---
 
 ## Overview
 
-The **Vapi MCP Server** exposes Vapi APIs as tools via the Model Context Protocol (MCP), so you can manage assistants, phone numbers, and calls from any MCP-compatible AI assistant (like Claude Desktop) or agent framework.
+The **Vapi MCP Server** gives AI agents Vapi tools over the Model Context Protocol (MCP). Once connected, your agent can search Vapi's documentation and manage your assistants, phone numbers, and calls.
 
-Use this server to connect your AI workflows to real-world telephony, automate voice tasks, and build richer conversational agents.
-
-<Note>
-  Looking to use MCP tools *inside* a Vapi assistant? See the [MCP Tool documentation](/tools/mcp) for integrating *external* MCP servers with your Vapi agents.
-</Note>
-
-<Tip>
-  Connect your coding agent directly to the hosted MCP server using its native MCP settings. The Vapi CLI is not required. For public agent skills and installation instructions, see [VapiAI/skills](https://github.com/VapiAI/skills).
-</Tip>
+Vapi hosts the server at `https://mcp.vapi.ai/mcp`, using the **Streamable HTTP** transport. Add it in your agent's MCP settings; you don't need the Vapi CLI. You can also [run the server locally](#run-the-server-locally).
 
 <Note>
-  If an earlier CLI release configured `@vapi-ai/mcp-docs-server` in your agent, replace that legacy entry with the hosted connection below. Existing agent configurations are not removed automatically.
+  Looking to use MCP tools *inside* a Vapi assistant? See [MCP tools](/tools/mcp).
 </Note>
-
-Use **Streamable HTTP** at `https://mcp.vapi.ai/mcp` for remote connections. The legacy HTTP+SSE transport is deprecated; migrate existing remote configurations to this endpoint.
 
 ## Connect your agent
 
-Get a [Vapi API key](/security-and-privacy/api-keys), then choose your client. These connections use the hosted server; you do not need to install the Vapi CLI or run a Vapi MCP server locally.
+Get a [Vapi API key](/security-and-privacy/api-keys), then choose your agent.
 
 <Tabs>
   <Tab title="Codex">
@@ -121,12 +111,12 @@ Get a [Vapi API key](/security-and-privacy/api-keys), then choose your client. T
     }
     ```
 
-    Start `vapi` from **MCP: List Servers** and enter your API key when prompted. Use a **Local** chat session and enable its tools. VS Code does not forward servers that use input prompts to Copilot harness sessions.
+    Start `vapi` from **MCP: List Servers** and enter your API key when prompted. Then use a **Local** chat session and enable the server's tools. Other session types can't prompt for the key, so this server isn't available in them.
 
     See [VS Code MCP setup](https://code.visualstudio.com/docs/agents/reference/mcp-configuration).
   </Tab>
   <Tab title="Claude Desktop">
-    To connect through Claude Desktop's local stdio configuration, use `mcp-remote` as a bridge to the hosted server. This option requires Node.js and `npx` to be available to Claude Desktop.
+    Claude Desktop's configuration file runs local commands, so use `mcp-remote` as a bridge to the hosted server. This requires Node.js and `npx` to be available to Claude Desktop.
 
     Open **Settings → Developer → Edit Config**. Add this entry to `claude_desktop_config.json`, preserving any other servers:
 
@@ -152,20 +142,49 @@ Get a [Vapi API key](/security-and-privacy/api-keys), then choose your client. T
     }
     ```
 
-    Replace `YOUR_VAPI_API_KEY` with your Vapi API key and restart Claude Desktop. Keep this configuration private and update the key after rotating it. This starts a local adapter; Vapi's MCP server stays hosted.
+    Replace `YOUR_VAPI_API_KEY` with your Vapi API key and restart Claude Desktop. Keep this configuration private and update the key after rotating it. The bridge runs locally; Vapi's MCP server stays hosted.
   </Tab>
 </Tabs>
 
 Once connected, try asking your agent: "List my Vapi assistants."
 
----
+<Note>
+  **Replacing an older setup?** If your agent uses `@vapi-ai/mcp-docs-server` from an earlier CLI release, or the deprecated `https://mcp.vapi.ai/sse` endpoint, replace that entry with the hosted connection above. The hosted server includes documentation search. Existing agent configurations are not changed automatically.
+</Note>
 
-## Core Tools
+## Run the server locally
 
-The Vapi MCP Server exposes these actions as MCP tools:
+You can run the open-source [Vapi MCP server](https://github.com/VapiAI/mcp-server) on your own machine instead of connecting to the hosted one, for example to develop against it. This requires Node.js. Your client starts the server as a subprocess and talks to it over stdio, so no HTTP endpoint is started.
 
-| Tool                   | Description                                      | Example Usage                                 |
+Add this entry to your client's MCP configuration in place of the hosted connection. The local server reads your API key from `VAPI_TOKEN`:
+
+```json
+{
+  "mcpServers": {
+    "vapi": {
+      "command": "npx",
+      "args": ["-y", "@vapi-ai/mcp-server"],
+      "env": {
+        "VAPI_TOKEN": "YOUR_VAPI_API_KEY"
+      }
+    }
+  }
+}
+```
+
+In Claude Code, run:
+
+```bash
+claude mcp add -e VAPI_TOKEN=YOUR_VAPI_API_KEY vapi -- npx -y @vapi-ai/mcp-server
+```
+
+## Core tools
+
+The Vapi MCP Server exposes these tools:
+
+| Tool                   | Description                                      | Example usage                                 |
 |------------------------|--------------------------------------------------|-----------------------------------------------|
+| `ask_vapi_docs`        | Search Vapi documentation                        | Ask how a Vapi feature works                  |
 | `list_assistants`      | List all Vapi assistants                         | Show all configured assistants                |
 | `create_assistant`     | Create a new Vapi assistant                      | Add a new assistant for a use case            |
 | `get_assistant`        | Get a Vapi assistant by ID                       | View assistant config                         |
@@ -177,136 +196,61 @@ The Vapi MCP Server exposes these actions as MCP tools:
 | `list_tools`           | List all available Vapi tools                    | Tool discovery                                |
 | `get_tool`             | Get details of a specific tool                   | Tool integration info                         |
 
-<Note>
-  <b>Scheduling calls:</b> The <code>create_call</code> action supports scheduling with the optional <code>scheduledAt</code> parameter.
-</Note>
+To schedule a call, pass the optional `scheduledAt` parameter to `create_call`. `create_call` places a real phone call.
 
----
+## Use the server from your own code
 
-## Integration Options
+Connect any MCP client to `https://mcp.vapi.ai/mcp` over Streamable HTTP, and send your Vapi API key in the `Authorization: Bearer YOUR_VAPI_API_KEY` header.
 
-<Tabs>
-  <Tab title="Remote (Streamable HTTP)">
-    Connect to the Vapi-hosted MCP server using the Streamable HTTP protocol.
-    <Note> 
-      Recommended for most production use cases.
-    </Note>
-    <Warning>
-      Use this for clients or SDKs that support Streamable HTTP transport.
-    </Warning>
-    
-    - **Endpoint:** `https://mcp.vapi.ai/mcp`
-    - **Authentication:** Pass your Vapi API key as a bearer token:
-      <br/><code>Authorization: Bearer YOUR_VAPI_API_KEY</code>
-    
-    Configure the URL and authentication header directly in clients with remote MCP support. For a client that needs a local stdio adapter, use the [Claude Desktop tab](#connect-your-agent) above.
-  </Tab>
-  <Tab title="OpenAI responses API">
-    <Note>
-      The OpenAI <code>responses</code> API now supports MCP. <a href="https://platform.openai.com/docs/guides/tools-remote-mcp#page-top" target="_blank" rel="noopener">Read more here</a>.
-    </Note>
-    <CodeBlocks>
-    ```typescript title="typescript"
-    import OpenAI from 'openai';
-    // Replace with your actual OpenAI API key
-    const openai = new OpenAI({ apiKey: 'YOUR_OPENAI_API_KEY' });
-    async function main() {
-      const response = await openai.responses.create({
-        model: 'gpt-4.1',
-        tools: [
-          {
-            type: 'mcp',
-            server_label: 'vapi-mcp',
-            server_url: 'https://mcp.vapi.ai/mcp',
-            headers: { "Authorization": "Bearer YOUR_VAPI_API_KEY" }
-          },
-        ],
-        input: 'What vapi tools do you have available?',
-      });
-      console.dir(response, { depth: null });
-    }
-    main();
-    ```
-    ```python title="python"
-    import openai
-    # Replace with your actual OpenAI API key
-    openai.api_key = 'YOUR_OPENAI_API_KEY'
-    response = openai.responses.create(
-        model="gpt-4.1",
-        tools=[
-            {
-                "type": "mcp",
-                "server_label": "vapi-mcp",
-                "server_url": "https://mcp.vapi.ai/mcp",
-                "headers": {"Authorization": "Bearer YOUR_VAPI_API_KEY"}
-            },
-        ],
-        input="What vapi tools do you have available?",
-    )
-    print(response)
-    ```
-    </CodeBlocks>
-  </Tab>
-  <Tab title="Local">
-    Run the MCP server on your own machine for development or testing.
-    
-    - **Start locally:**
-      ```bash
-      npx -y @vapi-ai/mcp-server
-      ```
-    - **Authentication:** Set the `VAPI_TOKEN` environment variable to your API key.
-    
-    Example config for Claude:
-    ```json
-    {
-      "mcpServers": {
-        "vapi-mcp-server": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@vapi-ai/mcp-server"
-          ],
-          "env": {
-            "VAPI_TOKEN": "YOUR_VAPI_API_KEY"
-          }
-        }
-      }
-    }
-    ```
-    <Warning>
-      Use this for clients or SDKs that support local command-based MCP servers.
-    </Warning>
-    
-    The client launches this server as a subprocess and communicates over **stdio**. This configuration does not start an HTTP endpoint.
-  </Tab>
-</Tabs>
+### OpenAI Responses API
 
----
+The OpenAI Responses API can call remote MCP servers. See [OpenAI's remote MCP guide](https://platform.openai.com/docs/guides/tools-remote-mcp).
 
-## Custom MCP Client Integration
+<CodeBlocks>
+```typescript title="typescript"
+import OpenAI from 'openai';
+// Replace with your actual OpenAI API key
+const openai = new OpenAI({ apiKey: 'YOUR_OPENAI_API_KEY' });
+async function main() {
+  const response = await openai.responses.create({
+    model: 'gpt-4.1',
+    tools: [
+      {
+        type: 'mcp',
+        server_label: 'vapi-mcp',
+        server_url: 'https://mcp.vapi.ai/mcp',
+        headers: { "Authorization": "Bearer YOUR_VAPI_API_KEY" }
+      },
+    ],
+    input: 'What vapi tools do you have available?',
+  });
+  console.dir(response, { depth: null });
+}
+main();
+```
+```python title="python"
+import openai
+# Replace with your actual OpenAI API key
+openai.api_key = 'YOUR_OPENAI_API_KEY'
+response = openai.responses.create(
+    model="gpt-4.1",
+    tools=[
+        {
+            "type": "mcp",
+            "server_label": "vapi-mcp",
+            "server_url": "https://mcp.vapi.ai/mcp",
+            "headers": {"Authorization": "Bearer YOUR_VAPI_API_KEY"}
+        },
+    ],
+    input="What vapi tools do you have available?",
+)
+print(response)
+```
+</CodeBlocks>
 
-You can use any MCP-compatible client (SDKs available for multiple languages).
+### MCP client SDKs
 
-<Steps>
-  <Step title="Install an MCP client SDK">
-    Choose a language:
-    - [TypeScript](https://github.com/modelcontextprotocol/typescript-sdk)
-    - [Python](https://github.com/modelcontextprotocol/python-sdk)
-    - [Java](https://github.com/modelcontextprotocol/java-sdk)
-    - [Kotlin](https://github.com/modelcontextprotocol/kotlin-sdk)
-    - [C#](https://github.com/modelcontextprotocol/csharp-sdk)
-  </Step>
-  <Step title="Configure your connection">
-    Set up your SDK to connect to <code>https://mcp.vapi.ai/mcp</code> using **Streamable HTTP** and authenticate with your Vapi API key in the <code>Authorization: Bearer YOUR_VAPI_API_KEY</code> header.
-  </Step>
-  <Step title="Use MCP tools">
-    Query available tools, list assistants, create calls, etc, via your SDK.
-  </Step>
-</Steps>
-
----
-
-### Example: Build a client with Node.js
+Official MCP SDKs are available for [TypeScript](https://github.com/modelcontextprotocol/typescript-sdk), [Python](https://github.com/modelcontextprotocol/python-sdk), [Java](https://github.com/modelcontextprotocol/java-sdk), [Kotlin](https://github.com/modelcontextprotocol/kotlin-sdk), and [C#](https://github.com/modelcontextprotocol/csharp-sdk). This minimal Node.js client lists your assistants:
 
 ```javascript
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -318,7 +262,7 @@ dotenv.config();
 const mcpClient = new Client({ name: 'vapi-client', version: '1.0.0' });
 const transport = new StreamableHTTPClientTransport(
   new URL('https://mcp.vapi.ai/mcp'),
-  { requestInit: { headers: { Authorization: `Bearer ${process.env.VAPI_TOKEN}` } } }
+  { requestInit: { headers: { Authorization: `Bearer ${process.env.VAPI_API_KEY}` } } }
 );
 
 async function main() {
@@ -331,7 +275,7 @@ async function main() {
 main();
 ```
 
-### Detailed example: Build a client with Node.js
+This fuller example lists tools, assistants, and phone numbers, then creates a call:
 
 ```javascript
 #!/usr/bin/env node
@@ -343,8 +287,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Ensure API key is available
-if (!process.env.VAPI_TOKEN) {
-  console.error('Error: VAPI_TOKEN environment variable is required');
+if (!process.env.VAPI_API_KEY) {
+  console.error('Error: VAPI_API_KEY environment variable is required');
   process.exit(1);
 }
 
@@ -358,7 +302,7 @@ async function main() {
     // Create Streamable HTTP transport for connection to remote Vapi MCP server
     const serverUrl = 'https://mcp.vapi.ai/mcp';
     const headers = {
-      Authorization: `Bearer ${process.env.VAPI_TOKEN}`,
+      Authorization: `Bearer ${process.env.VAPI_API_KEY}`,
     };
     const options = {
       requestInit: { headers: headers },
@@ -461,14 +405,13 @@ async function main() {
 main();
 ```
 
-<Note> For more detailed examples and complete client implementations, see the [MCP Client Quickstart](https://modelcontextprotocol.io/quickstart/client). </Note>
-
 ## References
 
-- [Github repo](https://github.com/VapiAI/mcp-server)
+- [Vapi MCP server on GitHub](https://github.com/VapiAI/mcp-server)
+- [Vapi agent skills](https://github.com/VapiAI/skills)
 - [Model Context Protocol docs](https://modelcontextprotocol.io)
-- [Vapi dashboard](https://dashboard.vapi.ai)
 - [MCP client quickstart](https://modelcontextprotocol.io/quickstart/client)
+- [Vapi dashboard](https://dashboard.vapi.ai)
 
 <CardGroup cols={2}>
   <Card title="Need help?" icon="question-circle" href="https://discord.gg/v5Ee6FhAZt">
