@@ -27,20 +27,22 @@ You can suggest edits by making a pull request.
 To run a local development server with hot-reloading you can run the following command
 
 ```sh
-npm install -g fern-api
+npm install -g fern-api@5.169.0
 fern docs dev
 ```
+
+Consent behavior, regression checks, publication prerequisites, and safe disablement are documented in the [docs consent runbook](scripts/privacy/README.md).
 
 #### Hosted URL
 
 To update your documentation on a hosted URL, run
 ```
-# npm install -g fern-api
+# npm install -g fern-api@5.169.0
 fern generate --docs
 ```
 To preview your documentation, run
 ```
-# npm install -g fern-api
+# npm install -g fern-api@5.169.0
 fern generate --docs --preview
 ```
 The repository contains GitHub workflows that will automatically run these commands for you. For example, when you make a PR a preview link will be auto-generated and when you merge to main the docs site will update.
