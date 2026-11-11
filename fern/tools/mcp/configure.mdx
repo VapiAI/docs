@@ -1,0 +1,133 @@
+---
+title: Configure MCP tools
+subtitle: Set authentication, headers, variables, encryption, and transport for an MCP tool
+slug: tools/mcp/configure
+description: Configure a Vapi MCP tool's fields, header or credential authentication, context headers, variables, argument encryption, tool names, and transport.
+---
+
+This page covers each setting on an MCP tool. To create a tool first, see [MCP tools](/tools/mcp).
+
+## Configuration reference
+
+The following fields configure an MCP tool through the API. Only `type` and `server.url` are required. The rest control authentication, timeouts, transport, and what the caller hears while a tool runs.
+
+| Field | Description |
+|---|---|
+| `type` | Always `"mcp"`. |
+| `server.url` | The MCP server URL. Required. |
+| `server.headers` | Headers sent with every request to the server. Values can be static or use variables. See [Use variables in headers](#use-variables-in-headers). |
+| `server.credentialId` | The ID of a saved credential used to authenticate. See [Authentication](#authentication). |
+| `server.timeoutSeconds` | How long Vapi waits for each request to the server. Default 20 seconds. |
+| `server.encryptedPaths` | Argument paths to encrypt before Vapi sends a tool call. See [Encrypt sensitive arguments](#encrypt-sensitive-arguments). |
+| `metadata.protocol` | Use `"shttp"` (Streamable HTTP, the default), or omit this field. See [Transport](#transport). |
+| `messages` | Spoken messages for every tool from this server. See [Spoken messages during tool calls](/tools/mcp/messages-and-results#spoken-messages-during-tool-calls). |
+| `toolMessages` | Spoken messages for individual tools, matched by the tool's name on the server. API only. |
+| `function.name`, `function.description` | The Dashboard's **Tool Name** and **Description**, which identify this MCP tool. |
+
+## Authentication
+
+Vapi can authenticate to the MCP server in two ways:
+
+- **A header in `server.headers`.** For example, `"Authorization": "Bearer YOUR_MCP_SERVER_TOKEN"` or a provider-specific header such as `x-api-key`.
+- **A saved credential in `server.credentialId`.** MCP tools support two credential types:
+  - **Bearer token.** Vapi sends the token with the header name and prefix set on the credential.
+  - **OAuth 2.0 (client credentials).** Vapi gets an access token from your token URL, refreshes it when it expires, and sends `Authorization: Bearer <token>`.
+
+To create a credential, see [Server authentication](/server-url/server-authentication). In the Dashboard, select it from the MCP tool's **Authorization** list. Through the API, list your credentials with `GET /credential` and set the credential's ID as `server.credentialId`.
+
+Keep these limits in mind:
+
+- HMAC credentials have no effect on MCP tools.
+- OAuth 2.0 support covers the client credentials grant only. Vapi doesn't support servers that require a user to sign in through a browser.
+- If `server.headers` contains an `Authorization` header, it takes precedence over the credential.
+- If Vapi can't load the credential, it doesn't send the request without authentication. The voice agent gets no tools from that server for the call.
+
+<Warning>
+Some providers put a token in the server URL. Treat those URLs as secrets, like any other credential.
+</Warning>
+
+## Headers Vapi sends
+
+Vapi adds context headers to its requests so your server can tell which conversation a request belongs to:
+
+| Header | Tool list request | Tool calls |
+|---|---|---|
+| `X-Call-Id` | Yes. For chats, the value is the chat ID. | Yes. For chats, the value is the chat ID. |
+| `X-Chat-Id` | Yes, for chats | Yes, for chats |
+| `X-Session-Id` | Yes, for chats in a session | Yes, for chats in a session |
+| `X-Customer-Number` | No | Yes, when the customer's number is known, in E.164 format (for example, `+14155550123`) |
+| Your `server.headers` | Yes | Yes |
+
+The tool list request doesn't include the customer's number, so your server can't use it to decide which tools to list.
+
+## Use variables in headers
+
+You can use [dynamic variables](/assistants/dynamic-variables) such as `{{customerId}}` in `server.url` and `server.headers`. Vapi fills them in for **tool calls** only:
+
+- **Tool list request:** Vapi sends the text as written, for example `{{customerId}}`, because it requests the tool list before it fills in variables.
+- **Tool calls:** Vapi sends the variable's value.
+- **Unset variables:** If a variable has no value for the call, Vapi sends the text as written.
+
+Anything your server needs in order to list its tools, such as an auth token, must be a fixed value or a credential. Use variables only for values your server reads on tool calls:
+
+```json
+{
+  "type": "mcp",
+  "server": {
+    "url": "https://mcp.example.com/mcp",
+    "headers": {
+      "Authorization": "Bearer YOUR_MCP_SERVER_TOKEN",
+      "X-Customer-Id": "{{customerId}}"
+    }
+  }
+}
+```
+
+## Encrypt sensitive arguments
+
+Vapi can encrypt sensitive values in a tool call's arguments, such as a card number, before it sends the call to the MCP server. Your server receives the encrypted value as a base64 string and decrypts it with its private key.
+
+1. Create a custom credential with encryption enabled. See [Tool argument encryption](/tools/encryption).
+2. Select that credential under **Authorization** on the MCP tool, or set it as `server.credentialId`. The same credential also authenticates the requests.
+3. Add each argument path to encrypt under **Encryption Settings**, or in `server.encryptedPaths`. For example, `cardNumber` or `payment.cardNumber`.
+
+The paths apply to every tool from the server. Only servers that decrypt the values can use them, so encrypt arguments only for servers you control.
+
+## Choose which tools the voice agent gets
+
+Vapi adds every tool the server lists. It has no setting to include or exclude individual tools. To limit what the voice agent can use, limit the tools on the server or at the provider. For example, choose which actions a Zapier server exposes, or which scenarios a Make API key can access. For more information, see [MCP providers](/tools/mcp/providers).
+
+Keep the list short. Every tool adds to the model's context, which can slow responses and make the model choose the wrong tool.
+
+## Tool names the model sees
+
+Vapi adds a prefix to each tool name so tools from different servers don't clash. The prefix is the main part of the server's domain name, in lowercase with only letters and digits, followed by a hyphen:
+
+| Server URL | Server tool | Name the model sees |
+|---|---|---|
+| `https://mcp.zapier.com/api/v1/connect` | `send_email` | `zapier-send_email` |
+| `https://mcp.example.com/mcp` | `lookup_order` | `example-lookup_order` |
+
+Vapi removes the prefix before sending the tool call, so your server receives its own tool name. Use the prefixed name if you refer to a tool by name in the system prompt.
+
+## Transport
+
+Use **Streamable HTTP**, the default transport. Set `metadata.protocol` to `"shttp"`, or omit it, and use your provider's Streamable HTTP endpoint. The legacy HTTP+SSE transport is deprecated; migrate existing SSE configurations to the provider's Streamable HTTP endpoint.
+
+```json
+{
+  "type": "mcp",
+  "server": {
+    "url": "https://mcp.example.com/mcp"
+  },
+  "metadata": {
+    "protocol": "shttp"
+  }
+}
+```
+
+## Next steps
+
+- [MCP tool messages and results](/tools/mcp/messages-and-results): control what the caller hears and what the model receives.
+- [Troubleshoot MCP tools](/tools/mcp/troubleshooting): fix common problems.
+- [Server authentication](/server-url/server-authentication): create credentials for MCP servers.

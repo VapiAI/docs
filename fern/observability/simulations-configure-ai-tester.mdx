@@ -25,7 +25,7 @@ The available settings depend on whether you configure the AI tester in the Dash
 | Area | Dashboard settings | Additional API settings |
 | -- | -- | -- |
 | **Scenario** | Name and intent | Overrides for the assistant or squad under test, webhook destinations, transcript and message inclusion, and recording inclusion |
-| **Behavior** | Behavior and who starts first | First message, start-speaking plan, stop-speaking plan, duration limit, background sound, and background-speech denoising |
+| **Behavior** | Behavior, who starts first, and [background sound](#background-sound) | First message, start-speaking plan, stop-speaking plan, duration limit, and background-speech denoising |
 | **Model** | Provider and model | Temperature, maximum tokens, fallback models, tools, prompt caching, knowledge base, and model-specific reasoning |
 | **Transcriber** | Provider, model, and language | Language detection and hints, endpoint delay, vocabulary, contextual hints, and fallback transcribers |
 | **Voice** | Provider and voice ID | Speed, version, language, pronunciation dictionaries, chunking, formatting, and caching |
@@ -185,6 +185,61 @@ The available fields vary by provider. See [**Update Personality**](/api-referen
 <Note>
   Editing a built-in **(Default)** personality in the Dashboard saves it as a new personality you own. The built-in personality remains unchanged.
 </Note>
+
+## Background sound
+
+Background sound is an audio file that the AI tester plays throughout a voice simulation, mixed with its speech. Use it to test how the assistant or squad you're testing handles a caller in a noisy place. Chat simulations ignore background sound.
+
+<Warning>
+  [GPT-Live](/gpt-live/overview) AI testers add background sound only while they're speaking, not during silence. They also don't play the **Office** preset, so choose another one.
+</Warning>
+
+In the Dashboard, open the **Personality** tab, expand **Advanced settings**, and turn on **Background sound**. Turning it on selects **White noise**. To change it, select another preset or **Custom URL**.
+
+| Preset | Sound | API value |
+| -- | -- | -- |
+| **Office** | Office chatter and typing | `office` |
+| **White noise** | Steady static | `white-noise` |
+| **City** | Street traffic | `city` |
+| **Crowd** | Many people talking | `crowd` |
+| **Farm** | Chickens and roosters | `farm` |
+
+Office is the quietest preset, at about 30 dB below the AI tester's speech. The others play about 15 dB below it.
+
+With **Custom URL**, enter a public HTTPS URL of up to 1,000 characters that points to an audio file of 25 MB or less. The file loops for the whole call. Use WAV when you can, because an MP3 file can leave a short gap at the loop point.
+
+Through the API, set `backgroundSound` in the personality's `assistant` to a preset's API value or your own URL:
+
+```json
+{
+  "assistant": {
+    "backgroundSound": "white-noise"
+  }
+}
+```
+
+Include the rest of the personality's assistant configuration in the same request, as described in [Configure the AI tester](#configure-the-ai-tester).
+
+<Note>
+  The assistant or squad you're testing denoises incoming audio before it transcribes and records the call. Smart Denoising is on by default, so it removes most of the background sound, and the recording may sound clean. A clean recording is expected, because the simulation tests your production setup.
+</Note>
+
+### Hear the raw noise
+
+To hear the raw noise, turn off denoising in the scenario's `targetOverrides`. Also set `backgroundDenoisingEnabled` to `false`, because this legacy flag takes precedence when the assistant or squad you're testing sets it:
+
+```json
+{
+  "targetOverrides": {
+    "backgroundDenoisingEnabled": false,
+    "backgroundSpeechDenoisingPlan": {
+      "smartDenoisingPlan": { "enabled": false }
+    }
+  }
+}
+```
+
+If the assistant or squad you're testing enables [Fourier denoising](/documentation/assistants/conversation-behavior/background-speech-denoising#fourier-denoising-experimental), also set `backgroundSpeechDenoisingPlan.fourierDenoisingPlan.enabled` to `false`. Updating a scenario replaces its `targetOverrides`, so include any existing overrides you want to keep.
 
 ## Next steps
 
