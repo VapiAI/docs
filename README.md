@@ -44,3 +44,26 @@ To preview your documentation, run
 fern generate --docs --preview
 ```
 The repository contains GitHub workflows that will automatically run these commands for you. For example, when you make a PR a preview link will be auto-generated and when you merge to main the docs site will update.
+
+### Documentation checks
+
+Every pull request runs `fern check --warnings` with the pinned CLI and the
+example-cache adapter. Internal broken links fail validation and publication.
+API example validation and missing redirects are warnings while existing findings
+are reviewed. Missing-redirect detection compares against the published site and
+needs the `FERN_TOKEN` repository secret; fork PRs still receive local validation.
+See [the cache setup and verification commands](scripts/fern/README.md).
+
+Same-repository PRs receive a stable preview named `pr-<number>`. Subsequent pushes
+update the preview and its PR comment, and closing or merging the PR deletes the
+preview. Fork PRs skip hosted previews because repository secrets are unavailable.
+
+The **check-external-links** workflow scans the published site daily at 08:00 UTC
+and can also be run manually. Changes to that workflow run the scan on
+same-repository PRs to verify its configuration before merge. Broken links and
+incomplete scans fail the job.
+Blocked URLs (such as HTTP 403 responses) are reported separately by Fern and do
+not fail the scan. The run summary lists findings and source pages; download the
+`fern-live-links` artifact for the JSON report. This workflow monitors external
+URLs as well as deployed internal links; ordinary docs PRs use the local link
+validator.
