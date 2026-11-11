@@ -1,0 +1,150 @@
+---
+title: Configure the DTMF tool
+subtitle: Create the tool, write the keys it sends, and keep the assistant quiet while it presses them
+slug: tools/dtmf/configure
+description: Configure the Vapi DTMF tool in the dashboard or API, with key strings by provider, prompt rules, tool messages, SIP INFO, and tone checks.
+---
+
+Before you start, read [DTMF tool](/tools/dtmf) for what the tool does, where it works, and how it behaves during a call.
+
+## Create the tool
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. In the [Dashboard](https://dashboard.vapi.ai), select **Tools**, then select **Create Tool**.
+    2. Select **DTMF**.
+    3. Under **Tool Settings**, enter a **Tool Name** and a **Description**. The model sees both. The description tells it when to press keys. See [Name and describe the tool](#name-and-describe-the-tool).
+    4. Leave **Send DTMF via SIP INFO** cleared unless your receiving system requires it. See [Send tones over SIP INFO](#send-tones-over-sip-info).
+    5. Optionally, open **Messages** to set what the assistant says while the tool runs. See [Keep the assistant quiet while it presses keys](#keep-the-assistant-quiet-while-it-presses-keys).
+    6. Publish the tool, then add it to your assistant.
+  </Tab>
+  <Tab title="API">
+    Create the tool with the [Create Tool](/api-reference/tools/create#request.body.dtmf) endpoint, then add its ID to your assistant's `model.toolIds`:
+
+    ```json
+    {
+      "type": "dtmf"
+    }
+    ```
+
+    You can also define the tool inline in the assistant's `model.tools` array:
+
+    ```json
+    {
+      "model": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "tools": [
+          {
+            "type": "dtmf"
+          }
+        ]
+      }
+    }
+    ```
+
+    To change an existing tool, use the [Update Tool](/api-reference/tools/update#request.body.dtmf) endpoint.
+  </Tab>
+</Tabs>
+
+### Fields
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `type` | Yes | Set to `dtmf`. |
+| `messages` | No | What the assistant says when the tool runs. See [Keep the assistant quiet while it presses keys](#keep-the-assistant-quiet-while-it-presses-keys). |
+| `sipInfoDtmfEnabled` | No | Sends tones as SIP INFO messages instead of the default method. Default is `false`. See [Send tones over SIP INFO](#send-tones-over-sip-info). |
+| `rejectionPlan` | No | Conditions that stop the tool from running. See [Tool rejection plan](/tools/tool-rejection-plan). |
+
+## Name and describe the tool
+
+The model sees the DTMF tool as a function with these defaults:
+
+| Part | Default |
+| --- | --- |
+| Name | `dtmf` |
+| Description | "Used to dial a key on the phone's keypad." |
+| Parameters | One required string, `keys`, described as the key or sequence of keys to dial |
+
+The default description doesn't say when to press keys. In the dashboard, write your own in the **Description** field so the model knows when to use the tool and when not to.
+
+If you change the **Tool Name**, use that name in your system prompt.
+
+## Write the key string
+
+Your assistant passes all the keys for one entry in one string, for example `1` or `1234#`. That string is `keys`.
+
+- **Allowed keys.** Use `0` to `9`, `*`, and `#`.
+- **Pause characters.** On Twilio and Telnyx, `w` adds a 0.5-second pause and `W` adds a 1-second pause, for example `1w2w3#`. On other providers, Vapi doesn't support pause characters. On Vapi numbers, the keys play back to back. See [Where keypad tones work](/calls/dtmf#where-keypad-tones-work).
+- **One entry per tool call.** Send everything a prompt asks for in one string. If a phone system needs time between entries, send each entry after the prompt that asks for it. Your assistant presses keys once per turn, so several tool calls in the same turn don't add pauses.
+
+## Tell the assistant when to press keys
+
+The model decides when to call the DTMF tool, so your system prompt needs to say when to press keys and when not to. Without clear rules, an assistant can press keys when nothing asked for them, or send characters a phone system can't use.
+
+Include rules like these:
+
+```txt wordWrap
+When an automated phone menu or system explicitly asks you to press a key or enter a number, use the dtmf tool. Wait until the menu has finished listing its options before you press anything. Send only the keys the menu asks for, using 0-9, * and #. Send a whole number, such as an account number followed by #, in one tool call. Do not speak while you press keys. Never use the dtmf tool when you are talking to a person.
+```
+
+For response timing and retry strategies on phone menus, see [IVR navigation](/ivr-navigation).
+
+## Keep the assistant quiet while it presses keys
+
+By default, the assistant doesn't say anything when it presses keys. If you add a `request-start` message, the assistant speaks it first and then sends the tones:
+
+```json
+{
+  "messages": [
+    {
+      "type": "request-start",
+      "content": "One moment."
+    }
+  ]
+}
+```
+
+A phone menu that accepts spoken answers can hear that message as input, and the message delays the tones until it finishes. Leave `request-start` out when your assistant is pressing keys for an automated system.
+
+## Send tones over SIP INFO
+
+On Vapi numbers and BYO SIP trunks, set `sipInfoDtmfEnabled` to `true` to send each key as a SIP INFO message instead of the default method. On other providers, the setting has no effect on how tones are sent.
+
+Turn it on only when the system on the other end expects DTMF over SIP INFO, such as a private branch exchange (PBX) or session border controller (SBC) you configured that way. Keep these behaviors in mind:
+
+- **Ordinary phone lines may not play the tones.** SIP INFO is a signaling message, not audio. When the call goes out to an ordinary phone line, the other end may never hear anything.
+- **Vapi doesn't fall back to audio tones.** With the default method, if the provider rejects the request, Vapi plays the tones as audio instead. With SIP INFO, it doesn't.
+
+If tones stop working after you turn on SIP INFO, turn it off.
+
+## Verify tones were sent
+
+Place a test call and get the assistant to press keys. Then check these places:
+
+1. **The tool call and its result.** In the [Dashboard](https://dashboard.vapi.ai), select **Logs**, open the call, and select the [Messages](/observability/logs/call-logs#messages) tab. Find the DTMF tool call, listed under the tool's function name, to see the keys the assistant chose. The result is `Success.` once Vapi starts sending the tones.
+2. **The call logs.** If the assistant's **Logging** setting is enabled, the call's [Logs](/observability/logs/call-logs#logs) tab includes a `call.dtmfSent` event with the `digits` sent and the `transportProvider` the call ran on.
+3. **The other side.** Neither the result nor the log entry confirms that the other side received the tones. Check the transcript to see whether the phone menu moved to its next prompt.
+
+The DTMF tool runs inside Vapi, so your server doesn't receive a `tool-calls` message when the assistant presses keys.
+
+## Troubleshoot the DTMF tool
+
+| What you see | What to check |
+| --- | --- |
+| The tool returns `Success.` but the phone menu doesn't respond | The menu may not have been ready. Wait for the full menu before pressing keys, and see [IVR navigation](/ivr-navigation). If you turned on SIP INFO, turn it off. |
+| Keys arrive with no pauses between them | Pause characters aren't supported on the call's provider. See [Write the key string](#write-the-key-string). |
+| The assistant talks over the menu or presses keys too early | Adjust the prompt and endpointing settings. See [IVR navigation](/ivr-navigation). |
+| The assistant presses keys when nothing asked for them, or sends letters or words | Tighten the rules in your system prompt. See [Tell the assistant when to press keys](#tell-the-assistant-when-to-press-keys). |
+| The assistant says something before the tones | A `request-start` message is set. See [Keep the assistant quiet while it presses keys](#keep-the-assistant-quiet-while-it-presses-keys). |
+| No tones on a web call or WebSocket call | The DTMF tool works on phone calls only. |
+| On a Twilio warm transfer, the caller stays on hold after the transfer assistant presses a key | Use the destination's `extension` field instead of the DTMF tool. See [Recommendations by scenario](/calls/dtmf#recommendations-by-scenario). |
+
+## Related
+
+- [DTMF tool](/tools/dtmf)
+- [Keypad tones (DTMF)](/calls/dtmf)
+- [IVR navigation](/ivr-navigation)
+- [Keypad input settings](/documentation/assistants/conversation-behavior/keypad-input-settings)
+- [Transfer Call tool](/tools/transfer-call)
+- [DTMF tool in the Create Tool API reference](/api-reference/tools/create#request.body.dtmf)
