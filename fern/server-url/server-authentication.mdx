@@ -407,21 +407,27 @@ For webhooks sent to a server URL supplied in the API request, Vapi also strips 
 
 #### Subsystem server URLs
 
-Some webhooks go to a URL owned by a subsystem rather than to your assistant's webhook URL. Tools, knowledge bases, custom voices, dynamic handoff and transfer destinations, and custom endpointing providers each carry their own `server` block:
+Tools, knowledge bases, custom voices, handoff and transfer destinations, and custom endpointing providers each carry their own `server` block. These requests go to that block's URL, not to your assistant's webhook URL:
 
-| Webhook | Server it is sent to |
-| --- | --- |
-| `tool-calls`, `function-call` | the tool's |
-| `knowledge-base-request` | the knowledge base's |
-| `voice-request` | the custom voice's |
-| `handoff-destination-request` | the handoff destination's |
-| `transfer-destination-request` | the transfer destination's |
-| `call.endpointing.request` | the endpointing provider's |
+- `tool-calls` and `function-call`, to the tool's server
+- `knowledge-base-request`, to the knowledge base's server
+- `voice-request`, to the custom voice's server
+- `handoff-destination-request` and `transfer-destination-request`, to the destination's server
+- `call.endpointing.request`, to the endpointing provider's server
+- `apiRequest` tool requests, to the tool's URL
+- MCP requests, to the MCP server's URL, both when Vapi lists its tools at call start and on each tool call
 
-**These follow the assistant that carried them.** A tool on a saved assistant is org-configured and keeps your credentials. The same tool on a transient assistant or in `assistantOverrides` is caller-authored, and Vapi sends to its URL without them.
+When a transient assistant or `assistantOverrides` supplies a server URL or `credentialId` for any of these, Vapi withholds your org credential from **every** request in this list whose URL differs from your assistant's webhook URL. On a withheld request:
+
+- your org's `secret`, `headers`, and credential are not sent
+- a `credentialId` in the request is ignored, because it points at a credential stored in your org
+- the `secret` and `headers` you set in that `server` block are still sent
+- credential fields in the payload arrive as `"[REDACTED]"`
+
+Overrides that set only `variableValues` don't trigger this. In chats, the setting lasts for the whole session, including resumed sessions and handoffs.
 
 <Warning>
-A saved assistant can carry a caller-authored subsystem server: if `assistantOverrides` replaces the voice, the tools, or the knowledge base, those replacements are caller-authored even though the assistant itself is saved. Give any subsystem server you supply in a request its own authentication in that block's `headers`.
+Supplying one tool, voice, or knowledge base through `assistantOverrides` also withholds your org credential from the saved assistant's own tools, voice, and knowledge base. Put authentication for those endpoints in their `server.headers`, or move the override onto a saved assistant.
 </Warning>
 
 #### Confirming a withheld send in your logs
@@ -432,7 +438,13 @@ When Vapi withholds credentials, it also writes an entry to the call's logs:
 Assistant credentials withheld from <messageType>: this server url came from an assistant this request supplied, not from your org configuration
 ```
 
-Open the call in [**Calls**](/observability/logs/call-logs) under **Logs**. On its **Logs** tab, search for `credentials withheld`. Leave the category filter unset: the entry is not always filed under **Webhook**.
+For a tool, custom voice, or MCP request withheld under [Subsystem server URLs](#subsystem-server-urls), the entry reads:
+
+```text
+Assistant credentials withheld from <destination>: this assistant carries server configuration this request supplied
+```
+
+Open the call in [**Calls**](/observability/logs/call-logs) under **Logs**. On its **Logs** tab, search for `credentials withheld`, which matches both entries. Leave the category filter unset: the entry is not always filed under **Webhook**.
 
 Vapi writes the entry **on each send** of a message type that is not suppressed. The same entry can repeat within a call. Vapi suppresses it for high-volume message types: `model-output`, `speech-update`, `status-update`, `transcript`, `transcript[transcriptType="final"]`, `voice-input`, and `voice-request`.
 
