@@ -52,9 +52,11 @@ Under the **Observability Providers** section, you'll find an option for **Langf
 - **Public Key**
 - **Host URL** (US data region: `https://us.cloud.langfuse.com`, EU data region: `https://cloud.langfuse.com`)
 
-When you finish editing the Host URL, Vapi reads your Langfuse server's version from its unauthenticated `{Host URL}/api/public/health` endpoint, and the **Server version** row fills in with what it found. You can also trigger the check yourself with **Check server version**. **Save** stays disabled until a version is resolved, so every saved credential knows which server it points at. Editing the Host URL clears the version, because a version belongs to the server it was read from.
+For a self-hosted server, when you finish editing the Host URL, Vapi reads your Langfuse server's version from its unauthenticated `{Host URL}/api/public/health` endpoint, and the **Server version** row fills in with what it found. You can also trigger the check yourself with **Check server version**. **Save** stays disabled until a version is resolved, so every saved self-hosted credential knows which server it points at. Editing the Host URL clears the version, because a version belongs to the server it was read from.
 
-If your `/api/public/health` endpoint is hidden behind a proxy or firewall, a **Server version** field appears so you can state the version yourself (for example `3.63.0`). The Host URL itself must still resolve to a public address over HTTP or HTTPS; Vapi probes and exports from the public internet, so a loopback, link-local, or private-network host is refused regardless of the version you enter.
+A Langfuse Cloud Host URL needs no version: Cloud is recognized by its hostname, so **Save** is available right away and nothing is checked when you leave the field. **Check server version** still reads Cloud's version if you want to see it.
+
+If your `/api/public/health` endpoint is hidden behind a proxy or firewall, a **Server version** field appears so you can state the version yourself (for example `3.63.0`). The Host URL itself must still use `https://` and resolve to a public address. Vapi only sends your keys over an encrypted connection, and it probes and exports from the public internet, so an `http://` Host URL, or one that resolves to a loopback, link-local, or private-network address, is refused regardless of the version you enter.
 
 Click **Save** to update your credentials.
 
@@ -132,11 +134,13 @@ trace_id = hashlib.sha256(call_id.encode()).hexdigest()[:32]
 
 **The Host URL redirects to another origin.** Host URLs that redirect elsewhere are refused, because trace exports do not follow redirects: the save would succeed and the exports would silently go nowhere. For example, `https://eu.cloud.langfuse.com` redirects to `https://cloud.langfuse.com`, so use `https://cloud.langfuse.com` directly, which is Langfuse's recommended base URL for EU-region projects and does not change where your data is stored. The error message names the URL to use instead.
 
-**The Host URL must resolve to a public address.** Vapi probes and exports from the public internet, so a Host URL that is not `http`/`https`, or that resolves to a loopback, link-local, or private-network address, is refused. Entering a server version by hand does not bypass this.
+**The Host URL must use HTTPS and resolve to a public address.** Vapi only sends your keys over an encrypted connection, so an `http://` Host URL is refused when you save, with a message asking for an `https://` one. Vapi also probes and exports from the public internet, so a Host URL that resolves to a loopback, link-local, or private-network address is refused. Entering a server version by hand bypasses neither rule. A credential saved earlier with an `http://` Host URL keeps sending traces over the legacy v3 ingestion API, but saving it again requires an `https://` Host URL.
 
 **Vapi could not detect your server's version.** This means `{Host URL}/api/public/health` did not answer, or answered without a version, which is typical when a proxy or firewall sits in front of it. Enter your server's version yourself in the **Server version** field, as `major.minor.patch` exactly how your server's health endpoint reports it (for example `3.63.0`).
 
-**Traces stop appearing during calls.** If tracing fails mid-call, for example because your server became unreachable or was upgraded across the 3.63 boundary, Vapi writes an error into that call's logs with a link to the [credentials page](https://dashboard.vapi.ai/keys). Re-save your Langfuse credential there so Vapi reads your server's current version; nothing re-detects it in the background.
+**Traces stop appearing during calls.** On the OTLP path, if a call's trace cannot be started or delivered, for example because your server became unreachable or was upgraded across the 3.63 boundary, Vapi writes an error into that call's logs with a link to the [Integrations page](https://dashboard.vapi.ai/settings/integrations). Re-save your Langfuse credential there so Vapi reads your server's current version; nothing re-detects it in the background.
+
+**No traces from PCI calls.** When an assistant has [`compliancePlan.pciEnabled`](/security-and-privacy/pci) set, Vapi sends nothing from its calls to Langfuse: no conversation traces and no tool calls. This applies on both export paths.
 
 ## Enrich Traces
 Vapi allows you to enrich Langfuse traces by integrating [Metadata](https://langfuse.com/docs/tracing-features/metadata) and [Tags](https://langfuse.com/docs/tracing-features/tags).
