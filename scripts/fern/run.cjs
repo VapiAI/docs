@@ -4,9 +4,9 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { digest } = require('./example-cache.cjs');
 
-const VERSION = '5.169.0';
-const CLI_SHA256 = '773ec0a808a2c4d03c894c81c6159f8e3fe8db5a873c287cdce5b140eed8b809';
-const MARKER = 'function KOm({propertySchema:e,breadcrumbs:t,context:r,propertyId:n})';
+const VERSION = '5.216.0';
+const CLI_SHA256 = 'acd2771ffed03658a03590ea9fa6ee764df52e52284665eb8574cd8efacb4923';
+const MARKER = 'function HQm({propertySchema:e,breadcrumbs:t,context:r,propertyId:n})';
 const MEDIA_MARKER = 'generateOrValidateExample({schema:t,example:r,generateOptionalProperties:n,exampleGenerationStrategy:i})';
 
 function inputDigest(root) {
@@ -27,7 +27,7 @@ function main() {
   if (digest(source) !== CLI_SHA256 || source.split(MARKER).length !== 2 || source.split(MEDIA_MARKER).length !== 2) throw new Error('Unexpected Fern CLI contents. Refusing to apply the cache adapter.');
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'vapi-fern-'));
   const patched = source
-    .replace(MARKER, 'function KOm(args){return globalThis.__vapiFernExamples(args,()=>vapiOriginalExamples(args))}function vapiOriginalExamples({propertySchema:e,breadcrumbs:t,context:r,propertyId:n})')
+    .replace(MARKER, 'function HQm(args){return globalThis.__vapiFernExamples(args,()=>vapiOriginalExamples(args))}function vapiOriginalExamples({propertySchema:e,breadcrumbs:t,context:r,propertyId:n})')
     .replace(MEDIA_MARKER, 'generateOrValidateExample(args){return globalThis.__vapiFernExamples({context:this.context,breadcrumbs:this.breadcrumbs,mediaExampleArgs:args},()=>this.vapiOriginalMediaExample(args))}vapiOriginalMediaExample({schema:t,example:r,generateOptionalProperties:n,exampleGenerationStrategy:i})');
   try {
     const cli = path.join(temporary, 'fern.cjs');
