@@ -1,0 +1,92 @@
+---
+title: Marimba
+subtitle: Use Marimba turn-end decisions in a Vapi custom transcriber
+description: Run Marimba on the caller's audio in a custom-transcriber bridge to decide when the caller has finished, alongside the speech-to-text model of your choice.
+slug: customization/custom-transcriber/marimba
+---
+
+[Marimba](https://huggingface.co/charcot-ai/marimba) is an open-weight (Apache-2.0) audio model, described in [Marimba: A System One Model for Speech](https://arxiv.org/abs/2611.18330), that answers typed questions about the last eight seconds of audio: voice activity, turn end, spoken language, whether a term was said, and speaker questions. It does not produce transcripts. In a [custom transcriber](/customization/custom-transcriber) bridge it decides when the caller's turn is over, while a speech-to-text model of your choice supplies the words.
+
+<Note>The CPU example uses `openai/whisper-tiny` for speech-to-text, without a hosted STT API key. Model downloads require network access and permission to access the weights. Swap in any speech-to-text callable.</Note>
+
+<Steps>
+  <Step title="Run the bridge">
+    The [Vapi example](https://github.com/Charcot-AI/marimba-api/tree/main/examples/vapi) in the Marimba repository is a small FastAPI WebSocket server:
+
+    ```bash
+    pip install 'marimba-audio[torch,server]==0.1.2' websockets
+    git clone https://github.com/Charcot-AI/marimba-api.git
+    python marimba-api/examples/vapi/server.py
+    ```
+
+    It keeps **only channel 0** of the interleaved PCM, resamples it to 16 kHz, and tracks speech with an adaptive energy gate every 20 ms. Three voiced frames start a turn with 200 ms pre-roll. Partials start after roughly 0.5 seconds of speech, throttled to once per second.
+
+    After 300 ms of silence, it scores turn end on the last eight seconds ending at the last voiced frame plus 0.3 seconds. Language uses the same window. A score at or above `TURN_THRESHOLD` (default `0.5`) triggers a final. Otherwise, resumed speech continues the turn; `SILENCE_TIMEOUT` (default `2.5` seconds) forces a final even for an unfinished sentence. `MAX_TURN_SECONDS` (default `30`) bounds long turns. Logs distinguish `turn_end`, `silence_timeout`, and `max_turn`.
+
+    There is no Marimba voice-activity veto: even multiple within-turn windows rejected measured speech at the native threshold. The bridge instead requires minimum speech duration and skips empty STT output. Non-speech noise can trigger STT hallucinations; put your STT's no-speech filtering in front of the bridge.
+  </Step>
+  <Step title="Point your assistant at it">
+    Expose port 8000 over TLS. Generate a fresh opaque key per call and use the same key in both URLs of that call's transient assistant configuration:
+
+    ```json
+    {
+      "transcriber": {
+        "provider": "custom-transcriber",
+        "server": {
+          "url": "wss://your-server.com/transcriber?session=UNIQUE_CALL_KEY"
+        }
+      },
+      "startSpeakingPlan": {
+        "waitSeconds": 0.25,
+        "smartEndpointingPlan": {
+          "provider": "custom-endpointing-model",
+          "server": {
+            "url": "https://your-server.com/endpointing/UNIQUE_CALL_KEY",
+            "timeoutSeconds": 3
+          }
+        }
+      }
+    }
+    ```
+
+    Vapi otherwise runs its own endpointing on partials. The [custom endpointing model](/customization/voice-pipeline-configuration) returns a long wait while a turn is active or decoding, then a short wait briefly after a final. Finite timeouts and CPU latency cannot guarantee Vapi always waits for a final; verify a real call on your hardware.
+
+    Keys associate live state; they are not authentication. Use one server process for this example. Before production, add explicit call routing/state and authentication with a [custom credential](/server-url/server-authentication).
+
+    Each final waits for STT and language inference, then logs its turn-end score, language choice, and reason together before sending the transcript. An immediate disconnect cannot cancel later metadata work. The transcriber protocol only carries text; consume decision logs separately if you need them during the call.
+  </Step>
+</Steps>
+
+## What to expect
+
+- Turn end: AUROC 0.930 on the Smart Turn v3.2 test set, where Smart Turn v3.2 itself scores 0.982, per the [model card](https://huggingface.co/charcot-ai/marimba).
+- Language: 30 languages, scored over the options you list.
+- Latency depends on your hardware and STT. Inference runs off the receive loop, one job per call; measure end-to-end behavior on your hardware.
+- Calibration shifts across domains. Tune `TURN_THRESHOLD` on labeled calls from your own traffic.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| The agent transcribes its own speech | Both channels are being forwarded. Keep only channel 0 from the interleaved PCM |
+| Turns never finalize | Verify channel 0, energy timing, `SILENCE_TIMEOUT`, and that STT returns nonempty text. Inspect the logged TURN score and final reason |
+| The assistant replies before the caller finishes | Configure the endpointing route with a unique matching call key. Finite timeouts can still race the bridge; verify an actual call |
+| Partials arrive late on CPU | STT and inference share one worker per call; partial requests coalesce while busy. Use faster STT or suitable hardware |
+| Noise produces words | The energy gate is heuristic. Put your STT's no-speech filtering in front; nonempty hallucinations are not rejected by this example |
+| The model is unavailable | Check `/health`; correct model access/configuration and restart. Unavailable WebSockets close with 1011 |
+
+Logs contain scores, labels, counts, and timings, not transcripts or audio. Audio retention is bounded; overload closes with 1013 rather than silently dropping samples. This reference is not a real-time or recognition-quality guarantee.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Marimba Vapi example" icon="github" href="https://github.com/Charcot-AI/marimba-api/tree/main/examples/vapi">
+    The bridge, a mock Vapi client and protocol tests.
+  </Card>
+  <Card title="Marimba model card" icon="book" href="https://huggingface.co/charcot-ai/marimba">
+    Questions, results and limitations.
+  </Card>
+  <Card title="Marimba paper" icon="file-lines" href="https://arxiv.org/abs/2611.18330">
+    Marimba: A System One Model for Speech.
+  </Card>
+</CardGroup>
