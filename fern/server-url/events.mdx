@@ -42,17 +42,19 @@ Vapi sends each event as an HTTP `POST` to the [Server URL](/server-url/setting-
 
 | Message type | What your server returns | Time limit |
 | --- | --- | --- |
-| `assistant-request` | An `assistantId`, a transient `assistant`, a `destination`, or an `error` | 7.5 seconds end-to-end. This limit is fixed. |
-| `tool-calls` | HTTP 200 with a `results` array, one entry per `toolCallId` | The Server URL's timeout |
+| `assistant-request` | An `assistantId`, a transient `assistant`, a `squadId`, a transient `squad`, a `destination`, or an `error` | 7.5 seconds end-to-end. This limit is fixed, and `timeoutSeconds` doesn't change it. |
+| `tool-calls` | A `200` response with a `results` array, one entry per `toolCallId` | The Server URL's timeout |
 | `transfer-destination-request` | A `destination`, or an `error` to refuse the transfer | The Server URL's timeout |
 | `knowledge-base-request` | A `documents` array | The Server URL's timeout |
 | All other types, such as `status-update`, `transcript`, and `end-of-call-report` | No response body is needed. | The Server URL's timeout |
+
+If your server returns an error for `assistant-request` or doesn't respond within 7.5 seconds, the call ends with the `assistant-request-returned-error` [ended reason](/calls/call-ended-reason).
 
 The Server URL's timeout is 20 seconds by default. You can set it from 1 to 300 seconds with `timeoutSeconds` in the server configuration or with the **Timeout** setting in the Dashboard.
 
 #### Retries
 
-By default, Vapi doesn't retry a server message request that fails or times out. To retry, add a `backoffPlan` to the server configuration:
+By default, Vapi doesn't retry a server message request that fails or times out. Retries can be set only through the API, not the Dashboard. To retry, add a `backoffPlan` to the server configuration:
 
 ```json
 {
@@ -69,15 +71,19 @@ By default, Vapi doesn't retry a server message request that fails or times out.
 }
 ```
 
+This example makes up to three attempts: the first request, then two retries after one second and two seconds.
+
 | Field | Description |
 | --- | --- |
 | `type` | `fixed` waits `baseDelaySeconds` between retries. `exponential` starts at `baseDelaySeconds` and increases the delay on each retry. |
-| `maxRetries` | The number of retries, from 0 to 10. The default is 0, which means no retries. |
+| `maxRetries` | The total number of attempts, including the first request, from 0 to 10. The default is 0. A value of 0 or 1 means no retries. |
 | `baseDelaySeconds` | The base delay, from 0 to 10 seconds. |
-| `excludedStatusCodes` | Response status codes that are not retried. Without this list, any non-2xx response is retried. |
+| `excludedStatusCodes` | Response status codes that are not retried. Without this list, any non-2xx response is retried. Timeouts and connection errors are also retried. |
+
+The `assistant-request` message isn't retried, even when a `backoffPlan` is set. API Request tools also don't retry after a failed response or a timeout. For more information, see [Handle latency and retries](/tools/api-request/reliability).
 
 <Note>
-  A retry can deliver the same event more than once, so make your handler safe to run twice for the same event. Use the `call.id` field to match events to a call. API Request tools don't retry after a failed response or a timeout, even when a `backoffPlan` is set. See [Handle latency and retries](/tools/api-request/reliability).
+  A retry can deliver the same event more than once, so make your handler safe to run twice for the same event. Use the `call.id` field to match events to a call.
 </Note>
 
 To see what Vapi sent and what your server returned for each delivery, open [Webhook logs](/observability/logs/webhook-logs).
