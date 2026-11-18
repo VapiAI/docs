@@ -29665,15 +29665,7 @@
           },
           "model": {
             "type": "string",
-            "description": "White-label Vapi models are selected by `version`, not a model name, so\n`model` is optional here (the runtime already accepts a version-only Vapi\npayload). Overriding the required `ModelBase.model`: the declared type stays\n`string` to match the base (avoids TS2416) and the `= undefined!` initializer\nsatisfies TS2612 for the field override, while `@IsOptional` +\n`@ApiPropertyOptional` make validation and the generated OpenAPI schema treat\nit as optional (so `VapiModel.required` is `['provider']`)."
-          },
-          "version": {
-            "type": "string",
-            "description": "Vapi-managed model version (update channel). When set, this is a Vapi-managed\nLLM routed by the registry; when absent, this is the legacy workflow form\nbelow (`steps` / `workflow`).",
-            "enum": [
-              "latest",
-              "1"
-            ]
+            "description": "This is the Vapi model: `sapien` or `sapien-lite`."
           },
           "provider": {
             "type": "string",
@@ -36324,7 +36316,7 @@
           },
           "serverVersion": {
             "type": "string",
-            "description": "The semver version of your Langfuse server, e.g. 3.63.0, as its /api/public/health endpoint reports it. Optional.",
+            "description": "The semver version of your Langfuse server, e.g. 3.63.0. Detected from your server's /api/public/health endpoint at save time whenever possible, and a detected version always wins; supply it only when that endpoint is not reachable from Vapi.",
             "maxLength": 32
           },
           "name": {
@@ -50725,6 +50717,11 @@
             "description": "Requested assistant identity whose current published row remains visible.",
             "format": "uuid"
           },
+          "latestVersion": {
+            "type": "string",
+            "description": "Current assistant.latest_version label; omitted when unavailable, never a goal revision.",
+            "minLength": 1
+          },
           "goals": {
             "description": "Empty when this visible assistant has no goals; no goal is automatically selected.",
             "type": "array",
@@ -50880,6 +50877,88 @@
           "pageWindow"
         ]
       },
+      "CallHealthDashboardGoalVersionSummaryDTO": {
+        "type": "object",
+        "properties": {
+          "registeredCallCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "eligibleCallCount": {
+            "type": "integer",
+            "description": "Calls with an accepted semantic eligibility decision and binary goal outcome.",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ineligibleCallCount": {
+            "type": "integer",
+            "description": "Accepted semantic exclusions; absent from the goal denominator.",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "unassessedCallCount": {
+            "type": "integer",
+            "description": "No accepted eligibility decision, including technical or privacy exclusions.",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "goalMetCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "goalNotMetCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "evaluatedCallCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "analyzedCallCount": {
+            "type": "integer",
+            "description": "Accepted current-goal results, including ineligible; independent of issue processing.",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "goalMetRate": {
+            "type": "number",
+            "description": "Goal-met / evaluatedCallCount; omitted when there are no binary outcomes.",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "goalNotMetRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "assistantVersionId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The version the calls ran on; null groups the calls that ran on no version.",
+            "format": "uuid"
+          },
+          "assistantVersion": {
+            "type": "string",
+            "description": "The version's label, such as v3; absent for calls on no version or whose label was unavailable at registration.",
+            "pattern": "^v[1-9][0-9]*$"
+          }
+        },
+        "required": [
+          "registeredCallCount",
+          "eligibleCallCount",
+          "ineligibleCallCount",
+          "unassessedCallCount",
+          "goalMetCount",
+          "goalNotMetCount",
+          "evaluatedCallCount",
+          "analyzedCallCount",
+          "assistantVersionId"
+        ]
+      },
       "CallHealthDashboardAssistantSummaryResponseDTO": {
         "type": "object",
         "properties": {
@@ -50926,6 +51005,13 @@
                 "$ref": "#/components/schemas/CallHealthDashboardCoverageDTO"
               }
             ]
+          },
+          "assistantVersions": {
+            "description": "Full-window totals per assistant version the calls ran on, newest version first; they partition `goal`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CallHealthDashboardGoalVersionSummaryDTO"
+            }
           }
         },
         "required": [
@@ -50934,7 +51020,8 @@
           "goal",
           "results",
           "seriesPage",
-          "coverage"
+          "coverage",
+          "assistantVersions"
         ]
       },
       "DeveloperMessage": {
@@ -62511,6 +62598,45 @@
           "analyzedCallCount"
         ]
       },
+      "CallHealthDashboardIssueVersionDTO": {
+        "type": "object",
+        "properties": {
+          "assistantVersionId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The version the calls ran on; null groups the calls that ran on no version.",
+            "format": "uuid"
+          },
+          "assistantVersion": {
+            "type": "string",
+            "description": "The version's label, such as v3; absent for calls on no version or whose label was unavailable at registration.",
+            "pattern": "^v[1-9][0-9]*$"
+          },
+          "affectedCallCount": {
+            "type": "integer",
+            "description": "Distinct visible calls on this version matching the issue in the window.",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "analyzedCallCount": {
+            "type": "integer",
+            "description": "Accepted current-goal outcomes on this version for the issue's assistant in the window.",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "affectedCallRate": {
+            "type": "number",
+            "description": "affectedCallCount / analyzedCallCount; omitted for a zero denominator.",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "assistantVersionId",
+          "affectedCallCount",
+          "analyzedCallCount"
+        ]
+      },
       "CallHealthDashboardIssueCoverageDTO": {
         "type": "object",
         "properties": {
@@ -62596,6 +62722,13 @@
               "$ref": "#/components/schemas/CallHealthDashboardIssueDailyDTO"
             }
           },
+          "assistantVersions": {
+            "description": "Full-window counts per assistant version the calls ran on, newest version first; they partition the totals.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CallHealthDashboardIssueVersionDTO"
+            }
+          },
           "lastSeenAt": {
             "type": "string",
             "format": "date-time",
@@ -62616,6 +62749,7 @@
           "affectedCallCount",
           "analyzedCallCount",
           "dailySeries",
+          "assistantVersions",
           "coverage"
         ]
       },
@@ -71069,6 +71203,16 @@
               "not_applicable"
             ],
             "description": "Absent until a semantic result is accepted. Processing failures are never goal_not_met."
+          },
+          "assistantVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The assistant version the call ran on. Absent when the call ran on no version."
+          },
+          "assistantVersion": {
+            "type": "string",
+            "pattern": "^v[1-9][0-9]*$",
+            "description": "That version's label, such as v3. Absent when the call ran on no version or the label was not available when the call was registered."
           }
         },
         "required": [
@@ -71178,6 +71322,16 @@
               "available",
               "unavailable"
             ]
+          },
+          "assistantVersionId": {
+            "type": "string",
+            "description": "The assistant version the call ran on; absent when it ran on none.",
+            "format": "uuid"
+          },
+          "assistantVersion": {
+            "type": "string",
+            "description": "That version's label, such as v3; absent when the call ran on none or the label was unavailable at registration.",
+            "pattern": "^v[1-9][0-9]*$"
           }
         },
         "required": [
@@ -71657,6 +71811,18 @@
               "charge_automatically",
               "send_invoice"
             ]
+          },
+          "demoStartedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "This is when the current or most recent demo on this subscription started,\neither when Vapi created the account as a demo or when Vapi made an\nexisting pay-as-you-go account one. Not set if it was never a demo."
+          },
+          "demoEndedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "This is when that demo ended, by an upgrade or by Vapi. Not set while the\ndemo is active, and cleared when an ended demo starts again. A demo is\nactive while `demoStartedAt` is set, this is not, and the subscription is\npay-as-you-go."
           }
         },
         "required": [
@@ -73678,7 +73844,7 @@
           },
           "serverVersion": {
             "type": "string",
-            "description": "The semver version of your Langfuse server, e.g. 3.63.0, as its /api/public/health endpoint reports it. Optional.",
+            "description": "The semver version of your Langfuse server, e.g. 3.63.0. Detected from your server's /api/public/health endpoint at save time whenever possible, and a detected version always wins; supply it only when that endpoint is not reachable from Vapi.",
             "maxLength": 32
           },
           "id": {
@@ -76848,7 +77014,7 @@
           },
           "serverVersion": {
             "type": "string",
-            "description": "The semver version of your Langfuse server, e.g. 3.63.0, as its /api/public/health endpoint reports it. Optional.",
+            "description": "The semver version of your Langfuse server, e.g. 3.63.0. Detected from your server's /api/public/health endpoint at save time whenever possible, and a detected version always wins; supply it only when that endpoint is not reachable from Vapi.",
             "maxLength": 32
           },
           "name": {
@@ -77915,6 +78081,38 @@
         "required": [
           "type",
           "roleArn"
+        ]
+      },
+      "LangfuseServerProbeDTO": {
+        "type": "object",
+        "properties": {
+          "apiUrl": {
+            "type": "string",
+            "description": "The Langfuse host URL to probe, e.g. https://cloud.langfuse.com. Only the unauthenticated health endpoint is read; no keys are involved."
+          }
+        },
+        "required": [
+          "apiUrl"
+        ]
+      },
+      "LangfuseServerProbeResponse": {
+        "type": "object",
+        "properties": {
+          "reachable": {
+            "type": "boolean",
+            "description": "Whether {apiUrl}/api/public/health answered at all."
+          },
+          "serverVersion": {
+            "type": "string",
+            "description": "The exact version the server reported, e.g. 3.63.0. Absent when the destination answered without one (proxies, adapters) or not at all."
+          },
+          "blockedMessage": {
+            "type": "string",
+            "description": "Why the URL was refused without being contacted (a private address, plaintext http). Absent for a destination that was merely unreachable: supplying the version yourself applies there, but not here, because saving would refuse the URL with this same reason."
+          }
+        },
+        "required": [
+          "reachable"
         ]
       },
       "ToolTemplateSetup": {
@@ -78996,6 +79194,7 @@
           "text": {
             "type": "string",
             "description": "Replacement speech; it must pass its own guardrail evaluation.",
+            "maxLength": 1000,
             "pattern": "/\\S/"
           }
         },
@@ -79069,17 +79268,73 @@
           },
           "behavior": {
             "type": "string",
-            "pattern": "/\\S/"
+            "pattern": "\\S"
           },
           "condition": {
             "type": "string",
             "description": "Natural-language condition evaluated using the candidate and call history.",
-            "pattern": "/\\S/"
+            "pattern": "\\S"
           }
         },
         "required": [
           "mode",
           "behavior"
+        ]
+      },
+      "CreateGuardrailRuleDTO": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "\\S"
+          },
+          "authoring": {
+            "nullable": true,
+            "description": "Structured editor input. Supplied PATCH authoring replaces the complete object; advanced text writes clear it to null.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailAuthoring"
+              }
+            ]
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Advanced text input. Do not supply it together with structured authoring.",
+            "pattern": "\\S"
+          },
+          "sensitivity": {
+            "type": "string",
+            "description": "Evaluation sensitivity; numeric cutoffs are internal and provisional.",
+            "enum": [
+              "low",
+              "medium",
+              "aggressive"
+            ]
+          },
+          "action": {
+            "description": "Supplied PATCH actions replace the complete variant.",
+            "oneOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/GuardrailFixedResponseAction"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GuardrailRedirectAction"
+                  }
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/GuardrailEscalateAction"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "sensitivity",
+          "action"
         ]
       },
       "GuardrailRule": {
@@ -79103,7 +79358,8 @@
           },
           "name": {
             "type": "string",
-            "pattern": "/\\S/"
+            "maxLength": 100,
+            "pattern": "\\S"
           },
           "authoring": {
             "nullable": true,
@@ -79117,7 +79373,7 @@
           "instructions": {
             "type": "string",
             "description": "Evaluated instructions, generated from authoring or supplied in advanced mode.",
-            "pattern": "/\\S/"
+            "pattern": "\\S"
           },
           "sensitivity": {
             "type": "string",
@@ -79153,8 +79409,223 @@
           "createdAt",
           "updatedAt",
           "name",
+          "instructions",
           "sensitivity",
           "action"
+        ]
+      },
+      "GuardrailRuleUsage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable identity of an affected assistant or containing pack.",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Current display name, with an untitled fallback for assistants."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "GuardrailRuleImpact": {
+        "type": "object",
+        "properties": {
+          "assistantIds": {
+            "description": "Distinct assistants affected across direct, pack, draft, and version selections.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "packIds": {
+            "description": "Packs currently containing the rule.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "assistants": {
+            "description": "Names for the same distinct assistant identities.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailRuleUsage"
+            }
+          },
+          "packs": {
+            "description": "Names for the containing pack identities.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailRuleUsage"
+            }
+          }
+        },
+        "required": [
+          "assistantIds",
+          "packIds",
+          "assistants",
+          "packs"
+        ]
+      },
+      "GuardrailRuleSnapshot": {
+        "type": "object",
+        "properties": {
+          "updatedAt": {
+            "type": "string",
+            "description": "Millisecond timestamp from the last-read resource.",
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "\\S"
+          },
+          "authoring": {
+            "nullable": true,
+            "description": "Structured editor input. Supplied PATCH authoring replaces the complete object; advanced text writes clear it to null.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailAuthoring"
+              }
+            ]
+          },
+          "instructions": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Evaluated instructions, generated from authoring or supplied in advanced mode."
+          },
+          "sensitivity": {
+            "type": "string",
+            "description": "Evaluation sensitivity; numeric cutoffs are internal and provisional.",
+            "enum": [
+              "low",
+              "medium",
+              "aggressive"
+            ]
+          },
+          "action": {
+            "description": "Supplied PATCH actions replace the complete variant.",
+            "oneOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/GuardrailFixedResponseAction"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GuardrailRedirectAction"
+                  }
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/GuardrailEscalateAction"
+              }
+            ]
+          }
+        },
+        "required": [
+          "updatedAt",
+          "name",
+          "instructions",
+          "sensitivity",
+          "action"
+        ]
+      },
+      "SaveGuardrailRuleDTO": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "\\S"
+          },
+          "authoring": {
+            "nullable": true,
+            "description": "Structured editor input. Supplied PATCH authoring replaces the complete object; advanced text writes clear it to null.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailAuthoring"
+              }
+            ]
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Advanced text input. Do not supply it together with structured authoring.",
+            "pattern": "\\S"
+          },
+          "sensitivity": {
+            "type": "string",
+            "description": "Evaluation sensitivity; numeric cutoffs are internal and provisional.",
+            "enum": [
+              "low",
+              "medium",
+              "aggressive"
+            ]
+          },
+          "action": {
+            "description": "Supplied PATCH actions replace the complete variant.",
+            "oneOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/GuardrailFixedResponseAction"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GuardrailRedirectAction"
+                  }
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/GuardrailEscalateAction"
+              }
+            ]
+          },
+          "expected": {
+            "description": "Last-read configuration; the complete snapshot prevents lost edits.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailRuleSnapshot"
+              }
+            ]
+          },
+          "confirmedAssistantIds": {
+            "description": "Current deduplicated assistant impact acknowledged before a shared save.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "expected"
+        ]
+      },
+      "GuardrailRuleConflictResponseDTO": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Machine-readable cause; clients branch on this, never on `message`.",
+            "enum": [
+              "rule_changed",
+              "impact_changed",
+              "global_assignment"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Sentence-case copy safe to show the user."
+          }
+        },
+        "required": [
+          "error",
+          "message"
         ]
       },
       "GuardrailRulesPage": {
@@ -79180,6 +79651,7 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 100,
             "pattern": "\\S"
           },
           "ruleIds": {
@@ -79218,6 +79690,7 @@
           },
           "name": {
             "type": "string",
+            "maxLength": 100,
             "pattern": "\\S"
           },
           "ruleIds": {
@@ -79263,6 +79736,7 @@
           },
           "name": {
             "type": "string",
+            "maxLength": 100,
             "pattern": "\\S"
           },
           "ruleIds": {
@@ -79286,6 +79760,7 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 100,
             "pattern": "\\S"
           },
           "ruleIds": {
