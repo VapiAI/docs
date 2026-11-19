@@ -50810,7 +50810,7 @@
           },
           "date": {
             "type": "string",
-            "description": "UTC calendar date; the first and last buckets are clipped to the requested window.",
+            "description": "Calendar date in the requested time zone (UTC by default); the first and last buckets are clipped to the requested window.",
             "format": "date"
           }
         },
@@ -50870,6 +50870,11 @@
             "minLength": 1,
             "maxLength": 2048,
             "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "The requested time zone whose midnights bound this page and label its dates; absent for UTC.",
+            "pattern": "^(?:UTC|[A-Za-z][A-Za-z0-9_+-]*(?:/[A-Za-z0-9_+-]+)+)$"
           }
         },
         "required": [
@@ -50987,7 +50992,7 @@
             ]
           },
           "results": {
-            "description": "One ascending contiguous page of UTC dates, including empty buckets.",
+            "description": "One ascending contiguous page of dates in the requested time zone, including empty buckets.",
             "minItems": 1,
             "maxItems": 100,
             "type": "array",
@@ -51022,6 +51027,89 @@
           "seriesPage",
           "coverage",
           "assistantVersions"
+        ]
+      },
+      "CallHealthDashboardGoalCallDTO": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "description": "The call this row reports the goal result for.",
+            "format": "uuid"
+          },
+          "callTime": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.(\\d{1,6}))?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$",
+            "description": "Call completion time (endedAt), never startedAt."
+          },
+          "goalVersion": {
+            "type": "string",
+            "description": "Current goal revision the result belongs to; the list returns no other revision.",
+            "pattern": "^[1-9]\\d{0,18}$",
+            "minLength": 1,
+            "maxLength": 19
+          },
+          "processingState": {
+            "type": "string",
+            "description": "Where this call's evaluation under goalVersion stands.",
+            "enum": [
+              "pending",
+              "running",
+              "parked",
+              "unavailable",
+              "excluded",
+              "completed"
+            ]
+          },
+          "goalOutcome": {
+            "type": "string",
+            "description": "Absent until a result is accepted; a processing failure is never goal_not_met.",
+            "enum": [
+              "goal_met",
+              "goal_not_met",
+              "not_applicable"
+            ]
+          },
+          "assistantVersionId": {
+            "type": "string",
+            "description": "The assistant version the call ran on; absent when it ran on none.",
+            "format": "uuid"
+          },
+          "assistantVersion": {
+            "type": "string",
+            "description": "That version's label, such as v3; absent when the call ran on none or the label was unavailable at registration.",
+            "pattern": "^v[1-9][0-9]*$"
+          }
+        },
+        "required": [
+          "callId",
+          "callTime",
+          "goalVersion",
+          "processingState"
+        ]
+      },
+      "CallHealthDashboardGoalCallsResponseDTO": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "description": "Newest completion first, then call UUID descending.",
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CallHealthDashboardGoalCallDTO"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Continues the list after the last result; absent on the last page.",
+            "minLength": 1,
+            "maxLength": 2048,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "required": [
+          "results"
         ]
       },
       "DeveloperMessage": {
@@ -62570,7 +62658,7 @@
         "properties": {
           "date": {
             "type": "string",
-            "description": "UTC calendar date, with boundary buckets clipped to the requested window.",
+            "description": "Calendar date in the requested time zone (UTC by default), with boundary buckets clipped to the requested window.",
             "format": "date"
           },
           "affectedCallCount": {
@@ -62689,6 +62777,11 @@
             "description": "Owning goal identity; issue-ID routes derive this selection from the issue.",
             "format": "uuid"
           },
+          "categoryKey": {
+            "type": "string",
+            "description": "The ranking category the issue belongs to, such as `step_skipped`.",
+            "pattern": "^[a-z][a-z0-9_]{0,127}$"
+          },
           "summary": {
             "type": "string",
             "minLength": 1
@@ -62714,7 +62807,7 @@
             "maximum": 1
           },
           "dailySeries": {
-            "description": "One ascending contiguous page of UTC buckets; memberships across issues are not unique calls.",
+            "description": "One ascending contiguous page of daily buckets in the requested time zone; memberships across issues are not unique calls.",
             "minItems": 1,
             "maxItems": 100,
             "type": "array",
@@ -62744,6 +62837,7 @@
           "status",
           "rowVersion",
           "goalId",
+          "categoryKey",
           "summary",
           "assistant",
           "affectedCallCount",
@@ -71363,6 +71457,113 @@
         "required": [
           "results",
           "coverage"
+        ]
+      },
+      "CallHealthDashboardCallIssueDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "resolved",
+              "dismissed"
+            ]
+          },
+          "rowVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "categoryKey": {
+            "type": "string",
+            "description": "The ranking category the issue belongs to.",
+            "pattern": "^[a-z][a-z0-9_]{0,127}$"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "rowVersion",
+          "categoryKey"
+        ]
+      },
+      "CallHealthDashboardCallResponseDTO": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assistantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "goalId": {
+            "type": "string",
+            "description": "Selected goal identity.",
+            "format": "uuid"
+          },
+          "assistantVersionId": {
+            "type": "string",
+            "description": "The assistant version the call ran on; absent when it ran on none.",
+            "format": "uuid"
+          },
+          "assistantVersion": {
+            "type": "string",
+            "description": "That version's label, such as v3; absent when the call ran on none or the label was unavailable at registration.",
+            "pattern": "^v[1-9][0-9]*$"
+          },
+          "assessmentState": {
+            "type": "string",
+            "description": "Classification state, named as in the coverage `classification` counters.",
+            "enum": [
+              "pending",
+              "unavailable",
+              "skipped",
+              "error",
+              "excluded",
+              "complete",
+              "partial"
+            ]
+          },
+          "primaryCategoryKey": {
+            "type": "string",
+            "description": "The call's main failure category; absent when classification selected none.",
+            "pattern": "^[a-z][a-z0-9_]{0,127}$"
+          },
+          "otherCategoryKeys": {
+            "type": "array",
+            "description": "The other selected categories, in ascending key order.",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,127}$"
+            }
+          },
+          "issues": {
+            "description": "Visible issues the call joined, in ascending ID order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CallHealthDashboardCallIssueDTO"
+            }
+          }
+        },
+        "required": [
+          "callId",
+          "assistantId",
+          "goalId",
+          "assessmentState",
+          "otherCategoryKeys",
+          "issues"
         ]
       },
       "CallHealthDashboardTriageRequestDTO": {
