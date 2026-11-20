@@ -1,0 +1,175 @@
+---
+title: volai SIP integration
+subtitle: Connect Czech and Slovak phone numbers from volai to Vapi
+description: Route a Czech (+420) or Slovak (+421) volai phone number to a Vapi assistant over a BYO SIP trunk, with the exact SIP address, gateway settings, and troubleshooting.
+slug: advanced/sip/volai
+---
+
+[volai](https://volai.cz) is a Czech telephony platform that issues Czech (+420) and Slovak (+421) phone numbers and bills usage in Czech koruna (CZK). Czech numbers from its pool (Prague, Brno, and non-geographic 910) are available within minutes, with no paperwork. Use volai when your assistant needs a local number for callers in Czechia or Slovakia.
+
+This guide connects a volai number to Vapi over a BYO SIP trunk, so a caller who dials the number reaches your assistant. For SIP trunking concepts and network requirements, see the [SIP trunking guide](/advanced/sip/sip-trunk).
+
+<Note>
+This guide covers inbound calls. It doesn't cover outbound calls from Vapi through a volai number.
+
+Slovak numbers are Bratislava (+421 2) numbers that volai restocks by hand, so a Slovak number may not be available immediately.
+</Note>
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- A [volai account](https://volai.cz) with a Czech or Slovak number, written in E.164 format, such as `+420601234567`
+- A volai API key (`vk_...`) to set the number's routing through the API. You can create one in the volai portal under **API and MCP**.
+- A Vapi account, an assistant, and a [Vapi private API key](/security-and-privacy/api-keys)
+
+<Note>
+Use the Vapi dashboard, API base URL, and SIP host for the region where your organization is hosted. The examples use the US region (`https://api.vapi.ai` and `sip.vapi.ai`). For EU organizations, use `https://api.eu.vapi.ai` and `sip.eu.vapi.ai`.
+</Note>
+
+## 1. Create a BYO SIP trunk in Vapi
+
+Create a SIP trunk credential that accepts calls from volai's signaling network. Vapi recognizes the calls by the gateway's IP range, so the trunk needs no username or password.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open the SIP trunk settings">
+        In the [Vapi dashboard](https://dashboard.vapi.ai), select your organization name, then go to **Settings → Integrations → SIP Trunk** and click **Configure New SIP Trunk**.
+      </Step>
+
+      <Step title="Add the volai gateway">
+        Set **Name** to `volai`, then add one gateway:
+
+        - **IP Address / Domain:** `81.31.45.0`
+        - **Netmask:** `24`
+        - **Allow inbound calls:** on
+        - **Allow outbound calls:** off
+
+        Leave authentication empty, save the trunk, and note its credential ID.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="cURL" language="bash">
+    ```bash
+    curl -X POST https://api.vapi.ai/credential \
+      -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "provider": "byo-sip-trunk",
+        "name": "volai",
+        "gateways": [
+          {
+            "ip": "81.31.45.0",
+            "netmask": 24,
+            "port": 5060,
+            "inboundEnabled": true,
+            "outboundEnabled": false
+          }
+        ]
+      }'
+    ```
+
+    Save the returned credential `id`. You need it in step 3.
+  </Tab>
+</Tabs>
+
+<Warning>
+Vapi's default netmask is `32`, which allows a single address. volai's signaling comes from several addresses in `81.31.45.0/24`, so set the netmask to `24`. Vapi also requires a numeric IPv4 address for inbound gateways, not a hostname.
+</Warning>
+
+volai lists its current signaling range in its [SIP documentation](https://volai.cz/en/docs/sip). If the range changes, update the gateway.
+
+## 2. Import the volai number in Vapi
+
+Associate the volai number with the trunk and assign your assistant.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Go to [Phone Numbers](https://dashboard.vapi.ai/phone-numbers), click **Create Phone Number**, and select **BYO SIP Trunk Number**. Enter your volai number in E.164 format with the leading plus, select the volai credential in the **SIP Trunk Credential** dropdown, and assign your assistant. Save the phone number.
+  </Tab>
+
+  <Tab title="cURL" language="bash">
+    ```bash
+    curl -X POST https://api.vapi.ai/phone-number \
+      -H "Authorization: Bearer YOUR_VAPI_PRIVATE_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "provider": "byo-phone-number",
+        "name": "volai number",
+        "number": "+420601234567",
+        "credentialId": "YOUR_CREDENTIAL_ID",
+        "assistantId": "YOUR_ASSISTANT_ID"
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+Enter the number the same way in Vapi and in the SIP address in the next step, with the leading plus.
+</Tip>
+
+## 3. Route the volai number to Vapi
+
+Switch the number's routing in volai to SIP mode and point it at your trunk. The SIP address has this form:
+
+```text
+# US organization
+sip:+420601234567@YOUR_CREDENTIAL_ID.sip.vapi.ai
+
+# EU organization
+sip:+420601234567@YOUR_CREDENTIAL_ID.sip.eu.vapi.ai
+```
+
+Replace `+420601234567` with your volai number and `YOUR_CREDENTIAL_ID` with the credential ID from step 1. Don't use the bare `sip.vapi.ai`: it belongs to native Vapi phone numbers and doesn't reach a BYO trunk.
+
+Set the routing with the volai API:
+
+```bash
+curl -X PATCH "https://volai.cz/v1/numbers/+420601234567" \
+  -H "Authorization: Bearer vk_YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"routing": {"mode": "sip", "sipUri": "sip:+420601234567@YOUR_CREDENTIAL_ID.sip.vapi.ai"}}'
+```
+
+You can also set it in the volai portal: open your number on the **Numbers** page, choose **Your own PBX (SIP)** under **Who answers the call**, and paste the address into **SIP address**.
+
+<Warning>
+Leave the optional SIP username and password empty. A BYO trunk doesn't challenge calls for credentials, and with a username and password set the call never connects. volai's API rejects credentials for a Vapi trunk address.
+</Warning>
+
+## Test the integration
+
+<Steps>
+  <Step title="Place a test call">
+    Call your volai number from a mobile phone.
+  </Step>
+
+  <Step title="Check the result">
+    The assistant assigned to the number answers. The call appears in your Vapi [call logs](/observability/logs/call-logs) and as an inbound call in the volai portal.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+- **The call ends right away and Vapi shows no call:** Vapi rejects the call before it creates a record. Check the SIP address. It must be `YOUR_CREDENTIAL_ID.sip.vapi.ai` (or `YOUR_CREDENTIAL_ID.sip.eu.vapi.ai` for an EU organization), not the bare `sip.vapi.ai`.
+- **The address is correct but the call still doesn't connect:** Check the trunk's gateway. It needs IP `81.31.45.0`, netmask `24`, and inbound calls enabled. With the default netmask `32`, Vapi allows one address and rejects calls from the rest of volai's range, often with a `401`.
+- **The routing still has a username and password from an earlier setup:** Clear both fields in volai. volai doesn't remove saved credentials on its own, and a BYO trunk doesn't accept them.
+
+## Settings reference
+
+| Setting | Value |
+| --- | --- |
+| Gateway IP | `81.31.45.0` |
+| Netmask | `24` |
+| Port | `5060` |
+| Gateway direction | Inbound on, outbound off |
+| Authentication | None. Leave the volai username and password empty. |
+| SIP address (US) | `sip:+E164_NUMBER@YOUR_CREDENTIAL_ID.sip.vapi.ai` |
+| SIP address (EU) | `sip:+E164_NUMBER@YOUR_CREDENTIAL_ID.sip.eu.vapi.ai` |
+
+## Learn more
+
+- [volai guide for Vapi](https://volai.cz/en/integrations/vapi): the same setup from the volai side, with the portal walkthrough.
+- [volai SIP documentation](https://volai.cz/en/docs/sip): signaling range, authentication options, and limits.
