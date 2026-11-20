@@ -45,6 +45,33 @@ This will generate the SDK and download it to a local folder that can be pip ins
 pip install -e /fern/.preview/fern-python-sdk
 ```
 
+## Managing the CLI
+
+The `cli-sdk` group in `fern/apis/cli/generators.yml` generates `VapiAI/cli`
+from the same OpenAPI definition, naming overrides, and parameter-description
+overlay as the server SDKs. Its separate API workspace adds public-client
+OAuth with PKCE and a staging default server; the other SDK groups retain their
+existing authentication. Promote the CLI issuer, public client, resource and
+server together after live OAuth acceptance.
+
+Run **Release CLI** with an explicit version to open a generated CLI pull
+request, just like the SDK release workflows. Generation does not publish a
+package. Merge the CLI repository's Fern migration before the first run;
+review and merge generated updates there, then use its version-tag publishing
+workflow when the release gates are satisfied.
+
+For a local preview:
+
+```sh
+fern generate --api cli --group cli-sdk --version 1.0.0-beta.1 --preview
+```
+
+The CLI repository owns its docs, tests and runtime customizations. Its
+`.fernignore` preserves repository-owned files, and Fern Replay carries its
+schema changes across generated pull requests. The customized HTTP runtime is
+protected by `.fernignore` because Replay rejects its embedded test certificate. Keep API naming changes in
+shared source annotations or overrides, not CLI-only aliases.
+
 ## How to update documentation?
 
 ### Local Development server
