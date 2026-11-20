@@ -120,6 +120,51 @@ Each list also accepts `limit` (default 100, maximum 1,000) and `page`.
 </Tab>
 </Tabs>
 
+### Read what a run cost
+
+Runs and run items report what they were charged, in USD, so you can track simulation spend and see what the assistant under test costs.
+
+| Endpoint | Field | What it holds |
+| --- | --- | --- |
+| `GET /eval/simulation/run` and `GET /eval/simulation/run/<run-id>` | `cost` | The sum of the run's item costs. Omitted until at least one item has a recorded cost. |
+| `GET /eval/simulation/run/<run-id>/item` and `GET /eval/simulation/run/<run-id>/item/<item-id>` | `cost` | What the item was charged, or `null` until its first charge is recorded. A voice item covers the tester call, the target call, and the evaluation. A chat item covers the conversation and the evaluation. |
+| The same item endpoints | `costs` | The itemized rows behind `cost`. Each row has the same shape as a row in a call's or chat's `costs`, plus a `source`. |
+
+Each row's `source` says which charge it belongs to, in voice and chat alike:
+
+- `tester`: the AI tester playing the customer.
+- `target`: the assistant or squad under test.
+- `evaluation`: grading the conversation against the simulation's evaluations.
+
+To get the cost of the assistant under test on its own, sum the rows whose `source` is `target`.
+
+```bash
+curl -X GET "https://api.vapi.ai/eval/simulation/run/<run-id>/item/<item-id>" \
+  -H "Authorization: Bearer $VAPI_API_KEY"
+```
+
+A voice item's response, trimmed to the cost fields and one row per `source`:
+
+```json
+{
+  "id": "<item-id>",
+  "status": "passed",
+  "cost": 0.056484,
+  "costs": [
+    { "type": "transport", "cost": 0.0072, "source": "tester" },
+    { "type": "model", "cost": 0.0114, "source": "target" },
+    { "type": "analysis", "cost": 0.001884, "source": "evaluation" }
+  ]
+}
+```
+
+<Note>
+  - Cost is recorded as each charge happens, so an item that is still running can show part of its final cost.
+  - On a failed or canceled voice item, `cost` can arrive up to about 20 seconds after the item reaches its final status.
+  - `cost` is the amount you were billed. A provider's rows are `0` when your organization uses its own API key for that provider.
+  - The sum of the rows can differ from `cost` in the fourth decimal place, because a call's `cost` is rounded.
+</Note>
+
 ## Rerun a suite
 
 <Tabs>
