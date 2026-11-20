@@ -7,9 +7,9 @@ const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 const { digest } = require('./example-cache.cjs');
 
-const version = '5.169.0';
-const checksum = '773ec0a808a2c4d03c894c81c6159f8e3fe8db5a873c287cdce5b140eed8b809';
-const marker = 'function KOm({propertySchema:e,breadcrumbs:t,context:r,propertyId:n})';
+const version = '5.216.0';
+const checksum = 'acd2771ffed03658a03590ea9fa6ee764df52e52284665eb8574cd8efacb4923';
+const marker = 'function HQm({propertySchema:e,breadcrumbs:t,context:r,propertyId:n})';
 const mediaMarker = 'generateOrValidateExample({schema:t,example:r,generateOptionalProperties:n,exampleGenerationStrategy:i})';
 const fixture = `${marker}{return e}class Media{${mediaMarker}{return t}}`;
 const wrapper = fs.readFileSync(path.join(__dirname, 'run.cjs'), 'utf8');
@@ -80,7 +80,7 @@ test('both emitted wrappers call the cache and preserve original generation', ()
   const patched = h.calls.writes[0][1];
   const calls = [];
   const context = { __vapiFernExamples(args, generate) { calls.push(args); return generate(); } };
-  const result = vm.runInNewContext(`${patched};[KOm({propertySchema:'property'}),new Media().generateOrValidateExample({schema:'media'})]`, context);
+  const result = vm.runInNewContext(`${patched};[HQm({propertySchema:'property'}),new Media().generateOrValidateExample({schema:'media'})]`, context);
   assert.deepEqual(Array.from(result), ['property', 'media']);
   assert.equal(calls.length, 2);
   assert.equal(calls[0].propertySchema, 'property');
@@ -134,7 +134,7 @@ for (const args of [['--version'], ['--help'], ['check', '--help'], ['generate',
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stderr, /\[fern-example-cache\]/);
     assert.ok(result.stdout.trim());
-    if (args[0] === '--version') assert.match(result.stdout, /5\.169\.0/);
+    if (args[0] === '--version') assert.match(result.stdout, /5\.216\.0/);
     assert.deepEqual(fs.readdirSync(temporary), []);
   });
 }

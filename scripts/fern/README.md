@@ -49,7 +49,7 @@ original Fern commands also removes this optimization.
 ## Local verification
 
 ```sh
-npm install --prefix /tmp/vapi-fern --no-save fern-api@5.169.0
+npm install --prefix /tmp/vapi-fern --no-save fern-api@5.216.0
 export FERN_CLI_PATH=/tmp/vapi-fern/node_modules/fern-api/cli.cjs
 node --test scripts/fern/*.test.cjs
 node scripts/fern/run.cjs check --local --log-level debug
@@ -57,9 +57,9 @@ node scripts/fern/run.cjs generate --docs --preview --log-level debug
 ```
 
 The CLI compatibility tests exercise the installed bundle when `FERN_CLI_PATH` is set;
-without it, the installed-bundle checks are skipped. The wrapper pins Fern 5.169.0
+without it, the installed-bundle checks are skipped. The wrapper pins Fern 5.216.0
 and verifies CLI SHA-256
-`773ec0a808a2c4d03c894c81c6159f8e3fe8db5a873c287cdce5b140eed8b809`.
+`acd2771ffed03658a03590ea9fa6ee764df52e52284665eb8574cd8efacb4923`.
 The timing measurements below predate this upgrade.
 
 Preview generation publishes remotely and requires separate authorization.
