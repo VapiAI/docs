@@ -1,0 +1,159 @@
+---
+title: Plivo
+subtitle: Send Plivo numbers to an agent over a Zentrunk SIP trunk set up in Vapi's dashboard, and hand callers to your people
+slug: phone-systems/plivo
+description: Point a Plivo Zentrunk inbound trunk at Vapi, set up the trunk in Vapi's dashboard, pick the number in Vapi for CX, and hand callers to a phone number over a second Plivo call.
+---
+
+Plivo is a phone carrier: it sells numbers and a SIP trunk called Zentrunk, not a contact center. In [Vapi for CX](https://cx.vapi.ai), Plivo is **Connect in Vapi, then pick the number**: Vapi for CX has no Plivo form. You point a Plivo trunk at Vapi, set the trunk up in Vapi's dashboard, then pick the number in Vapi for CX with **Use a number already in Vapi**.
+
+## At a glance
+
+- **Receiving calls:** Works with a caveat. A Zentrunk inbound trunk sends the number's calls to Vapi; one trunk in Vapi's dashboard serves both directions.
+- **Transferring out:** Works with a caveat. A second Plivo call; their people see the agent's Plivo number.
+- **Calls out:** Works today. Through a Zentrunk outbound trunk; the caller ID must be a Plivo number.
+- **Self-serve:** Works with a caveat. Six Plivo console steps, the trunk in Vapi's dashboard, then pick the number in Vapi for CX. No Indian numbers.
+
+<Note>Nothing on this page has been proven with a real call yet.</Note>
+
+## Receiving calls
+
+You need a Plivo account with Zentrunk and a voice-enabled number. Indian numbers can't be used with Plivo on Vapi.
+
+<Steps>
+  <Step title="Create the Origination URI">
+    In the [Plivo console](https://cx.plivo.com/zentrunk/), open **Zentrunk (SIP) › Inbound Trunks › Origination URI** and choose **Create New IP URI** (Plivo's own guide calls it **Add New URI**). Name it `Vapi-Primary` and enter the SIP URI `sip.vapi.ai;transport=udp`. Organizations in Vapi's EU region enter `sip.eu.vapi.ai;transport=udp`. Docs: [Plivo: Vapi guide](https://www.plivo.com/docs/voice-agents/sip-trunking/integration-guides/vapi).
+
+    <Note>Not verified: not read on Plivo's own page. One community report says Plivo once refused the address as "Origination URI Already Exists".</Note>
+  </Step>
+  <Step title="Create the inbound trunk">
+    Under **Inbound Trunks**, choose **Create New Inbound Trunk** and set its **Primary URI** to the one you just made.
+  </Step>
+  <Step title="Attach the number to the trunk">
+    Open **Phone Numbers**, then the number. Set **Application Type** to **Zentrunk**, pick the inbound trunk, and choose **Update Number**.
+  </Step>
+  <Step title="Allow Vapi's IP addresses">
+    Open **Zentrunk (SIP) › Outbound Trunks › IP Access Control List** and choose **Create New IP Group**. Add `44.229.228.186/32` and `44.238.177.138/32`. Organizations in Vapi's EU region add `63.182.83.170/32`. Docs: [Vapi: SIP networking](/advanced/sip/sip-networking).
+  </Step>
+  <Step title="Create the outbound trunk and copy its domain">
+    Under **Outbound Trunks**, choose **Create New Outbound Trunk** and select the IP group. Copy the trunk's **Termination SIP Domain**; it looks like `12700668357XXXXXX.zt.plivo.com`. Handoffs and calls out go through this trunk, and the trunk in Vapi's dashboard uses its domain.
+  </Step>
+  <Step title="Connect in Vapi: add the trunk and the number">
+    In Vapi's dashboard, open **Keys**, **Add New SIP Trunk**. Under **Gateway Configuration**, set **IP Address/Domain** to the termination domain and turn on **Allow outbound calls** only.
+
+    Then open **Phone Numbers**, **Create Phone Number**, **BYO SIP Trunk Number**. Enter the number, pick the trunk under **SIP Trunk Credential**, and add a label.
+
+    This one trunk serves calls in and calls out. You do not need a separate trunk for calls in. Docs: [Vapi: SIP trunking](/advanced/sip/sip-trunk).
+
+    <Note>Not run: read from Vapi's code. Needs a test call: one call in with the number on this trunk only.</Note>
+
+    <Note>The names in Vapi's dashboard come from Vapi's dashboard code; not clicked through.</Note>
+  </Step>
+  <Step title="Pick the number in Vapi for CX">
+    In Vapi for CX, open **Connect your phone line** on the agent, choose **Use a number already in Vapi**, and pick the number.
+  </Step>
+  <Step title="Call this number from your phone">
+    In Vapi for CX: call the number from a mobile. The line is marked as working when the first call reaches the agent.
+
+    <Note>Needs a test call.</Note>
+  </Step>
+</Steps>
+
+**Number the agent sees:** the caller's own number.
+
+<Note>Not run: read from Plivo's guide and Vapi's code. Not verified: whether Plivo sends numbers with or without a leading `+` (Vapi accepts both).</Note>
+
+**Check it:** call the number from a mobile. The agent answers. This does not prove handoffs or calls out.
+
+**Disconnect.** In Vapi for CX, disconnecting a number set up in Vapi's dashboard only detaches the agent. Nothing changes at Plivo or in Vapi's dashboard.
+
+## Handing callers to people
+
+Handoffs are set on the agent, on the **Handing callers to people** card on the Call handling tab.
+
+**Does a summary travel:** no, to a phone number: the summary rides as a SIP header, which is lost on the phone network.
+
+**Warm handoff (the agent waits with the caller):** not on a Plivo line. Vapi for CX offers it on Twilio numbers only.
+
+**Check it:** once the handoff's version is live, call the Plivo number from your own phone and ask for a person. Vapi for CX shows "Handoff sent", then asks whoever answered to confirm that it arrived. The phone that answers shows the agent's Plivo number, and Plivo's Zentrunk log shows a second outbound call.
+
+<Note>Not run. Needs a test call.</Note>
+
+### Transfer to a phone number
+
+Works with a caveat. Plivo does not accept a call passed on to a plain number, so Vapi for CX saves the handoff on a Plivo line as dialled: Vapi places a new call out through your Plivo outbound trunk, joins the two calls, and stays on the call.
+
+<Steps>
+  <Step title="Keep the outbound trunk in place">
+    In the Plivo console: the handoff goes out through the outbound trunk from the steps above, so it must exist. A destination in another country needs Plivo's Geo Permissions; premium numbers are blocked. Docs: [Plivo: technical specifications](https://www.plivo.com/docs/sip-trunking/concepts/technical-specifications).
+  </Step>
+  <Step title="Have the number ready">
+    Your team: the number that takes the handoff, in full international format. Any phone number can take it; nothing else to set up at Plivo.
+  </Step>
+  <Step title="Add the handoff">
+    In Vapi for CX, on the **Handing callers to people** card, add a handoff of type **Transfer to a phone number**, say when the agent should hand off, and enter the number.
+  </Step>
+  <Step title="Leave the caller ID on the agent's number">
+    Under **More options**, leave what their people see on the agent's number. Do not choose the caller's number: Plivo hangs up a call out whose caller ID is not a Plivo number.
+  </Step>
+</Steps>
+
+**Number their people see:** the agent's Plivo number, not the caller's.
+
+### Transfer to a SIP address
+
+Not verified on a Plivo line. Vapi for CX offers the type on a trunk line, but Plivo blocks a call passed on to any address that is not on your own Plivo trunk, and whether a dialled call to a SIP address goes through the Plivo trunk is not known. Use **Transfer to a phone number**.
+
+Plivo's own page says its trunks do accept a passed-on call to an address on your own trunk, written `sip:+<number>@<your trunk>.zt.plivo.com`, and that the person who answers then sees the caller's own number. Not available at launch: this page gives no steps for it until a call has proven it with Vapi. Docs: [Plivo: passing calls on](https://www.plivo.com/docs/sip-trunking/concepts/sip-refer).
+
+### Return the call to their system
+
+Plivo is a carrier, with no call flow of its own to take the call back. Vapi for CX offers this type only when a phone system or contact center that takes calls back is linked to the agent's line; otherwise it is greyed, with the reason and a link to Organization settings.
+
+## Other routes
+
+- **Point the inbound trunk at the Vapi trunk's own address.** An untested alternative to the steps above, with Plivo's signalling addresses added to the trunk in Vapi's dashboard. No reason to prefer it.
+
+  <Note>Not verified: which address wins is Vapi's own behaviour, not read or run.</Note>
+- **A Plivo Voice API application that sends the call to SIP.** The only way to add caller details as `X-` headers. You build and host the application. Not self-serve.
+
+  <Note>Not verified: not read on Plivo's own page.</Note>
+- **Forward the number to a Vapi number.** A Plivo application. It bills a second Plivo leg.
+
+  <Note>Not verified: not read on Plivo's own page.</Note>
+- **Can't:** Vapi has no Plivo number import or audio streaming, and Vapi does not port numbers.
+
+## Calls out
+
+Works today, through the Zentrunk outbound trunk and the trunk in Vapi's dashboard.
+
+- The caller ID must be a Plivo number, or Plivo hangs up the call.
+- Numbers go out in full international format. Whether the leading `+` matters is not yet known.
+- A destination in another country needs Geo Permissions; premium numbers are blocked.
+
+## What can't be done, and what is not yet known
+
+Can't be done:
+
+- Indian numbers on Plivo with Vapi.
+- Any caller ID that is not a Plivo number, on calls out and on handoffs. Their people never see the caller's own number on a dialled handoff.
+- Passing a call on to a plain number, or to an address that is not on your own Plivo trunk.
+- Audio other than G.711, call recording on Zentrunk, or fax (T.38).
+
+Not yet known, and the test that settles it:
+
+- Do calls in work with the number on the one trunk whose only gateway is the termination domain? One call from a mobile.
+- Does passing a call on to `sip:+<number>@<your trunk>.zt.plivo.com` work from Vapi? One transfer, then Plivo's Zentrunk log, and the number the answering phone shows.
+- Does the leading `+` matter on calls out? One call with it, one without.
+- Does Secure Trunking (encrypted calls) change calls in? One call out, then see whether Plivo needs `;transport=tls` and port 5061.
+- Does Plivo still refuse the address as "Origination URI Already Exists"? Create the URI on a fresh account.
+
+## Costs and limits
+
+- Plivo bills Zentrunk minutes each way, and Vapi bills its own minutes. Prices were not checked.
+- A call in is one Plivo leg. A dialled handoff is a second Plivo call for as long as it lasts.
+- Plivo adds a charge in a month with more than 20% zero-second calls, or more than 10% calls of six seconds or less.
+- A trunk takes 1 new call a second by default.
+- Trial accounts, and HIPAA and a BAA (the HIPAA contract) at Plivo: not checked.
+
+[What a SIP address is](/phone-systems#sip-address) · [What UUI is](/phone-systems#uui)
