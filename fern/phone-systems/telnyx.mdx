@@ -1,0 +1,154 @@
+---
+title: Telnyx
+subtitle: Connect Telnyx numbers to an agent with a Telnyx API key, and hand callers to your people
+slug: phone-systems/telnyx
+description: Connect a Telnyx number to an agent in Vapi for CX with an API key, set up the Outbound Voice Profile for handoffs and calls out, and see the SIP trunk route.
+---
+
+Telnyx is a phone carrier: it sells numbers and calls, not a contact center. In [Vapi for CX](https://cx.vapi.ai), Telnyx is **Connect in the app**: you paste a Telnyx API key, pick your numbers, and Vapi for CX connects them. A Telnyx SIP trunk is **Connect in Vapi, then pick the number**.
+
+## At a glance
+
+| | Verdict | Why |
+| --- | --- | --- |
+| Receiving calls | Works today | Paste an API key; the number moves onto a Vapi application in your Telnyx account. |
+| Transferring out | Works with a caveat | To a number or a SIP address, but their people see the agent's number and no summary travels. |
+| Calls out | Works with a caveat | You attach an Outbound Voice Profile in Telnyx first. |
+| Self-serve | Works today | Paste a key and pick numbers. The trunk route takes more steps. |
+
+<Note>Nothing on this page has been proven with a real call yet.</Note>
+
+## Receiving calls
+
+<Steps>
+  <Step title="Create a v2 API key">
+    In the Telnyx portal, open [API Keys](https://portal.telnyx.com/#/app/api-keys) and create a v2 API key. Keys are account-wide. Docs: [Telnyx: authentication](https://developers.telnyx.com/docs/development/api-fundamentals/authentication).
+  </Step>
+  <Step title="Paste it into Vapi for CX">
+    In Vapi for CX, open **Connect your phone line** on the agent, choose Telnyx and paste the key. Vapi keeps the key and never shows it again. Vapi for CX does not keep it.
+
+    Vapi for CX connects one Telnyx account per organization and refuses a second. A second account connects through the trunk route (Connect in Vapi), under [Other routes](#other-routes).
+  </Step>
+  <Step title="Pick your numbers">
+    In Vapi for CX: you see each number and the connection it is on today, and Vapi for CX saves that connection so **Disconnect** can put it back.
+
+    A Telnyx number has one connection. Connecting it to the agent stops its calls going to its old SIP connection, TeXML app or Voice API app at once, so your phone system stops receiving them. Vapi for CX warns you before you confirm.
+
+    A number outside North America shows a warning: on this route its calls can sound garbled. The trunk route avoids that.
+  </Step>
+  <Step title="Vapi for CX connects the numbers">
+    In Vapi for CX: Vapi creates an application named "Vapi" in your Telnyx account (it shows in the Telnyx portal under **Voice › Programmable Voice**) and moves the number onto it. Nothing else on the number changes. Docs: [Vapi: Telnyx](/telnyx).
+  </Step>
+  <Step title="Call this number from your phone">
+    In Vapi for CX: call the number from your own phone. The line is marked as working when the first call reaches the agent.
+
+    <Note>Needs a test call.</Note>
+  </Step>
+</Steps>
+
+**Number the agent sees:** the caller's own number. Telnyx sends only the caller's number and the dialled number; no other caller details arrive on this route.
+
+<Note>Not run: read from Vapi's code. The first call to the line confirms it.</Note>
+
+**Check it:** call the number from your phone. The agent answers and sees your number. This does not prove handoffs or calls out, which need the Outbound Voice Profile below.
+
+**Disconnect.** Disconnecting a Telnyx number never deletes it. Vapi for CX first moves the number back onto its old connection, then detaches the agent. To do that it asks you to paste the API key again. If that fails, the agent stays attached and the message says what to set in the Telnyx portal.
+
+## Handing callers to people
+
+Handoffs are set on the agent, on the **Handing callers to people** card on the Call handling tab.
+
+### Transfer to a phone number
+
+Works with a caveat. Vapi asks Telnyx to transfer the call, and Telnyx dials the number. If the number is busy or does not answer, the call ends; it does not come back to the agent.
+
+<Steps>
+  <Step title="Attach the Vapi application to an Outbound Voice Profile">
+    In the Telnyx portal, open **Voice › [Outbound Voice Profiles](https://portal.telnyx.com/#/outbound-profiles)**. Create or open a profile, choose its destinations (the default is the US and Canada), use **Add connections/apps to profile**, pick **Vapi**, and save. Docs: [Telnyx: outbound voice profiles](https://developers.telnyx.com/docs/voice/sip-trunking/configuration/outbound-voice-profiles).
+
+    Vapi for CX shows a reminder of this step when you add a handoff on a Telnyx line.
+
+    <Note>Not verified: not read on Telnyx's own page. A transfer is an outbound call, so it should need this profile; Telnyx's transfer page does not say so.</Note>
+  </Step>
+  <Step title="Have the number ready">
+    Your team: the number that takes the handoff. Nothing else to set up at Telnyx.
+  </Step>
+  <Step title="Add the handoff">
+    In Vapi for CX, on the **Handing callers to people** card, add a handoff of type **Transfer to a phone number**, say when the agent should hand off, and enter the number.
+  </Step>
+</Steps>
+
+**Number their people see:** the agent's own Telnyx number, not the caller's. Telnyx sets it and ignores the agent's caller ID setting.
+
+### Transfer to a SIP address
+
+Works with a caveat. Telnyx transfers the call to the SIP address. Named caller details travel with it as `X-` headers; no summary travels on a line connected by key. The Outbound Voice Profile above applies here too.
+
+### Return the call to their system
+
+Doesn't apply: Telnyx is a carrier, with no call flow of its own to take the call back.
+
+**Does a summary travel:** no, on a line connected by key. On a trunk line, a summary travels with a SIP handoff (see [Other routes](#other-routes)).
+
+**Warm handoff (the agent waits with the caller):** Can't, on a line connected by key.
+
+**Check it:** once the handoff's version is live, call the line from your own phone and ask for a person. Vapi for CX shows "Handoff sent", then asks whoever answered to confirm that it arrived. The phone that answers shows the agent's Telnyx number.
+
+<Note>Needs a test call: once with and once without the Outbound Voice Profile.</Note>
+
+## Other routes
+
+- **SIP trunk (Connect in Vapi).** For a summary with each SIP handoff, numbers outside North America, or a second Telnyx account. Works with a caveat.
+  1. In the Telnyx portal, set up the SIP connection as [Vapi's Telnyx SIP guide](/advanced/sip/telnyx) describes.
+  2. In Vapi's dashboard, open **Keys**, **Add New SIP Trunk**. Under **Gateway Configuration**, add `192.76.120.10` and `64.16.250.10` with **Allow inbound calls**, and `sip.telnyx.com` with **Allow outbound calls**. Under **Authentication (Optional)**, enter the Telnyx connection's username and password. Under **Advanced Settings**, turn on **Leading Plus for Outbound**.
+  3. In Vapi's dashboard, open **Phone Numbers**, **Create Phone Number**, **BYO SIP Trunk Number**. Enter the number in full international format, pick the trunk under **SIP Trunk Credential**, and add a label.
+  4. In Vapi for CX, choose **Use a number already in Vapi**, then call the number from your phone.
+
+  On a trunk line, a SIP handoff passes the call on by default, keeps the caller's number, and carries the summary and named details. A dialled handoff shows the agent's number.
+
+  <Note>The names in Vapi's dashboard come from Vapi's dashboard code; not clicked through. Passing the call on is not run end to end.</Note>
+
+  <Note>Not verified: not read on Telnyx's own page. Whether passing the call on must be switched on in Telnyx.</Note>
+
+  <Note>Needs a test call: a shorter setup, sending calls to `sip.vapi.ai` (EU: `sip.eu.vapi.ai`) with number format `+e164` and no Translated Number.</Note>
+- **Forward the Telnyx number to a Vapi number.** Per-number call forwarding in Telnyx. Works with a caveat: it costs a second Telnyx leg, and whether the caller's number shows is not known. A fallback, not a main route.
+- **Telnyx AI Assistants or media streaming:** nothing to connect; connecting by key already is the streaming route.
+- **Can't:** Vapi does not port numbers in or out.
+
+## Calls out
+
+Works with a caveat, on a line connected by key or a trunk line.
+
+- Attach the "Vapi" application (or the trunk's connection) to an Outbound Voice Profile with the destinations switched on, as in the handoff step above. Without it, calls out fail.
+- The default destinations are the US and Canada. Many others need Telnyx's Level 2 verification.
+- The caller ID must be valid for the account, or Telnyx refuses the call. Telnyx accepts another number at a lower trust rating.
+- A trial account can only call its one verified number.
+
+## What can't be done, and what is not yet known
+
+Can't be done, on a line connected by key:
+
+- A summary with a handoff.
+- The agent waiting with the caller, or the call coming back to the agent if nobody answers.
+- Caller details arriving with a call in: only the caller's number and the dialled number arrive.
+- A spoken message or summary to whoever answers (that is Twilio only).
+- A second Telnyx account in the same organization (use the trunk route).
+
+Not yet known, and the test that settles it:
+
+- Does a handoff to a phone number need the Outbound Voice Profile? Two calls, with and without it.
+- On a trunk line, does passing the call on to a mobile work, and which number shows? One transfer, then read the second leg in Telnyx's call records.
+- Do calls out over the trunk work without registration? One call; a refusal means registration is needed.
+- Does a trial account's key create the Vapi application? One import with a trial key.
+
+## Costs and limits
+
+- Telnyx bills the call at its Voice API and media-streaming rates on top of the number (its SIP trunking rates on the trunk route), and Vapi bills its own minutes. Prices were not checked.
+- A handoff adds a second Telnyx leg for the rest of the call.
+- Trial accounts get one number, calls only to and from their one verified number, 2 calls out at once and 10 minutes per call. Telnyx's own pages disagree on these figures; check the portal.
+- Telnyx limits calls to 20 a second from one source.
+- Audio is G.711 µ-law only on this route. Numbers outside North America can sound garbled; use the trunk.
+- A number leaves its old connection at once when connected. **Disconnect** puts it back.
+- HIPAA and a BAA (the HIPAA contract) at Telnyx: not checked.
+
+[What a SIP address is](/phone-systems#sip-address) · [What UUI is](/phone-systems#uui)
