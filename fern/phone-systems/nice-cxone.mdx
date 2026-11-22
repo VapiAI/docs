@@ -1,0 +1,140 @@
+---
+title: NICE CXone
+subtitle: Send CXone calls to your agent and hand callers back to your skills
+slug: phone-systems/nice-cxone
+description: Send calls from a NICE CXone Studio script to your Vapi for CX agent's number, and hand callers back to a CXone number that requests an agent.
+---
+
+NICE CXone is a cloud contact center where your own Studio scripts decide what happens to each call. A script can send a caller to an outside phone number, and that is how calls reach your agent in [Vapi for CX](https://cx.vapi.ai). At launch, Vapi for CX connects NICE CXone by phone number in both directions: a script's BLINDXFER action sends callers to the agent's number, and the agent hands callers back to a CXone number whose script requests an agent. No call details travel back. Sending a reason with the caller needs a SIP trunk and API access that only NICE can set up, and is not available at launch.
+
+## At a glance
+
+| | Verdict | Why |
+| --- | --- | --- |
+| Receiving calls | Works today | A Studio script's BLINDXFER action sends the caller to the agent's number. |
+| Transferring out | Works today | The agent calls a CXone number whose script requests an agent; no details travel. |
+| Calls out | Not applicable | CXone is your contact center, not a carrier for the agent's own calls. |
+| Self-serve | Partly | Your Studio scripter does the scripting; the handoff number comes from your NICE account representative. |
+
+<Note>
+Nothing on this page has been proven with a real call yet.
+</Note>
+
+## Receiving calls
+
+BLINDXFER hands the caller to the agent's number over the public phone network, and CXone lets go of the call. It frees the CXone port, but CXone no longer records, reports on or controls the call.
+
+If your organization is in Vapi's EU region, it has no starter number. Connect a phone line first (Twilio, Telnyx or Vonage, or a number set up in Vapi's dashboard) and send CXone's calls to that number.
+
+Read from NICE's documentation on Nov 22, 2026. Not run.
+
+<Steps>
+  <Step title="Copy the agent's number">
+    In Vapi for CX, open the agent, choose **Connect your phone line**, and pick **NICE CXone**. Copy the agent's number (for example +1 415 555 0124). NICE's page for the action gives no rule for the number's format.
+  </Step>
+  <Step title="Add a BLINDXFER action to the phone script">
+    In CXone Studio, open the phone script that answers the number and add **BLINDXFER**. NICE: "Transfers an existing call to an alternate phone number." It needs Studio access and no add-on. See NICE's [BLINDXFER](https://help.nicecxone.com/content/studio/actions/blindxfer/blindxfer.htm).
+  </Step>
+  <Step title="Set Destination to the agent's number">
+    In CXone Studio, set the action's **Destination** property to the agent's number.
+  </Step>
+  <Step title="Connect the OnDialingError branch">
+    In CXone Studio, send the **OnDialingError** branch somewhere a person can pick up. NICE: "If the transfer fails, NiCE CXone cannot recover the call."
+  </Step>
+  <Step title="Save the script">
+    In CXone Studio, choose **File**, then **Save**. Nothing after BLINDXFER runs for the call.
+  </Step>
+</Steps>
+
+**Number the agent sees:** the caller's own number. NICE: "The person receiving a call transferred by Blindxfer sees the original caller's phone number as the caller ID (ANI)." Experiments on the agent split calls normally.
+
+**Check it:** in Vapi for CX, the check says "Call this number from your phone". Call the CXone number. The line is marked working when the first call reaches the agent. Then open that call and check it shows your own number.
+
+## Handing callers to people
+
+Use "Transfer to a phone number", with one CXone number per skill. After BLINDXFER, CXone can't take a caller back when the agent ends its part.
+
+### Transfer to a phone number
+
+Works today. The agent calls a CXone number whose script requests an agent with a skill. After BLINDXFER, which freed the first call, it arrives as a clean second contact.
+
+Read from NICE's documentation on Nov 22, 2026. Not run.
+
+<Steps>
+  <Step title="Get a number for each skill">
+    Your NICE account representative sets up the number: you can't add it alone. NICE: "contact your NiCE CXone account representative to help you set up a DNIS for each inbound voice ACD skill." See NICE's [Set up inbound voice](https://help.nicecxone.com/content/acd/channels/voice/setupibvoice.htm).
+  </Step>
+  <Step title="Have a skill for the team">
+    In CXone, if there is no skill yet, go to **ACD**, **Contact Settings**, **ACD Skills**, choose **Create New**, then **Single Skill**. Set **Media Type** to **Phone Call**, choose **Inbound**, give a **Skill Name** and a **Campaign**, then choose **Create**.
+  </Step>
+  <Step title="Make a script that requests an agent">
+    In CXone Studio, choose **New Script**, then **Phone**. Connect **BEGIN** to **REQAGENT**, which "Requests an agent with a specific ACD skill to handle an active contact"; with **Skill** left at **Default**, it uses the point of contact's skill. Then choose **File**, then **Save**. Keep it free of menus. See NICE's [REQAGENT](https://help.nicecxone.com/content/studio/actions/reqagent/reqagent.htm).
+  </Step>
+  <Step title="Tie the number to the skill and script">
+    In CXone, go to **ACD**, **Contact Settings**, **Points of Contact**, choose **Create New**, then **Single Point of Contact**. Set **Media Type** to **Phone Call**, give a **Name**, pick the number in the **Point of Contact** drop-down, choose the **ACD Skill** and the **Script**, then choose **Create Point of Contact**.
+  </Step>
+  <Step title="Add the handoff on the agent">
+    In Vapi for CX, on the agent's **Handing callers to people** card, choose **Add a handoff**. Say when the agent should hand over, choose **Transfer to a phone number**, and paste the CXone number for the skill (for example +1 415 555 0177). Under **More options**, choose that their people see the caller's number.
+  </Step>
+</Steps>
+
+**Number their people see:** the caller's own number on a Twilio line, or when the handoff is set to show it. Otherwise the agent's number. NICE's REQAGENT page doesn't describe caller ID.
+
+**Does a summary travel:** no. The script isn't told why the caller was handed over, so the caller goes to the skill's queue and may be asked again.
+
+**Warm handoff:** doesn't apply. The agent can wait with the caller only on a Twilio number and only for a person's own line; a CXone number is answered by a script and a queue first.
+
+**Check it:** once the agent's version with the handoff is live, choose **Check** on its row in Vapi for CX. Call the agent from your phone and ask for a person. The check shows "Handoff sent" when the agent hands over, then asks whoever answered to confirm. A signed-in CXone agent in that skill should be offered the contact showing your number.
+
+### Transfer to a SIP address
+
+Not available at launch. CXone doesn't read details sent when a call ends, so a hand-back with details would go through CXone's Signal API instead, over a SIP trunk that only NICE can set up.
+
+### Return the call to their system
+
+Needs a test call. Vapi for CX offers this type for NICE CXone. With the receiving steps on this page (BLINDXFER) the caller is dropped when the agent ends its part: BLINDXFER gives up the script's control of the call, so nothing takes the caller back. It works only when your script reaches the agent with **Spawn**, **Placecall** and **Link**, where the parent script keeps the caller, and this page has no steps for that. Use "Transfer to a phone number".
+
+Even with that script, nothing tells CXone why or which skill, so every returned caller follows the script's default path and may be asked again. Where the reason matters, add a separate "Transfer to a phone number" per skill.
+
+## Other routes
+
+| Route | Verdict | Why |
+| --- | --- | --- |
+| Calls in: Studio's TRANSFER action to the agent's number | Works today | CXone keeps recording and reporting, but the call holds two CXone ports for the whole conversation. |
+| Calls in: Spawn, Placecall and Link to the agent's number | Not available at launch | Real scripting in two scripts; the agent sees whatever caller ID the script sets. |
+| Calls in: a SIP trunk NICE sets up, with details in headers | Not available at launch | NICE builds the trunk, its numbers and the header setting; not self-serve. |
+| Calls in: Virtual Agent Hub ("Bring Your Own Bot") | Can't | CXone sends the bot one sentence at a time; the agent needs live two-way audio. |
+| Calls in: VOICEBOT STREAM | Can't | NICE: "Currently, the only supported provider is Google Dialogflow CX VoiceStream." |
+| Calls in: moving the number to Vapi | Can't | CXone numbers stay with NICE. |
+| Handoff: a reason sent through CXone's Signal API | Not available at launch | Needs NICE's trunk and API credentials for each customer, and work at Vapi. |
+| Handoff: hang up with details over SIP | Can't | CXone reads details only on the first message of a call or its answer, not when it ends. |
+| Handoff: a SIP transfer message (REFER) back into CXone | Not verified | Not read on NICE's own page; only one other vendor's guide says it works. |
+
+## Calls out
+
+Not applicable. CXone hands calls to the agent; it isn't the agent's carrier. Calls the agent places go out on a phone line connected in Vapi for CX.
+
+## What can't be done, and what is not yet known
+
+Can't be done:
+
+- Taking the caller back after BLINDXFER or TRANSFER. Both give up the script's control of the call.
+- Hosting the agent through Virtual Agent Hub.
+- Sending details when the agent ends the call. CXone reads none then.
+- Setting up the SIP trunk, its numbers, the API credentials or the handoff number yourself. NICE issues all of them.
+
+Not yet known:
+
+- Whether a parent script carries on when the agent ends a call that reached it with Spawn, Placecall and Link, and which event the script sees. Two short scripts in a CXone sandbox and one call settle it.
+- Which number Placecall shows the agent when the script sets the caller's own number. The same call settles it.
+- Whether a trunk NICE sets up accepts a SIP transfer message (REFER) from the agent.
+- Whether NICE builds a trunk for a vendor outside its partner programme, at a customer's request. Ask NICE.
+
+## Costs and limits
+
+- A call handed to your people has three legs: the caller's call into CXone, the call from CXone to the agent, and the handoff call back into CXone, which is a second CXone contact. The first two are on NICE's side, and "Long-distance charges may apply." Vapi minutes are on top for the conversation.
+- BLINDXFER frees the CXone port but ends CXone recording and reporting for the call. TRANSFER keeps them and holds two CXone ports for the whole conversation.
+- The SIP route, once available, needs NICE's time for the trunk, the header setting and API credentials: days, not minutes.
+- HIPAA: nothing CXone-specific was found.
+
+For how a phone line, a SIP address and UUI fit together in Vapi for CX, see [Connect your phone line](/phone-systems).
