@@ -1,0 +1,147 @@
+---
+title: Microsoft Teams
+subtitle: Redirect a Teams auto attendant, call queue or user to the agent's number, and transfer callers back to a Teams number
+slug: phone-systems/microsoft-teams
+description: Send calls from Microsoft Teams Phone to an agent in Vapi for CX by redirecting to the agent's number, with Direct Routing steps, and hand callers back to a Teams number.
+---
+
+Microsoft Teams Phone is Microsoft's phone system for companies on Teams. A Teams auto attendant, call queue or user can send calls to the agent's number, and the agent can transfer callers back to a Teams number. Teams has no direct SIP connection to Vapi, so every call crosses the public phone network or your own SBC (the box at the edge of a phone network that accepts SIP calls). In [Vapi for CX](https://cx.vapi.ai), Teams is **Vapi for CX's contact-center screen, then this page**: you copy the agent's number there, and your Teams admin does the steps below.
+
+## At a glance
+
+| | Verdict | Why |
+| --- | --- | --- |
+| Receiving calls | Works with a caveat | An auto attendant, call queue or user redirects to the agent's number; Direct Routing also needs a voice route and your SBC. |
+| Transferring out | Works with a caveat | To a Teams number. Teams never takes the call back, and no caller details reach the Teams person. |
+| Calls out | Works with a caveat | Only on Direct Routing, through your SBC and carrier. |
+| Self-serve | No | Your Teams admin (and SBC admin) does every step. |
+
+<Note>Nothing on this page has been proven with a real call yet.</Note>
+
+## Receiving calls
+
+A Teams auto attendant, call queue or user forwards calls to the agent's number over the public phone network. Calling Plan and Operator Connect numbers need no extra equipment. Direct Routing numbers also need a voice route to your SBC.
+
+If your organization is in Vapi's EU region, it has no starter number. Connect a phone line first (Twilio, Telnyx or Vonage, or a number set up in Vapi's dashboard) and send Teams calls to that number.
+
+<Steps>
+  <Step title="Copy the agent's number">
+    In Vapi for CX, open **Connect your phone line** on the agent and pick **Microsoft Teams**. Copy the agent's number in full international format, starting with `+` (for example `+14155550124`).
+  </Step>
+  <Step title="Redirect the auto attendant, call queue or user">
+    In the Teams admin center, do one of these:
+
+    - **Auto attendant:** Voice › Auto attendants › Add. In the call flow, choose **Redirect call** › **External phone number** and enter the agent's number, or add a menu option whose destination is **External phone number**. Docs: [Microsoft: auto attendant](https://learn.microsoft.com/en-us/microsoftteams/aa-cq-setup-auto-attendant).
+    - **Call queue:** Voice › Call queues. Set the **Overflow**, **Call timeout** and **No agents** exceptions to **Redirect call** › **External phone number** with the agent's number. Docs: [Microsoft: call queue](https://learn.microsoft.com/en-us/microsoftteams/aa-cq-setup-call-queue).
+    - **One user:** Users › Manage users › the user › Voice tab. Under call answering rules, choose **Be immediately forwarded** and enter the agent's number. The calling policy setting "Call forwarding and simultaneous ringing to external phone numbers" must be on (it is by default). Docs: [Microsoft: user call settings](https://learn.microsoft.com/en-us/microsoftteams/user-call-settings).
+  </Step>
+  <Step title="Check the resource account's licences">
+    In the Microsoft 365 admin center, under Users › Active users › the account › **Licenses and Apps**: each auto attendant or call queue has a resource account (the Teams account that holds its number), which needs the free **Microsoft Teams Phone Resource Account** licence.
+
+    For transfers to outside numbers, Calling Plan numbers also need a funded pay-as-you-go licence or Communications Credits; Direct Routing numbers need a voice routing policy on the resource account (next step); Operator Connect numbers need nothing more. Docs: [Microsoft: licensing](https://learn.microsoft.com/en-us/microsoftteams/aa-cq-reference-prerequisites-licensing), [Microsoft: resource accounts](https://learn.microsoft.com/en-us/microsoftteams/aa-cq-manage-resource-accounts).
+  </Step>
+  <Step title="Direct Routing only: route the agent's number to your SBC">
+    In the Teams admin center, under Voice › Direct Routing › **Voice routes** › Add, add a voice route whose number pattern matches the agent's number and whose SBC is yours. Give the resource account a voice routing policy that uses it; Microsoft says to use a custom policy, not the global one. Docs: [Microsoft: voice routing](https://learn.microsoft.com/en-us/microsoftteams/direct-routing-voice-routing).
+
+    Your SBC admin then sends the agent's number on: to the agent's number over the phone network, or to a Vapi SIP trunk (see [Other routes](#other-routes)).
+  </Step>
+  <Step title="Call this number from your phone">
+    In Vapi for CX: call your Teams number from your own phone so the auto attendant, queue or user forwards it. The line is marked as working when the first call reaches the agent. Then choose **Next: add a handoff**.
+  </Step>
+</Steps>
+
+**Number the agent sees:** on auto attendant and call queue transfers from Calling Plan and Operator Connect numbers, Microsoft documents that the caller's own number shows. On Direct Routing, it depends on the SBC's **Forward P-Asserted-identity (PAI) header** setting: off (the default, and Microsoft's recommendation) shows the caller's number; on shows the resource account's number, and then every call in an experiment lands on one version. Docs: [Microsoft: limits and supported configurations](https://learn.microsoft.com/en-us/microsoftteams/aa-cq-reference-limits-supported-configurations).
+
+<Note>Not verified: the number shown on a single user's forwarded call. One forwarded call settles it.</Note>
+
+**Check it:** forward one call from the auto attendant or queue. The agent answers, so the Teams side lines up. Read the caller's number on the call in Vapi for CX.
+
+## Handing callers to people
+
+Handoffs are set on the agent, on the **Handing callers to people** card on the Call handling tab.
+
+### Transfer to a phone number
+
+Works with a caveat. The agent hands the caller to a Teams number without waiting (a blind transfer).
+
+<Steps>
+  <Step title="Pick the Teams number">
+    In the Teams admin center: the number that takes the handoff: a user's number, or the number on a call queue's or auto attendant's resource account. It must be a Teams number (a Calling Plan service number, an Operator Connect number or a Direct Routing number), and not the number that forwards to the agent.
+  </Step>
+  <Step title="If the queue has no number yet, give it one">
+    In the Teams admin center, under Voice › Resource accounts › **Add**, fill **Display name** and **Username**, set **Resource account type** to Call queue (or Auto attendant), and **Save**. In the Microsoft 365 admin center, license it: Users › Active users › the account › **Licenses and Apps** › **Microsoft Teams Phone Resource Account** › Save changes. The licence is free, but must first be "purchased" under Billing › Purchase services › Add-ons.
+
+    Back in the Teams admin center, select the account › **Assign/unassign** › **Phone number type** › **Assigned phone number** › Save. Then tie it to the queue: Voice › Call queues › Add › General info › **Add an existing resource account**. This needs a Teams admin role plus User Administrator. Direct Routing numbers with an extension need PowerShell. Docs: [Microsoft: resource accounts](https://learn.microsoft.com/en-us/microsoftteams/aa-cq-manage-resource-accounts).
+
+    <Note>Not verified: the auto attendant wizard's own step for picking the resource account was not re-read.</Note>
+  </Step>
+  <Step title="Direct Routing only: let the SBC route the number to Teams">
+    Your SBC admin: the SBC takes the call from Vapi and sends the number to Teams. Teams needs a `+` at the start of the number and the SBC's name (not an IP address) in the Contact header. Docs: [Microsoft: SIP protocol](https://learn.microsoft.com/en-us/microsoftteams/direct-routing-protocols-sip).
+  </Step>
+  <Step title="Add the handoff">
+    In Vapi for CX, on the **Handing callers to people** card, add a handoff of type **Transfer to a phone number**. Say when the agent should hand off and enter the Teams number.
+
+    <Note>Not run against a Teams tenant. Needs a test call: one transfer to a Teams number.</Note>
+  </Step>
+</Steps>
+
+**Number their people see:** the agent's number by default, or the caller's own if the handoff is set to show it (a Twilio number connected in Vapi for CX passes the caller's number by default). For a queue, Microsoft says "representatives see the resource account name or call queue name"; whether the caller's number shows beside it is not stated.
+
+<Note>Not verified: whether Teams or the carrier accepts a caller's number the line does not own.</Note>
+
+**Does a summary travel:** no. Nothing reaches the Teams person: Teams shows no custom details on a call. If an auto attendant or queue answers first, nobody would hear a spoken briefing.
+
+**Check it:** call the agent and ask for a person. Vapi for CX shows "Handoff sent", then asks whoever answered to confirm that it arrived. Note the name and number the Teams person sees.
+
+### Transfer to a SIP address
+
+Direct Routing only. The handoff can go to your SBC's address in the form `sip:+14155550177@<your SBC's address>`, and the SBC routes it to Teams. In Vapi's dashboard, the trunk needs a gateway with your SBC's address for calls out. Even when a summary and details are sent, Teams shows nothing to the person.
+
+<Note>Yes, on paper. Not verified: whether your SBC accepts a call passed on from Vapi and turns it into a call to Teams. Needs a test call.</Note>
+
+### Return the call to their system
+
+Teams can't take the call back. No setting returns the call to Teams when the agent's part of the call ends: the call just ends. On Direct Routing, an SBC ends both legs when Vapi hangs up, unless it is scripted to route the caller on.
+
+## Other routes
+
+- **Direct Routing to a Vapi SIP trunk (Connect in Vapi).** Your SBC sends the agent's number straight to a Vapi SIP trunk instead of the phone network. It needs a certified SBC, its admin, and a fixed public IPv4 address. In Vapi's dashboard, under **Keys**, choose **Add New SIP Trunk** with the SBC's address as a gateway with **Allow inbound calls**; then under **Phone Numbers**, **Create Phone Number** › **BYO SIP Trunk Number** for the agent's number. In Vapi for CX, choose **Use a number already in Vapi**. Your SBC admin sends that number to `sip:<number>@<credential id>.sip.vapi.ai`, where `<credential id>` is the ID of the trunk you added, allows Vapi's addresses and uses G.711 audio. Vapi's [SIP trunk guide](/advanced/sip/sip-trunk) and [SIP networking guide](/advanced/sip/sip-networking) give the addresses and ports.
+
+  <Note>The names in Vapi's dashboard come from Vapi's dashboard code; not clicked through. SBC menu names were not researched.</Note>
+- **Can't:** a trunk on Operator Connect, Teams Phone Mobile or Calling Plan numbers. The operator, or Microsoft, owns the line; those customers can only forward.
+- **Can't:** connect Vapi to Teams directly. Direct Routing pairs only with a certified SBC, and Microsoft does not support a proxy in between.
+- **Can't:** a Teams calling bot. Teams users find a bot by name inside Teams, so it is not a route for outside callers.
+
+## Calls out
+
+Works with a caveat, on Direct Routing only. Vapi places the call through your SBC and carrier: in Vapi's dashboard, add the SBC to the trunk as a gateway for calls out. The caller ID is the trunk number, and your carrier decides whether to accept it.
+
+Can't on Calling Plan, Operator Connect or Teams Phone Mobile numbers: there is no trunk to place calls through.
+
+## What can't be done, and what is not yet known
+
+Can't be done:
+
+- A direct SIP connection between Vapi and Teams.
+- A trunk on Operator Connect, Teams Phone Mobile or Calling Plan numbers.
+- Showing a summary or caller details to the Teams person.
+- Teams taking the call back when the agent hangs up.
+- Splitting an experiment when every call arrives from one SBC with one caller number: all calls land on one version.
+
+Not yet known, and the test that settles it:
+
+- Does your SBC accept a call passed on from Vapi and call Teams? A sandbox SBC and a Teams developer tenant, one transfer.
+- Which caller number does a single Teams user's forwarding show? One forwarded call per type of Teams number.
+- Does a queue member see the caller's number beside the queue name? One transfer to a queue number.
+- Does Vapi accept encrypted audio from an SBC, and which keypad-tone method? One SBC test call.
+
+## Costs and limits
+
+- Every forwarded call is a Teams leg plus a Vapi leg. Vapi bills its minutes; Microsoft (pay-as-you-go minutes on Calling Plan numbers) or your carrier bills the phone-network leg.
+- A handoff where Vapi dials the Teams number and joins the calls holds two Vapi legs until the Teams person hangs up.
+- Licences: Teams Phone per user; a free Teams Phone Resource Account licence per auto attendant or queue; a pay-as-you-go licence or Communications Credits for outside transfers on Calling Plan numbers. Prices are not verified.
+- Direct Routing needs a certified SBC with its own licences and support.
+- Vapi allows 10 calls at once by default. A Teams call queue holds at most 200 waiting calls, for 45 minutes.
+- HIPAA: not verified for Teams routes.
+
+[What a SIP address is](/phone-systems#sip-address) · [What UUI is](/phone-systems#uui)
