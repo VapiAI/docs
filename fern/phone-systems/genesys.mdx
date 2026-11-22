@@ -1,0 +1,142 @@
+---
+title: Genesys Cloud
+subtitle: Send Genesys calls to your agent and hand callers back to your queues
+slug: phone-systems/genesys
+description: Send calls from a Genesys Cloud Architect flow to your Vapi for CX agent's number, and hand callers back to a Genesys queue by phone number.
+---
+
+Genesys Cloud is a cloud contact center. Its Architect flows can send a caller to an outside phone number, and that is how calls reach your agent in [Vapi for CX](https://cx.vapi.ai). At launch, Vapi for CX connects Genesys Cloud by phone number in both directions: a flow sends callers to the agent's number, and the agent hands callers back to a Genesys number that queues them for your people. No call details travel either way, and Genesys can't take a caller back into its flow after "Transfer to Number".
+
+## At a glance
+
+| | Verdict | Why |
+| --- | --- | --- |
+| Receiving calls | Works today | An Architect "Transfer to Number" action calls the agent's number. |
+| Transferring out | Works today | The agent calls a Genesys number whose call route queues the caller; no details travel. |
+| Calls out | Not applicable | Genesys is the contact center, not a carrier for the agent's own calls. |
+| Self-serve | Yes | Your flow author adds one action; your telephony admin adds one call route. |
+
+<Note>
+Nothing on this page has been proven with a real call yet.
+</Note>
+
+## Receiving calls
+
+Genesys sends the caller over the public phone network to the agent's number and stays in the call for its whole length.
+
+If your organization is in Vapi's EU region, it has no starter number. Connect a phone line first (Twilio, Telnyx or Vonage, or a number set up in Vapi's dashboard) and send Genesys's calls to that number.
+
+Read from Genesys's documentation on Nov 22, 2026. Not run.
+
+<Steps>
+  <Step title="Copy the agent's number">
+    In Vapi for CX, open the agent, choose **Connect your phone line**, and pick **Genesys Cloud**. Copy the agent's number. Genesys wants it in full international format, starting with + (for example +14155550124). Genesys says any other format can cause errors with the carrier.
+  </Step>
+  <Step title="Add the Transfer to Number action">
+    In Genesys Architect, open the inbound call flow. In the **Toolbox**, expand **Transfer** and drag **Transfer to Number** into the menu or task. Your organization must be able to place outside calls (Genesys Cloud Voice, or a BYOC trunk on a site with an outbound route), and the author needs Architect edit rights. See Genesys's [Transfer to an external number](https://help.genesys.cloud/articles/transfer-external-number-2/).
+  </Step>
+  <Step title="Enter the agent's number">
+    In Genesys Architect, give the action a **Name** of your choice. In **Number**, paste the agent's number. Optionally set **Connect Timeout**, **Pre-Transfer Audio** and **Failed Transfer Audio**. Leave **Perform release link transfer** off. See Genesys's [Transfer to Number action](https://help.genesys.cloud/articles/transfer-to-number-action/).
+  </Step>
+  <Step title="Publish the flow">
+    In Genesys Architect, publish the flow. New calls use it.
+  </Step>
+</Steps>
+
+**Number the agent sees:** unknown. It depends on your Genesys trunk's caller ID settings (**Caller Address**, **Caller Name**, **Prioritized caller ID locations**; see Genesys's [External trunk settings](https://help.genesys.cloud/130654)). If every call shows the trunk's own number, an experiment on the agent would put every call on one version.
+
+<Note>
+Not verified: not read on Genesys's own page. Community reports disagree: one saw the original caller's number, others the trunk's own caller ID. One test call per customer settles it.
+</Note>
+
+**Check it:** in Vapi for CX, the check says "Call this number from your phone". Call the Genesys number that runs the flow. The line is marked working when the first call reaches the agent. Then open that call and read the caller's number.
+
+## Handing callers to people
+
+Hand callers back to your people by phone number. "Return the call to their system" isn't possible after "Transfer to Number".
+
+### Transfer to a phone number
+
+Works today. The agent calls a Genesys number whose call route runs a flow that queues the caller.
+
+Read from Genesys's documentation on Nov 22, 2026. Not run.
+
+<Steps>
+  <Step title="Have an inbound number for the queue">
+    In Genesys Cloud, your telephony admin needs an inbound number for the queue. It must exist before it shows in a call route's **Inbound Numbers**.
+
+    <Note>
+    Not verified: not read on Genesys's own page. The call route page doesn't say where the number is bought or added.
+    </Note>
+  </Step>
+  <Step title="Send the caller to the queue">
+    In Genesys Architect, in a flow, add the **Transfer to ACD** action and pick the queue in **Queue**. Publish the flow. See Genesys's [Transfer to ACD action](https://help.genesys.cloud/articles/transfer-acd-action/).
+  </Step>
+  <Step title="Add a call route for the number">
+    In Genesys Cloud, open **Admin › Routing › Call Routing** (or **Menu › Orchestration › Routing › Call Routing**) and choose **Add Call Route**. Fill in **Name**, **Division** and **Inbound Numbers** (type the number and tick it). Under **When is this call route open?** choose **Always** or **Based on a schedule group**. Under **What call flow should be used?**, pick the flow from the last step in **Route to**. Save. Only published flows appear. See Genesys's [Add a call route](https://help.genesys.cloud/articles/add-a-call-route/).
+  </Step>
+  <Step title="Add the handoff on the agent">
+    In Vapi for CX, on the agent's **Handing callers to people** card, choose **Add a handoff**. Say when the agent should hand over, choose **Transfer to a phone number**, and paste the Genesys number. Under **More options**, choose that their people see the caller's number.
+  </Step>
+</Steps>
+
+**Number their people see:** the caller's own number on a Twilio line, or when the handoff is set to show it. Otherwise the agent's number. Genesys's pages don't say what its queue agents' screens show.
+
+**Does a summary travel:** no. Your Genesys flow isn't told why the caller was handed over, so the caller goes to the queue the flow picks and may be asked again. The first Genesys conversation stays up underneath, so reporting and recording are split in two.
+
+**Warm handoff:** doesn't apply. The agent can wait with the caller only on a Twilio number and only for a person's own line; a Genesys queue number is answered by a flow first.
+
+**Check it:** once the agent's version with the handoff is live, choose **Check** on its row in Vapi for CX. Call the agent from your phone and ask for a person. The check shows "Handoff sent" when the agent hands over, then asks whoever answered to confirm.
+
+### Transfer to a SIP address
+
+Not available at launch. Handing back over a [SIP address](/phone-systems#sip-address) with details needs your own Genesys BYOC trunk with **Take Back and Transfer** and **UUI Passthrough** switched on, and it carries details only in [UUI](/phone-systems#uui).
+
+<Note>
+Needs a test call. Nobody has proven it against Genesys, and one community report saw no UUI arrive.
+</Note>
+
+### Return the call to their system
+
+Can't after "Transfer to Number". Genesys ends the flow once the transfer succeeds, so nothing takes the caller back when the agent ends its part. Use "Transfer to a phone number" instead: where the reason matters, add one handoff per queue, each to a number that reaches that queue.
+
+Genesys's Audio Connector is the only route where the Genesys flow keeps the call and takes the caller back. It is Coming soon. [Contact sales](https://vapi.ai/sales) and name Genesys Cloud's Audio Connector.
+
+## Other routes
+
+| Route | Verdict | Why |
+| --- | --- | --- |
+| Calls in: Audio Connector (AudioHook) | Coming soon | Needs Genesys's approval and work at Vapi. [Contact sales](https://vapi.ai/sales). |
+| Calls in: a BYOC Cloud or BYOC Premises trunk to the agent's SIP address | Not available at launch | No source shows it working with Vapi, and details in UUI aren't read. |
+| Calls in: Bot Connector | Can't | It carries text, not calls. |
+| Calls in: Genesys Virtual Agent | Can't | It is Genesys's own bot, not a way to plug in an outside agent. |
+| Handoff: return to the flow through Audio Connector | Coming soon | Waits on the Audio Connector route above. [Contact sales](https://vapi.ai/sales). |
+| Handoff: a transfer with UUI over a BYOC trunk | Not available at launch | Needs a test call; not proven end to end. |
+
+## Calls out
+
+Not applicable. Genesys hands calls to the agent; it isn't the agent's carrier. Calls the agent places go out on a phone line connected in Vapi for CX.
+
+## What can't be done, and what is not yet known
+
+Can't be done:
+
+- Returning the caller to the Genesys flow after "Transfer to Number".
+- Sending UUI or other details over Genesys Cloud Voice or any leg on the public phone network.
+- Sending different details on each call out of Architect, other than UUI.
+- Audio Connector on BYOC Premises.
+
+Not yet known:
+
+- Which caller number Genesys shows the agent on a "Transfer to Number" call. One call per customer settles it.
+- Whether every call from one Genesys trunk shows one caller number, which would put every call of an experiment on one version. The same call settles it.
+- Where a Genesys inbound number is bought or added before it shows in a call route.
+
+## Costs and limits
+
+- Genesys stays on the first call while the agent talks, and a handoff by number adds a second Genesys call. You pay Genesys for both, and Vapi minutes for the whole conversation, because the handoff keeps Vapi in the call.
+- Long-distance charges apply on Genesys Cloud Voice.
+- Audio Connector, once available, is billed by Genesys per minute of streaming, with a 15-minute default session cap.
+- HIPAA: nothing Genesys-specific was found. Genesys says UUI has no added security, so keep health details out of it.
+
+For how a phone line, a SIP address and UUI fit together in Vapi for CX, see [Connect your phone line](/phone-systems).
