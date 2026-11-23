@@ -81,7 +81,7 @@ The `endedMessage` starts with `Couldn't Create Twilio Call. Twilio Error:` and 
 | `Account not authorized to call` | [21215](https://www.twilio.com/docs/api/errors/21215) | Your Twilio account isn't allowed to call the destination country. | Enable the country in Twilio's [Voice geographic permissions](https://www.twilio.com/console/voice/calls/geo-permissions/low-risk). |
 | `Account not allowed to call` | [21216](https://www.twilio.com/docs/api/errors/21216) | Twilio blocked the call. Causes include a high-risk number range, a regulatory restriction, or a missing Primary Customer Profile for calls to `+1` numbers. | Follow the steps on Twilio's error page. For `+1` numbers, submit a Primary Customer Profile in Twilio's Trust Hub. |
 | `is not valid` | [21211](https://www.twilio.com/docs/api/errors/21211) | The number you called is invalid or incorrectly formatted. | Check the number for typos and use E.164 format. Make sure the customer number and your Twilio number are different. |
-| `Authenticate` | [20003](https://www.twilio.com/docs/api/errors/20003) | Twilio rejected the credentials stored on your imported number. The auth token was rotated or deleted, or the account is suspended. | Update the Twilio credentials on your phone number in Vapi, or re-import the number. |
+| `Authenticate` or `authentication failed` | [20003](https://www.twilio.com/docs/api/errors/20003) | Twilio rejected the credentials stored on your imported number. The auth token was rotated or deleted, or the account is suspended. Later calls on the number end with `call.start.error-twilio-credential-rejected`; see [Twilio rejected your credentials](#twilio-rejected-your-credentials). | Update the Twilio credentials on your phone number in Vapi, or re-import the number. |
 | `Voice calling has been disabled for this account` | | Voice calling is turned off on the Twilio account that owns the number. | If you imported the number, contact Twilio. If you bought the number through Vapi, contact [Vapi support](/support). |
 
 #### Telnyx
@@ -116,6 +116,25 @@ If the `endedMessage` is `Couldn't Start Call On Vapi Number.`, contact [Vapi su
 #### Missing customer number
 
 If the `endedMessage` says the customer number is missing, the call request had no `customer.number`. Add the customer number to the request in E.164 format.
+
+### Twilio rejected your credentials
+
+The `call.start.error-twilio-credential-rejected` ended reason means Twilio refused the auth token or API key stored on your Twilio phone number, so Vapi didn't place the call. The phone never rang and you weren't charged. The usual causes are a suspended or closed Twilio account, or an auth token or API key that was rotated or deleted in Twilio.
+
+Before it dials a Twilio number that has its own credentials, Vapi checks whether Twilio accepts them. When Twilio rejects them, Vapi ends that call and the calls that follow on the same number without contacting Twilio, instead of sending each one to Twilio to fail. About every 5 minutes, Vapi tries one call again to see whether the credentials work.
+
+The `endedMessage` names the Twilio account and quotes Twilio's answer. For example:
+
+```text wordWrap
+Couldn't Start Twilio Call. Twilio rejected this phone number's credentials, so Vapi did not dial. Twilio account ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX answered: Authenticate Update the Twilio auth token or API key on this phone number, or reactivate the Twilio account. A new token or key is used right away; otherwise Vapi checks again within about 5 minutes.
+```
+
+To fix it:
+
+- **Rotated or deleted token or API key:** Update the Twilio credentials on your phone number in Vapi, or re-import the number. Vapi uses the new credentials on the next call.
+- **Suspended or closed Twilio account:** Reactivate the account with Twilio. Calls start connecting again within about 5 minutes, without any change in Vapi.
+
+Campaigns and scheduled calls aren't paused. Calls that come due while the credentials are rejected end with this reason, and calls after the fix connect as usual.
 
 ### Free Vapi number limits
 
