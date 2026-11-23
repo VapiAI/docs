@@ -60,7 +60,9 @@ Vapi for CX imports the number into Vapi. Vapi points the number's voice address
 
 **Check it:** call the number from your phone. The agent answers and sees your own number.
 
-**Disconnect.** Disconnecting a Twilio number never deletes it. Vapi for CX first puts back what answered the number before (its old voice address, TwiML app or trunk), then detaches the agent. To do that, it asks you to paste the auth token again. If Twilio refuses the change, the agent stays attached, so the number never answers nowhere, and the message says exactly what to set in the Twilio Console. The number stays in Vapi and in your Twilio account.
+**Disconnect.** Disconnecting a Twilio number never deletes it. Vapi for CX first puts back what answered the number before (its old voice address, TwiML app or trunk), then detaches the agent. To do that, it asks you to paste the auth token again. If Twilio refuses the change, the agent stays attached, so the number never answers nowhere, and the message says exactly what to set in the Twilio Console. The number stays in Vapi and in your Twilio account. If the number no longer sends its calls to Vapi (someone changed it in the Twilio Console), **Disconnect** only detaches the agent, changes nothing at Twilio and says so.
+
+At launch, a disconnected Twilio number can't be connected again from Vapi for CX: it shows as disconnected and is not offered for connecting. Disconnect a number only when you want it to stop reaching Vapi for CX altogether.
 
 ## Handing callers to people
 
@@ -98,11 +100,11 @@ Works today. Each transfer is a new call out of your Twilio account.
 
 Works with a caveat. Vapi for CX always saves a SIP handoff from a Twilio number so that the call is dialled: Twilio refuses the other way of passing on a call that came in from the phone network.
 
-Only the call travels: no written summary and no caller details reach the SIP address from a Twilio number. For a summary, use **Say a summary to whoever answers** on a handoff to a person's own line (see [Transfer to a phone number](#transfer-to-a-phone-number)). The agent cannot wait with the caller on a SIP handoff.
+Only the call travels: no written summary and no caller details reach the SIP address from a Twilio number. For a summary, use **Say a summary to whoever answers** on a handoff to a person's own line (see [Transfer to a phone number](#transfer-to-a-phone-number)). The agent cannot wait with the caller on a SIP handoff. One handoff serves all of the agent's lines, so when the agent also answers on other lines, a SIP handoff is dialled on every one of them, and its written summary and details are greyed, with the reason naming the Twilio number.
 
 ### Return the call to their system
 
-Vapi for CX offers this type only when a phone system or contact center that takes calls back is linked to the agent's line. Twilio Studio and Flex are not among those platforms, so on a Twilio number alone this type is greyed, with the reason and a link to Organization settings.
+Vapi for CX offers this type only when a phone system or contact center that takes calls back is linked to the agent's line. Twilio Studio and Flex are not among those platforms, so a Twilio number alone does not allow it. When no line of the agent has a platform linked, it is greyed, with a link to Organization settings and the reason "Link a contact center or phone system to this agent's line in Organization settings first." When a platform is linked but does not take calls back, the reason names the platform instead. The type is judged for the agent's lines together: when another of the agent's lines has one, it is offered, but it does not work for calls on the Twilio number.
 
 A number that stays on a Studio flow, instead of being imported, is not set up from Vapi for CX at launch; see [Other routes](#other-routes).
 
@@ -111,11 +113,13 @@ A number that stays on a Studio flow, instead of being imported, is not set up f
 - **Keep your Studio flow and send its calls to the agent** (Flex customers: your calls run through a Studio flow). Not available at launch: Vapi for CX does not set this up. A number imported through Vapi for CX's form leaves its Studio flow, so this would be an alternative to importing, not an addition. In Twilio, a Studio flow's [Connect Call To](https://www.twilio.com/docs/studio/widget-library/connect-call) widget can send a call to another number or SIP address. If you point it at the agent's [SIP address](/phone-systems#sip-address), the widget's username and password are the ones Vapi for CX showed when the address was made.
 
   <Note>Yes, on paper. Needs a test call: no Twilio page shows this with Vapi, and nobody has run it.</Note>
-- **Elastic SIP Trunking (Connect in Vapi).** Needs an upgraded account; no add-on. More steps than importing, and no benefit for a plain Twilio number: use it when the number already sits on a trunk shared with a phone system. First, in Vapi's dashboard, add the trunk under **Keys**, **Add New SIP Trunk**, and add one **BYO SIP Trunk Number** for each Twilio number. Then set up the Twilio side with [Vapi's Twilio SIP trunk guide](/advanced/sip/twilio), skipping its steps that create the trunk and numbers in Vapi, since they exist already. In the trunk's Origination settings, send calls to `<credential id>.sip.vapi.ai`, made from the trunk's **Credential ID** in Vapi's dashboard. Organizations in Vapi's EU region use `<credential id>.sip.eu.vapi.ai`. Then in Vapi for CX, choose **Use a number already in Vapi** and call the line. A handoff from a trunk line can pass the call on with Twilio's **Call Transfer (SIP REFER)** turned on in the trunk's General settings, plus the PSTN setting for phone-number targets; the number the target sees is set on the trunk.
+- **Elastic SIP Trunking (Connect in Vapi).** For a number that already sits on a Twilio Elastic SIP trunk shared with a phone system. Needs an upgraded account; no add-on. More work than importing, and no benefit for a plain Twilio number. Not verified with Vapi for CX, so this page gives no steps for it.
 
-  <Note>The names in Vapi's dashboard come from Vapi's dashboard code; not clicked through.</Note>
+  What it involves: a new Elastic SIP trunk in Twilio for the agent ([Twilio: Elastic SIP Trunking](https://www.twilio.com/docs/sip-trunking)), never the trunk the phone system uses; a SIP trunk in Vapi's dashboard, as [Vapi's Twilio SIP trunk guide](/advanced/sip/twilio) describes; then **Use a number already in Vapi** in Vapi for CX.
 
-  <Note>Not verified: not read on Twilio's own page. Encrypted audio (SRTP) on calls in, and whether Twilio copies the summary onto a passed-on call.</Note>
+  The caveat: a Twilio number sits on one trunk at a time, so moving it onto the agent's trunk takes it off the phone system's, and from that moment the phone system stops receiving that number's calls.
+
+  <Note>Not verified: not read on Twilio's own page. That a number sits on one trunk at a time.</Note>
 - **Your own server in front of Vapi.** For developers who need conferences or hold. Not self-serve.
 - **Can't:** Vapi does not port numbers. The Twilio Connect app (a "Connect Twilio" approval button) does not reach a main account's numbers, and Studio's **Connect Virtual Agent** widget is for Dialogflow CX only.
 
@@ -130,7 +134,7 @@ From a number imported through Vapi for CX: works today. Vapi places the call th
 - Calls to `+1` numbers can be blocked until the account has a Primary Customer Profile in Twilio's Trust Hub.
 - The caller ID must be a number on your Twilio account.
 
-Over an Elastic SIP trunk: the caller ID must be a Twilio number on the account or a verified caller ID, numbers are sent in full international format, and the trunk places 1 call a second by default (up to 5, set in the console).
+Over an Elastic SIP trunk: the caller ID must be a Twilio number on the account or a verified caller ID, numbers must reach Twilio in full international format, with the leading `+` (the **Leading Plus for Outbound** setting on the trunk in Vapi), and the trunk places 1 call a second by default (up to 5, set in the console).
 
 ## What can't be done, and what is not yet known
 
@@ -157,7 +161,9 @@ Not yet known, and the test that settles it:
 - A Studio flow that sends calls to the agent would be two Twilio legs for the whole time the caller is with the agent, plus Studio's per-execution price (Not verified: not read on Twilio's own page).
 - A trunk places 1 call a second by default.
 - Texts: US numbers only, registered for US business texting (10DLC).
-- The auth token is Twilio's master secret. Rotating it in Twilio stops calls out and handoffs on the line until you connect it again with the new token.
+- The auth token is Twilio's master secret. Rotating it in Twilio stops calls out and handoffs on the line; calls in still arrive. Vapi for CX marks the line "Twilio sign-in changed". Update the token on the number in Vapi's dashboard, under **Phone Numbers**: the line's row in Vapi for CX links there.
+
+  <Note>Not run: read from Vapi's code. Saving a new token on an imported number in Vapi's dashboard has not been tried. Needs a test call: that Vapi for CX notices a rotated token and marks the line.</Note>
 - HIPAA: Twilio needs its own BAA (the HIPAA contract) with you.
 
 [What a SIP address is](/phone-systems#sip-address) · [What UUI is](/phone-systems#uui)
