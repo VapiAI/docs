@@ -1,0 +1,162 @@
+---
+title: Bandwidth
+subtitle: Send Bandwidth numbers to an agent over a SIP trunk set up in Vapi's dashboard, and hand callers to your people
+slug: phone-systems/bandwidth
+description: Route Bandwidth numbers to an agent with a Voice Configuration Package and a SIP trunk in Vapi's dashboard, pick the number in Vapi for CX, and set up a realm for calls out.
+---
+
+Bandwidth is a phone carrier: it sells numbers and calls, not a contact center. In [Vapi for CX](https://cx.vapi.ai), Bandwidth is **Connect in Vapi, then pick the number**: Vapi for CX has no Bandwidth form. You send the numbers to Vapi over a SIP trunk (a standing internet phone connection between Bandwidth and Vapi), set the trunk up in Vapi's dashboard, then pick the number in Vapi for CX with **Use a number already in Vapi**. Vapi publishes no other Bandwidth guide; this page is the guide.
+
+## At a glance
+
+- **Receiving calls:** Works today. A Voice Configuration Package sends the numbers to your Vapi trunk's address.
+- **Transferring out:** Needs a test call. Vapi passes a handoff on to Bandwidth; nobody has passed a call on from Vapi through Bandwidth.
+- **Calls out:** Works with a caveat. Needs a Bandwidth SIP realm and credential, which Bandwidth support or sales may have to switch on.
+- **Self-serve:** Works with a caveat. Three Bandwidth steps and the trunk in Vapi's dashboard, then pick the number in Vapi for CX. Calls out can wait on Bandwidth.
+
+<Note>Nothing on this page has been proven with a real call yet.</Note>
+
+## Receiving calls
+
+You need a Bandwidth Universal Platform account with SIP trunking, a number, and the right to create Voice Configuration Packages.
+
+<Steps>
+  <Step title="Read Bandwidth's signalling IP address">
+    In the Bandwidth App, open **Account › Trunk Group Configurations**. Copy the standard SIP (Orig/Term) address, not the TLS, SIP Auth or Registrar one. If more than one standard SIP address is listed, copy each: the trunk needs a gateway for every one. Docs: [Bandwidth: Vapi guide](https://dev.bandwidth.com/docs/voice/integrations/vapi/).
+  </Step>
+  <Step title="Connect in Vapi: add the SIP trunk">
+    In Vapi's dashboard, open **Keys**, **Add New SIP Trunk**. Under **Gateway Configuration**, set **IP Address/Domain** to the signalling IP, **Port** 5060, **Netmask** 32, and turn on **Allow inbound calls**. If you copied more than one signalling IP, add a gateway for each; with one missing, calls work sometimes and fail other times.
+
+    The trunk's **Credential ID** makes the address Bandwidth sends calls to: `<credential id>.sip.vapi.ai`. Organizations in Vapi's EU region use `<credential id>.sip.eu.vapi.ai`.
+
+    Keep this one trunk for both directions. For calls out you add a second gateway to it later; do not make a second trunk.
+  </Step>
+  <Step title="Create the Voice Configuration Package">
+    In the Bandwidth App, open **Service Management › Voice Configuration** and choose **Create New** (Bandwidth's ElevenLabs guide calls it **Add Package**). Name it, set the route type to **Route to Domain Name**, and enter the trunk's address from the step above. Docs: [Bandwidth: Vapi guide](https://dev.bandwidth.com/docs/voice/integrations/vapi/) (the menu path), [Bandwidth: create a package](https://dev.bandwidth.com/docs/universal-platform/create-a-vcp/) (the same package by API).
+  </Step>
+  <Step title="Assign the numbers to the package">
+    In the Bandwidth App, open each number's **Voice settings**, assign it to the package, and confirm that inbound voice is active. Docs: [Bandwidth: Vapi guide](https://dev.bandwidth.com/docs/voice/integrations/vapi/).
+  </Step>
+  <Step title="Connect in Vapi: add each number">
+    In Vapi's dashboard, open **Phone Numbers**, **Create Phone Number**, **BYO SIP Trunk Number**. Enter each number in full international format with a leading `+`, pick the trunk under **SIP Trunk Credential**, and add a label. Docs: [Vapi: SIP trunking](/advanced/sip/sip-trunk).
+
+    <Note>The names in Vapi's dashboard come from Vapi's dashboard code; not clicked through.</Note>
+  </Step>
+  <Step title="Pick the number in Vapi for CX">
+    In Vapi for CX, open **Connect your phone line** on the agent, choose **Use a number already in Vapi**, and pick the number.
+  </Step>
+  <Step title="Call this number from your phone">
+    In Vapi for CX: call one of the numbers from your own phone. The line is marked as working when the first call reaches the agent.
+
+    If nothing arrives, the most common cause is the signalling IP: Vapi refuses a call from an address that is not on the trunk's gateway list, and Bandwidth then reports a 550 error. Vapi keeps no record of a refused call, so Vapi for CX can only say that nothing arrived.
+
+    <Note>Needs a test call.</Note>
+  </Step>
+</Steps>
+
+**Number the agent sees:** the caller's own number. The number dialled arrives with a leading `+`.
+
+<Note>Not run: read from Bandwidth's guide and Vapi's code. The first call to the line confirms it.</Note>
+
+**Check it:** call one of the numbers from your phone. The agent answers, so the package, the signalling IP and the number all line up. This does not prove handoffs or calls out.
+
+**Disconnect.** In Vapi for CX, disconnecting a number set up in Vapi's dashboard only detaches the agent. Nothing changes at Bandwidth or in Vapi's dashboard.
+
+## Handing callers to people
+
+Handoffs are set on the agent, on the **Handing callers to people** card on the Call handling tab.
+
+**Does a summary travel:** not to a phone number: the summary rides as a SIP header, which is lost on the phone network. To a SIP address it may travel; to an address on Bandwidth that rings a number, probably not.
+
+<Note>Not verified: not read on Bandwidth's own page. Whether Bandwidth keeps the summary's SIP header on a call passed on to it.</Note>
+
+**Warm handoff (the agent waits with the caller):** not on a Bandwidth line. Vapi for CX offers it on Twilio numbers only.
+
+**Check it:** once the handoff's version is live, call the line from your own phone and ask for a person. Vapi for CX shows "Handoff sent", then asks whoever answered to confirm that it arrived.
+
+<Note>Not run. Needs a test call.</Note>
+
+### Transfer to a phone number
+
+Needs a test call on a Bandwidth line. Vapi for CX offers this type, and on a Bandwidth trunk Vapi passes the call on to Bandwidth (SIP's own transfer message) rather than placing a new call. Bandwidth's Vapi guide does not mention transfers, and its ElevenLabs guide passes calls on to an address on Bandwidth, not to a plain number. Bandwidth chooses the number their people see. This page gives no steps for it.
+
+<Note>Needs a test call: one handoff to a phone number, then Bandwidth's call logs, settles it.</Note>
+
+### Transfer to a SIP address
+
+Needs a test call on a Bandwidth line. Vapi for CX offers the type on a trunk line, and Vapi passes the call on to Bandwidth to place. Bandwidth's ElevenLabs guide passes calls on to an address written `sip:+1…@bandwidth.com`, where `+1…` is the number to ring; Bandwidth is expected to ring it as a phone number, so nothing written (the summary or named details) may reach the person who answers. Bandwidth chooses the number their people see. This page gives no steps for it.
+
+When the agent also answers on a Twilio number, a SIP handoff is dialled on every line, this one included, so its written summary and details are greyed, with the reason naming the Twilio number.
+
+<Note>Not verified: not read on Bandwidth's own page. The ElevenLabs guide gives the address form, not what Bandwidth does with it.</Note>
+
+<Note>Needs a test call: Bandwidth's Vapi guide does not mention transfers, and nobody has passed a call on from Vapi through Bandwidth. One transfer, then Bandwidth's call logs, settles it.</Note>
+
+### Return the call to their system
+
+Bandwidth is a carrier, with no call flow of its own to take the call back. Vapi for CX offers this type only when a phone system or contact center that takes calls back is linked to the agent's line. When no line of the agent has a platform linked, it is greyed, with a link to Organization settings and the reason "Link a contact center or phone system to this agent's line in Organization settings first." When a platform is linked but does not take calls back, the reason names the platform instead. The type is judged for the agent's lines together: when another of the agent's lines has one, it is offered, but it does not work for calls on the Bandwidth number.
+
+## Other routes
+
+- **Older accounts (Locations, also called SIP Peers).** Can't, until the account moves to the Universal Platform: Vapi would have no way to tell which customer the call is for.
+
+  <Note>Not verified: not read on Bandwidth's own page.</Note>
+- **A Programmable Voice (BXML) application that sends the call to SIP.** The only way to add caller details as headers. You build and host the application. Not self-serve.
+
+  <Note>Not verified: not read on Bandwidth's own page.</Note>
+- **Forward the number to a Vapi number.** A number feature at Bandwidth. It would add a second Bandwidth leg.
+
+  <Note>Not verified: not read on Bandwidth's own page.</Note>
+- **Can't:** Vapi has no Bandwidth number import or audio streaming, and Vapi does not port numbers.
+
+## Calls out
+
+Works with a caveat, through a realm gateway on the same trunk.
+
+<Steps>
+  <Step title="Get SIP credentials switched on">
+    In the Bandwidth App, open **Account › SIP Credentials**. If the tab is missing, or adding a realm fails, ask Bandwidth support or your account manager to enable SIP credentials on the account. Docs: [Bandwidth: realms and credentials](https://dev.bandwidth.com/docs/account/sipRegistrar).
+  </Step>
+  <Step title="Add a realm and a SIP credential">
+    Under **SIP Credentials**, choose **Manage Realms**, **Add**, and pick the trunk group. Then add a SIP credential with a **Username**, **Password** and the **Realm**. Bandwidth generates the realm's host name.
+  </Step>
+  <Step title="Connect in Vapi: add the realm to the same trunk">
+    In Vapi's dashboard, open the trunk under **Keys**. Add the realm's host name as a second gateway with **Allow outbound calls** only, **Port** 5060. Under **Authentication (Optional)**, enter the username and password. The username is bare, with no realm added to it.
+
+    <Note>Needs a test call: one call in and one out on a trunk that holds both gateways.</Note>
+  </Step>
+</Steps>
+
+- Bandwidth support or sales may have to switch on SIP credentials first.
+- Signing in by IP address alone does not work for calls out: Vapi's addresses are shared by every Vapi customer.
+- The caller ID must be a number on the same Bandwidth account as the realm.
+- Numbers go out in full international format. Whether Vapi must send the leading `+` is not yet known.
+- If a call out fails with a 500 error, the request carried no SIP credential or the account is not enabled for SIP credentials. A 403, or a repeated 407, means the username, password or realm host name does not match.
+
+## What can't be done, and what is not yet known
+
+Can't be done:
+
+- Signing in by IP address alone for calls out.
+- Learning which source address Vapi refused: a refused call leaves no record in Vapi.
+- Older Locations (SIP Peers) accounts, until they move to the Universal Platform.
+
+Not yet known, and the test that settles it:
+
+- Does Vapi accept the caller ID number on a second trunk for calls out, as Bandwidth's own Vapi guide does? Not run: read from Vapi's code, which refuses it, so this page keeps both gateways on one trunk. One request in a test organization.
+- Does one trunk with a calls-in IP and a calls-out-only realm work? One call in and one out, on a Bandwidth Build trial account.
+- Does a handoff to a phone number, passed on to Bandwidth, go through? One transfer, then Bandwidth's call logs.
+- Does passing a call on to `sip:+1…@bandwidth.com` work from Vapi? One transfer, then Bandwidth's call logs.
+- Does the leading `+` matter on calls out? Two calls out, one with it and one without.
+- Can a trial account create a realm without Bandwidth support? Create one realm.
+
+## Costs and limits
+
+- Bandwidth bills trunk minutes each way, and Vapi bills its own minutes. Prices were not checked.
+- A call in is one Bandwidth leg.
+- One trunk carries calls both ways; more are bought through your Bandwidth account manager.
+- If Bandwidth moves your trunk group, its signalling IP changes and calls in stop until you edit the gateway in Vapi's dashboard.
+- The Build trial reaches only your verified mobile number, in the US and Canada, with five calls at once and 30 minutes a call.
+- HIPAA and a BAA (the HIPAA contract) at Bandwidth: not checked.
+
+[What a SIP address is](/phone-systems#sip-address) · [What UUI is](/phone-systems#uui)
