@@ -1,0 +1,71 @@
+name: check-external-links
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/check-external-links.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-live-docs-links
+  cancel-in-progress: false
+
+jobs:
+  check-external-links:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-fern
+
+      - name: Check external and internal links on published docs
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+        run: node "$FERN_CLI_PATH" docs link check --url https://docs.vapi.ai --output json > "$RUNNER_TEMP/fern-links.json"
+
+      - name: Summarize link findings
+        if: always()
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = `${process.env.RUNNER_TEMP}/fern-links.json`;
+          if (!fs.existsSync(path) || fs.statSync(path).size === 0) {
+            throw new Error('Fern did not produce a link report; see the scan logs.');
+          }
+          const report = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const { summary, brokenLinks, blockedLinks } = report;
+          const lines = [
+            '## External and internal link scan',
+            '',
+            `Status: ${summary.status}. Scanned ${summary.totalPages} pages and ${summary.totalLinks} links.`,
+            `Reported ${summary.brokenLinks} broken and ${summary.blockedLinks} blocked links.`,
+          ];
+          for (const [label, links] of [['Broken links', brokenLinks], ['Blocked links (non-blocking)', blockedLinks]]) {
+            lines.push('', `### ${label}`, '');
+            for (const link of links) {
+              const sources = link.references.map(ref => ref.filePath ?? ref.slug).filter(Boolean).join(', ');
+              lines.push(`- ${link.statusCode ?? 'No response'}: ${link.url} — ${sources}`);
+            }
+            if (links.length === 0) lines.push('None.');
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          if (summary.status !== 'complete') {
+            throw new Error('Fern returned an incomplete link scan; rerun the workflow.');
+          }
+          NODE
+
+      - name: Save link report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fern-live-links
+          path: ${{ runner.temp }}/fern-links.json
+          retention-days: 14
