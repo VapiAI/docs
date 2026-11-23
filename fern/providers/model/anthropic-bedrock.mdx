@@ -17,7 +17,15 @@ Vapi's Anthropic Bedrock integration allows you to connect your own AWS Bedrock 
 
 For the current Anthropic Claude models available through Amazon Bedrock, see [Anthropic models in the Amazon Bedrock documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-anthropic.html). Model availability varies by AWS Region.
 
-For additional API configuration options, review the [`AnthropicBedrockModel` fields](/api-reference/assistants/create#request.body.model.AnthropicBedrock) in the Create Assistant API reference.
+Some Claude models are available through Bedrock's global cross-Region inference profiles. Their model IDs start with `global.`. A global profile can route requests to supported commercial AWS Regions worldwide.
+
+To use a global profile, grant access to the profile, its foundation model in the source Region, and its global foundation model ARN. See the [`AnthropicBedrockModel` fields](/api-reference/assistants/create#request.body.model.AnthropicBedrock) for the model IDs Vapi accepts.
+
+For more information, see the following Amazon Bedrock documentation:
+
+- [Cross-Region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html)
+- [Global cross-Region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/global-cross-region-inference.html), including its IAM policy requirements
+- [Supported Regions and models for inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html)
 
 ### Prerequisites
 
@@ -46,11 +54,38 @@ Before configuring Anthropic Bedrock with Vapi, ensure you have:
   <Step title="Attach the Trust Policy">
     Configure the trust policy to allow Vapi's AWS account to assume this role.
 
-    <Tabs>
-      <Tab title="Without External ID">
-        Use this simpler policy if you don't need the additional security of an External ID:
+    An External ID is optional. If you use one, enter the same unique value in the trust policy and Vapi credential. Both examples trust Vapi's production AWS account.
 
-        ```json title="Trust Policy (Basic)"
+    For more information about these policies, see AWS's guides to [creating a role with a custom trust policy](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-custom.html) and [using External IDs for third-party access](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_common-scenarios_third-party.html).
+
+    <Tabs>
+      <Tab title="With External ID">
+        Replace `YOUR_UNIQUE_EXTERNAL_ID` with a unique value before use. AWS recommends an External ID for third-party cross-account access.
+
+        ```json title="Trust policy with External ID"
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::533267069243:root"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "sts:ExternalId": "YOUR_UNIQUE_EXTERNAL_ID"
+                }
+              }
+            }
+          ]
+        }
+        ```
+      </Tab>
+      <Tab title="Without External ID">
+        Use this policy only if you do not require an External ID for the role. It does not check which Vapi customer the request is for.
+
+        ```json title="Trust policy without External ID"
         {
           "Version": "2012-10-17",
           "Statement": [
@@ -65,97 +100,55 @@ Before configuring Anthropic Bedrock with Vapi, ensure you have:
         }
         ```
       </Tab>
-      <Tab title="With External ID">
-        Use this policy if you want the additional security of an External ID:
-
-        ```json title="Trust Policy (With External ID)"
-        {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Principal": {
-                "AWS": "arn:aws:iam::533267069243:root"
-              },
-              "Action": "sts:AssumeRole",
-              "Condition": {
-                "StringEquals": {
-                  "sts:ExternalId": "YOUR_EXTERNAL_ID"
-                }
-              }
-            }
-          ]
-        }
-        ```
-
-        Replace `YOUR_EXTERNAL_ID` with your chosen value. You'll use the same value when creating the Vapi credential.
-      </Tab>
     </Tabs>
-
-    <Note>
-    **About External ID**: The External ID is an optional security feature that provides an additional layer of protection for cross-account access. If you choose to use one, specify the same value in both your IAM trust policy and the Vapi credential configuration.
-    </Note>
   </Step>
 
   <Step title="Attach the Permissions Policy">
-    Create and attach a permissions policy that grants access to Bedrock model invocation.
+    Use this policy when your Vapi credential Region is `us-east-1`. It allows Claude Haiku 5.5 through the US inference profile, which can route to `us-east-1`, `us-east-2`, or `us-west-2`. Replace `YOUR_AWS_ACCOUNT_ID` with your AWS account ID before creating the policy.
 
-    <Tabs>
-      <Tab title="Broad Access">
-        Use this policy to grant access to all Anthropic models across all regions:
-
-        ```json title="Permissions Policy (All Models)"
+    ```json title="Permissions policy: us-east-1"
+    {
+      "Version": "2012-10-17",
+      "Statement": [
         {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Action": [
-                "bedrock:InvokeModel",
-                "bedrock:InvokeModelWithResponseStream"
-              ],
-              "Resource": [
-                "arn:aws:bedrock:*::foundation-model/anthropic.*",
-                "arn:aws:bedrock:*:*:inference-profile/us.anthropic.*"
-              ]
-            }
-          ]
-        }
-        ```
-      </Tab>
-      <Tab title="Restrictive Access">
-        Use this policy to limit access to specific models and regions:
-
-        ```json title="Permissions Policy (Specific Models)"
+          "Effect": "Allow",
+          "Action": [
+            "bedrock:InvokeModel",
+            "bedrock:InvokeModelWithResponseStream"
+          ],
+          "Resource": "arn:aws:bedrock:us-east-1:YOUR_AWS_ACCOUNT_ID:inference-profile/us.anthropic.claude-haiku-5-5"
+        },
         {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Action": [
-                "bedrock:InvokeModel",
-                "bedrock:InvokeModelWithResponseStream"
-              ],
-              "Resource": [
-                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-*",
-                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-7-sonnet-*",
-                "arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-3-5-sonnet-*",
-                "arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-3-7-sonnet-*"
-              ]
+          "Effect": "Allow",
+          "Action": [
+            "bedrock:InvokeModel",
+            "bedrock:InvokeModelWithResponseStream"
+          ],
+          "Resource": [
+            "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-5-5",
+            "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-haiku-5-5",
+            "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-haiku-5-5"
+          ],
+          "Condition": {
+            "StringEquals": {
+              "bedrock:InferenceProfileArn": "arn:aws:bedrock:us-east-1:YOUR_AWS_ACCOUNT_ID:inference-profile/us.anthropic.claude-haiku-5-5"
             }
-          ]
+          }
         }
-        ```
+      ]
+    }
+    ```
 
-        <Tip>
-        Replace `us-east-1` with your preferred AWS region. You can also add or remove specific model versions based on your needs.
-        </Tip>
-      </Tab>
-    </Tabs>
+    To adapt the policy, check the exact profile ID, supported source Regions, and destination Regions in the [AWS Claude Haiku 5.5 model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html). You can also call [GetInferenceProfile](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-view.html) from your source Region with an AWS identity that has `bedrock:GetInferenceProfile` permission. Update the profile ARN, foundation model ARNs, and `bedrock:InferenceProfileArn` condition together. Check the [`AnthropicBedrockModel` fields](/api-reference/assistants/create#request.body.model.AnthropicBedrock) for the model IDs Vapi accepts.
+
+    For more information about the required resources, see AWS's [inference profile prerequisites](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html). Global profiles require a different policy shape; see AWS's [global cross-Region inference guidance](https://docs.aws.amazon.com/bedrock/latest/userguide/global-cross-region-inference.html).
+
+    Before attaching the policy, use [IAM Access Analyzer policy validation](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-policy-validation.html) to review its syntax and permissions. Other policies and service control policies can also affect the role's effective access.
 
     To attach the policy:
+
     1. In the IAM Console, go to **Policies** and click **Create policy**
-    2. Select **JSON** and paste your chosen policy
+    2. Select **JSON** and paste the policy
     3. Name the policy (e.g., `VapiBedrockInvokePolicy`)
     4. Attach the policy to your IAM role
   </Step>
@@ -173,7 +166,7 @@ Before configuring Anthropic Bedrock with Vapi, ensure you have:
         "authenticationPlan": {
           "type": "aws-sts",
           "roleArn": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/VapiBedrockRole",
-          "externalId": "your-optional-external-id"
+          "externalId": "YOUR_UNIQUE_EXTERNAL_ID"
         }
       }'
     ```
@@ -184,11 +177,9 @@ Before configuring Anthropic Bedrock with Vapi, ensure you have:
     | `region` | AWS region where Bedrock is enabled (e.g., `us-east-1`) |
     | `authenticationPlan.type` | Must be `aws-sts` for role assumption |
     | `authenticationPlan.roleArn` | The ARN of the IAM role you created |
-    | `authenticationPlan.externalId` | Optional: Your chosen External ID for additional security |
+    | `authenticationPlan.externalId` | Optional; include only with the matching External ID trust policy |
 
-    <Tip>
-    If you don't need an External ID, you can remove the `Condition` block from your trust policy entirely.
-    </Tip>
+    If you choose the trust policy without an External ID, omit the `externalId` field from the request.
   </Step>
 </Steps>
 

@@ -2,27 +2,27 @@
 title: IVR Navigation
 subtitle: How to navigate IVR menu systems effectively
 slug: ivr-navigation
-description: Navigate IVR phone menus reliably with Vapi's DTMF tool, using digit pauses, provider-specific pause characters, and prompting tips for accurate input.
+description: Navigate IVR phone menus reliably with Vapi's DTMF tool, using pauses between keys, provider-specific pause characters, and prompting tips for accurate input.
 ---
 
 ## Overview
 
-Vapi offers the [DTMF tool](https://docs.vapi.ai/tools/default-tools#dial-keypad-dtmf) to enable your assistants to navigate IVR menus and enter digits (for example, member IDs, account numbers, and dates).
+Vapi offers the [DTMF tool](/tools/dtmf) to enable your assistants to navigate IVR menus and press keys to enter values (for example, member IDs, account numbers, and dates).
 
 IVR systems can be sensitive to timing and formatting; this guide explains common challenges and provides practical recommendations to make IVR navigation reliable.
 
 ## Recommendations
 
-### 1. Add short pauses between digits
+### 1. Add short pauses between keys
 
-Some IVRs buffer audio or expect digits at a slower pace. Sending digits too quickly (for example, `123456#`) can cause missed or misread inputs. Prompt your assistant to insert brief pauses between digits, so it has better chances of success, as it gives the IVR more time to register each tone.
+Some IVRs buffer audio or expect keys at a slower pace. Sending keys too quickly (for example, `123456#`) can cause missed or misread inputs. Prompt your assistant to insert brief pauses between keys, so it has better chances of success, as it gives the IVR more time to register each tone.
 
 Provider-specific pause characters
 
-- **Twilio / Telny / Vapi Numbers / BYOK SIP**: Use `w` for a 0.5s pause, `W` for a 1s pause. Example: `1w2w3W4#`
-- **Vonage**: Use `p` for a 0.5s pause. Example: `1p2p3#`
+- **Twilio and Telnyx**: Use `w` for a 0.5s pause, `W` for a 1s pause. Example: `1w2w3W4#`
+- **Vapi numbers, BYO SIP trunks, and Vonage**: Pause characters aren't supported. On Vapi numbers, the keys play back to back. If an IVR needs time between entries, send each entry after the prompt that asks for it.
 
-Start with 0.5s pauses and increase only if digits are still missed.
+Start with 0.5s pauses and increase only if keys are still missed. For full provider support, see [Where keypad tones work](/calls/dtmf#where-keypad-tones-work).
 
 ### 2. Give menus time to finish before responding
 
@@ -37,7 +37,7 @@ IVR menus often speak slowly and include longer silences than typical user speec
 ```txt
 [When navigating an IVR tree]
   - WAIT for all options to be spoken before proceeding
-  - Once you have heard all options, use the dtmf tool with an input digit that matches the option you want to select
+  - Once you have heard all options, use the dtmf tool with an input key that matches the option you want to select
   - Avoid saying anything if using the dtmf tool at the same time
 
 [When waiting]
@@ -70,11 +70,11 @@ Use a [startSpeakingPlan](https://docs.vapi.ai/customization/speech-configuratio
 
 ### 3. Retry with progressively slower inputs or spoken fallback
 
-Some IVRs accept inputs more reliably on a second attempt or when digits arrive more slowly. If digits fail, retry with increased spacing; if tones still fail, speak the option out loud as a fallback.
+Some IVRs accept inputs more reliably on a second attempt or when keys arrive more slowly. If keys fail, retry with increased spacing; if tones still fail, speak the option out loud as a fallback.
 
 Examples:
 
-```txt title="Progressive retries"
+```txt title="Progressive retries (Twilio and Telnyx)"
 1st try  →  123#           (fast)
 2nd try  →  1w2w3#         (medium; 0.5s gaps)
 3rd try  →  1W2W3#         (slow; 1s gaps)
@@ -82,9 +82,9 @@ Examples:
 
 ```txt title="Fallback to spoken input"
 User: For Sales press 1 or say "Sales"
-Assistant: dtmf(digits=1)
+Assistant: dtmf(keys=1)
 User: For Sales press 1 or say "Sales"
-Assistant: dtmf(digits=w1)
+Assistant: dtmf(keys=w1)
 User: For Sales press 1 or say "Sales"
 Assistant: Sales
 ```
@@ -93,14 +93,14 @@ Assistant: Sales
 
 DTMF sending varies across telephony providers due to internal implementations. For the phone numbers and IVRs you target, test multiple transports and choose the most reliable for your use case.
 
-- **Try and compare**: Twilio, Telnyx, Vonage, Vapi Numbers, and BYOK SIP
-- **Evaluate**: digit recognition accuracy, latency between digits, and success rate across menu depths.
+- **Try and compare**: Twilio, Telnyx, Vonage, Vapi numbers, and BYO SIP trunks
+- **Evaluate**: key recognition accuracy, latency between keys, and success rate across menu depths.
 
 ### 5. Enter multiple keypad entries at once
 
-Some IVRs ask for several digits or letters in a single prompt (for example, by‑name directories that require the first three letters of a last name). In these cases, send all required keys in a single `dtmf` call, using pause characters between keys so the IVR reliably registers them.
+Some IVRs ask for several keys or letters in a single prompt (for example, by‑name directories that require the first three letters of a last name). In these cases, send all required keys in a single `dtmf` call, using pause characters between keys so the IVR reliably registers them.
 
-- **How**: Use `keys` with a combined sequence, inserting `w` (0.5s pause) or `W` (1s pause) between entries.
+- **How**: Use `keys` with a combined sequence. On Twilio and Telnyx, insert `w` (0.5s pause) or `W` (1s pause) between entries.
 - **Why**: Multiple separate `dtmf` calls can arrive too slowly or be partially ignored; a single combined sequence is more consistent.
 
 ```json title="Single dtmf with multiple keys"
@@ -124,11 +124,11 @@ Some IVRs ask for several digits or letters in a single prompt (for example, by�
 
 ```txt title="By‑name directory example"
 # If the IVR says: "Enter the first 3 letters of the last name"
-# Map letters to digits using the IVR's on‑screen or spoken mapping (e.g., S=7, M=6, I=4)
+# Map letters to keys using the IVR's on‑screen or spoken mapping (e.g., S=7, M=6, I=4)
 dtmf(keys=w7w6w4)
 ```
 
 <Info>
-When sending multiple keys at once, keep brief pauses between keys (`w`/`W`) to match the IVR's capture speed. See provider‑specific pause characters above.
+When sending multiple keys at once on Twilio or Telnyx, keep brief pauses between keys (`w`/`W`) to match the IVR's capture speed. See [Provider-specific pause characters](#1-add-short-pauses-between-keys).
 </Info>
 

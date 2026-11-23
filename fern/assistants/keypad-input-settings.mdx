@@ -1,18 +1,25 @@
 ---
 title: Keypad input settings
 subtitle: Configure how an assistant collects keypad input from callers
-description: Keypad input settings let assistants collect caller-entered digits. Configure timeouts and delimiters for menus, codes, and account information during calls.
+description: Keypad input settings let assistants collect keys callers press. Configure timeouts and delimiters for menus, codes, and account information during calls.
 ---
 
 Keypad input settings let an assistant receive dual-tone multi-frequency (DTMF) input from a caller. Use them to collect account numbers, menu selections, confirmation codes, and other keypad entries.
 
 ## How keypad input works
 
-The assistant processes keypad input when the configured timeout expires or the caller enters a delimiter, whichever happens first. Set the timeout to 0 when input should only be processed after the caller enters a delimiter.
+Vapi collects the keys the caller presses and processes them when one of these happens first:
 
-When Vapi processes the collected digits, it adds them to the conversation as a user message, for example, `User's Keypad Entry: 1234`. The entry is available to the model and is saved in the call's messages and transcript when transcript artifacts are enabled. See [Handle sensitive input](#handle-sensitive-input) before collecting confidential values.
+- **The timeout passes after the last key.** The timer restarts each time the caller presses a key, so a caller who pauses longer than the timeout between keys produces two separate entries.
+- **The caller presses a delimiter.** Vapi processes the keys collected so far. The delimiter itself isn't included in the entry.
 
-Keypad input receives tones from the caller. The [DTMF tool](/tools/default-tools#dial-keypad-dtmf) does the opposite: it lets the assistant send keypad tones to another phone system, for example, when navigating an interactive voice response (IVR) menu.
+Set the timeout to 0 when input should only be processed after the caller enters a delimiter. With a timeout of 0, always configure at least one delimiter, or the input is never processed.
+
+When Vapi processes the collected keys, it adds them to the conversation as a user message, for example, `User's Keypad Entry: 1234`. If the assistant is speaking at that moment, it stops and responds to the entry. The entry is available to the model and is saved in the call's messages and transcript when transcript artifacts are enabled. See [Handle sensitive input](#handle-sensitive-input) before collecting confidential values.
+
+Keypad input works on phone calls on Twilio, Telnyx, Vonage, Vapi numbers, and BYO SIP trunks. It doesn't work on web calls or WebSocket calls.
+
+Keypad input receives tones from the caller. The [DTMF tool](/tools/dtmf) does the opposite: it lets the assistant send keypad tones to another phone system, for example, when navigating an interactive voice response (IVR) menu. To compare both directions, see [Keypad tones (DTMF)](/calls/dtmf).
 
 ## Configure via Dashboard
 
@@ -49,8 +56,8 @@ Configure caller keypad input with `keypadInputPlan` when you create or update a
 | Field | Type | Behavior |
 | --- | --- | --- |
 | `enabled` | boolean | Enables caller keypad input. Default is `false`. |
-| `timeoutSeconds` | number | Waits 0–10 seconds before processing the collected input. Default is 2 seconds. Set it to `0` to wait for a delimiter. |
-| `delimiters` | array of strings | Processes input when the caller enters one of these keys. Each item must be `#`, `*`, or `""`. Default is `["#", "*"]`. Use an empty array to process input without a delimiter. |
+| `timeoutSeconds` | number | Processes the collected input after 1–10 seconds pass with no new key. Default is 2 seconds. Set it to `0` to wait for a delimiter. |
+| `delimiters` | array of strings | Processes input when the caller enters one of these keys. Each item must be `#`, `*`, or `""`. Default is `["#", "*"]`. Use an empty array to process input on the timeout only; `#` and `*` are then included in the entry like any other key. Don't combine an empty array with a timeout of `0`, because the input is never processed. |
 
 This example processes input after 2 seconds or when the caller enters `#`:
 
@@ -73,13 +80,17 @@ Keypad input can collect general caller data, but sensitive values need addition
 | Symptom | Likely cause | What to check |
 | --- | --- | --- |
 | Input is processed before the delimiter | The timeout expires first. | Increase **Timeout**, or set it to 0 to require a delimiter. |
-| Input is never processed | The timeout is 0 and the caller did not enter the configured delimiter. | Confirm the caller enters the selected **Delimiter**. |
-| The assistant does not send tones to another system | Keypad input only receives tones from callers. | Add the [DTMF tool](/tools/default-tools#dial-keypad-dtmf) when the assistant must send tones. |
+| Input is never processed | The timeout is 0 and the caller did not enter the configured delimiter, or no delimiters are configured. | Confirm the caller enters the selected **Delimiter**. With a timeout of 0, configure at least one delimiter. |
+| One number arrives as two entries | The caller paused longer than the timeout between keys. | Increase **Timeout**, or ask the caller to finish with a delimiter. |
+| The entry includes `#` or `*` | No delimiters are configured, so every key counts as input. | Add `#` or `*` as a delimiter. |
+| The assistant ignores the keys | Keypad input isn't enabled, or the call is a web or WebSocket call. | Enable keypad input. Keypad input works on phone calls only. |
+| The assistant does not send tones to another system | Keypad input only receives tones from callers. | Add the [DTMF tool](/tools/dtmf) when the assistant must send tones. |
 
-Keypad input does not have a dedicated call-ended reason. Review the call transcript and logs to confirm whether the assistant received and processed the caller's input.
+Keypad input does not have a dedicated call-ended reason. To see which keys the caller pressed, check the call's [logs](/observability/logs/call-logs#logs) for `call.dtmfReceived` events. Each event records one key, including delimiters. Then check the transcript for the `User's Keypad Entry` message to confirm the assistant received the entry.
 
 ## Related
 
+- [Keypad tones (DTMF)](/calls/dtmf)
+- [DTMF tool](/tools/dtmf)
 - [PCI compliance](/security-and-privacy/pci)
-- [Built-in tools](/tools/default-tools)
 - [IVR navigation](/ivr-navigation)

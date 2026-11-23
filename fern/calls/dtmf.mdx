@@ -1,0 +1,68 @@
+---
+title: Keypad tones (DTMF)
+subtitle: Send keypad tones to phone systems and collect the keys callers press
+slug: calls/dtmf
+description: Learn the ways a Vapi assistant can send dual-tone multi-frequency (DTMF) keypad tones or receive caller key presses, which one to use, and where each works.
+---
+
+Dual-tone multi-frequency (DTMF) tones are the sounds a phone keypad makes when someone presses a key. On a Vapi phone call, tones can go in two directions: your assistant can send them to another phone system, or your caller can press keys for your assistant to receive.
+
+DTMF works on phone calls only. Web calls and WebSocket calls don't send or receive keypad tones.
+
+## Send tones or receive keys
+
+| | Send tones | Receive keys |
+| --- | --- | --- |
+| Who presses the keys | Your assistant | Your caller |
+| Typical uses | Navigate phone menus, enter account or conference IDs, accept forwarded calls | Collect account numbers, menu choices, and verification codes |
+| How to set it up | Add the [DTMF tool](/tools/dtmf) | Turn on [keypad input](/documentation/assistants/conversation-behavior/keypad-input-settings) |
+
+## Choose how to send tones
+
+When you already know which keys to press, a setting can send them for you without involving the model. Use the DTMF tool when the model must decide.
+
+| Method | Use it when | Strengths | Limits |
+| --- | --- | --- | --- |
+| [DTMF tool](/tools/dtmf) | Your assistant must listen to a phone menu and decide what to press | Works at any point in the call | The model decides when to press keys, so it needs clear prompting |
+| [Transfer destination](/tools/transfer-call) `extension` | You transfer to a number and always dial the same extension | No prompting needed | Twilio numbers only. Digits only, up to 10. Vapi waits about 2 seconds after the destination answers. |
+| [Outbound call](/calls/outbound-calling) `customer.extension` | You place an outbound call to a number with a known extension | No prompting needed | Sent as soon as the call connects. If the other side plays a greeting first, the keys can be missed. |
+| [SIP transfer destination](/tools/transfer-call) | You transfer to a known extension or queue on a SIP system | Routes directly, with no tones to miss | SIP destinations only. The receiving system must accept the extension in the SIP URI. |
+
+## Recommendations by scenario
+
+- **Navigate a phone menu you don't control.** We recommend the [DTMF tool](/tools/dtmf), with the timing and prompting advice in [IVR navigation](/ivr-navigation).
+- **Reach a known extension after a transfer on a Twilio number.** We recommend the destination's `extension` field. Don't add the DTMF tool to a warm-transfer assistant on Twilio for this, because the caller can stay on hold after the assistant presses a key.
+- **Reach a known extension on a SIP system.** We recommend a SIP transfer destination with the extension in the URI, such as `sip:4321@pbx.example.com`.
+- **Pass caller details to a person.** We recommend [SIP headers](/tools/transfer-call#introductions-and-headers) on Vapi numbers, BYO SIP trunks, and Telnyx, or a data lookup on other providers, instead of tones. A person who answers hears only beeps.
+- **Accept a forwarded or screened call that asks you to press a key.** We recommend the [DTMF tool](/tools/dtmf), prompted to press the requested key right away.
+- **Collect keys your caller presses.** We recommend [keypad input](/documentation/assistants/conversation-behavior/keypad-input-settings).
+- **Collect card numbers or other sensitive keypad entries.** Follow the [PCI compliance guide](/security-and-privacy/pci).
+
+## Where keypad tones work
+
+Support depends on the provider the call runs on.
+
+| Call runs on | Send with the DTMF tool | Pause characters (`w`, `W`) | Transfer `extension` | Receive caller keys |
+| --- | --- | --- | --- | --- |
+| Twilio | Yes | Yes | Yes | Yes |
+| Telnyx | Yes | Yes | No | Yes |
+| Vonage | Yes | No | No | Yes |
+| Vapi numbers and BYO SIP trunks | Yes | No | No | Yes |
+| Web calls and WebSocket calls | No | No | No | No |
+
+- **Pause characters.** On Twilio and Telnyx, `w` adds a 0.5-second pause and `W` adds a 1-second pause. Elsewhere, Vapi doesn't support them. On Vapi numbers, the keys play back to back.
+- **Transfer `extension`.** On providers other than Twilio, Vapi ignores the field and transfers the call without dialing the extension.
+- **GPT-Live.** GPT-Live assistants have their own transport support. See [transfers and keypad input](/gpt-live/configuration#transfers-and-keypad-input).
+
+## Check what was sent or pressed
+
+With logging enabled, a call's [logs](/observability/logs/call-logs#logs) record a `call.dtmfSent` event for each set of tones your assistant sends and a `call.dtmfReceived` event for each key your caller presses. These events show what was sent or pressed. They don't confirm that the other side received the tones. For more information about checking tones, see [Verify tones were sent](/tools/dtmf/configure#verify-tones-were-sent).
+
+## Related
+
+- [DTMF tool](/tools/dtmf)
+- [Keypad input settings](/documentation/assistants/conversation-behavior/keypad-input-settings)
+- [IVR navigation](/ivr-navigation)
+- [Transfer Call tool](/tools/transfer-call)
+- [Outbound calls](/calls/outbound-calling)
+- [SIP Request tool](/tools/sip-request)
