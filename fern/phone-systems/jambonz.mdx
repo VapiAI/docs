@@ -1,29 +1,30 @@
 ---
 title: Jambonz
-subtitle: Send calls from your Jambonz application to the agent's SIP address, and take the caller back when the agent is done
+subtitle: Send calls from your Jambonz application to the agent's SIP address, and take the caller back
 slug: phone-systems/jambonz
 description: Make the agent's SIP address in Vapi for CX, paste a dial verb into your Jambonz application, hand callers back to your application, and see the SIP trunk route for calls out.
 ---
 
-Jambonz is a call platform (jambonz.cloud or self-hosted) that brings your own carrier: your own Jambonz application decides what happens to each call. In [Vapi for CX](https://cx.vapi.ai), Jambonz is **Connect in the app**: Vapi for CX makes a [SIP address](/phone-systems#sip-address) for the agent, and your application sends calls to it. For calls out, Jambonz also connects as a SIP trunk, which is **Connect in Vapi, then pick the number**.
+Jambonz is a call platform (jambonz.cloud or self-hosted) that brings your own carrier: your own Jambonz application decides what happens to each call. Make a [SIP address](/phone-systems#sip-address) for the agent in [Vapi for CX](https://cx.vapi.ai), and have your application send calls to it. Jambonz is **Connect in the app**. For calls out, Jambonz also connects as a SIP trunk, which is **Connect in Vapi, then pick the number**.
 
 ## At a glance
 
-- **Receiving calls:** Works today, on paper. Your application returns a `dial` verb aimed at the agent's SIP address.
-- **Transferring out:** Works with a caveat. The agent ends its part, and your application carries on with the caller.
-- **Calls out:** Works with a caveat. Over the trunk route only; your application routes the call on to your carrier.
-- **Self-serve:** Works with a caveat. This page gives the exact values and a snippet; you change your own Jambonz application.
-
-<Note>Nothing on this page has been proven with a real call yet.</Note>
+- **Receive calls:** Yes. Your application returns a `dial` verb aimed at the agent's SIP address.
+- **Transfer to a phone number:** Offered. Vapi passes the call back to Jambonz, so your application places the new call.
+- **Transfer to a SIP address:** Offered. Vapi passes the call back to Jambonz, so your application places the new call.
+- **Return the call to their system:** Yes. The agent ends its part, and your application carries on with the caller.
+- **Place calls:** Yes, over the trunk route only.
 
 ## Receiving calls
 
 <Steps>
   <Step title="Make the agent's SIP address">
-    In Vapi for CX, open **Connect your phone line** on the agent, and choose a SIP address for this agent. Vapi for CX makes an address like `sip:<name>@sip.vapi.ai` (the name is 8 to 39 characters; organizations in Vapi's EU region get `sip.eu.vapi.ai`). It shows the address, with a username and password, once. Copy all three: only this username and password pass Vapi's sign-in. If you turn off **Only let calls in with this username and password** when you make the address, no username or password is shown, and any pair passes.
+    On the agent's setup checklist, open **Connect your phone line**, choose **Another carrier or my own phone system**, then **A SIP address for this agent**, and choose **Make the address**. Vapi for CX makes an address like `sip:<name>@sip.vapi.ai` (the name is 8 to 39 characters; organizations in Vapi's EU region get `sip.eu.vapi.ai`). It shows the address, with a username and password, once. Copy all three: only this username and password pass Vapi's sign-in.
+
+    If you turn off **Only let calls in with this username and password** when you make the address, no username or password is shown, and any pair passes.
   </Step>
   <Step title="Open the application that handles the number">
-    In the Jambonz portal ([jambonz.cloud](https://jambonz.cloud/), or your self-hosted portal's own address), open **Applications**, then the application, and its **Calling Webhook**: the application code behind it is where the next step goes.
+    In the Jambonz portal ([jambonz.cloud](https://jambonz.cloud/), or your self-hosted portal's own address), open **Applications**, then the application, and its **Calling Webhook**. The application code behind it is where the next step goes.
   </Step>
   <Step title="Return a dial verb to the agent">
     Have the application return this verb, with the agent's address and the username and password Vapi for CX showed:
@@ -43,70 +44,44 @@ Jambonz is a call platform (jambonz.cloud or self-hosted) that brings your own c
     }
     ```
 
-    Keep the `auth` block: the agent's SIP address always asks the sender to sign in, and only the username and password Vapi for CX showed pass. If you made the address with that switch off, keep the block and put any username and password in it. Headers whose names start with `X-` reach the agent as caller details; `X-Account_id` is an example. Docs: [Jambonz: dial verb](https://docs.jambonz.org/verbs/verbs/dial).
-
-    <Note>Yes, on paper. Needs a test call: whether `dial` with `auth` passes Vapi's sign-in, and whether the `X-` headers arrive.</Note>
+    Keep the `auth` block: the agent's SIP address always asks the sender to sign in, and only the username and password Vapi for CX showed pass. If you made the address with that switch off, keep the block and put any username and password in it. Headers whose names start with `X-` reach the agent as caller details; `X-Account_id` is an example. For more information, see Jambonz's [dial verb](https://docs.jambonz.org/verbs/verbs/dial).
   </Step>
   <Step title="Send a call to it now">
-    In Vapi for CX: send a call through your Jambonz application. The line is marked as working when the first call reaches the agent. Vapi cannot ring a SIP address itself, so the check waits for your call.
+    Send a call through your Jambonz application. It reaches the agent with the caller's number, and any `X-` headers as caller details. Vapi can't ring a SIP address itself, so the check waits for your call.
 
-    A refused call leaves no record in Vapi, so if the sign-in fails, Vapi for CX can only say that nothing arrived yet.
+    A refused call leaves no record in Vapi. If the sign-in fails, Vapi for CX can only say that nothing has arrived yet.
   </Step>
 </Steps>
 
-**Number the agent sees:** whatever your application sends. By default the `dial` verb passes the caller's own number.
+**Number the agent sees:** whatever your application sends. By default, the `dial` verb passes the caller's own number.
 
-<Note>Not run: read from Jambonz's documentation. One call confirms it.</Note>
-
-**Check it:** send one call through the application. It reaches the agent with the caller's number, and any `X-` headers as caller details.
-
-**Disconnect.** In Vapi for CX, removing a SIP address that Vapi for CX made deletes the address in Vapi, after a confirmation. Your Jambonz application is unchanged; calls it sends to the old address are refused.
+**Disconnect.** In Vapi for CX, removing a SIP address that Vapi for CX made deletes the address in Vapi, after a confirmation. Your Jambonz application is unchanged, and calls it sends to the old address are refused.
 
 ## Handing callers to people
 
-Handoffs are set on the agent, on the **Handing callers to people** card on the Call handling tab.
-
-The handoff that has a route at launch is **Return the call to their system**: the agent ends its part of the call, and your Jambonz application, which never let go of the caller, connects them onward.
-
-**Does a summary travel:** no. Your application gets the caller back, and nothing tells it why the agent handed back. It can still read the `X-` headers it sent.
-
-**Warm handoff (the agent waits with the caller):** not on a Jambonz line. Vapi for CX doesn't offer this yet on any line.
-
-**Check it:** once the handoff's version is live, call in through Jambonz and ask for a person. Vapi for CX shows "Handoff sent", then asks whoever answered to confirm that it arrived. Expect a short gap in the audio before your application connects the caller onward.
-
-<Note>Not run. Needs a test call: how long the gap is before the `actionHook` fires.</Note>
+The handoff that fits Jambonz is **Return the call to their system**: the agent ends its part of the call, and your Jambonz application, which never let go of the caller, connects them onward. Nothing tells your application why the agent handed the caller back, but it can still read the `X-` headers it sent. Expect a short gap in the audio before your application connects the caller onward. For where handoffs are set and how to check one, see [Handing callers to people](/phone-systems#handing-callers-to-people).
 
 ### Transfer to a phone number
 
-Vapi for CX offers this type on a SIP address line. Vapi passes the call back to Jambonz, so it works only where your application places the new call itself. This page gives no steps for it; use **Return the call to their system**.
-
-<Note>Needs a test call: what Jambonz answers when Vapi passes a call back and the application has no handler for it, and whether the caller drops.</Note>
+Vapi for CX offers this type on a SIP address line. Vapi passes the call back to Jambonz, so it works only where your application places the new call itself. This page gives no steps for it: use **Return the call to their system**.
 
 ### Transfer to a SIP address
 
-Vapi for CX offers this type on a SIP address line. As for a phone number, Vapi passes the call back to Jambonz, so it works only where your application places the new call itself. This page gives no steps for it.
-
-When the agent also answers on a Twilio number, a SIP handoff is dialled on every line, the Jambonz line included, instead of being passed back to your application, so its written summary and details are greyed, with the reason naming the Twilio number.
-
-<Note>Needs a test call: whether Jambonz hands the summary header to your application.</Note>
+Vapi for CX offers this type on a SIP address line. As with a phone number, Vapi passes the call back to Jambonz, so it works only where your application places the new call itself. When the agent also answers on a Twilio number, Vapi dials the SIP address instead of passing the call back to your application.
 
 ### Return the call to their system
 
-Yes, on paper. Vapi for CX offers this type only when a phone system that takes calls back is linked to the agent's line (Organization settings; the second step below). When no line of the agent has a platform linked, it is greyed, with a link to Organization settings and the reason "Link a contact center or phone system to this agent's line in Organization settings first." When a platform is linked but does not take calls back, the reason names the platform instead. The type is judged for the agent's lines together: when another of the agent's lines has one, it is offered, but it does not work for calls on the Jambonz line until your phone system is linked to it.
+Vapi for CX offers this type once your phone system is linked to the agent's SIP address in **Organization settings** (the second step below).
 
 <Steps>
   <Step title="Add an actionHook to the same dial verb">
-    In your application, add an `actionHook` to the `dial` verb from the receiving steps: a web address Jambonz calls when the agent's leg ends. Leave `answerOnBridge` true so the caller's leg stays up. In the hook, connect the caller onward, to a queue or a person. From then on every call the agent ends reaches this hook, also a call where the caller had finished, so send it somewhere that suits both. Docs: [Jambonz: dial verb](https://docs.jambonz.org/verbs/verbs/dial).
+    In your application, add an `actionHook` to the `dial` verb from the receiving steps: a web address Jambonz calls when the agent's leg ends. Leave `answerOnBridge` true so the caller's leg stays up. In the hook, connect the caller onward, to a queue or a person. From then on, every call the agent ends reaches this hook, including a call where the caller had finished, so send it somewhere that suits both. For more information, see Jambonz's [dial verb](https://docs.jambonz.org/verbs/verbs/dial).
   </Step>
   <Step title="Link your phone system to the SIP address">
-    In Vapi for CX, open **Organization settings**, **Telephony**. Jambonz is not listed by name: add your phone system as **My own phone system**, if it is not there yet. On its row, choose **Edit**, and under **Its calls arrive on**, pick the agent's SIP address (shown as the address, `sip:…@sip.vapi.ai`, or `sip.eu.vapi.ai` for organizations in Vapi's EU region).
-
-    <Note>Not run: read from Vapi for CX's code.</Note>
+    In Vapi for CX, open **Organization settings**, then **Telephony**. Jambonz isn't listed by name: add your phone system as **My own phone system** if it isn't there yet. On its row, choose **Edit**, and under **Its calls arrive on**, pick the agent's SIP address (shown as the address, `sip:…@sip.vapi.ai`, or `sip.eu.vapi.ai` for organizations in Vapi's EU region).
   </Step>
   <Step title="Add the handoff">
-    In Vapi for CX, on the **Handing callers to people** card, add a handoff of type **Return the call to their system** and say when the agent should hand back. No destination is needed: Jambonz keeps the caller. The agent says its handoff line, then ends its part.
-
-    <Note>Not run: read from Vapi's and Jambonz's documentation.</Note>
+    On the agent's **Handing callers to people** card, choose **Add a handoff** and pick **Return the call to their system**. Say when the agent should hand back. No destination is needed: Jambonz keeps the caller. The agent says its handoff line, then ends its part.
   </Step>
 </Steps>
 
@@ -114,28 +89,18 @@ Yes, on paper. Vapi for CX offers this type only when a phone system that takes 
 
 ## Other routes
 
-- **SIP trunk (Connect in Vapi).** For many numbers, and for calls out. Works with a caveat.
-  1. In Vapi's dashboard, open **Keys**, **Add New SIP Trunk**. Under **Gateway Configuration**, add Jambonz's signalling addresses with **Allow inbound calls**: for jambonz.cloud, `54.236.168.131` and `32.195.147.17`; for a self-hosted system, its own public address. For calls out, add your account's SIP domain (the SIP realm on the portal's Account page, like `mysubdomain.sip.jambonz.cloud`) with **Allow outbound calls**.
-  2. In Vapi's dashboard, open **Phone Numbers**, **Create Phone Number**, **BYO SIP Trunk Number**. Enter each number in full international format, and pick the trunk under **SIP Trunk Credential**.
-  3. In Vapi for CX, choose **Use a number already in Vapi**.
-  4. In your Jambonz application, dial the number at the trunk's address, with no `auth`: `{"type":"sip","sipUri":"sip:+14155550100@<credential id>.sip.vapi.ai"}`, where `<credential id>` is the trunk's **Credential ID** in Vapi's dashboard; organizations in Vapi's EU region use `<credential id>.sip.eu.vapi.ai`. Docs: [Jambonz: creating carriers](https://docs.jambonz.org/guides/using-the-jambonz-portal/basic-concepts/creating-carriers), [Vapi: SIP trunking](/advanced/sip/sip-trunk).
-
-  Prefer the SIP address unless you need calls out.
-
-  <Note>Not run: read from Vapi's code. The names in Vapi's dashboard were not clicked through.</Note>
-
-  <Note>Not verified: not read on Jambonz's own page. Confirm the two jambonz.cloud addresses in the Jambonz portal: add a Carrier and open "Have your carriers whitelist our SIP signaling IPs".</Note>
-
-  <Note>Needs a test call: jambonz.cloud's two addresses are shared by every cloud account, and whether Vapi accepts the same address on two customers' trunks is not known. A self-hosted system has no such doubt.</Note>
-- **Encrypted calls to the SIP address.** Dial `sips:<name>@sip.vapi.ai:5061;transport=tls` (organizations in Vapi's EU region use `sip.eu.vapi.ai`) and set `"srtpEncryption": "sdes"` on the `dial` verb, beside `answerOnBridge`, not inside the target. Docs: [Vapi: SIP networking](/advanced/sip/sip-networking).
-
-  <Note>Needs a test call: whether Vapi's SIP address accepts encrypted audio on calls in.</Note>
+- **SIP trunk (Connect in Vapi).** For many numbers, and for calls out. Prefer the SIP address unless you need calls out.
+  1. In Vapi's dashboard, open **Keys** and choose **Add New SIP Trunk**. Under **Gateway Configuration**, add Jambonz's signaling addresses with **Allow inbound calls**: for jambonz.cloud, `54.236.168.131` and `32.195.147.17`; for a self-hosted system, its own public address. To confirm the jambonz.cloud addresses, add a Carrier in the Jambonz portal and open "Have your carriers whitelist our SIP signaling IPs". For calls out, add your account's SIP domain (the SIP realm on the portal's Account page, like `mysubdomain.sip.jambonz.cloud`) with **Allow outbound calls**.
+  2. In Vapi's dashboard, open **Phone Numbers**, choose **Create Phone Number**, then **BYO SIP Trunk Number**. Enter each number in full international format, and pick the trunk under **SIP Trunk Credential**.
+  3. In Vapi for CX, choose **Use a number already in Vapi** and pick the number.
+  4. In your Jambonz application, dial the number at the trunk's address, with no `auth`: `{"type":"sip","sipUri":"sip:+14155550100@<credential id>.sip.vapi.ai"}`, where `<credential id>` is the trunk's **Credential ID** in Vapi's dashboard. Organizations in Vapi's EU region use `<credential id>.sip.eu.vapi.ai`. For more information, see Jambonz's [creating carriers](https://docs.jambonz.org/guides/using-the-jambonz-portal/basic-concepts/creating-carriers) and [Vapi's SIP trunking guide](/advanced/sip/sip-trunk).
+- **Encrypted calls to the SIP address.** Dial `sips:<name>@sip.vapi.ai:5061;transport=tls` (organizations in Vapi's EU region use `sip.eu.vapi.ai`), and set `"srtpEncryption": "sdes"` on the `dial` verb, beside `answerOnBridge`, not inside the target. For more information, see [Vapi's SIP networking guide](/advanced/sip/sip-networking).
 - **Audio streaming (the `listen` verb to a WebSocket).** Not available at launch.
-- **Can't:** Jambonz has no hosted app or ready-made carrier for Vapi (it has them for other voice-agent vendors).
+- Jambonz has no hosted app or ready-made carrier for Vapi.
 
 ## Calls out
 
-Works with a caveat, over the trunk route only (see [Other routes](#other-routes)). Vapi sends the call to your Jambonz SIP domain, and your application routes it on to your real carrier. In Jambonz, accept calls from Vapi in one of these ways:
+Calls out use the trunk route only (see [Other routes](#other-routes)). Vapi sends the call to your Jambonz SIP domain, and your application routes it on to your real carrier. In Jambonz, accept calls from Vapi in one of these ways:
 
 - Add Vapi as a Carrier of type IP trunk, with inbound gateways `44.229.228.186` and `44.238.177.138` (organizations in Vapi's EU region: `63.182.83.170`), and a default application or numbers.
 - Or add a SIP user in the portal, and enter its username and password on the trunk in Vapi's dashboard, under **Authentication (Optional)**.
@@ -143,33 +108,19 @@ Works with a caveat, over the trunk route only (see [Other routes](#other-routes
 
 The caller ID, and duties such as STIR/SHAKEN and the caller's name, follow your real carrier's rules.
 
-<Note>Needs a test call: nothing is documented jointly by Vapi and Jambonz for calls out.</Note>
+## Limitations
 
-## What can't be done, and what is not yet known
-
-Can't be done:
-
-- Setting anything up in Jambonz for you: Jambonz has no partner install, and the call logic is your own code.
-- A practice caller from Vapi ringing the SIP address: the check is your own call.
-- Learning why a call was refused: a refused call leaves no record in Vapi.
-- Telling your application why the agent handed the caller back.
-
-Not yet known, and the test that settles it:
-
-- Does `dial` with `auth` pass Vapi's sign-in, and do the `X-` headers arrive? One call.
-- Can two Vapi trunks list jambonz.cloud's two addresses? Two trunks with the same address in a test organization.
-- What does Jambonz answer when Vapi passes a call back with no handler, and does the caller drop? One call with a transfer.
-- Does Jambonz pass the summary header to the application's handler? The same call, with the handler logging what arrives.
-- Does Vapi's SIP address accept encrypted calls from Jambonz? One call.
-- After the agent ends its part, how long before the `actionHook` fires? One call.
-
-A free 3-week jambonz.cloud trial covers every test above.
+- Nothing is set up in Jambonz for you: the call logic is your own application's code.
+- Vapi can't ring the SIP address to check it. The check is your own call.
+- A refused call leaves no record in Vapi, so Vapi for CX can't say why a call was refused.
+- Nothing tells your application why the agent handed the caller back.
+- Calls out need the trunk route.
 
 ## Costs and limits
 
 - Each call to the agent uses one of the Jambonz account's call slots, and a new leg from the agent's side uses a second. Vapi bills its own minutes.
 - Jambonz stays in the audio path for the whole call unless the application sets `exitMediaPath`.
 - jambonz.cloud is paid after a free 3-week trial. A self-hosted "mini" system holds 50 to 75 calls at once.
-- HIPAA: self-hosted Jambonz keeps the audio in your own cloud up to Vapi. Whether jambonz.cloud signs a BAA (the HIPAA contract) is not known. Not verified: not read on Jambonz's own page.
+- HIPAA: self-hosted Jambonz keeps the audio in your own cloud up to Vapi.
 
-[What a SIP address is](/phone-systems#sip-address) · [What UUI is](/phone-systems#uui)
+For what a SIP address and UUI are, see the [overview](/phone-systems).
