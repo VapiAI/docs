@@ -123,21 +123,44 @@ If you already run separate development, staging and production orgs and want to
 
 Use adoption to link a local file to a resource that already exists on the platform, such as one created in the dashboard or one whose local file you renamed or moved. The local file must exist and not already have a UUID mapping.
 
+Like [`terraform import`](https://developer.hashicorp.com/terraform/cli/commands/import), adoption ties an existing resource to your local configuration through state. A live GitOps deploy also applies the local configuration to that resource.
+
 Both `push` and `apply` accept `--adopt <resourceId>[=<uuid>]`. The resource ID is the file's path relative to its resource-type folder, without the extension: `resources/my-org/assistants/support/intake.yml` has the ID `support/intake`. Repeat `--adopt` to link multiple resources.
 
 Without a UUID, adoption needs exactly one matching candidate from existing mappings or platform resources of the same type. If there is no match or more than one, specify the platform resource's UUID explicitly.
 
-Preview the mapping with `--dry-run`; it looks up candidates without saving the mapping or changing platform resources:
+### Example: Adopt a dashboard assistant
+
+You created `Support Intake` in the dashboard and saved its configuration in `resources/my-org/assistants/support/intake.yml` with `name: Support Intake`. Before adoption, `.vapi-state.my-org.json` has no entry for `support/intake` under `assistants`.
+
+Preview the match with `--dry-run`. GitOps shows the UUID it would adopt without saving the mapping or updating the assistant:
 
 ```bash
-npm run push -- my-org --dry-run --adopt support/intake
+npm run push -- my-org assistants/support/intake.yml --dry-run --adopt support/intake
 ```
 
-To deploy using a specific existing resource, use its UUID:
+Use the UUID you verified in the preview to apply the file to that assistant. Replace the example UUID with yours:
 
 ```bash
-npm run apply -- my-org --adopt support/intake=12345678-1234-1234-1234-123456789abc
+npm run push -- my-org assistants/support/intake.yml --adopt support/intake=12345678-1234-1234-1234-123456789abc
 ```
+
+After a successful push, the dashboard assistant has the same UUID and uses the configuration from your file. GitOps saves the new mapping under `assistants` in `.vapi-state.my-org.json`:
+
+```json
+{
+  "assistants": {
+    "support/intake": {
+      "origin": "adopted",
+      "uuid": "12345678-1234-1234-1234-123456789abc"
+    }
+  }
+}
+```
+
+Commit the assistant file and `.vapi-state.my-org.json`. Future deploys use the saved mapping automatically.
+
+### Preview adoption in automation
 
 For automation, add `--dry-run --json` to `push` or `apply`. The JSON array on stdout reports link blockers; `[]` means none were found, not that deployment is guaranteed to succeed. Use npm's silent mode to keep its command banner out of the output:
 
