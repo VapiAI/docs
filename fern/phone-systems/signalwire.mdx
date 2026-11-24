@@ -1,0 +1,105 @@
+---
+title: SignalWire
+subtitle: Send SignalWire numbers to an agent with a short SWML script and a SIP trunk
+slug: phone-systems/signalwire
+description: Connect a SignalWire number to an agent with an inbound SWML script and a SIP trunk in Vapi's dashboard, pick the number in Vapi for CX, and add an outbound script for calls out.
+---
+
+Put a short SWML script (SignalWire's call-handling script) on your SignalWire number to send its calls to a SIP trunk (a standing internet phone connection) that you set up in Vapi's dashboard (**Connect in Vapi**), then pick the number in [Vapi for CX](https://cx.vapi.ai). This page gives both scripts to paste.
+
+- **Receive calls:** Through a SignalWire SWML script that connects calls to the Vapi trunk, as [SignalWire's Vapi guide](https://signalwire.com/docs/platform/ai/vapi) describes.
+- **Transfer to a phone number:** Offered. Vapi passes the call to SignalWire.
+- **Transfer to a SIP address:** Offered. Vapi passes the call to SignalWire.
+- **Return the call to their system:** Only when a contact center or phone system that takes calls back is linked to the line. See [Handing callers to people](/phone-systems#handing-callers-to-people).
+- **Place calls:** Through a second script, as SignalWire's Vapi guide describes (see **Place calls from SignalWire numbers** under [Other options](#other-options)). The caller ID is the script's one number.
+
+## Send calls to the agent
+
+You need a SignalWire space with a number, out of Trial Mode.
+
+<Steps>
+  <Step title="Add the SIP trunk and the number in Vapi's dashboard">
+    In Vapi's dashboard, open **Keys** and choose **Add New SIP Trunk**. Under **Gateway Configuration**, add SignalWire's 15 signaling IP addresses, from [SignalWire's Vapi guide](https://signalwire.com/docs/platform/ai/vapi), each with **Allow inbound calls**. SignalWire says these addresses can change, so check the list with `dig sip.signalwire.com` before you add it.
+
+    Then open **Phone Numbers**, choose **Create Phone Number**, then **BYO SIP Trunk Number**. Enter each number once, in full international format with a leading `+`, and pick the trunk under **SIP Trunk Credential**.
+
+    Keep this one trunk, and one entry per number, for both directions. SignalWire's guide adds the number a second time, on a second trunk, for calls out. On this page, the calls-out gateway goes on the same trunk instead.
+  </Step>
+  <Step title="Copy the trunk's Credential ID">
+    In Vapi's dashboard, open the trunk and copy its **Credential ID**. The script in the next step sends calls to `<credential id>.sip.vapi.ai`.
+  </Step>
+  <Step title="Create the inbound SWML script">
+    In your SignalWire space's dashboard, choose **Resources**, **Add**, **Script**, then **SWML Script**. Paste this script, with your Credential ID in the address:
+
+    ```yaml
+    version: 1.0.0
+    sections:
+      main:
+        - connect:
+            to: 'sip:%{call.to}@<credential id>.sip.vapi.ai'
+    ```
+
+    `%{call.to}` is the number that was dialed, in full international format. For more information, see [SignalWire's Vapi guide](https://signalwire.com/docs/platform/ai/vapi).
+  </Step>
+  <Step title="Assign the script to the number">
+    Open **Phone Numbers**, then the number, and choose **Edit Settings**. Under **Inbound Call Settings**, choose **Assign Resource** and pick the script. Or, on the script, choose **Addresses & Phone Numbers**, **+ Add**, then **Phone Number**. SignalWire's [ElevenLabs guide](https://signalwire.com/docs/platform/ai/elevenlabs) shows these menus.
+  </Step>
+  <Step title="Pick the number in Vapi for CX">
+    On the agent's setup checklist, open **Connect your phone line**, choose **Use a number already in Vapi**, and pick the number.
+  </Step>
+</Steps>
+
+**Number the agent sees:** the caller's own number, unless the script changes it. SignalWire's script reference describes adding `X-` headers to the `connect` step; the agent reads headers whose names start with `X-` as caller details.
+
+**Check it:** when Vapi for CX shows **Call this number from your phone**, call the number from another phone. The check passes when the agent answers. Calls out need the outbound script under [Other options](#other-options).
+
+**Disconnect.** In Vapi for CX, disconnecting a number set up in Vapi's dashboard only detaches the agent. Nothing changes at SignalWire or in Vapi's dashboard.
+
+## Hand callers to your team
+
+On a SignalWire trunk, Vapi passes each handoff to SignalWire (SIP's own transfer message) rather than placing a new call, for both **Transfer to a phone number** and **Transfer to a SIP address**. SignalWire documents [sending a passed-on call](https://signalwire.com/docs/platform/voice/sip-refer), not accepting one on a call it joined to Vapi. The summary rides as a SIP header, so it doesn't reach a phone number. For how handoffs work, see [Handing callers to people](/phone-systems#handing-callers-to-people).
+
+## Limitations
+
+- A space in Trial Mode can't take calls from real callers: it has one number, allows calls only to and from purchased and verified numbers, and places no calls out from SIP addresses and no international calls. Leaving it takes a card and at least $5.
+- Calls out show the one caller ID set in the script, not the caller's own number. International calling stays off until you turn it on, and calls out get STIR/SHAKEN attestation level C by default (levels A and B need vetting through SignalWire support).
+- SignalWire's signaling addresses can change. A refused call leaves no record in Vapi, so if an address is missing from the trunk, Vapi for CX can only say that nothing arrived.
+- A SignalWire number alone doesn't allow **Return the call to their system**. See [Handing callers to people](/phone-systems#handing-callers-to-people).
+- SignalWire bills the call in and its connection to Vapi for the whole call, and Vapi bills its own minutes. A joined call is capped at 4 hours by default.
+- Vapi doesn't port numbers.
+
+## Other options
+
+<Accordion title="Place calls from SignalWire numbers">
+Calls out go through a second SWML script and a gateway on the same trunk.
+
+<Steps>
+  <Step title="Create the outbound SWML script">
+    In your space's dashboard, choose **Resources**, **Add**, **Script**, then **SWML Script** again, and paste:
+
+    ```yaml
+    version: 1.0.0
+    sections:
+      main:
+        - connect:
+            answer_on_bridge: true
+            from: '+15551234567'
+            to: '%{call.to.replace(/^sip:/i, '''').replace(/@.*/, '''')}'
+    ```
+
+    Replace `+15551234567` with a SignalWire number from your space, in full international format, or a verified caller ID. One script has one caller ID. For more information, see SignalWire's [Vapi guide](https://signalwire.com/docs/platform/ai/vapi) and its [caller ID](https://signalwire.com/docs/platform/voice/how-to-set-caller-id-or-cnam) page.
+  </Step>
+  <Step title="Add a SIP Address with a password">
+    On that script, choose **Addresses & Phone Numbers**, **Add**, then **SIP Address**. Keep **User** as `*` and set a password. The address's host looks like `<your space>-<domain>.dapp.signalwire.com`.
+  </Step>
+  <Step title="Add the host to the same trunk in Vapi's dashboard">
+    In Vapi's dashboard, open the trunk under **Keys**. Add the SIP Address's host as a gateway with **Allow outbound calls** only. Under **Advanced Settings**, turn on **Leading Plus for Outbound**. Under **Authentication (Optional)**, enter the number in full international format as the username, and the SIP Address's password. SignalWire's Vapi guide says it checks only the password.
+  </Step>
+</Steps>
+</Accordion>
+
+<Accordion title="Other ways to connect SignalWire">
+- **A Compatibility (cXML) application.** The same effect as the script, with more hosting.
+- **Forward the number to a Vapi number.** A `connect` to a number in full international format. It goes over the phone network, bills a second SignalWire leg, and carries no caller details.
+- Vapi has no SignalWire number import or audio streaming.
+</Accordion>
