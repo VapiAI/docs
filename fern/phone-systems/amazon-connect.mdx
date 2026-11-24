@@ -2,147 +2,95 @@
 title: Amazon Connect
 subtitle: Send Amazon Connect calls to your agent and let your flow take callers back
 slug: phone-systems/amazon-connect
-description: Send calls from an Amazon Connect flow to your Vapi for CX agent's number, and return callers to the flow or hand them to a Connect number.
+description: Send calls from an Amazon Connect flow to your Vapi for CX agent's number, then return callers to the flow when the agent is done or hand them to a Connect number.
 ---
 
-Amazon Connect is AWS's cloud contact center. Its "Transfer to phone number" flow block sends a caller to an outside number. In [Vapi for CX](https://cx.vapi.ai), Amazon Connect is **Vapi for CX's contact-center screen, then this page**: it connects by phone number. The block calls the agent's number, and when the agent ends its part, the caller drops back into your flow with "Resume flow after disconnect" on. Connect passes no call details to the agent and reads none back.
+Send calls from an Amazon Connect flow to your agent's number in [Vapi for CX](https://cx.vapi.ai). AWS's documentation describes the caller dropping back into your flow when the agent ends its part.
 
-## At a glance
+- **Receive calls:** Yes, from a **Transfer to phone number** block
+- **Return the call to their system:** described in AWS's [Transfer to phone number](https://docs.aws.amazon.com/connect/latest/adminguide/transfer-to-phone-number.html), with **Resume flow after disconnect** on
+- **Transfer to a phone number:** Yes, to a Connect number for a queue
+- **Transfer to a [SIP address](/phone-systems#sip-address):** No: Amazon Connect gives you no SIP address to send callers to
 
-- **Receiving calls:** Works today. The "Transfer to phone number" flow block calls the agent's number.
-- **Transferring out:** Works with a caveat. Your flow isn't told why the caller came back, so the caller goes down its default path and may be asked again.
-- **Calls out:** Doesn't apply. Connect is not a carrier or trunk the agent can dial through.
-- **Self-serve:** Works with a caveat. Your Connect admin edits and publishes one flow.
+## Send calls to the agent
 
-<Note>
-Nothing on this page has been proven with a real call yet.
-</Note>
-
-## Receiving calls
-
-Connect keeps the caller's call and places a second call to the agent's number over the public phone network.
-
-If your organization is in Vapi's EU region, it has no starter number. Connect a phone line first (Twilio, Telnyx or Vonage, or a number set up in Vapi's dashboard) and send Amazon Connect's calls to that number.
-
-<Note>Read from AWS's documentation on Nov 22, 2026. Not run.</Note>
+Connect keeps the caller's call and places a second call to the agent's number over the phone network.
 
 <Steps>
   <Step title="Copy the agent's number">
-    In Vapi for CX, open the agent, choose **Connect your phone line**, and pick **Amazon Connect**. Copy the agent's number (for example +14155550124).
+    In Vapi for CX, in the agent's **Connect your phone line** step, choose **Connect your phone system**, then **A contact center**. Under **Your contact center or phone system**, pick **Amazon Connect**, and copy the number under **Forward to** (for example +14155550124).
   </Step>
   <Step title="Open the inbound flow">
     In the Amazon Connect admin website for your instance, go to **Routing › Flows** and open the inbound flow.
   </Step>
   <Step title="Add a Transfer to phone number block">
-    In the Amazon Connect flow editor, add a **Transfer to phone number** block where the agent should take the call. Under **Transfer via**, fill in **Country code** and **Phone number** with the agent's number. The destination country must be on your instance's outbound allow-list. See AWS's [Transfer to phone number](https://docs.aws.amazon.com/connect/latest/adminguide/transfer-to-phone-number.html).
+    Add a **Transfer to phone number** block where the agent should take the call. Under **Transfer via**, fill in **Country code** and **Phone number** with the agent's number. The destination country must be on your instance's outbound allow-list. For more information, see AWS's [Transfer to phone number](https://docs.aws.amazon.com/connect/latest/adminguide/transfer-to-phone-number.html).
   </Step>
   <Step title="Set the timeout and turn on resume">
-    In the Amazon Connect flow editor, on the same block, set **Set timeout** (30 seconds in AWS's example). Set **Resume flow after disconnect** to **Yes**: it adds the **Success**, **Call Failed** and **Timeout** branches beside **Error**, and it is what lets your flow take the caller back (see [Return the call to their system](#return-the-call-to-their-system)). Connect **Call Failed**, **Timeout** and **Error** to your existing route to a person, and **Success** to what should happen when the agent ends its part (a **Transfer to queue**, as in the return section). From then on, every call the agent ends goes down **Success**, also one where the caller had finished, so send it somewhere that suits both.
+    On the same block, set **Set timeout** (30 seconds in AWS's example). Set **Resume flow after disconnect** to **Yes**: AWS describes this as letting your flow take the caller back, and it adds the **Success**, **Call Failed** and **Timeout** branches beside **Error**. Connect **Call Failed**, **Timeout** and **Error** to your existing route to a person, and **Success** to what should happen when the agent ends its part, such as a **Transfer to queue**. From then on, every call the agent ends goes down **Success**, including calls where the caller had finished, so send it somewhere that suits both.
   </Step>
   <Step title="Leave Caller ID number unset">
-    In the Amazon Connect flow editor, under **Optional parameters**, leave **Caller ID number** unset, so the caller's own number reaches the agent.
+    Under **Optional parameters**, leave **Caller ID number** unset. AWS's documentation says the caller's own number then reaches the agent.
   </Step>
   <Step title="Publish and attach the flow to your number">
-    In the Amazon Connect admin website, choose **Save**, then **Publish**. Go to **Channels › Phone numbers**, choose the number, set **Flow / IVR** to this flow and choose **Save**. Only published flows are listed. See AWS's [attach a number to a flow](https://docs.aws.amazon.com/connect/latest/adminguide/associate-claimed-ported-phone-number-to-flow.html).
+    Choose **Save**, then **Publish**. Go to **Channels › Phone numbers**, choose the number, set **Flow / IVR** to this flow and choose **Save**. Only published flows are listed. For more information, see AWS's [attach a number to a flow](https://docs.aws.amazon.com/connect/latest/adminguide/associate-claimed-ported-phone-number-to-flow.html).
   </Step>
 </Steps>
 
-**Number the agent sees:** the caller's own number, when **Caller ID number** is left unset. AWS's page: "the caller ID of the caller is passed as the caller ID." Outside the US, AWS recommends setting **Caller ID number** to a Connect number (Australia must use one), which replaces the caller's number; then an experiment on the agent would put every call on one version.
+**Number the agent sees:** AWS's documentation says the caller's own number is sent when **Caller ID number** is left unset. Outside the US, AWS recommends setting **Caller ID number** to a Connect number (Australia requires one), and then the agent sees that number instead.
 
-<Note>
-Not run. Read the caller's number on your first call, and try a withheld number too.
-</Note>
+**Check it:** on the contact-center screen, choose **Check the line**, then call your Connect number. The check passes when your call reaches the agent.
 
-**Check it:** in Vapi for CX, the check says "Call this number from your phone". Call your Connect number. The line is marked working when the first call reaches the agent. Then open that call and read the caller's number.
+## Hand callers to your team
 
-## Handing callers to people
-
-Use "Return the call to their system" to send callers back down your flow. Prefer "Transfer to a phone number" when calls reach the agent directly, not through Connect's block.
-
-**Does a summary travel:** no. Connect reads no SIP headers or attributes, on either handoff.
-
-**Warm handoff (the agent waits with the caller):** doesn't apply. Vapi for CX doesn't offer this yet on any line; a Connect number is answered by a flow first, and on a return the agent's part has ended before a person is involved.
-
-**Check it:** once the agent's version with the handoff is live, choose **Check** on its row in Vapi for CX. Call the agent from your phone (for a return, your Connect number) and ask for a person. The check shows "Handoff sent" when the agent hands over or ends its part, then asks whoever answered to confirm. To hear a returned call carry on, put a prompt on the block's **Success** branch.
-
-### Transfer to a phone number
-
-Works today. The agent calls a Connect number you claimed for a queue. If the caller came in through Connect's own block, this adds a second contact record and makes three phone legs, so prefer it when calls reach the agent directly (a published or forwarded number).
-
-<Note>Read from AWS's documentation on Nov 22, 2026. Not run.</Note>
-
-<Steps>
-  <Step title="Claim a number for the queue">
-    In the Amazon Connect admin website, go to **Channels › Phone numbers** and choose **Claim a number**. Pick one on the toll-free or DID tab, enter a description, attach a published flow in **Flow / IVR** that goes straight to **Transfer to queue**, and choose **Save**. You need the **Phone numbers - Claim** permission; an instance has 10 numbers by default. See AWS's [claim a number](https://docs.aws.amazon.com/connect/latest/adminguide/get-connect-number.html).
-  </Step>
-  <Step title="Add the handoff on the agent">
-    In Vapi for CX, on the agent's **Handing callers to people** card, choose **Add a handoff**. Say when the agent should hand over, choose **Transfer to a phone number**, and paste the claimed number. Where your line allows it, choose under **More options** that their people see the caller's number.
-  </Step>
-</Steps>
-
-**Number their people see:** the caller's own number on a Twilio line, or when the handoff is set to show it. Otherwise the agent's number, and on a starter, SIP-address or trunk line the carrier may still refuse a caller's number the line doesn't own.
-
-### Transfer to a SIP address
-
-Amazon Connect gives you no [SIP address](/phone-systems#sip-address) to send callers to; use "Transfer to a phone number". Calls enter Connect by its phone numbers only.
+Use **Return the call to their system** to send callers back down your flow. Use **Transfer to a phone number** when calls reach the agent directly rather than through Connect's block, or where the reason matters.
 
 ### Return the call to their system
 
-Yes, on paper, with Connect's **Resume flow after disconnect** setting set to **Yes** on the **Transfer to phone number** block (in the flow editor, the step [Set the timeout and turn on resume](#receiving-calls) above). The agent ends its part of the call, and the same Connect contact carries on down the block's **Success** branch. Nothing tells your flow why or which queue, so every returned caller follows that branch and may be asked again. Where the reason matters, add a separate "Transfer to a phone number" per queue; each such handoff opens a second Connect contact and puts three phone legs on the call.
-
-<Note>
-Needs a test call. AWS's block page says the flow resumes when the outside party hangs up and the caller stays on; one sentence on AWS's [Resume flow after disconnect](https://docs.aws.amazon.com/connect/latest/adminguide/contact-flow-resume.html) page says the caller returns only if the transfer fails.
-</Note>
-
-<Note>Read from AWS's documentation on Nov 22, 2026. Not run.</Note>
+AWS's documentation describes how this works: the agent ends its part of the call, and the same Connect contact carries on down the block's **Success** branch with the caller's own number.
 
 <Steps>
   <Step title="Turn on Resume flow after disconnect">
-    In the Amazon Connect flow editor, on the **Transfer to phone number** block that calls the agent, set **Resume flow after disconnect** to **Yes**, if you didn't when setting up calls in.
+    In the Amazon Connect flow editor, on the **Transfer to phone number** block that calls the agent, set **Resume flow after disconnect** to **Yes**, if you didn't when setting up calls in. AWS describes the flow resuming down **Success** when the other party ends the call. So every call the agent ends goes down **Success**, including calls where the caller had finished; send it somewhere that suits both.
   </Step>
   <Step title="Send returning callers to a queue">
-    In the Amazon Connect flow editor, on the block's **Success** branch, add **Transfer to queue** (or what should happen next). Choose **Save**, then **Publish**.
+    On the block's **Success** branch, add **Transfer to queue** (or what should happen next). Choose **Save**, then **Publish**.
   </Step>
   <Step title="Add the handoff on the agent">
-    In Vapi for CX, on the agent's **Handing callers to people** card, choose **Add a handoff**. Say when the agent should hand back and choose **Return the call to their system**. There is nowhere to send it: the agent ends its part of the call. It works on every kind of line.
+    In Vapi for CX, on the agent's **Call handling** tab, choose **Add a handoff** on the **Handing callers to people** card. Name it, say when the agent should use it and choose **Return the call to their system**. There is no number to enter. The type is offered once the agent's line is linked to Amazon Connect: pick **Amazon Connect** under **Your contact center or phone system** and choose **Check the line**. It works on any kind of line.
   </Step>
 </Steps>
 
-**Number their people see:** the caller's own number, on the same Connect contact. Your flow decides where the caller goes and what shows.
+### Transfer to a phone number
 
-## Other routes
+The agent calls a Connect number you claimed for a queue. If the caller came in through Connect's block, this opens a second contact record and puts three phone calls on the line.
 
-- **A Chime SDK SIP media application you build** (calls in): Not available at launch. An AWS project of your own. <a href="https://vapi.ai/sales" target="_blank" rel="noopener">Contact sales</a>.
-- **Connect's agent-to-agent audio streaming** (calls in): Not available at launch.
-- **A phone number quick connect, sent by a person** (calls in): Works today. The agent sees the queue's number, not the caller's, so an experiment puts every call on one version.
-- **Media streaming to Kinesis Video Streams** (calls in): Can't. It copies audio out only.
-- **Amazon Lex or third-party speech providers** (calls in): Can't. These bring a voice into Connect's own bots, not an outside agent.
-- **A SIP hand-back with details** (handoff): Can't. Connect accepts nothing over SIP.
+<Steps>
+  <Step title="Claim a number for the queue">
+    In the Amazon Connect admin website, go to **Channels › Phone numbers** and choose **Claim a number**. Pick one on the toll-free or DID tab, enter a description, attach a published flow in **Flow / IVR** that goes straight to **Transfer to queue**, and choose **Save**. You need the **Phone numbers - Claim** permission; an instance has 10 numbers by default. For more information, see AWS's [claim a number](https://docs.aws.amazon.com/connect/latest/adminguide/get-connect-number.html).
+  </Step>
+  <Step title="Add the handoff on the agent">
+    In Vapi for CX, on the **Handing callers to people** card, choose **Add a handoff**. Name it, say when the agent should use it, choose **Transfer to a phone number**, and paste the claimed number. Under **More options**, set **Their people see** to **The caller's number** if your line offers it.
+  </Step>
+</Steps>
 
-## Calls out
+**Check it:** once a handoff is live, choose **Check** on its row, call your Connect number from your phone and ask for a person. The check shows **Handoff sent** when the agent hands you over or ends its part. To hear a returned call carry on, put a prompt on the block's **Success** branch.
 
-Doesn't apply. Amazon Connect hands calls to the agent; it isn't the agent's carrier. Calls the agent places go out on a phone line connected in Vapi for CX.
+## Limitations
 
-## What can't be done, and what is not yet known
-
-Can't be done:
-
-- Passing SIP headers or contact attributes from Connect to the agent on the phone-number route.
-- Handing a call back to Connect over SIP.
-- Streaming call audio to the agent through Kinesis.
-
-Not yet known:
-
-- Whether **Resume flow after disconnect** fires when the agent hangs up. One call settles it.
-- Whether a withheld caller's number reaches the agent. The same call settles it.
-
-## Costs and limits
-
-- Two phone calls run while the agent talks, both billed by AWS: the caller's call into Connect and Connect's call to the agent. Connect's per-minute voice charge and its telephony rates run for the whole time, with Vapi minutes on top.
-- A return adds no call. A handoff by number after the caller came in through Connect's block makes three phone legs and two contact records.
+- Connect isn't told why the agent handed the caller back, so every returned caller follows the **Success** branch and may be asked again.
+- Connect passes no call details to the agent and reads none back.
+- Two calls run while the agent talks, both billed by AWS for the whole time, plus Vapi minutes.
 - An instance has 10 concurrent active calls by default.
-- The destination country must be on the instance's outbound allow-list.
 - Connect's recording and analytics don't include the agent's part of the call.
-- HIPAA: AWS lists Connect as HIPAA-eligible (not re-checked). You need your own BAA (the HIPAA contract) with AWS and with Vapi.
+- For HIPAA, you need your own BAA (the HIPAA contract) with AWS and with Vapi.
 
-For how a phone line, a SIP address and UUI fit together in Vapi for CX, see [Connect your phone line](/phone-systems).
+## Other options
+
+<Accordion title="Other ways to connect Amazon Connect">
+- **A Chime SDK SIP media application you build:** not available. It is an AWS project of your own. [Contact sales](https://vapi.ai/sales) to ask about it.
+- **Connect's agent-to-agent audio streaming:** not available.
+- **A phone number quick connect, sent by a person:** described in AWS's [quick connects](https://docs.aws.amazon.com/connect/latest/adminguide/quick-connects.html) page. The agent sees the queue's number, not the caller's.
+- **Media streaming to Kinesis Video Streams:** not supported. It copies audio out only.
+- **Amazon Lex or third-party speech providers:** not supported. These bring a voice into Connect's own bots, not an outside agent.
+</Accordion>
