@@ -1,0 +1,190 @@
+---
+title: Listen to live calls
+subtitle: Stream a call's audio and events over a WebSocket
+slug: calls/call-listen
+description: Use a call's listenUrl to stream live Vapi call audio and real-time events, such as transcripts, over a WebSocket to record, monitor, or analyze calls from your server.
+---
+
+Call Listen streams a call's audio and events to your server in real time over a WebSocket. Use it to record, monitor, or analyze a call while it's in progress.
+
+Call Listen is listen-only: you can't send audio into the call through it. To change the call, such as making the assistant speak or ending the call, use [live call control](/calls/call-features).
+
+<Note>
+The listen URL doesn't require authentication by default. Turn on [authentication](#require-authentication) so only connections with your public API key can listen to the call.
+</Note>
+
+## Get the listen URL
+
+Every call has its listen URL in `call.monitor.listenUrl`. Read the URL from the call object instead of building it yourself. The host can change between calls. The URL ends in `/listen`.
+
+You can get the listen URL from the create call response, from server messages, or from the call record.
+
+### From the create call response
+
+For outbound calls, the [Create Call](/api-reference/calls/create) response includes `monitor.listenUrl`:
+
+```json title="Response (trimmed)"
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "status": "queued",
+  "monitor": {
+    "listenUrl": "wss://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/listen",
+    "controlUrl": "https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/control"
+  }
+}
+```
+
+### From server messages
+
+For inbound calls, read the listen URL from a [server message](/server-url/events). Server messages that include the call object carry it at `message.call.monitor.listenUrl`. The first `status-update` message with `status` set to `in-progress` arrives as soon as the call connects:
+
+```json title="status-update message (trimmed)"
+{
+  "message": {
+    "type": "status-update",
+    "status": "in-progress",
+    "call": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "monitor": {
+        "listenUrl": "wss://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/listen",
+        "controlUrl": "https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/control"
+      }
+    }
+  }
+}
+```
+
+<Note>
+The `status-update` message is in the default `serverMessages` list. If you set `serverMessages` on your assistant, include `status-update`, because your list replaces the default.
+</Note>
+
+### From the call record
+
+[Get Call](/api-reference/calls/get) returns `monitor.listenUrl` for any call. The URL stays on the call record after the call ends, so check that `status` is `in-progress` before you connect.
+
+## Listen settings
+
+Call Listen is configured in the assistant's `monitorPlan`. It's on by default and doesn't require authentication by default.
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `listenEnabled` | `true` | Issues a `listenUrl` for the assistant's calls |
+| `listenAuthenticationEnabled` | `false` | Requires a public API key to connect to the `listenUrl` |
+
+### Turn Call Listen on or off
+
+Set `listenEnabled` to `false` to turn off Call Listen for an assistant:
+
+```json
+{
+  "monitorPlan": {
+    "listenEnabled": false
+  }
+}
+```
+
+If any assistant on a call has `listenEnabled` set to `false` when the call starts, the call has no `listenUrl`.
+
+### Require authentication
+
+Set `listenAuthenticationEnabled` to `true` to require your public API key:
+
+```json
+{
+  "monitorPlan": {
+    "listenAuthenticationEnabled": true
+  }
+}
+```
+
+Then send the public API key in the `Authorization` header when you open the WebSocket. Browser WebSocket clients can't set headers, so connect from your server.
+
+A connection with no key, or with your private API key, opens and then closes right away with code `1008` and the reason `Unauthorized`.
+
+Authentication applies to the whole call. If any assistant on the call has `listenAuthenticationEnabled` set to `true`, every connection to that call's listen URL needs the public API key.
+
+## Read the stream format
+
+The first message on the WebSocket is a JSON `start` message that describes the audio format:
+
+```json
+{
+  "type": "start",
+  "encoding": "linear16",
+  "container": "raw",
+  "sampleRate": 16000,
+  "channels": 2
+}
+```
+
+After that, binary messages carry raw audio in that format. With `linear16`, each sample is 16-bit signed pulse-code modulation (PCM), and stereo samples are interleaved.
+
+Text messages carry JSON call events alongside the audio:
+
+| `type` | Contents |
+| --- | --- |
+| `transcript` | Partial and final transcripts for the caller and the assistant |
+| `speech-update` | When the caller or the assistant starts or stops speaking |
+| `conversation-update` | The updated conversation history |
+| `user-interrupted` | The caller interrupted the assistant |
+| `model-output` | Text output from the model |
+| `voice-input` | Text sent to the voice provider |
+| `assistant.started` | A new assistant became active, such as after a handoff, with its configuration in `newAssistant` |
+
+## Example: save call audio
+
+This Node.js example saves the audio buffer from a live call to a raw PCM file and logs the JSON messages:
+
+```javascript
+const WebSocket = require('ws');
+const fs = require('fs');
+
+let pcmBuffer = Buffer.alloc(0);
+
+const ws = new WebSocket("wss://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/00000000-0000-4000-8000-000000000001/listen");
+
+ws.on('open', () => console.log('WebSocket connection established'));
+
+ws.on('message', (data, isBinary) => {
+  if (isBinary) {
+    pcmBuffer = Buffer.concat([pcmBuffer, data]);
+    console.log(`Received PCM data, buffer size: ${pcmBuffer.length}`);
+  } else {
+    console.log('Received message:', JSON.parse(data.toString()));
+  }
+});
+
+ws.on('close', () => {
+  if (pcmBuffer.length > 0) {
+    fs.writeFileSync('audio.pcm', pcmBuffer);
+    console.log('Audio data saved to audio.pcm');
+  }
+});
+
+ws.on('error', (error) => console.error('WebSocket error:', error));
+```
+
+If `listenAuthenticationEnabled` is `true`, pass your public API key in the `Authorization` header when you open the WebSocket:
+
+```javascript
+const ws = new WebSocket(listenUrl, {
+  headers: { Authorization: 'Bearer YOUR_PUBLIC_API_KEY' },
+});
+```
+
+To play the file, convert it with the values from the `start` message. For example, with `ffmpeg`:
+
+```bash
+ffmpeg -f s16le -ar 16000 -ac 2 -i audio.pcm audio.wav
+```
+
+## Troubleshoot Call Listen
+
+<AccordionGroup>
+  <Accordion title="The connection closes right after it opens">
+    A WebSocket close with code `1008` and the reason `Unauthorized` means the call requires authentication. Send your public API key in the `Authorization` header. A private API key is refused. See [Require authentication](#require-authentication).
+  </Accordion>
+  <Accordion title="The call has no listenUrl">
+    An assistant on the call has `listenEnabled` set to `false`. Set `listenEnabled` to `true` on every assistant the call starts with. See [Turn Call Listen on or off](#turn-call-listen-on-or-off).
+  </Accordion>
+</AccordionGroup>

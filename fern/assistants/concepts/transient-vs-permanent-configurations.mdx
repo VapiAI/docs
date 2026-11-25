@@ -260,6 +260,39 @@ The following examples are `assistant.model` fragments:
   cannot be managed through the dashboard or reused across calls.
 </Warning>
 
+### Model URLs on public-key requests
+
+A request authenticated with a public API key or a public JWT can't supply a model URL (`model.url`, the **Custom LLM URL** field in the Dashboard). This applies to `POST /call/web`, `POST /chat/web`, and `POST /chat/web/responses`, which are the endpoints the Vapi Web SDK and the chat widget use. A JWT with no `token` claim counts as a public JWT. For more information, see [JWT authentication](/customization/jwt-authentication).
+
+The request is rejected when `model.url` appears anywhere in the request body, including:
+
+- a transient `assistant`
+- `assistantOverrides`, including a `tools:append` entry
+- a transient `squad` member, its `assistantOverrides`, `squad.membersOverrides`, or `squadOverrides`
+- the destinations of a handoff tool, at any depth
+- a transient `workflow` or one of its nodes
+
+A model URL on a stored assistant isn't affected. Neither are Dashboard sessions, or requests to `POST /call` or `POST /chat` authenticated with a private API key or a private JWT.
+
+<Note>
+Vapi is turning on this check for organizations in phases, and emails affected organizations before the check applies to them.
+</Note>
+
+A rejected request returns a `403` response with this body:
+
+```json
+{
+  "message": "Supplying `model.url` in the request body is not permitted on public-key authenticated calls. Configure the model URL on a stored assistant instead.",
+  "error": "Forbidden",
+  "statusCode": 403
+}
+```
+
+To avoid the rejection, use one of these approaches:
+
+- **Store the assistant.** Set `model.url` on a stored assistant, then pass its `assistantId` from the browser. Keep per-call changes in `assistantOverrides` fields that don't set a model URL, such as `variableValues`. On `POST /chat/web` and `POST /chat/web/responses`, `variableValues` is the only `assistantOverrides` field accepted.
+- **Start the call or chat from your server.** Send the request to `POST /call` or `POST /chat` with your private API key or a private JWT, which can still supply a model URL. Never send your private API key to a browser or mobile app.
+
 ## Permanent configurations
 
 Use **permanent configurations** for reusable setups that multiple teams can access and manage through the dashboard.
@@ -368,6 +401,10 @@ curl -X POST "https://api.vapi.ai/call" \
 </CodeBlocks>
 
 Replace the tool, credential, and assistant ID placeholders with values from the resources you created. The credential authenticates the API Request tool's call to the CRM endpoint.
+
+## Override a saved assistant for one call
+
+Use `assistantOverrides` to change a saved assistant's settings for one call without editing the assistant. The assistant stays saved and reusable, while the call uses the supplied overrides. For more information about how overrides merge and work in squads, see [Assistant overrides](/assistants/assistant-overrides).
 
 ## Mixed configurations
 
@@ -484,7 +521,7 @@ Combine transient and permanent configurations for maximum flexibility:
 
 Now that you understand transient vs permanent configurations:
 
-- **[Assistant creation guide](/docs/assistants):** Learn to build and customize assistants
-- **[Tool integration](/docs/tools):** Connect external services and functions
-- **[Squad configuration](/docs/squads):** Set up multi-assistant workflows
-- **[API reference](/fern/api-reference):** Explore all configuration options
+- **[Assistant creation guide](/assistants/quickstart):** Learn to build and customize assistants
+- **[Tool integration](/tools):** Connect external services and functions
+- **[Squad configuration](/squads):** Set up multi-assistant workflows
+- **[API reference](/api-reference/assistants/create):** Explore all configuration options

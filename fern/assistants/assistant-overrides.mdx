@@ -1,0 +1,192 @@
+---
+title: Assistant overrides
+subtitle: Change an assistant's settings for one call, customer, squad, or handoff without editing the assistant
+slug: assistants/assistant-overrides
+description: Use assistantOverrides to change a saved assistant's settings per call, batch customer, inbound request, squad member, or handoff, and learn how overrides merge and which level wins.
+---
+
+Assistant overrides are a set of assistant settings that change an assistant for one call, customer, squad, or handoff. The saved assistant stays unchanged, and the next call without overrides uses its saved settings again. Send overrides in the `assistantOverrides` field.
+
+## How overrides merge with the assistant
+
+An override changes only the fields you send. Every other setting keeps its saved value. These rules decide what happens to each field:
+
+| Field type | What the override does |
+| --- | --- |
+| Text, number, or boolean, such as `firstMessage` | Replaces the saved value |
+| `model`, `voice`, or `transcriber` with the same `provider` | Changes only the fields you send inside the object |
+| `model`, `voice`, or `transcriber` with a different `provider` | Replaces the whole object |
+| `model.messages` | Replaces the saved message with the same `role`, so a `system` message replaces the saved system prompt |
+| `variableValues` | Fills `{{variable}}` placeholders in the prompt, messages, and other text fields |
+
+<Note>
+An override with a different `provider` replaces the whole `model`, `voice`, or `transcriber` object, not just the fields you send. The saved settings in that object are dropped, including the system prompt, tools, and `temperature` for a model. Include every setting the call needs in the override.
+</Note>
+
+This override keeps the saved model, provider, and tools, and changes only the system prompt:
+
+```json
+{
+  "assistantOverrides": {
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a billing specialist. Keep answers under two sentences."
+        }
+      ]
+    }
+  }
+}
+```
+
+For more information about variables, see [Variables](/assistants/dynamic-variables).
+
+### Tools in overrides
+
+Overrides can add tools or replace a saved tool, but they can't remove one. Use one of these fields:
+
+- **`tools:append`:** Adds tools to the assistant's saved tools.
+- **`model.tools` or `model.toolIds`:** Adds tools. A tool with the same type and function name as a saved tool replaces it.
+
+To run a call with fewer tools, define the assistant inline with the `assistant` field instead.
+
+## Where you can set overrides
+
+You can set overrides in a call request, a campaign, an `assistant-request` response, a squad, a handoff tool, or a chat. Overrides in a request apply only to the call or chat that request starts. Overrides saved on a squad or handoff tool apply every time the squad or tool runs.
+
+| Where | Field | Applies to |
+| --- | --- | --- |
+| Create call request | [`assistantOverrides`](/api-reference/calls/create#request.body.assistantOverrides) | The assistant for that call |
+| Each entry in a batch `customers` list | [`customers[].assistantOverrides`](/api-reference/calls/create#request.body.customers) | That customer's call only |
+| Campaign | [`assistantOverrides`](/api-reference/campaigns/campaign-controller-create#request.body.assistantOverrides) and [`customers[].assistantOverrides`](/api-reference/campaigns/campaign-controller-create#request.body.customers) | Every call in the campaign, or one contact |
+| `assistant-request` response | [`assistantOverrides`](/api-reference/webhooks/server-message#response.body.messageResponse) | The assistant for that inbound call |
+| Squad member | [`members[].assistantOverrides`](/api-reference/squads/create#request.body.members) | That member, only in this squad |
+| Squad | [`membersOverrides`](/api-reference/squads/create#request.body.membersOverrides) | Every member of the squad |
+| Create call request or `assistant-request` response for a squad | [`squadOverrides`](/api-reference/calls/create#request.body.squadOverrides) | Every member of the squad, for that call |
+| Handoff destination | [`assistantOverrides`](/api-reference/tools/create#request.body.handoff.destinations.Assistant.assistantOverrides) or [`squadOverrides`](/api-reference/tools/create#request.body.handoff.destinations.Squad.squadOverrides) | The destination assistant or squad after the handoff |
+| Chat | [`assistantOverrides`](/api-reference/chats/create#request.body.assistantOverrides) | Only `variableValues`. Chats don't accept other override fields |
+
+## Override an outbound call
+
+Add `assistantOverrides` next to `assistantId` in the [create call](/api-reference/calls/create) request. This outbound call changes the first message and fills the `name` variable:
+
+```json
+{
+  "assistantId": "00000000-0000-4000-8000-000000000001",
+  "phoneNumberId": "00000000-0000-4000-8000-000000000002",
+  "customer": {
+    "number": "+14155550100"
+  },
+  "assistantOverrides": {
+    "firstMessage": "Hi {{name}}, thanks for taking my call.",
+    "variableValues": {
+      "name": "Jordan"
+    }
+  }
+}
+```
+
+Overrides also work with an inline `assistant`. Putting the settings directly in the `assistant` object is usually simpler, but `variableValues` is a common reason to send both.
+
+## Override each customer in a batch call
+
+Each entry in the `customers` list can have its own `assistantOverrides`. A customer's overrides replace the request-level `assistantOverrides` completely. The two aren't combined, so repeat any request-level settings and variables that the customer still needs.
+
+```json
+{
+  "assistantId": "00000000-0000-4000-8000-000000000001",
+  "phoneNumberId": "00000000-0000-4000-8000-000000000002",
+  "assistantOverrides": {
+    "variableValues": { "company": "Example Dental" }
+  },
+  "customers": [
+    {
+      "number": "+14155550101",
+      "assistantOverrides": {
+        "variableValues": { "company": "Example Dental", "name": "Jordan" }
+      }
+    },
+    {
+      "number": "+14155550102"
+    }
+  ]
+}
+```
+
+The second customer has no overrides, so that call uses the request-level `assistantOverrides`.
+
+## Override an inbound call
+
+For inbound calls, your server picks the assistant when it answers the `assistant-request` message. Return a saved `assistantId` with `assistantOverrides`:
+
+```json
+{
+  "assistantId": "00000000-0000-4000-8000-000000000001",
+  "assistantOverrides": {
+    "variableValues": {
+      "customerName": "Jordan",
+      "accountType": "premium"
+    }
+  }
+}
+```
+
+The phone number needs a server URL and no `assistantId` or `squadId`, so the request goes to your server. Respond within 7.5 seconds. For more information, see [Server events](/server-url/events) and [Personalization with user information](/assistants/personalization).
+
+## Override squad members
+
+Squads have three override levels. When two levels set the same field, the higher level wins:
+
+1. **Member `assistantOverrides`:** Applies to one member.
+2. **Squad `membersOverrides`:** Applies to every member. Wins over member overrides.
+3. **Call `squadOverrides`:** Applies to every member for one call. Wins over both.
+
+The winning level replaces the whole field. Lower levels aren't merged into it. Two fields are the exception:
+
+- **`variableValues`:** Combined key by key. A key set at more than one level takes the higher level's value.
+- **`tools:append`:** Combined across all levels.
+
+<Warning>
+A squad-level `model` override replaces every member's `model` override. If a member overrides `model.messages` with its own prompt and the squad overrides `model` to change the model name, the member's prompt is dropped and the member uses its saved prompt.
+</Warning>
+
+For a squad call, the `variableValues` in the call's `assistantOverrides` also apply to every member. They win over member and squad values and lose to `squadOverrides`.
+
+For more information about squads, see [Squads](/squads).
+
+## Override a handoff destination
+
+An assistant destination on a handoff tool accepts `assistantOverrides`, and a squad destination accepts `squadOverrides`. They change the destination when the call is handed off. For the order that handoff variables are applied in, see [Pass context and variables](/squads/handoff/context-and-variables#variable-extraction).
+
+## Use overrides with a pinned version
+
+The [`assistantVersion`](/api-reference/calls/create#request.body.assistantVersion) field runs the call on a specific published version of a saved assistant. It is separate from `assistantOverrides`, and you can send both. Overrides then apply on top of the pinned version.
+
+The `assistantVersion` field works only with a saved `assistantId`. A call request that uses an inline `assistant` or a squad can't include it. To pin a squad member's version, set `assistantVersion` on that member. For more information, see [Versioning with assistants](/assistants/versioning/versioning-assistants).
+
+## Limitations
+
+- **No changes to the running assistant:** Overrides apply only when an assistant starts. You can't send new overrides to the assistant during a call, and [live call control](/calls/call-features#what-live-call-control-cant-do) can't change its model, voice, or prompt. To use different settings mid-call, hand off to another assistant or squad with its own overrides. For more information, see [Handoff tool](/squads/handoff).
+- **No tool removal:** Overrides can add or replace tools but not remove saved ones.
+- **Unsupported fields:** `model.toolRefs` is rejected in overrides. Set it on the saved assistant.
+- **Chats:** Chats accept only `variableValues`.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Transient vs permanent configurations" icon="layer-group" href="/assistants/concepts/transient-vs-permanent-configurations">
+    Choose between inline and saved assistants
+  </Card>
+  <Card title="Variables" icon="brackets-curly" href="/assistants/dynamic-variables">
+    Fill prompts and messages with variableValues
+  </Card>
+  <Card title="Squads" icon="users" href="/squads">
+    Build multi-assistant squads
+  </Card>
+  <Card title="Create call API" icon="code" href="/api-reference/calls/create">
+    See every assistantOverrides field
+  </Card>
+</CardGroup>

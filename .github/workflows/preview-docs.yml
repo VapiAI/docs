@@ -1,11 +1,26 @@
 name: Preview Docs
 
-on: pull_request
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, closed]
+
+concurrency:
+  group: docs-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   run:
+    name: Docs Preview
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      PREVIEW_ID: pr-${{ github.event.pull_request.number }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,8 +34,12 @@ jobs:
           POSTHOG_PROJECT_API_KEY: ${{ secrets.POSTHOG_PROJECT_API_KEY }}
         run: |
           set -euo pipefail
-          node scripts/fern/run.cjs generate --docs --preview --log-level debug 2>&1 | tee "$RUNNER_TEMP/fern-preview.log"
-          URL=$(grep -oP 'Published docs to \K.*(?= \()' "$RUNNER_TEMP/fern-preview.log")
+          node scripts/fern/run.cjs generate --docs --preview --id "$PREVIEW_ID" --no-prompt --log-level debug 2>&1 | tee "$RUNNER_TEMP/fern-preview.log"
+          URL=$(sed -nE 's/.*Published docs to (https?:\/\/[^[:space:]]+).*/\1/p' "$RUNNER_TEMP/fern-preview.log" | tail -n 1)
+          if [ -z "$URL" ]; then
+            echo "::error::Fern did not return a preview URL."
+            exit 1
+          fi
           echo "Preview URL: $URL"
           echo "🌿 Preview your docs: $URL" > preview_url.txt
 
@@ -28,3 +47,32 @@ jobs:
         uses: thollander/actions-comment-pull-request@v2.4.3
         with:
           filePath: preview_url.txt
+          comment_tag: preview-docs
+          mode: upsert
+
+  cleanup:
+    name: Delete Docs Preview
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - uses: ./.github/actions/setup-fern
+
+      - name: Delete preview for the closed PR
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+          PREVIEW_ID: pr-${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if node "$FERN_CLI_PATH" docs preview delete --id "$PREVIEW_ID" 2>&1 | tee "$RUNNER_TEMP/fern-preview-delete.log"; then
+            exit 0
+          fi
+          if grep -q 'Preview site not found:' "$RUNNER_TEMP/fern-preview-delete.log"; then
+            echo "No preview exists for this PR; nothing to delete."
+          else
+            exit 1
+          fi

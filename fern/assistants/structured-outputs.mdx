@@ -610,6 +610,12 @@ structured_output = vapi.structured_outputs.create(
 ```
 </CodeBlocks>
 
+### Reasoning effort
+
+When extraction runs on an OpenAI reasoning model (the GPT-5 family, GPT-5.6, or GPT-6), set `model.reasoningEffort` to control how much the model reasons before it extracts. Lower it to save cost and latency, or raise it for harder extraction prompts.
+
+Each model accepts only the efforts OpenAI supports for it, for example `none` and `xhigh` on GPT-5.6, or `minimal` on GPT-5. Setting an effort on a non-reasoning model such as GPT-4.1, or on a non-OpenAI model, returns a `400`. When unset, extraction uses the model's current default. Reasoning effort applies to the primary extraction only; the GPT-4.1 fallback runs without it. Reasoning tokens are billed as output tokens.
+
 ### Available variables
 
 Use these variables in custom prompts:
@@ -808,6 +814,20 @@ if (data.result === null) {
 ```
 
 ## Troubleshooting
+
+### Schema refused when saving
+
+Vapi checks a structured output's schema when you create, update, or run it, and returns a `400` error when extraction couldn't use the schema. The check covers the top level of the schema:
+
+| Problem | Error message |
+| --- | --- |
+| A top-level `array` schema with no `items`, except on a `regex` structured output | `Invalid schema: Array schema must define items property` |
+| A key in `required` that isn't in `properties` | `Invalid schema: Required fields not found in properties: …` |
+| A `number` or `integer` schema whose `minimum` is greater than its `maximum` | `Invalid schema: Minimum (…) cannot be greater than maximum (…)` |
+| A `string` schema whose `minLength` is greater than its `maxLength` | `Invalid schema: MinLength (…) cannot be greater than maxLength (…)` |
+| No `schema` when you create a structured output | `The 'schema' field is required.` |
+
+Fix the schema and save again. An update that doesn't change a saved schema, such as a rename, doesn't re-check it.
 
 ### No data extracted
 

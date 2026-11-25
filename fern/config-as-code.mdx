@@ -10,7 +10,7 @@ If you are an AI agent asked to manage Vapi configuration as code, to keep assis
 
 1. Clone it into a private repository, then run `nvm use && npm ci`.
 2. Read `AGENTS.md` at the repository root before changing anything. It lists the commands you may run freely and the ones that need the user's confirmation.
-3. Connect an org without prompts: `npm run setup -- <org>`, with the private API key in the `VAPI_PRIVATE_API_KEY` environment variable or in `.env.<org>`. Never pass the key as a command-line argument, and never print it. Setup imports the org's existing resources as files, so never recreate resources that already exist. Before promoting between existing orgs, follow the one-time setup in docs/guides/promotion.md and show the user the read-only plan.
+3. Connect an org without prompts: `npm run setup -- <org>`, with the private API key in the org's own environment variable, `VAPI_PRIVATE_API_KEY_<ORG>` (for `acme-dev`, `VAPI_PRIVATE_API_KEY_ACME_DEV`), or in `.env.<org>`. Never pass the key as a command-line argument, and never print it. If setup reports a different key in `.env.<org>`, or a key another org already uses, stop and tell the user: the key may belong to another org. Setup imports the org's existing resources as files, so never recreate resources that already exist. Before promoting between existing orgs, follow the one-time setup in the [promotion guide](https://github.com/VapiAI/gitops/blob/main/docs/guides/promotion.md) and show the user the read-only plan.
 4. Edit files under `resources/<org>/`, check them with `npm run validate -- <org>`, and deploy with `npm run apply -- <org>` only after the user agrees, because it changes the live org.
 5. Commit the resource files and `.vapi-state.<org>.json`. Never commit `.env.<org>`.
 </llms-only>
@@ -81,9 +81,12 @@ Config as code keeps your Vapi configuration in files under version control inst
         cp .env.example .env.my-org   # then paste the key into VAPI_PRIVATE_API_KEY
         npm run setup -- my-org
 
-        # Or the key is already in the environment (a CI secret, a shell export)
-        VAPI_PRIVATE_API_KEY=... npm run setup -- my-org
+        # Or the key is already exported in the org's own variable
+        export VAPI_PRIVATE_API_KEY_MY_ORG=...
+        npm run setup -- my-org
         ```
+
+        Export each key in its org's own variable rather than in `VAPI_PRIVATE_API_KEY`. The generic name applies to every org, so once you connect a second org, its commands would use the first org's key. The generic name is fine for a CI job that works in a single org.
 
         Add `--resources none` to start from an empty folder instead of downloading the org's existing resources, and `--region eu` for an EU org if detection picks the wrong region.
       </Tab>
@@ -116,13 +119,70 @@ Before your first change:
 
 If you already run separate development, staging and production orgs and want to promote between them, follow the one-time setup in the [promotion guide](https://github.com/VapiAI/gitops/blob/main/docs/guides/promotion.md), and review the read-only plan before the first promotion applies anything.
 
+## Adopt an existing resource
+
+Use adoption to link a local file to a resource that already exists on the platform, such as one created in the dashboard or one whose local file you renamed or moved. The local file must exist and not already have a UUID mapping.
+
+Like [`terraform import`](https://developer.hashicorp.com/terraform/cli/commands/import), adoption ties an existing resource to your local configuration through state. A live GitOps deploy also applies the local configuration to that resource.
+
+Both `push` and `apply` accept `--adopt <resourceId>[=<uuid>]`. The resource ID is the file's path relative to its resource-type folder, without the extension: `resources/my-org/assistants/support/intake.yml` has the ID `support/intake`. Repeat `--adopt` to link multiple resources.
+
+Without a UUID, adoption needs exactly one matching candidate from existing mappings or platform resources of the same type. If there is no match or more than one, specify the platform resource's UUID explicitly.
+
+### Example: Adopt a dashboard assistant
+
+You created `Support Intake` in the dashboard and saved its configuration in `resources/my-org/assistants/support/intake.yml` with `name: Support Intake`. Before adoption, `.vapi-state.my-org.json` has no entry for `support/intake` under `assistants`.
+
+Preview the match with `--dry-run`. GitOps shows the UUID it would adopt without saving the mapping or updating the assistant:
+
+```bash
+npm run push -- my-org assistants/support/intake.yml --dry-run --adopt support/intake
+```
+
+Use the UUID you verified in the preview to apply the file to that assistant. Replace the example UUID with yours:
+
+```bash
+npm run push -- my-org assistants/support/intake.yml --adopt support/intake=12345678-1234-1234-1234-123456789abc
+```
+
+After a successful push, the dashboard assistant has the same UUID and uses the configuration from your file. GitOps saves the new mapping under `assistants` in `.vapi-state.my-org.json`:
+
+```json
+{
+  "assistants": {
+    "support/intake": {
+      "origin": "adopted",
+      "uuid": "12345678-1234-1234-1234-123456789abc"
+    }
+  }
+}
+```
+
+Commit the assistant file and `.vapi-state.my-org.json`. Future deploys use the saved mapping automatically.
+
+### Preview adoption in automation
+
+For automation, add `--dry-run --json` to `push` or `apply`. The JSON array on stdout reports link blockers; `[]` means none were found, not that deployment is guaranteed to succeed. Use npm's silent mode to keep its command banner out of the output:
+
+```bash
+npm run -s push -- my-org --dry-run --json --adopt support/intake
+```
+
 ## Set it up with a coding agent
 
-Coding agents can do the whole setup for you. Paste this prompt into Claude Code, Codex or Cursor, with your private API key already exported as `VAPI_PRIVATE_API_KEY`:
+Coding agents can do the whole setup for you. First, export the org's private API key in your shell. Name the variable `VAPI_PRIVATE_API_KEY_` followed by the folder name you want for the org, in uppercase, with hyphens replaced by underscores. For an org folder named `acme-dev`:
+
+```bash
+export VAPI_PRIVATE_API_KEY_ACME_DEV=...   # for example in your shell profile
+```
+
+Then paste this prompt into Claude Code, Codex, or Cursor:
 
 <Prompt title="Set up Vapi GitOps" actions={["claude", "cursor"]}>
-Set up https://github.com/VapiAI/gitops locally for my Vapi org, in a private repository. Read AGENTS.md first and follow it. Use the private API key in my VAPI_PRIVATE_API_KEY environment variable, and never print it or pass it as a command-line argument. Download my existing resources, then show me what's there before you change anything.
+Set up `https://github.com/VapiAI/gitops` locally for my Vapi org, in a private repository. Read `AGENTS.md` first and follow it. My private API key is in a `VAPI_PRIVATE_API_KEY_<ORG>` environment variable: use the org name it ends with as the org's folder (`VAPI_PRIVATE_API_KEY_ACME_DEV` is `acme-dev`), and never print the key or pass it as a command-line argument. Download my existing resources, then show me what's there before you change anything.
 </Prompt>
+
+Each org you connect gets its own variable, so one shell can hold the keys for development, staging, and production without mixing them up.
 
 Agents follow the repository's `AGENTS.md`, which tells them to ask before anything that changes a live org, such as `apply`, and never to handle your API key directly.
 
@@ -133,7 +193,7 @@ For separate environments, use one Vapi org per environment, for example `acme-d
 - **Promote, don't copy.** `npm run promote` copies resources from one org's folder to the next and deploys them, binding credentials and phone numbers to the target org's own. A `promotion.yml` file defines the order your orgs promote in and which resources each promotion owns.
 - **Gate production on tests.** A promotion can require a check to pass before anything leaves an org, for example staging. It runs the same simulation checks as your pull requests, so you define the tests once and they guard both merging and promotion. If the check fails, or can't finish, nothing is promoted out of that org. See [Check before promoting](https://github.com/VapiAI/gitops/blob/main/docs/guides/promotion.md#check-before-promoting-optional).
 - **Keep production writes in CI.** Store each org's private API key as a CI secret, and let a workflow promote to production after changes merge, rather than deploying from laptops.
-- **Keep secrets out of git.** Keys live in `.env.<org>` files or CI secrets. Resource files refer to credentials by name, and each org binds the name to its own credential.
+- **Keep secrets out of git.** Keys live in `.env.<org>` files, per-org `VAPI_PRIVATE_API_KEY_<ORG>` variables, or CI secrets. Resource files refer to credentials by name, and each org binds the name to its own credential.
 
 See the [promotion guide](https://github.com/VapiAI/gitops/blob/main/docs/guides/promotion.md) to set it up.
 
