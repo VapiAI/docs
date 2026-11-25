@@ -1,0 +1,348 @@
+---
+title: Test your transcriber with recording replay
+subtitle: Play your own call recordings to an assistant and score what its transcriber heard
+description: "Replay a call recording to an assistant in real time and score its transcriber against an answer key: word error rate, and an exact, near, or missed verdict for each key value."
+slug: observability/simulations-recording-replay
+---
+
+Simulations support two kinds of scenario. In a **conversation scenario**, an AI tester talks to your [**assistant**](/assistants/quickstart). In a **recording replay scenario**, one of your call recordings is played to the assistant in place of an AI tester, and Vapi scores what the assistant's transcriber heard against an answer key you provide.
+
+Use a recording replay to compare transcribers or transcriber settings on your own audio, and to check the values your workflow depends on, such as names, dates of birth, medication doses, and phone numbers. This page explains how a replay works, how to write an answer key, and how to read the results.
+
+You create recording replay scenarios through the API. Replays run, and show their results, in the Dashboard like any other simulation.
+
+## Tools and handoffs during a replay
+
+A replay is a voice call to your assistant. The assistant hears the recording as a caller and its model answers, but no tool it calls runs. Every tool call returns a fixed result instead, so a booking tool makes no booking and an API request tool doesn't call your server. This includes end-call and transfer tools, so the assistant can't hang up or transfer the call before the recording finishes. The assistant also doesn't speak a tool's messages, such as the end-call tool's goodbye, so they can't talk over the recording.
+
+If the scenario has [tool mocks](/observability/simulations-advanced#mock-tool-responses), a mock still returns its result for the tool it names, as in voice simulations.
+
+<Note>
+  The rest of the assistant runs as it does in a voice simulation. Its own [hooks](/observability/simulations-advanced#hooks-and-call-endings) still run, but a tool a hook calls returns the fixed result too. Its server URL receives server messages under the same rules as any simulation: lifecycle messages, such as the end-of-call report, are suppressed. See [Mock tool responses](/observability/simulations-advanced#mock-tool-responses) for which requests can still reach your server.
+</Note>
+
+An assistant with a handoff tool is refused before any audio plays, because a handoff would mix two transcribers into one score. Replay against an assistant without handoff tools.
+
+## How it works
+
+A recording replay scenario is a [**scenario**](/observability/simulations-overview#key-concepts) with a recording and an answer key. When a run starts:
+
+1. Vapi downloads the recording and the answer key, and decodes the recording to 16 kHz mono audio. A file that can't be downloaded or decoded fails the run item before any call is placed.
+2. Vapi places one voice call to the assistant under test and streams the recording into it at normal speed, followed by 10 seconds of silence so the transcriber finishes the last utterance.
+3. Vapi collects the transcriber's final transcripts of the caller and scores them against the answer key.
+
+There is no AI tester and no AI judge. The score is calculated by fixed rules, so the same transcript always gets the same score.
+
+The assistant runs with its own configuration, so the result reflects the transcriber model, language, keyterms, and endpointing you actually use. For the replay call, Vapi changes only what a replay needs:
+
+- The assistant waits for the caller instead of speaking first.
+- Interruptions are on, so the recording is never muted while the assistant speaks.
+- The silence timeout and maximum duration are set to your organization's simulation time limit, so the assistant doesn't hang up during a pause in the recording.
+- The call records no audio.
+- Tool calls return a fixed result instead of running. See [Tools and handoffs during a replay](#tools-and-handoffs-during-a-replay).
+
+The assistant may reply to what it hears. Its replies aren't scored.
+
+The recording reaches the assistant over a WebSocket call, not a phone line. A recording of a phone call keeps the phone line's audio quality, but a recording made at higher quality isn't reduced to phone quality, so it can score better than the same caller would on a phone call.
+
+A transcriber that uses the assistant's speech as context, such as Soniox `stt-rt-v6` with [agent text input](/providers/transcriber/soniox), receives the assistant's replies to the recording, not what the agent said on the original call.
+
+### What you get
+
+| Score | What it tells you |
+| -- | -- |
+| **Word error rate (WER)** | The share of answer-key words the transcriber got wrong: substitutions plus deletions plus insertions, divided by the number of words in the answer key. `0` is perfect and `0.1` is 10%. Insertions can push it above `1`. |
+| **Key values** | For each value you list, whether it came through `exact`, `near` (a close spelling), or `missed`. |
+
+### Compare transcribers
+
+Keep the recordings and answer keys fixed and change only the transcriber. Create one assistant per transcriber configuration, then run the same suite of replay simulations against each assistant. The run with lower WER and more exact key values heard your callers better.
+
+The same recording usually scores the same on every run, so one iteration per assistant is enough. Add more recordings rather than more iterations.
+
+## Write an answer key
+
+An answer key has two parts:
+
+- `transcript`: the verbatim words of everything in the recording, up to 30,000 words.
+- `keyValues` (optional): up to 20 values that must come through, each up to 100 characters, with up to 10 `acceptedVariants`.
+
+```json
+{
+  "transcript": "Thanks for calling Riverside Pharmacy, how can I help? Hi, this is Maria Gonzalez, I need a refill on my lisinopril, ten milligrams. Can I get your date of birth? March 14th, 1985. And a phone number? 415-555-0142.",
+  "keyValues": [
+    { "value": "Gonzalez", "acceptedVariants": ["Gonzales"], "required": true },
+    { "value": "lisinopril", "required": true },
+    { "value": "10 mg", "acceptedVariants": ["10 milligrams", "ten milligrams"], "required": true },
+    { "value": "March 14, 1985", "acceptedVariants": ["3/14/1985", "03/14/1985"] },
+    { "value": "415-555-0142" }
+  ]
+}
+```
+
+### Transcribe everything in the recording
+
+Vapi mixes the recording down to one channel, so a recording of both parties is transcribed as one speaker. The answer key must contain both parties' words, in order. If your recordings have the caller and the agent on separate channels, split them and replay the caller's channel on its own, with only the caller's words in the answer key.
+
+### How words are compared
+
+Vapi normalizes the answer key and the transcript the same way before comparing them, so a word only counts as an error when it differs after both are normalized:
+
+- Case and punctuation are ignored.
+- Hesitations (`uh`, `um`, `ah`, `hm`, `hmm`, `mhm`, `mmm`, `uhh`, `umm`) and backchannels (`uh-huh`, `mm-hmm`, `uh-oh`) are dropped. A hesitation next to a number is kept, because it may be part of a code such as `gate uh 7`. `mm` and `er` are always kept, because in medical calls they mean millimeters and the emergency room.
+- `okay` and `ok` are the same word, as are `alright` and `all right`.
+- Ordinal suffixes are dropped: `3rd` is `3`.
+- Letters and digits written together are split: `5mg` is `5 mg`.
+- Thousands separators are dropped: `1,000` is `1000`. A decimal comma is a decimal point: `2,5` is `2.5`.
+- A numeric date with a four-digit year is the same with slashes, dots, or dashes: `3-14-1985` is `3/14/1985`.
+- Symbols that change a spoken value are read aloud: an email or domain (`@` is `at`, `.` is `dot`), a decimal point (`2.5` is `2 point 5`), a minus sign, a percent sign, and a slash between numbers.
+
+These differences are **not** normalized, so they count as errors:
+
+- Number words and digits: `twenty five` is not `25`, and `two point five` is not `2.5`.
+- Units: `mg` is not `milligrams`.
+- Date formats: `March 14, 1985` is not `3/14/1985`.
+- Leading zeros: `03/14/1985` is not `3/14/1985`.
+
+Write the answer key the way your transcriber writes, or add the other forms as accepted variants on the key values that matter. WER for languages written without spaces between words, such as Chinese, Japanese, and Thai, isn't meaningful.
+
+### How key values are matched
+
+A key value is `exact` when its words appear in the transcript in the same order, after normalization, or when any accepted variant does. The value can appear anywhere in the transcript.
+
+- A value spelled out letter by letter counts: `M A R I A` matches `Maria`.
+- A possessive counts: `Maria's` matches `Maria`.
+- Digits match whatever their grouping: `415 555 0142`, `(415) 555-0142`, `(415)-555-0142`, and `4155550142` all match `415-555-0142`. A hesitation inside the number doesn't break it: `415 um 555 0142` matches too.
+- A match must be the whole value. `XJ4821` doesn't match inside `XJ4821B` or `XJ-4821-B`, `84721` doesn't match inside `847219`, `5 mg` doesn't match `0.5 mg`, and `maria@x.com` doesn't match inside `maria@x.com.au`.
+- A leading `www.` on a domain is optional.
+
+A key value is `near` when a close spelling of it appears across whole words: at most about one wrong letter in five (`Rayner` for `Raynor`), or the same letters split differently (`hub spot` for `HubSpot`). A value that contains a digit is never `near`, because a changed digit is a different number. A value shorter than five letters is `near` only when its letters are split or joined differently: `Ann a` is `near` for `Anna`, but `Ana` is `missed`.
+
+Anything else is `missed`.
+
+<Tip>
+  Write number values with their unit, such as `25 mg` rather than `25`. A bare number doesn't match a number written onto a unit (`25mg`), and a value with its unit is less likely to match an unrelated number elsewhere in the call.
+</Tip>
+
+### Required key values
+
+Set `required: true` on a key value to fail the run item unless it comes through `exact`. A required value that comes through `near` fails. The `required` field defaults to `false`: the verdict is reported but doesn't decide the result.
+
+If a close spelling is acceptable for a required value, list it in `acceptedVariants`. For example, list `Gonzales` for `Gonzalez` if either spelling is fine for your workflow.
+
+## Set a WER threshold
+
+A recording replay scenario's `evaluations` take a built-in `metric` instead of a structured output:
+
+```json
+{ "metric": "wer", "comparator": "<=", "value": 0.1 }
+```
+
+- `value` is a fraction from `0` to `1`, where `0.1` is 10%.
+- `comparator` is `<`, `<=`, `>`, or `>=`.
+- `required` defaults to `true`. Set it to `false` to report the result without failing the run item.
+
+A recording replay scenario takes only `metric` evaluations, and it may have none. A conversation scenario can't use `metric`.
+
+A run item passes when every required evaluation holds and every required key value comes through `exact`. A replay with no evaluations and no required key values passes whenever it finishes and is scored.
+
+## Create and run a replay
+
+<Steps>
+  <Step title="Host the recording and answer key">
+    Put the recording where Vapi can download it over HTTPS, such as a presigned URL from your storage bucket. Vapi downloads it each time a run starts and doesn't store the file. Use a URL that stays valid until the run executes.
+
+    Supported formats are WAV, MP3, FLAC, and OGG. MP4 and M4A work only when the file is written for streaming, with its index at the start. Headerless raw PCM isn't supported. On the default 10-minute simulation time limit, a recording can be about 8 minutes long. See [Limits](#limits).
+
+    You can include the answer key in the scenario as `answerKey`, or host it as a JSON file with the same shape and pass `answerKeyUrl`. Supply one or the other, not both.
+  </Step>
+  <Step title="Create a recording replay scenario">
+    A scenario becomes a recording replay when it has a `transcriptReplay` object, which holds the recording URL and the answer key:
+
+    ```bash
+    curl -X POST "https://api.vapi.ai/eval/simulation/scenario" \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "Refill call 0142",
+        "transcriptReplay": {
+          "recordingUrl": "<presigned-recording-url>",
+          "answerKeyUrl": "<presigned-answer-key-url>"
+        },
+        "evaluations": [
+          { "metric": "wer", "comparator": "<=", "value": 0.1 }
+        ]
+      }'
+    ```
+
+    The `instructions` field is optional, because there is no AI tester. A recording replay scenario can't have `hooks` ([run webhooks](/observability/simulations-advanced#send-webhooks-on-run-start-and-end)) or `latencyExpectations`.
+
+    The response returns the scenario, including its `id`.
+  </Step>
+  <Step title="Create a simulation">
+    A simulation pairs a scenario with a personality. A replay doesn't use the personality, but the API requires one, so pass the `id` of any personality, such as a built-in **(Default)** personality from `GET /eval/simulation/personality`.
+
+    ```bash
+    curl -X POST "https://api.vapi.ai/eval/simulation" \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{ "scenarioId": "<scenario-id>", "personalityId": "<personality-id>" }'
+    ```
+
+    To run many recordings together, create one scenario and simulation per recording and group the simulations in a [**suite**](/observability/simulations-quickstart#4-create-a-simulation-suite).
+  </Step>
+  <Step title="Run it against an assistant">
+    ```bash
+    curl -X POST "https://api.vapi.ai/eval/simulation/run" \
+      -H "Authorization: Bearer $VAPI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -H "Idempotency-Key: <unique-key>" \
+      -d '{
+        "simulations": [{ "type": "simulation", "simulationId": "<simulation-id>" }],
+        "target": { "type": "assistant", "assistantId": "<assistant-id>" },
+        "transport": { "provider": "vapi.websocket" },
+        "iterations": 1
+      }'
+    ```
+
+    A replay runs only in voice mode (`vapi.websocket`) and only against a single assistant. It can't target a squad or a [**GPT-Live**](/gpt-live/overview) assistant, and it can't be an inline `scenario` in the run request: save the scenario first, then run it by `simulationId` or `scenarioId`.
+
+    In the Dashboard, run or rerun a suite that contains replays the same way as any suite: choose **Voice** and an assistant. A chat run or a squad target is refused.
+
+    To compare transcribers, run the same suite once per assistant.
+  </Step>
+  <Step title="Read the results">
+    Read a replay's results the same way as any simulation run. Fetch the run with `GET /eval/simulation/run/<run-id>`; when its `status` is `ended`, fetch its items:
+
+    ```bash
+    curl -X GET "https://api.vapi.ai/eval/simulation/run/<run-id>/item" \
+      -H "Authorization: Bearer $VAPI_API_KEY"
+    ```
+
+    Or open the run in the Dashboard. See [Read the results](#read-the-results).
+  </Step>
+</Steps>
+
+## Read the results
+
+A replay's score is in each run item's `results.transcriptEvaluation`. Its `results.evaluations` array is empty, because a replay has no structured-output evaluations. The transcriber's transcript is in `metadata.call.transcript`.
+
+```json
+{
+  "status": "failed",
+  "results": {
+    "passed": false,
+    "evaluations": [],
+    "transcriptEvaluation": {
+      "wer": 0.0417,
+      "hits": 92,
+      "substitutions": 3,
+      "deletions": 1,
+      "insertions": 0,
+      "referenceWordCount": 96,
+      "hypothesisWordCount": 95,
+      "keyValues": [
+        { "index": 0, "value": "Gonzalez", "verdict": "near", "required": true },
+        { "index": 1, "value": "lisinopril", "verdict": "exact", "required": true },
+        { "index": 2, "value": "10 mg", "verdict": "exact", "required": true },
+        { "index": 3, "value": "March 14, 1985", "verdict": "exact", "required": false },
+        { "index": 4, "value": "415-555-0142", "verdict": "missed", "required": false }
+      ],
+      "evaluations": [
+        {
+          "index": 0,
+          "metric": "wer",
+          "comparator": "<=",
+          "expectedValue": 0.1,
+          "actualValue": 0.0417,
+          "passed": true,
+          "required": true
+        }
+      ],
+      "passed": false
+    }
+  },
+  "metadata": {
+    "call": { "transcript": "thanks for calling riverside pharmacy how can i help ..." }
+  }
+}
+```
+
+In this example, WER is within the threshold, but the item fails because the required surname came through `near`.
+
+| Field | Meaning |
+| -- | -- |
+| `wer` | Word error rate as a fraction. `null` when the answer key has no words, and any `wer` evaluation then fails. |
+| `hits`, `substitutions`, `deletions`, `insertions` | Answer-key words transcribed correctly, transcribed as a different word, missing from the transcript, and transcript words with no answer-key word. |
+| `referenceWordCount`, `hypothesisWordCount` | Words in the normalized answer key and in the normalized transcript. |
+| `keyValues` | One entry per key value, in answer-key order: its `index`, `value`, `verdict`, and whether it was `required`. |
+| `evaluations` | One entry per `wer` evaluation: the `comparator`, `expectedValue`, measured `actualValue`, and whether it `passed`. |
+| `passed` | `false` when a required evaluation failed or a required key value didn't come through `exact`. |
+
+In the Dashboard, open the run and select the item. A replay shows the word error rate with its edit counts, each WER threshold, each key value's verdict, and the reason a failed item failed, such as "Key value 1 came through near; it is required to be exact." The transcript column shows what the transcriber heard. A replay has no recording to play back.
+
+## HIPAA, PCI, and zero data retention
+
+When HIPAA, PCI, or zero data retention is enabled for the organization, the assistant under test, or the scenario's `targetOverrides`, a replay stores no transcript text and no answer-key text:
+
+- You must use `answerKeyUrl`. An inline `answerKey` is rejected when you save the scenario on such an organization, and when you run a stored inline key against such an assistant.
+- The run item keeps the scores, verdicts, and whether each key value was required, by position only. `keyValues[].value` is left out and `metadata.call.transcript` is empty.
+- The Dashboard names key values by number and shows that the transcript isn't stored.
+
+Vapi doesn't store the recording or the answer key file, and the replay call records no audio. Vapi does store the `recordingUrl` and `answerKeyUrl` you provide, on the scenario and on each run item. A presigned URL gives access to the file until it expires, so set the shortest expiry that still covers your run.
+
+An assistant with transcripts turned off (`artifactPlan.transcriptPlan.enabled: false`) also stores no transcript. Its scores and key-value text are kept.
+
+## Limits
+
+| Limit | Value |
+| -- | -- |
+| Recording length | About 8 minutes on the default 10-minute simulation time limit. The exact limit is your organization's simulation time limit minus 105 seconds, which covers downloading, connecting, and finishing the call. A longer recording fails the item before any call is placed. |
+| Recording file size | 200 MB |
+| Recording download and decode | 90 seconds |
+| Answer key file size | 1 MB |
+| Answer key download | 15 seconds |
+| Answer key transcript | 200,000 characters and 30,000 words |
+| Key values | 20 per answer key, each up to 100 characters, with up to 10 accepted variants |
+| URLs | HTTPS, up to 4,096 characters, on a public host. Redirects aren't followed, so use the final URL. |
+
+A replay plays the recording at normal speed, so each run item takes about as long as the recording plus 10 seconds of trailing silence and the time to connect.
+
+## Cost
+
+A replay places one call, to the assistant under test, and it's billed like any other call to that assistant. There is no AI tester call, and scoring uses no model.
+
+## Troubleshooting
+
+| Issue | What to check |
+| -- | -- |
+| `400 An inline scenario cannot use transcriptReplay.` | Save the scenario, then run it by `simulationId` or `scenarioId`. |
+| `400` saying a replay runs only as a voice simulation, only against an assistant, or can't target a GPT-Live assistant | Use `"transport": { "provider": "vapi.websocket" }` (**Voice** in the Dashboard) and a single assistant that doesn't use GPT-Live. |
+| `400` asking you to use `answerKeyUrl` | HIPAA, PCI, or zero data retention applies. Host the answer key and pass `answerKeyUrl`. |
+| `400 evaluations[0].metric is only available on a scenario with transcriptReplay.` | `metric` evaluations work only on recording replay scenarios. |
+| A run item fails with "The recording could not be decoded." | Use WAV, MP3, FLAC, or OGG, or an MP4 written for streaming. |
+| A run item fails because the recording is longer than the limit | Trim the recording, or split it into parts with a matching answer key for each. |
+| A run item fails with "recordingUrl returned HTTP 403." or another status | The URL expired or isn't public. Generate a fresh URL and update the scenario's recording URL. The same message names `answerKeyUrl` when the answer key failed. |
+| "The target assistant has a handoff tool" | Replay against an assistant without handoff tools. |
+| Your server received requests during a replay | Tool calls don't run during a replay, including tools a hook calls, but your server URL still receives server messages. See [Tools and handoffs during a replay](#tools-and-handoffs-during-a-replay). |
+| A required key value came through `near` | Check the transcript. If the spelling is acceptable, add it to `acceptedVariants`. |
+| A key value is `missed` but the transcript looks right | Compare formats: number words against digits, units, date formats, and leading zeros aren't normalized. Add the transcriber's form as an accepted variant. |
+| WER is high but the transcript reads well | Check that the answer key includes both parties' words for a two-party recording, and that numbers and units are written the way the transcriber writes them. |
+| The transcript says it isn't stored | HIPAA, PCI, or zero data retention applies, or the assistant's transcript plan is off. The scores are still recorded. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Simulations overview" icon="circle-info" href="/observability/simulations-overview">
+    Learn when to use each scenario type, and when to use Evals.
+  </Card>
+  <Card title="Transcribers" icon="waveform-lines" href="/providers/transcriber/overview">
+    Look up the transcribers you can compare.
+  </Card>
+  <Card title="Manage simulations" icon="gear" href="/observability/simulations-manage">
+    Group replays in suites, rerun them, and review results.
+  </Card>
+  <Card title="HIPAA compliance" icon="shield" href="/security-and-privacy/hipaa">
+    Learn what Vapi stores when HIPAA is enabled.
+  </Card>
+</CardGroup>
