@@ -15,7 +15,7 @@ Vapi collects the keys the caller presses and processes them when one of these h
 
 Set the timeout to 0 when input should only be processed after the caller enters a delimiter. With a timeout of 0, always configure at least one delimiter, or the input is never processed.
 
-When Vapi processes the collected keys, it adds them to the conversation as a user message, for example, `User's Keypad Entry: 1234`. If the assistant is speaking at that moment, it stops and responds to the entry. The entry is available to the model and is saved in the call's messages and transcript when transcript artifacts are enabled. See [Handle sensitive input](#handle-sensitive-input) before collecting confidential values.
+When Vapi processes the collected keys, it adds them to the conversation as a user message, for example, `User's Keypad Entry: 1234`. If the assistant is speaking at that moment, it stops and responds to the entry, unless [`triggerResponseEnabled`](#add-entries-without-a-reply) is `false`. The entry is available to the model and is saved in the call's messages and transcript when transcript artifacts are enabled. See [Handle sensitive input](#handle-sensitive-input) before collecting confidential values.
 
 Keypad input works on phone calls on Twilio, Telnyx, Vonage, Vapi numbers, and BYO SIP trunks. It doesn't work on web calls or WebSocket calls.
 
@@ -58,6 +58,8 @@ Configure caller keypad input with `keypadInputPlan` when you create or update a
 | `enabled` | boolean | Enables caller keypad input. Default is `false`. |
 | `timeoutSeconds` | number | Processes the collected input after 1–10 seconds pass with no new key. Default is 2 seconds. Set it to `0` to wait for a delimiter. |
 | `delimiters` | array of strings | Processes input when the caller enters one of these keys. Each item must be `#`, `*`, or `""`. Default is `["#", "*"]`. Use an empty array to process input on the timeout only; `#` and `*` are then included in the entry like any other key. Don't combine an empty array with a timeout of `0`, because the input is never processed. |
+| `triggerResponseEnabled` | boolean | Controls whether a finished entry makes the assistant reply. Default is `true`. Set it to `false` to add the entry to the conversation without a reply. |
+| `variableName` | string | Stores each finished entry in a call variable with this name. The value keeps leading zeros, and a later entry replaces the earlier one. The name must start with a letter, contain only letters, numbers, and underscores, and be 1–40 characters. Not supported on GPT-Live assistants. |
 
 This example processes input after 2 seconds or when the caller enters `#`:
 
@@ -67,6 +69,40 @@ This example processes input after 2 seconds or when the caller enters `#`:
     "enabled": true,
     "timeoutSeconds": 2,
     "delimiters": ["#"]
+  }
+}
+```
+
+## Add entries without a reply
+
+By default, a finished entry interrupts the assistant and makes it reply. Set `triggerResponseEnabled` to `false` to add the entry to the conversation without a reply, so the assistant keeps talking. The model reads the entry on the caller's next turn, including when the entry arrives while Vapi is still detecting the end of that turn.
+
+## Use an entry in a transfer
+
+Set `variableName` to store each finished entry as a call variable. Reference it as `{{variableName}}` in a transfer destination, for example in `sipHeaders`, so the model doesn't have to repeat the digits. The value also appears in the call's `artifact.variableValues`.
+
+This plan adds entries without a reply and stores them in `account_id`:
+
+```json
+{
+  "keypadInputPlan": {
+    "enabled": true,
+    "timeoutSeconds": 0,
+    "delimiters": ["#"],
+    "triggerResponseEnabled": false,
+    "variableName": "account_id"
+  }
+}
+```
+
+This SIP transfer destination sends the stored entry in a header:
+
+```json
+{
+  "type": "sip",
+  "sipUri": "sip:support@example.com",
+  "sipHeaders": {
+    "x-account-id": "{{account_id}}"
   }
 }
 ```
