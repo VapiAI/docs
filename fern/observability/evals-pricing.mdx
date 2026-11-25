@@ -1,0 +1,102 @@
+---
+title: Eval pricing
+subtitle: Understand what an eval run costs and how to keep costs down
+slug: observability/evals-pricing
+description: Learn how Vapi prices evals at $0.005 per turn plus model and tool costs, read the cost of a run, and reduce what your evals cost.
+---
+
+## Overview
+
+Starting **December 15, 2026**, evals are priced the same way as chats: **$0.005 per turn, plus the model and tool costs for that turn**. There is no per-run fee. The same price applies to every subscription.
+
+<Note>
+  Until December 15, 2026, pay-as-you-go subscriptions pay $0.0005 per eval run plus model costs, instead of the per-turn fee.
+</Note>
+
+## What an eval run costs
+
+| Charge | What it covers | Price |
+| --- | --- | --- |
+| **Turn fee** | Each response your assistant generates during the eval | $0.005 per turn |
+| **Assistant model** | The tokens your assistant's model uses to respond | Provider cost |
+| **Tools** | Tools your assistant runs during a turn, when they have a cost | Provider cost |
+| **AI judge** | The tokens the judge's model uses to grade a checkpoint | Provider cost |
+| **Exact and regex judges** | Checking a response against exact values or a pattern | Free |
+
+When a model runs on your own provider API key, Vapi doesn't charge for its tokens, and your provider bills you directly. This applies to the AI judge's model as well as your assistant's.
+
+### What counts as a turn
+
+A turn is one response from your assistant. The eval asks your assistant to respond at each assistant checkpoint in the mock conversation, meaning an assistant message with a `judgePlan`:
+
+- Consecutive assistant checkpoints are answered by one response, so they count as one turn.
+- Messages you write into the mock conversation, such as user messages, system messages, and assistant messages without a `judgePlan`, are not turns.
+- A turn is charged even when your assistant returns no response, because the request still runs.
+- When `continuePlan.exitOnFailureEnabled` ends an eval early, the checkpoints after it don't run and aren't charged.
+
+## Worked example
+
+An eval has three assistant checkpoints, each graded by an AI judge. The assistant uses OpenAI `gpt-4.1`, and the judge uses Groq `openai/gpt-oss-120b`. The model costs below are illustrative; yours depend on the provider, the model, and the number of tokens.
+
+| Charge | Per turn | Run (3 turns) |
+| --- | --- | --- |
+| Turn fee | $0.0050 | $0.0150 |
+| Assistant model | $0.0012 | $0.0036 |
+| AI judge | $0.0001 | $0.0003 |
+| **Total** | **$0.0063** | **$0.0189** |
+
+Run 100 times a month, for example on every change to the assistant, this eval costs about $1.89 a month. With an exact or regex judge instead of the AI judge, each run costs $0.0186.
+
+## Read what a run cost
+
+Each eval run reports its total cost in `cost`, in USD, and a breakdown in `costs`. Retrieve a run with [`GET /eval/run/{id}`](/api-reference/eval/eval-controller-get-run).
+
+```json title="Eval run (trimmed)"
+{
+  "id": "eval-run-123",
+  "status": "ended",
+  "cost": 0.0189,
+  "costs": [
+    { "type": "chat", "cost": 0.015 },
+    {
+      "type": "model",
+      "model": { "provider": "openai", "model": "gpt-4.1" },
+      "promptTokens": 1350,
+      "completionTokens": 120,
+      "cost": 0.0036
+    },
+    {
+      "type": "model",
+      "model": { "provider": "groq", "model": "openai/gpt-oss-120b" },
+      "promptTokens": 1800,
+      "completionTokens": 15,
+      "cost": 0.0003
+    }
+  ]
+}
+```
+
+- The `chat` row is the turn fees for the whole run.
+- Each `model` row is the usage of one provider and model. When your assistant and the AI judge use the same model, their usage shares a row.
+- Runs from before December 15, 2026 show an `eval` row for the per-run fee instead of a `chat` row.
+
+## Keep eval costs down
+
+Most of an eval's cost is the turn fee, so reducing the number of turns has the biggest effect.
+
+- **Check one decision per eval.** Write the earlier conversation into the mock conversation as user messages and assistant messages without a `judgePlan`, so that only the response you're testing is generated. See [Provide only the context the decision needs](/test/evals-best-practices#provide-only-the-context-the-decision-needs).
+- **Stop at the first failure.** Set `continuePlan.exitOnFailureEnabled` on early checkpoints, so a failed step doesn't run the rest of the conversation.
+- **Use exact and regex judges where they fit.** They're free, and they can prove tool calls, arguments, and fixed wording. Use an AI judge only when the decision needs semantic judgment. See [Choose the simplest judge that fits](/test/evals-best-practices#choose-the-simplest-judge-that-fits).
+- **Use a smaller model for the AI judge**, or run it on your own provider API key.
+- **Run your full eval suite when it matters**, such as before a release, rather than on every change.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Test decisions with Evals" icon="clipboard-check" href="/test/evals-best-practices">
+    Choose checkpoints and judges that keep evals focused.
+  </Card>
+  <Card title="Pricing and Success Packages" icon="receipt" href="/billing/pricing-and-success-packages">
+    Understand usage-based charges across Vapi.
+  </Card>
+</CardGroup>
