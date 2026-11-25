@@ -12,7 +12,7 @@ If you are an AI agent asked to manage Vapi configuration as code, to keep assis
 2. Read `AGENTS.md` at the repository root before changing anything. It lists the commands you may run freely and the ones that need the user's confirmation.
 3. Connect an org without prompts: `npm run setup -- <org>`, with the private API key in the org's own environment variable, `VAPI_PRIVATE_API_KEY_<ORG>` (for `acme-dev`, `VAPI_PRIVATE_API_KEY_ACME_DEV`), or in `.env.<org>`. Never pass the key as a command-line argument, and never print it. If setup reports a different key in `.env.<org>`, or a key another org already uses, stop and tell the user: the key may belong to another org. Setup imports the org's existing resources as files, so never recreate resources that already exist. Before promoting between existing orgs, follow the one-time setup in the [promotion guide](https://github.com/VapiAI/gitops/blob/main/docs/guides/promotion.md) and show the user the read-only plan.
 4. Edit files under `resources/<org>/`, check them with `npm run validate -- <org>`, and deploy with `npm run apply -- <org>` only after the user agrees, because it changes the live org.
-5. Commit the resource files and `.vapi-state.<org>.json`. Never commit `.env.<org>`.
+5. Commit the resource files and `state/<org>/state.json`. Never commit `.env.<org>`.
 </llms-only>
 
 Config as code keeps your Vapi configuration in files under version control instead of only in the dashboard. Every change to a prompt, tool or squad goes through a pull request. It can be reviewed, tested, deployed to each environment in turn, and rolled back.
@@ -101,11 +101,13 @@ Config as code keeps your Vapi configuration in files under version control inst
     npm run apply -- my-org      # pull the latest, merge, then push
     ```
 
-    Commit the changed files and `.vapi-state.my-org.json`, so your team shares the same name-to-UUID mappings.
+    Commit the changed files and `state/my-org/state.json`, so your team shares the same name-to-UUID mappings.
   </Step>
 </Steps>
 
 The [README](https://github.com/VapiAI/gitops#readme) covers every command and option.
+
+Older repositories keep the state file at the repository root as `.vapi-state.<org>.json` until you run `npm run migrate`. See [Upgrading from an older version](https://github.com/VapiAI/gitops/blob/main/docs/guides/commands.md#upgrading-from-an-older-version) before migrating, including how to update the CI step that commits state. Files under `state/<org>/local/` are local-only and aren't committed.
 
 ## Already running Vapi in production?
 
@@ -131,7 +133,7 @@ Without a UUID, adoption needs exactly one matching candidate from existing mapp
 
 ### Example: Adopt a dashboard assistant
 
-You created `Support Intake` in the dashboard and saved its configuration in `resources/my-org/assistants/support/intake.yml` with `name: Support Intake`. Before adoption, `.vapi-state.my-org.json` has no entry for `support/intake` under `assistants`.
+You created `Support Intake` in the dashboard and saved its configuration in `resources/my-org/assistants/support/intake.yml` with `name: Support Intake`. Before adoption, `state/my-org/state.json` has no entry for `support/intake` under `assistants`.
 
 Preview the match with `--dry-run`. GitOps shows the UUID it would adopt without saving the mapping or updating the assistant:
 
@@ -145,7 +147,7 @@ Use the UUID you verified in the preview to apply the file to that assistant. Re
 npm run push -- my-org assistants/support/intake.yml --adopt support/intake=12345678-1234-1234-1234-123456789abc
 ```
 
-After a successful push, the dashboard assistant has the same UUID and uses the configuration from your file. GitOps saves the new mapping under `assistants` in `.vapi-state.my-org.json`:
+After a successful push, the dashboard assistant has the same UUID and uses the configuration from your file. GitOps saves the new mapping under `assistants` in `state/my-org/state.json`:
 
 ```json
 {
@@ -158,7 +160,7 @@ After a successful push, the dashboard assistant has the same UUID and uses the 
 }
 ```
 
-Commit the assistant file and `.vapi-state.my-org.json`. Future deploys use the saved mapping automatically.
+Commit the assistant file and `state/my-org/state.json`. Future deploys use the saved mapping automatically.
 
 ### Preview adoption in automation
 
@@ -186,6 +188,33 @@ Each org you connect gets its own variable, so one shell can hold the keys for d
 
 Agents follow the repository's `AGENTS.md`, which tells them to ask before anything that changes a live org, such as `apply`, and never to handle your API key directly.
 
+## Share prompt text and settings
+
+Keep shared system-prompt text in `templates/blocks/<name>.md`. For example, put your safety wording in `templates/blocks/safety.md`, then include it in an assistant's system prompt on a line of its own:
+
+```markdown
+@include safety
+```
+
+Keep shared settings in `templates/config/<name>.yml`. For example, `templates/config/voice.yml` can define `provider` and `voiceId`; an assistant includes it like this:
+
+```yaml
+voice: {$include: voice}
+```
+
+The resource's own keys win over included settings. Mappings merge key by key; lists replace rather than append. To override a block for one org, put a file with the same name under `resources/<org>/templates/blocks/` or `resources/<org>/templates/config/`.
+
+Vapi receives the expanded text and settings, not the include markers. After editing a block, preview every resource that needs the change, then deploy:
+
+```bash
+npm run sync-blocks
+npm run sync-blocks -- --apply
+```
+
+Add `--org my-org` after `--` to scope either command to one org. Deployment runs the normal `apply` flow and needs each org's API key. Commit the blocks and the updated blocks record, `state/<org>/blocks.json` (or `resources/<org>/.vapi-blocks.json` in the legacy layout), with your changes.
+
+See the [blocks reference](https://github.com/VapiAI/gitops/blob/main/docs/guides/blocks.md) for limits and the [many-locations guide](https://github.com/VapiAI/gitops/blob/main/docs/guides/many-locations.md) for a rollout walkthrough.
+
 ## Development, staging and production
 
 For separate environments, use one Vapi org per environment, for example `acme-dev`, `acme-staging` and `acme-prod`. Each is a folder in the same repository.
@@ -208,6 +237,8 @@ See the [PR checks guide](https://github.com/VapiAI/gitops/blob/main/docs/guides
 ## Working with the dashboard
 
 You can keep using the dashboard alongside the repository. `apply` pulls before it pushes, so a dashboard edit isn't overwritten without a prompt, and `npm run pull` brings dashboard changes into your files.
+
+For files that use blocks, pull keeps your source file and its include markers. When it needs to bring down a dashboard edit, it saves the dashboard version beside your file as a `.bkp` copy for you to reconcile into the source or block.
 
 Vapi's built-in [versioning](/assistants/versioning) also works alongside it. Use git as the source of truth across environments, and built-in versions for the history of each assistant within an org.
 
