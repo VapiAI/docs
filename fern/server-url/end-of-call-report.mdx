@@ -1,0 +1,378 @@
+---
+title: "End-of-call report"
+subtitle: "Receive a call's transcript, recording links, costs, and structured outputs on your server"
+description: "Receive the end-of-call-report server message: when it is sent, server URL and signature setup, payload fields, timeouts, retries, and duplicates."
+slug: server-url/end-of-call-report
+---
+
+When a call ends and a server URL is configured, Vapi sends an `end-of-call-report` message after post-call processing. The report can include the call's transcript, messages, recording links, costs, ended reason, and structured outputs. By default, Vapi sends the report once and doesn't retry, so respond quickly and save the report when it arrives. Handle duplicate requests, too. For more information, see [Handle duplicates](#handle-duplicates).
+
+## What you can use it for
+
+- **Save call records:** Store transcripts, recordings, and structured outputs in your database or CRM.
+- **Start follow-up work:** Create a ticket, send a confirmation, or update a lead from the call's structured outputs.
+- **Track costs:** Record the cost of each call and its components.
+- **Monitor quality:** Track ended reasons and latency to find failed or slow calls.
+- **Keep call content under Zero Data Retention:** Save the report in your application when Vapi doesn't retain the transcript and messages. If you configured [custom storage](/security-and-privacy/zero-data-retention#find-recordings-transcripts-logs-and-metadata), call content may also be available there.
+
+## Receive your first report
+
+<Steps>
+  <Step title="Create an endpoint">
+    For a first test, create an HTTPS endpoint that accepts JSON `POST` requests. Handle each report in this order:
+
+    1. Receive the report.
+    2. Return `200`.
+    3. Do any work on the report, such as saving it or updating your CRM.
+
+    Vapi waits up to 20 seconds for a response by default and doesn't retry unless you configure retries. See [Timeouts and retries](#timeouts-and-retries). These minimal examples follow that order and log fields from the report.
+
+    <CodeBlocks>
+    ```typescript title="Node.js (Express)"
+    import express from 'express';
+
+    const app = express();
+
+    app.post('/vapi/webhook', express.json({ limit: '5mb' }), (req, res) => {
+      const { message } = req.body;
+      res.sendStatus(200);
+
+      if (message.type === 'end-of-call-report') {
+        void saveReport(message);
+      }
+    });
+
+    async function saveReport(message: any) {
+      console.log(message.call.id, message.endedReason, message.artifact.transcript);
+    }
+
+    app.listen(3000);
+    ```
+
+    ```python title="Python (Flask)"
+    import threading
+
+    from flask import Flask, request
+
+    app = Flask(__name__)
+
+
+    def save_report(message):
+        print(message["call"]["id"], message["endedReason"], message["artifact"].get("transcript"))
+
+
+    @app.post("/vapi/webhook")
+    def vapi_webhook():
+        message = request.get_json()["message"]
+        if message["type"] == "end-of-call-report":
+            threading.Thread(target=save_report, args=(message,)).start()
+        return "", 200
+
+
+    app.run(port=3000)
+    ```
+    </CodeBlocks>
+
+    The examples listen on local port `3000`. Set your server URL to the public HTTPS address that reaches that port, such as your hosting provider's URL or a tunnel to your machine.
+  </Step>
+
+  <Step title="Set the server URL">
+    Set your endpoint as the server URL on the assistant, phone number, or organization. For more information, see [Setting server URLs](/server-url/setting-server-urls).
+
+    ```bash
+    curl -X PATCH https://api.vapi.ai/assistant/YOUR_ASSISTANT_ID \
+      -H "Authorization: Bearer YOUR_PRIVATE_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "server": {
+          "url": "https://example.com/vapi/webhook",
+          "credentialId": "YOUR_CREDENTIAL_ID"
+        }
+      }'
+    ```
+
+    Replace `YOUR_CREDENTIAL_ID` with the ID of the custom credential Vapi uses to sign requests. To create one, see [Verify requests](#verify-requests). For a first test without verification, remove the `credentialId` line.
+  </Step>
+
+  <Step title="Make a test call">
+    Call the assistant and end the call. The report usually arrives within seconds. For exceptions, see [When an end-of-call report is sent](#when-an-end-of-call-report-is-sent).
+
+    If it doesn't arrive, open [Webhook logs](/observability/logs/webhook-logs) and filter by the call or the `end-of-call-report` type. See [Troubleshooting](#troubleshooting).
+  </Step>
+</Steps>
+
+## Choose which server URL receives the report
+
+Vapi sends the report to one server URL only. It uses the first server URL that is set, in this order:
+
+1. The assistant's server URL.
+2. The phone number's server URL.
+3. The organization's server URL.
+
+For a squad call, Vapi sends one end-of-call report using the server URL selected for the assistant active when the call ends. It doesn't send a separate report for each assistant that handled the call.
+
+## Turn the report on or off
+
+The default `serverMessages` list includes `end-of-call-report`. Setting `serverMessages` replaces that list, so include `end-of-call-report` and any other messages your server needs. For valid values, see the [assistant API reference](/api-reference/assistants/create#request.body.serverMessages).
+
+```json
+{
+  "serverMessages": ["end-of-call-report", "status-update"]
+}
+```
+
+This example subscribes to only these two server messages. To stop receiving the report, leave `end-of-call-report` out of the list.
+
+## Verify requests
+
+Add a [custom credential](/server-url/server-authentication) and set its ID in `server.credentialId` on the assistant, phone number, or organization whose server URL receives the report.
+
+<Warning>
+Always set `server.credentialId`. Without it, Vapi may sign the request with a different credential from your organization, and your signature check fails.
+</Warning>
+
+### Signing options
+
+With an HMAC credential, Vapi signs each request with your credential's secret. Choose these settings when you create the credential:
+
+| Setting | Options | Default |
+|---------|---------|---------|
+| Algorithm (`algorithm`) | `sha256` or `sha512`. Use `sha256` unless you need `sha512`, and `sha1` only for older systems that require it. | None (required) |
+| Signature encoding (`signatureEncoding`) | `hex` or `base64` | `hex` |
+| Signature header (`signatureHeader`) | Any header name | `x-signature` |
+| Timestamp header (`timestampHeader`) | Any header name | `x-timestamp` |
+| Signature prefix (`signaturePrefix`) | Text added before the signature, such as `sha256=` | None |
+| Signed content (`payloadFormat`) | A template that uses `{timestamp}`, `{body}`, `{method}`, and `{url}` | `{timestamp}.{body}` |
+| Base64 secret (`secretIsBase64`) | Decode the secret from base64 before signing | Off |
+
+With the defaults, each request includes these headers:
+
+- **`x-timestamp`:** Unix time in milliseconds when the request was signed.
+- **`x-signature`:** A hex-encoded HMAC of `{x-timestamp}.{raw request body}`.
+
+If you can't verify signatures, you can use a Bearer token or OAuth 2.0 credential instead. For more information, see [Server authentication](/server-url/server-authentication).
+
+### What your endpoint should check
+
+1. Compute the signature from the raw request body before you parse it.
+2. Compare it to the signature header with a constant-time comparison.
+3. Reject requests with a timestamp outside a short window to prevent replay. Retries reuse the original timestamp, so make the window longer than your total retry delay.
+
+### Example verification code
+
+These examples use the default settings with the `sha256` algorithm. They check the signature only, so add the timestamp check for production. Match the code to your credential's settings.
+
+<CodeBlocks>
+```typescript title="Node.js (Express)"
+import crypto from 'node:crypto';
+import express from 'express';
+
+const app = express();
+const SECRET = process.env.VAPI_WEBHOOK_SECRET!;
+
+app.post('/vapi/webhook', express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
+  const body = req.body.toString('utf8');
+  const timestamp = req.header('x-timestamp') ?? '';
+  const signature = req.header('x-signature') ?? '';
+
+  const expected = crypto.createHmac('sha256', SECRET).update(`${timestamp}.${body}`).digest('hex');
+  const valid =
+    signature.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  if (!valid) return res.sendStatus(401);
+
+  const { message } = JSON.parse(body);
+  res.sendStatus(200);
+  // Process message here.
+});
+```
+
+```python title="Python (Flask)"
+import hashlib
+import hmac
+import json
+import os
+
+from flask import Flask, abort, request
+
+app = Flask(__name__)
+SECRET = os.environ["VAPI_WEBHOOK_SECRET"].encode()
+
+
+@app.post("/vapi/webhook")
+def vapi_webhook():
+    body = request.get_data()
+    timestamp = request.headers.get("x-timestamp", "")
+    signature = request.headers.get("x-signature", "")
+
+    expected = hmac.new(SECRET, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        abort(401)
+
+    message = json.loads(body)["message"]
+    # Process message here.
+    return "", 200
+```
+</CodeBlocks>
+
+## When an end-of-call report is sent
+
+Vapi sends the report after post-call processing finishes. This can include structured outputs, analysis, and recording uploads. The report usually arrives within seconds of the call ending.
+
+- **Twilio calls that end outside the conversation:** Sometimes Vapi learns that a Twilio call ended only from Twilio's status update, for example with the `call.in-progress.twilio-completed-call` ended reason. In that case, the report can arrive up to 10 minutes after the call ends.
+- **Calls that never connect:** Vapi still sends a report, with the ended reason that explains why. These reports have empty or zero values for conversation fields and costs.
+- **Calls that fail before they start:** Vapi may not send a report. To find these calls, use [List calls](/api-reference/calls/list) and check `endedReason`.
+- **Analysis that fails:** If a structured output or analysis step fails, Vapi still sends the report without that result.
+
+For more information about each ended reason, see [Call ended reasons](/calls/call-ended-reason).
+
+## Payload
+
+Every server message has the same body shape: a `message` object. For the report, `message.type` is `end-of-call-report`. This example is shortened:
+
+```json
+{
+  "message": {
+    "type": "end-of-call-report",
+    "timestamp": 1795127474240,
+    "endedReason": "assistant-ended-call",
+    "startedAt": "2026-11-19T22:30:50.903Z",
+    "endedAt": "2026-11-19T22:31:11.254Z",
+    "cost": 0.019,
+    "costs": [
+      { "type": "transcriber", "minutes": 0.38, "cost": 0.004 },
+      { "type": "model", "promptTokens": 411, "completionTokens": 37, "cost": 0.001 }
+    ],
+    "artifact": {
+      "transcript": "AI: Hi, this is the end-of-call report test.\nUser: Hi, I would like to check the status of my order.\n...",
+      "messages": [
+        { "role": "bot", "message": "Hi, this is the end-of-call report test.", "time": 1795127450950, "secondsFromStart": 0.5 },
+        { "role": "user", "message": "Hi, I would like to check the status of my order.", "time": 1795127458120, "secondsFromStart": 7.2 }
+      ],
+      "recordingUrl": "https://...",
+      "stereoRecordingUrl": "https://...",
+      "presignedMonoUrl": "https://...",
+      "presignedUrlsExpiresAt": "2026-11-19T23:01:11.254Z",
+      "logUrl": "https://...",
+      "structuredOutputs": {
+        "00000000-0000-4000-8000-000000000002": {
+          "name": "caller_intent",
+          "result": "Check the status of their order"
+        }
+      },
+      "performanceMetrics": { "turnLatencies": [ /* ... */ ] }
+    },
+    "analysis": {},
+    "call": { "id": "00000000-0000-4000-8000-000000000001", "type": "inboundPhoneCall", "status": "ended" /* ... */ },
+    "assistant": { /* assistant configuration */ },
+    "customer": { "number": "+14155550123" },
+    "phoneNumber": { /* phone number configuration */ }
+  }
+}
+```
+
+### Fields
+
+These fields are inside the report's `message` object. Some appear only for certain calls or settings, as noted in each description. You can't choose which fields Vapi sends, but you can control which optional fields Vapi fills. See [Settings that change the report](#settings-that-change-the-report).
+
+| Field | Description |
+|-------|-------------|
+| `type` | Always `end-of-call-report`. |
+| `endedReason` | Why the call ended. See [Call ended reasons](/calls/call-ended-reason). |
+| `startedAt`, `endedAt` | ISO 8601 times when the call started and ended. |
+| `cost` | Total cost of the call in USD. |
+| `costs` | Cost of each component, such as the transcriber, model, voice, and Vapi platform. |
+| `destination` | Where the call was transferred, if it was transferred. |
+| `compliance` | Recording consent result, if you configured a recording consent plan. |
+| `assistantVersion` | Version label when the call uses a versioned assistant; otherwise this field may be absent. |
+| `timestamp` | Unix time in milliseconds when Vapi created the message. Retries keep the same value. |
+| `artifact.transcript` | The conversation as plain text. |
+| `artifact.messages` | Each turn of the conversation, including tool calls and results, with timing. |
+| `artifact.messagesOpenAIFormatted` | The conversation in OpenAI chat message format. |
+| `artifact.recording`, `artifact.recordingUrl`, `artifact.stereoRecordingUrl` | Recording locations. See [Recordings](#recordings). |
+| `artifact.videoRecordingUrl` | Video recording location, when video recording is enabled. |
+| `artifact.presigned*Url`, `artifact.presignedUrlsExpiresAt` | Temporary download links for recordings and logs, and when they expire. |
+| `artifact.logUrl` | Location of the call logs. |
+| `artifact.structuredOutputs` | Results of the call's [structured outputs](/assistants/structured-outputs), keyed by structured output ID. Each entry has a `name` and a `result`. |
+| `artifact.scorecards` | Scorecard results, if configured. |
+| `artifact.performanceMetrics` | Turn latency for each part of the pipeline. |
+| `artifact.assistantActivations` | Each assistant that was active during the call, in order. |
+| `artifact.transfers` | Each transfer attempt and its outcome. |
+| `artifact.variableValues` | Variable values at the end of the call. |
+| `analysis` | Legacy `analysisPlan` results, such as a text `summary`. Empty unless you configure that plan. Use `artifact.structuredOutputs` instead. |
+| `call` | The call object. This copy can be incomplete. For the full call, use [Get call](/api-reference/calls/get). |
+| `assistant`, `customer`, `phoneNumber` | The assistant, customer, and phone number for the call. Phone number and customer fields appear only on phone calls. |
+
+### Settings that change the report
+
+The report includes the data generated for the call. Configure these settings before the call to control which artifacts and analysis Vapi generates. The linked guides explain each setting.
+
+| Report content | Assistant setting | Learn more |
+|----------------|-------------------|------------|
+| Whether Vapi sends the report | `serverMessages` | [Server message types](/api-reference/assistants/create#request.body.serverMessages) |
+| Recording URLs | `artifactPlan.recordingEnabled` | [Call recording and artifacts](/assistants/call-recording) |
+| Video recording URL | `artifactPlan.videoRecordingEnabled` | [Recording and artifact settings](/assistants/call-recording#artifact-plan-configuration) |
+| Transcript | `artifactPlan.transcriptPlan.enabled` | [Call recording and artifacts](/assistants/call-recording) |
+| Log URL | `artifactPlan.loggingEnabled` | [Call recording and artifacts](/assistants/call-recording) |
+| Structured outputs | `artifactPlan.structuredOutputIds` or `artifactPlan.structuredOutputs` | [Structured outputs](/assistants/structured-outputs) |
+| Scorecards | `artifactPlan.scorecardIds` or `artifactPlan.scorecards` | [Scorecards](/observability/scorecard-quickstart) |
+| Summary, structured data, and success evaluation | `analysisPlan` (use structured outputs instead) | [Call analysis](/assistants/call-analysis) |
+| Recording consent result | `compliancePlan.recordingConsentPlan` | [Recording consent](/security-and-privacy/recording-consent-plan) |
+
+## Recordings
+
+For artifacts stored by Vapi, the `recordingUrl`, `stereoRecordingUrl`, and `recording` fields identify private files. Use your private API key with the [artifact endpoints](/assistants/retrieve-call-artifacts) to download them, for example `GET /call/{id}/mono-recording`. If you use custom storage, access follows your storage configuration.
+
+The presigned fields, such as `presignedMonoUrl`, are temporary links that need no authentication. They stop working at `presignedUrlsExpiresAt`. Save the stable fields, and download what you need before the presigned links expire.
+
+## Timeouts and retries
+
+- **Timeout:** Vapi waits for your response for `server.timeoutSeconds`, 20 seconds by default.
+- **Success:** Any `2xx` status. Vapi ignores the response body.
+- **Retries:** By default, Vapi tries once. If your server times out or returns an error, Vapi doesn't send the report again, and you can't request it again later.
+
+To turn on retries, set `server.backoffPlan`. The `maxRetries` value is the total number of attempts, so set it to at least `2`:
+
+```json
+{
+  "server": {
+    "url": "https://example.com/vapi/webhook",
+    "backoffPlan": {
+      "type": "exponential",
+      "maxRetries": 3,
+      "baseDelaySeconds": 2
+    }
+  }
+}
+```
+
+The backoff plan applies to every server message sent to that server URL, not only the report.
+
+## Handle duplicates
+
+Your server can receive the same report more than once, for example after a retry. Retried requests are identical to the first attempt. Use `message.call.id` to make processing idempotent: If you have already saved a report for that call, return `200` and skip it.
+
+Don't rely on the order of server messages. The report can arrive before or after the `status-update` message that says the call ended.
+
+## Zero Data Retention and HIPAA
+
+- **[Zero Data Retention](/security-and-privacy/zero-data-retention):** Vapi can send generated transcripts and messages in the report, but doesn't keep them on the call. Recordings are available only if you use your own storage. Save the report when it arrives.
+- **[HIPAA](/security-and-privacy/hipaa):** The report can include transcripts, messages, and recording links when those artifacts are generated.
+
+## Troubleshooting
+
+| Problem | What to check |
+|---------|---------------|
+| No report arrives | Check that `serverMessages` includes `end-of-call-report`, and [which server URL receives it](#choose-which-server-url-receives-the-report). The server URL must resolve to a public address. If it doesn't, the call log shows that the destination was refused. Open [Webhook logs](/observability/logs/webhook-logs) to see whether Vapi tried to send it. Webhook logs aren't available under Zero Data Retention. |
+| `401` or `403` from your server | Check `server.credentialId` and your signature check. Compute the signature from the raw body, not parsed JSON. |
+| Request timed out | Make sure your endpoint responds within `server.timeoutSeconds`, or increase the timeout. |
+| Structured outputs or `analysis` are empty | Configure [structured outputs](/assistants/structured-outputs) on the assistant and read `artifact.structuredOutputs`. The `analysis` field holds legacy [`analysisPlan`](/assistants/call-analysis) results and is empty unless you configure that plan. |
+| Recording fields are empty | Check `artifactPlan.recordingEnabled`. Under Zero Data Retention, recordings require your own storage. |
+
+## Related
+
+- **[Server events](/server-url/events):** Every message Vapi sends to your server URL.
+- **[Setting server URLs](/server-url/setting-server-urls):** Where to set server URLs and which one wins.
+- **[Server authentication](/server-url/server-authentication):** Create credentials to verify requests.
+- **[Structured outputs](/assistants/structured-outputs):** Extract data from calls into the report.
+- **[Webhook logs](/observability/logs/webhook-logs):** Inspect deliveries and responses.
