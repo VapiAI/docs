@@ -49,23 +49,36 @@ original Fern commands also removes this optimization.
 ## Local verification
 
 ```sh
-npm install --prefix /tmp/vapi-fern --no-save fern-api@5.169.0
+npm install --prefix /tmp/vapi-fern --no-save fern-api@5.216.0
 export FERN_CLI_PATH=/tmp/vapi-fern/node_modules/fern-api/cli.cjs
 node --test scripts/fern/*.test.cjs
-node scripts/fern/run.cjs check --local --log-level debug
+node scripts/fern/run.cjs check --local --warnings --log-level debug
 node scripts/fern/run.cjs generate --docs --preview --log-level debug
 ```
 
 The CLI compatibility tests exercise the installed bundle when `FERN_CLI_PATH` is set;
-without it, the installed-bundle checks are skipped. The wrapper pins Fern 5.169.0
+without it, the installed-bundle checks are skipped. The wrapper pins Fern 5.216.0
 and verifies CLI SHA-256
-`773ec0a808a2c4d03c894c81c6159f8e3fe8db5a873c287cdce5b140eed8b809`.
+`acd2771ffed03658a03590ea9fa6ee764df52e52284665eb8574cd8efacb4923`.
 The timing measurements below predate this upgrade.
 
 Preview generation publishes remotely and requires separate authorization.
 Only use `--preview` for verification. Production publishing remains in the
 existing main-branch workflow. Logs print cache hits, misses, and uncached
 diagnostic-producing calls at exit.
+
+The required internal-link rule in `fern/docs.yml` also builds the API navigation.
+This can be expensive on a cold cache. Keep it enabled when measuring cache
+performance; a check that skips links does not exercise the same work as a docs
+build.
+
+When upgrading Fern, update the pinned version in `fern/fern.config.json`,
+`.github/actions/setup-fern/action.yml`, and `run.cjs` together. Review the new
+bundle before updating its checksum and function markers. Run the safeguard tests,
+compare the unmodified CLI with cold and warm adapter checks (including warnings),
+and verify a preview publication before merging. Confirm the preview deletion and
+live-link commands still work with the new CLI. Do not update only the checksum
+to bypass an unexpected-bundle failure.
 
 ## Measured validation results
 
