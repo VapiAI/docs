@@ -1,0 +1,134 @@
+---
+title: Configure the Send Text tool
+subtitle: Create the tool, guide the assistant, and control what the caller hears
+slug: tools/send-text/configure
+description: Configure the Vapi Send Text tool in the dashboard, limit texts to the caller, prompt the assistant, set tool messages, and troubleshoot texts that weren't sent.
+---
+
+Configure the Send Text tool in the dashboard, then add it to an assistant. You choose the sending Twilio number, who the assistant can text, when it sends a text, and what the caller hears afterward. This page also covers how to verify a text was sent and how to troubleshoot texts that weren't sent.
+
+Before you start, read [Send Text tool](/tools/send-text) for what the tool does and its requirements. You need a Twilio number imported into Vapi that can send SMS messages to US numbers.
+
+## Create the tool
+
+<Steps>
+  <Step title="Open the tool form">
+    In the [Dashboard](https://dashboard.vapi.ai), select **Tools**, then select **Create Tool**.
+  </Step>
+  <Step title="Select Send Text">
+    Under **Phone Call Tools**, select **Send Text**.
+  </Step>
+  <Step title="Name the tool">
+    Give the tool a name and description. The description tells the assistant when to send a text.
+  </Step>
+  <Step title="Choose the sending number">
+    Under **From Phone Number**, select the Twilio number to send texts from. If the list is empty, [import a Twilio number](/phone-numbers/import-twilio) first.
+  </Step>
+  <Step title="Preset the recipient (optional)">
+    Under **To Phone Number (Preset)**, enter the number to send texts to. See [Send texts only to the caller](#send-texts-only-to-the-caller).
+  </Step>
+  <Step title="Preset the message (optional)">
+    Under **Message Body (Preset)**, enter the message to send every time. You can include [variables](/assistants/dynamic-variables), such as `Your appointment is confirmed for {{appointmentDate}}.`
+  </Step>
+  <Step title="Set tool messages (optional)">
+    Under **Messages**, set what the assistant says after the text is sent. See [Tool messages](#tool-messages).
+  </Step>
+  <Step title="Publish and assign the tool">
+    Publish the tool, then add it to your assistant.
+  </Step>
+</Steps>
+
+## Send texts only to the caller
+
+Unless you preset the recipient, the assistant chooses who to text. It can send a text to any number given during the call.
+
+To send texts only to the caller, enter `{{customer.number}}` under **To Phone Number (Preset)**. The assistant can't change the recipient, and it only writes the message.
+
+Web calls don't have a caller phone number. On a web call, a text with this preset isn't sent, and the tool returns an error.
+
+## Tell the assistant when to send a text
+
+Add instructions to your system prompt that say when to send a text and what to include. Refer to the tool by the name you gave it. For example:
+
+```txt wordWrap
+After you book the appointment, ask the caller if they'd like a text with the details. If they say yes, use `send_text_tool` to send the date, time, and address.
+```
+
+If you don't preset the recipient, also tell the assistant which number to use. For example:
+
+```txt wordWrap
+Send the text to the number the caller is calling from unless they give you a different number. Repeat the number back before you send.
+```
+
+## Tool messages
+
+The Send Text tool has no default messages. If you don't set any, the assistant says nothing after the text is sent and waits for the caller to speak.
+
+This tool's messages all play after the text is sent, not before. The first message that applies is the one that plays:
+
+1. **Request Failed** (`request-failed`), if the text wasn't sent.
+2. **Request Start** (`request-start`), if you set one. It plays instead of Request Complete.
+3. **Request Complete** (`request-complete`).
+
+Because nothing plays before the text is sent, write any Request Start message as something the caller hears afterward, not "Sending that now."
+
+We recommend setting a Request Complete message and a Request Failed message, so the caller knows whether to expect a text. In the dashboard, open the tool's **Messages** section, select **Add Message**, choose the message type, and enter your message.
+
+To let the assistant respond in its own words instead of speaking fixed text, set the message `role` to `system` through the API. The message content goes to the model as a hint, and the assistant continues the conversation:
+
+```json
+{
+  "messages": [
+    {
+      "type": "request-complete",
+      "role": "system",
+      "content": "The text was sent. Tell the caller to check their phone, then continue the conversation."
+    },
+    {
+      "type": "request-failed",
+      "role": "system",
+      "content": "The text could not be sent. Apologize, read the details out loud instead, then continue the conversation."
+    }
+  ]
+}
+```
+
+To change messages through the API, use the [Update Tool](/api-reference/tools/update#request.body.sms) endpoint.
+
+## Rejection plan
+
+To stop the tool from running under certain conditions, add a [tool rejection plan](/tools/tool-rejection-plan).
+
+## Verify the text was sent
+
+Place a test call and ask for a text. Then check these places:
+
+1. **The tool call and its result.** In the [Dashboard](https://dashboard.vapi.ai), select **Logs**, open the call, and select the [Messages](/observability/logs/call-logs#messages) tab. Find the Send Text tool call to see the number and message the assistant used, and the result that came back. A successful result includes the Twilio message ID. An error result includes an error code.
+2. **Your Twilio account.** A success result means Twilio accepted the message. To confirm it was delivered, find the message ID in your Twilio Console messaging logs.
+
+## Troubleshoot the Send Text tool
+
+| What you see | What to check |
+| --- | --- |
+| No Send Text tool call in the Messages tab | The assistant didn't call the tool. Make the system prompt and tool description more specific about when to send a text. See [Tell the assistant when to send a text](#tell-the-assistant-when-to-send-a-text). |
+| The assistant says nothing after the text is sent | The tool has no default messages. Set a Request Complete message. See [Tool messages](#tool-messages). |
+| The text went to the wrong number | The assistant chose the recipient. To text only the caller, preset the recipient. See [Send texts only to the caller](#send-texts-only-to-the-caller). |
+| The result is a success, but the text didn't arrive | Twilio accepted the message but didn't deliver it. Find the message ID in your Twilio Console messaging logs, and check the number's A2P 10DLC or toll-free registration. |
+| The result includes `UNSUPPORTED_PROVIDER` | The **From Phone Number** isn't a Twilio number. Select a number you imported from Twilio. |
+| The result includes `CONFIGURATION_ERROR` | The **From Phone Number** wasn't found in your Vapi account. Select a number from the list, or import it again. |
+| The result includes `MISSING_REQUIRED_PARAMETER` | No sender, recipient, or message. Check that **From Phone Number** is set. On web calls, there's no caller number to text. |
+| The result includes `INVALID_FROM_NUMBER` | The Twilio number can't send SMS messages. Check its SMS capability and registration in Twilio. |
+| The result includes `INVALID_PHONE_NUMBER` | The recipient's number isn't valid. Tell the assistant to confirm the number with the caller, including the country code. |
+| The result includes `TWILIO_CLIENT_ERROR` | The Twilio credentials saved with the phone number don't work. Update them on the phone number in Vapi. |
+| The result includes `INSUFFICIENT_FUNDS` | Your Twilio account doesn't have enough balance. Add funds in your Twilio Console. |
+| The result includes `TWILIO_API_ERROR` | Twilio rejected the message for another reason. The result includes Twilio's error message. |
+| The assistant can't be saved with the Send Text tool | GPT-Live models don't support the Send Text tool. Use a different model, or remove the tool. |
+
+## Related
+
+- [Send Text tool](/tools/send-text)
+- [SMS chat](/chat/sms-chat)
+- [Inbound SMS](/phone-numbers/inbound-sms)
+- [Import a Twilio number](/phone-numbers/import-twilio)
+- [Built-in tools](/tools/default-tools)
+- [Send Text tool in the Create Tool API reference](/api-reference/tools/create#request.body.sms)
