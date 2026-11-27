@@ -1,0 +1,92 @@
+---
+title: Vapi model migration guide
+subtitle: How to test and switch your assistant's model safely with your coding agent, for any model change.
+description: Test and switch a Vapi assistant's model with your coding agent and Vapi's migration agent skills. Map your calls, build simulations, create a copy on the new model, compare the two, and roll out.
+slug: model-migration/guide
+---
+
+## The migration guide
+
+A safe migration starts with a good evaluation set: tests you run on your current model and the new one, so regressions show up before callers hear them. If you don't have one, we recommend building it as simulations from your real calls. The process below does that with your coding agent (such as Claude Code or Codex) and Vapi's three migration skills from [github.com/VapiAI/skills](https://github.com/VapiAI/skills), then tests the new model on copies of your assistant. Your live assistant is never edited. It works for any model change.
+
+<Note>
+These simulations test only the model's behavior, not interruptions, endpointing, latency or voice.
+</Note>
+
+**Before you start:** set your org's private API key from [dashboard.vapi.ai/org/api-keys](https://dashboard.vapi.ai/org/api-keys) as `VAPI_API_KEY` in your agent's terminal, never in its chat. Have your assistant or squad ID (or a transient assistant's configuration JSON), your metrics and your target model ready, then [install the skills](/agent-skills):
+
+```bash
+npx skills add VapiAI/skills --skill migration-flow-map \
+  --skill migration-simulations --skill model-migration
+```
+
+### 1. Map how your calls go
+
+First, use the **`migration-flow-map`** skill to map how your assistant is used today. It asks for your team's metrics, reads your system prompt and about 300 production calls (only the prompt and config for transient assistants or zero data retention), and outputs a flow tree, a tool catalog, a baseline for each metric and a list of scenarios to test. This step can take a while.
+
+### 2. Build the simulation suite and run the baseline
+
+Next, use the **`migration-simulations`** skill to turn that list into a suite at one of two levels:
+
+- **Critical:** core workflows, every ending and must-never-break rules (10 to 25 scenarios). Cheaper.
+- **All:** comprehensive coverage of every path and variation, so it costs more.
+
+They run in chat mode with every tool mocked, as many times per scenario as you choose. The skill asks before starting, then runs them on a copy on your current model as your baseline.
+
+### 3. Create the new-model version
+
+Then use the **`model-migration`** skill. It loads the model card for your target model: how that model behaves differently from your current one, the prompt changes that helped and its recommended settings. Cards exist today for [sapien](/model-migration/sapien), [gpt-6.1-terra](/model-migration/terra), [gpt-6-luna](/model-migration/luna), [gpt-5.6-terra](/model-migration/terra) and [gpt-5.6-luna](/model-migration/luna), moving from GPT-4.1. The skill checks your prompt and tools and makes a copy on the new model with the card's settings. While it builds that copy, it applies the card's prompt changes that fit your prompt and lists each one for you. Then it runs the same suite.
+
+The skill and the model cards get you started with the main changes we found. Your assistant may still need a few rounds of testing and prompt changes, and the next step is built for exactly that.
+
+### 4. Compare, fix and roll out
+
+The skill compares the copies on your metrics and must-never-break rules, fixes what still differs with wording changes from the model card, and reruns until your metrics hold. Then check 5 to 20 core scenarios in voice and roll out to a small share of traffic first.
+
+## Migration starter prompt
+
+The fastest way to do this migration is with a coding agent such as Claude Code or Codex. Paste the prompt below into it. **The agent stops at checkpoints and won't go on until you say so:** to set up your API key and share your assistant details, to approve the scenario list, before each simulation run, and at the end, when it hands you the rollout plan to ship yourself.
+
+```text
+Migrate my Vapi assistant from <current model> to <target model>.
+Work only on copies, never on my live assistant.
+
+1. Install the skills from github.com/VapiAI/skills (run this again
+   to get the latest model cards):
+     npx skills add VapiAI/skills --skill migration-flow-map \
+       --skill migration-simulations --skill model-migration
+   If that fails, clone the repo and read each skill's SKILL.md.
+2. Use my Vapi API key from the VAPI_API_KEY environment variable.
+   If it isn't set, tell me to copy the private key for the org that
+   owns the assistant from dashboard.vapi.ai/org/api-keys, run
+   export VAPI_API_KEY=<key> in my terminal, and restart you from that
+   terminal. Never ask me to paste the key and never print it.
+3. Ask me for the assistant or squad ID (or the full config JSON for a
+   transient assistant) and the metrics my team tracks. Check the key
+   can read the assistant.
+4. Run migration-flow-map. Show me the scenario list and wait for my
+   approval.
+5. Run migration-simulations at the level I pick (Critical or All)
+   and run the baseline on my current model.
+6. Run model-migration: load the model card for my target model
+   and tell me which one you used, review the prompt and tools,
+   apply the card's prompt changes that fit my prompt while you
+   create the new-model copy and list them for me, run the same
+   suite, compare the copies and fix what still differs until my
+   metrics hold.
+7. Report each metric on both models, every must-never-break rule that
+   failed, the fixes you made and a rollout plan: a voice check of 5 to
+   20 core scenarios, then a small share of traffic first.
+
+Rules:
+- Never edit my live assistant, squad or tools.
+- Ask me before every simulation run and say how many conversations
+  it will start.
+- Mock every tool. Copies must never call my servers, transfer to real
+  numbers or post to production webhooks.
+- Keep prompt fixes to wording. Don't add steps or workflows my prompt
+  doesn't define.
+- Never print or store API keys, credentials or caller data.
+- Leave the live model change to me. Give me the plan and the exact
+  config to ship.
+```
