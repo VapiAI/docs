@@ -19,15 +19,26 @@ Built-in fallback behavior without a configured plan depends on the selected voi
 
 Fallback starts when the current voice:
 
-- Returns an error.
+- Returns an error. This includes an error that happens before the call starts listening, for example before an outbound call is answered. The fallback voice takes over when the call starts.
+- Fails partway through a message. The fallback voice takes over for the next turn.
 - Sends no audio within 3 seconds after the model finishes a reply.
+- Sends no audio within 3 seconds after a message, such as the first message or the end call message, reaches the voice provider.
+- Stops sending audio for 3 seconds partway through a reply.
+- Can't connect to the provider. Deepgram and ElevenLabs voices fail after three failed connection attempts in a row with no open connection. Inworld voices fail when they run out of connection retries.
 - Finishes an ElevenLabs reply with no audio. Vapi retries that reply once before it switches voices.
+- Is a [custom voice](/customization/custom-voices/custom-tts#your-response-requirements) and your server returns an HTTP error or doesn't respond.
 
 When fallback starts, the assistant:
 
 1. Tries the first voice in `voice.fallbackPlan.voices`.
 2. Tries the next voice if a backup also fails or goes silent.
-3. If no voice succeeds, may end the call after an error. After silence, the call continues with the current voice.
+3. If no voice succeeds, can end the call after an error. Any `call.ending` [hooks](/assistants/assistant-hooks#example-combine-actions-on-pipeline-error) run before the call ends. After silence, or when an ElevenLabs voice can't connect, the call continues with the current voice. The call can stay silent until the caller hangs up or a silence or duration limit ends it.
+
+After the switch:
+
+- A message that failed before any of it played, including the end call message, is spoken again on the fallback voice.
+- A first message that already started playing isn't repeated or cut off. The fallback voice speaks from the caller's next turn.
+- If `modelOutputInMessagesEnabled` is on and the fallback voice isn't from ElevenLabs, Vapi transcribes the assistant's speech instead, so the assistant's turns are still recorded in the transcript and conversation history.
 
 ## Configure via Dashboard
 
