@@ -54,12 +54,14 @@ For implementation examples, see **[Configuration examples](#configuration-examp
 
 ### English conversations (recommended)
 
+This example explicitly sets the wait function we recommend for faster responses with LiveKit.
+
 ```json
 {
   "startSpeakingPlan": {
     "smartEndpointingPlan": {
       "provider": "livekit",
-      "waitFunction": "2000 / (1 + exp(-10 * (x - 0.5)))"
+      "waitFunction": "20 + 500 * sqrt(x) + 2500 * x^3"
     },
     "waitSeconds": 0.4
   },
@@ -75,7 +77,7 @@ For implementation examples, see **[Configuration examples](#configuration-examp
 
 - Smart endpointing detects when users finish speaking (English only)
 - Fast interruption using voice detection (50-100ms response)
-- Natural timing with balanced wait periods
+- Shorter endpointing waits when LiveKit is confident the caller is done
 
 ### Non-English languages
 
@@ -200,12 +202,14 @@ Uses AI models to analyze speech patterns, context, and audio cues to predict wh
 
 <Tabs>
   <Tab title="Configuration">
+    This example explicitly sets the recommended wait function. If you omit `waitFunction`, Vapi uses the Normal curve.
+
     ```json
     {
       "startSpeakingPlan": {
         "smartEndpointingPlan": {
           "provider": "livekit",
-          "waitFunction": "2000 / (1 + exp(-10 * (x - 0.5)))"
+          "waitFunction": "20 + 500 * sqrt(x) + 2500 * x^3"
         },
         "waitSeconds": 0.4
       }
@@ -287,37 +291,43 @@ Deepgram Flux's end-of-turn detection is configured at the transcriber level, al
 
 ### LiveKit's Wait function
 
-Mathematical expression that determines wait time based on speech completion probability. The function takes a confidence value (0-1) and returns a wait time in milliseconds.
+`waitFunction` returns the endpointing wait in milliseconds. Its input `x` is `1 - end-of-turn confidence`, so `x = 0` means LiveKit is confident the caller has finished speaking and `x = 1` means it is confident the caller is still speaking.
 
-**Aggressive (Fast Response):**
+Vapi uses the **Normal** curve when LiveKit is selected and `waitFunction` is omitted or `null`.
+
+**Recommended custom curve**
+
+We recommend this expression for faster responses when LiveKit is confident the caller is done. In the Dashboard, open **Wait Function** → **Use Advanced Mode** and paste the formula. In the API, send it as `startSpeakingPlan.smartEndpointingPlan.waitFunction`.
+
+```json
+"waitFunction": "20 + 500 * sqrt(x) + 2500 * x^3"
+```
+
+Waits about 686 ms at 50% end-of-turn confidence and 180 ms at 90%.
+
+**Aggressive preset**
 
 ```json
 "waitFunction": "2000 / (1 + exp(-10 * (x - 0.5)))"
 ```
 
-- **Behavior:** Responds quickly when confident user is done speaking
-- **Use case:** Customer service, gaming, real-time interactions
-- **Timing:** ~200ms wait at 50% confidence, ~50ms at 90% confidence
+Waits about 1,000 ms at 50% end-of-turn confidence and 35 ms at 90%. It can wait longer than Normal at middling confidence.
 
-**Normal (Balanced):**
+**Normal (default)**
 
 ```json
 "waitFunction": "(20 + 500 * sqrt(x) + 2500 * x^3 + 700 + 4000 * max(0, x-0.5)) / 2"
 ```
 
-- **Behavior:** Waits for natural pauses in conversation
-- **Use case:** Most conversations, general purpose
-- **Timing:** ~800ms wait at 50% confidence, ~300ms at 90% confidence
+Waits about 693 ms at 50% end-of-turn confidence and 440 ms at 90%.
 
-**Conservative (Careful Response):**
+**Conservative**
 
 ```json
 "waitFunction": "700 + 4000 * max(0, x-0.5)"
 ```
 
-- **Behavior:** Very patient, rarely interrupts users
-- **Use case:** Healthcare, formal settings, sensitive conversations
-- **Timing:** ~2700ms wait at 50% confidence, ~700ms at 90% confidence
+Waits 700 ms at both 50% and 90% end-of-turn confidence. The wait increases as confidence drops below 50%.
 
 ### Vapi heuristic endpointing
 
@@ -484,27 +494,18 @@ Endpointing Triggers → LLM Processes → TTS Generates → waitSeconds Delay �
 
 #### Complete pipeline timeline
 
-Understanding exact timing helps optimize your voice pipeline configuration. This timeline shows what happens at every moment during the conversation flow.
+In this example, LiveKit returns a 90% end-of-turn confidence score 100 ms after the caller stops speaking. The default Normal curve then adds a 440 ms wait.
 
 ```text
-0.0s: User stops speaking
-0.1s: Smart endpointing evaluation begins
-0.6s: Smart endpointing triggers (varies by waitFunction)
-0.6s: LLM request sent immediately
-1.4s: LLM response received (0.8s processing)
-1.9s: TTS audio generated (0.5s processing)
-1.9s: waitSeconds (0.4s) starts
-2.3s: Assistant begins speaking
+0.00s: Caller stops speaking
+0.10s: LiveKit returns the confidence score
+0.54s: Endpointing triggers and the LLM request starts
+1.34s: LLM response arrives (0.8s processing)
+1.84s: TTS audio is ready (0.5s processing) and waitSeconds (0.4s) starts
+2.24s: Assistant begins speaking
 ```
 
-**Total Response Time:** Smart Endpointing (0.6s) + LLM (0.8s) + TTS (0.5s) + waitSeconds (0.4s) = **2.3s**
-
-**Key optimization insights:**
-
-- The 0.6s endpointing time varies based on your waitFunction choice
-- Aggressive functions reduce endpointing to ~0.2s
-- Conservative functions increase endpointing to ~2.7s
-- Total response time ranges from 1.9s (aggressive) to 4.7s (conservative)
+At the same confidence, the recommended curve waits about 180 ms after the score arrives, so the LLM request starts at about 0.28 seconds in this example. End-to-end response time also depends on transcription, model, and voice latency.
 
 ### Custom endpointing rules
 
@@ -651,7 +652,7 @@ User Interrupts → Assistant Audio Stopped → backoffSeconds Blocks All Output
     "waitSeconds": 0.4,
     "smartEndpointingPlan": {
       "provider": "livekit",
-      "waitFunction": "2000 / (1 + exp(-10 * (x - 0.5)))"
+      "waitFunction": "20 + 500 * sqrt(x) + 2500 * x^3"
     }
   },
   "stopSpeakingPlan": {
