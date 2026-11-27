@@ -1,0 +1,85 @@
+---
+title: Prompting for Sapien
+subtitle: How Sapien behaves compared with GPT-4.1, the prompt habits that help it most, and the settings we recommend.
+description: Prompt guidance for moving a Vapi assistant from GPT-4.1 to Sapien, with recommended settings, the behaviors to plan for, and the prompt changes that helped in our tests.
+slug: model-migration/sapien
+---
+
+`Coming soon` Sapien is rolling out. This guidance is ready for when you move to it.
+
+<Note>
+Last updated November 2026. This guidance will change as the models evolve, so check this page again before each migration.
+</Note>
+
+This page is a starting point. It covers the main patterns we saw when we tested Sapien against GPT-4.1 on several real assistants. Your assistant may behave differently in ways our tests didn't show, so test your own key scenarios before you switch.
+
+To compare Sapien with the other models you can move to, see [Migrating from GPT-4.1](/model-migration).
+
+## Recommended settings
+
+Set these fields inside your assistant's existing `model` object, and keep its other fields, such as `messages` and `tools`, as they are.
+
+```json
+{
+  "model": {
+    "provider": "vapi",
+    "model": "sapien"
+  }
+}
+```
+
+Remove OpenAI-only fields such as `reasoningEffort`, and check that `fallbackModels` has no leftover GPT-4.1 entry.
+
+## Behaviors compared with GPT-4.1
+
+We ran GPT-4.1 and Sapien on the same simulated calls across several real assistants. These are tendencies, not things that happen on every call, ordered by how much they're likely to affect your calls.
+
+### Keep actions on the tool
+
+- **What we saw:** Sapien can say what it's about to do, such as "Let me transfer you to a specialist", and end its turn without calling the tool, more often than GPT-4.1, most often when a step gives it a complete-sounding line to say before the action. On some assistants it also said a text was sent before the text tool ran, or promised a follow-up after a send failed.
+- **For your prompt:** To help reduce this, you can say when to act on every path, such as "Once the callback is set, send the link.", and put the caller's line in the tool's start message. This worked in our tests for texts.
+
+### Give each instruction one home
+
+- **What we saw:** When the prompt and a tool's description disagreed about when to call the tool, Sapien went with the prompt, for example running a lookup after verification failed when only the tool's description said to wait. When the prompt included troubleshooting steps or a sample answer, it could read those out instead of looking up the right ones.
+- **For your prompt:** Let the prompt say when to look things up, use placeholders like "(gives the first returned step)" in example dialogues, and have tools return an error when the next step can't run. This worked in our tests.
+
+### Keep each rule in one place
+
+- **What we saw:** When rules in the prompt pulled in different directions, Sapien could follow the one closest to the current step or the one stated most absolutely, where GPT-4.1 smoothed them over. For example, one "transfer live in business hours" line next to several "offer a callback" lines led to callbacks during business hours.
+- **For your prompt:** When one rule chooses between a live transfer and a callback, keep that choice in that rule, have other lines say only "offer a specialist", and delete lines that contradict it. This worked in our tests.
+
+### Aim for good prompt coverage
+
+- **What we saw:** Sapien invents fewer answers than GPT-4.1. On some assistants, when the prompt didn't say what to do about a question it couldn't answer, it could answer anyway instead of saying it didn't know.
+- **For your prompt:** Aim for good coverage of the workflows a call can go down, writing what to say or do, for example "If they ask about required receipts, say you're not sure and offer a callback." This worked in our tests.
+
+### Required steps carry over
+
+- **What we saw:** Sapien keeps steps the prompt requires that GPT-4.1 sometimes skipped, such as a required notice. It also ends calls without extra words around the end-call tool.
+- **For your prompt:** Listen for steps your callers rarely heard before, such as a required notice or a lookup before the first reply, and check that required lookups still run before it answers.
+
+### Scripted lines
+
+- **What we saw:** Sapien says scripted lines word for word at least as often as GPT-4.1.
+- **For your prompt:** Scripted lines need no extra marking. A line said word for word doesn't mean the action ran, so check for the matching tool call in your tests.
+
+### Test the judgment calls
+
+- **What we saw:** Sapien read field names and keyword lists the same way GPT-4.1 did, for example judging whether a symptom a caller mentioned was an emergency instead of matching a keyword list, and reading a tool's verification result correctly when the prompt named a different field.
+- **For your prompt:** Test the judgment calls that matter to you, such as what counts as an emergency, and name fields as your tools return them.
+
+### Reply style and length
+
+- **What we saw:** Sapien keeps much of GPT-4.1's style, with replies about as long as GPT-4.1's or shorter and some of its exclamation marks and paragraph breaks. It rarely uses markdown or numbered lists, and usually asks one question per turn.
+- **For your prompt:** Listen to a few test calls in your voice to check how the replies sound, and keep any length or formatting rules you already have.
+
+### Acknowledgments and apologies
+
+- **What we saw:** Sapien can add more acknowledgments and apologies of its own than GPT-4.1, such as "I'm sorry to hear that", and stock phrases that aren't in the prompt, even where a prompt said to acknowledge only once.
+- **For your prompt:** If your prompt limits acknowledgments, test upset callers and failed lookups for repeated apologies and stock phrases.
+
+### Where check-ins land
+
+- **What we saw:** Sapien keeps GPT-4.1's "anything else?" check-ins, sometimes inside another step, such as a booking confirmation.
+- **For your prompt:** You don't need to write check-ins back in, but check that one doesn't come before an action that hasn't happened yet, such as a text the assistant promised to send.
