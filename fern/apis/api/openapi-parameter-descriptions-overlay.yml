@@ -160,3 +160,60 @@ actions:
   - target: $.paths['/eval/simulation/run/{id}/item/{itemId}/generate'].post.parameters[?(@.name == 'force' && @.in == 'query')]
     update:
       description: Set to the string `true` to regenerate improvement suggestions even if they already exist.
+  # GET /v2/call reads structured-output and score filters from the nested
+  # `artifact` query object (`artifact[structuredOutputs][<id>][eq]=...`,
+  # `artifact[score][gte]=...`). The generated spec flattens them to top-level
+  # `structuredOutputs` and `score`, which the API rejects with a 400
+  # ("property ... should not exist"). Hide them until the API documents
+  # `artifact` correctly.
+  - target: $.paths['/v2/call'].get.parameters[?(@.name == 'structuredOutputs' && @.in == 'query')]
+    remove: true
+  - target: $.paths['/v2/call'].get.parameters[?(@.name == 'score' && @.in == 'query')]
+    remove: true
+  # The API declares these object filters as untyped `type: object`, so the
+  # SDKs send them as a JSON string (`customer={"number":...}`), which the API
+  # rejects with a 400 ("customer must be an object"). The API parses
+  # bracketed keys (`customer[number]=...`). Type them and mark them
+  # deepObject so the SDKs send that form.
+  - target: $.paths['/v2/call'].get.parameters[?(@.name == 'customer' && @.in == 'query')]
+    update:
+      style: deepObject
+      explode: true
+  - target: $.paths['/v2/call'].get.parameters[?(@.name == 'customer' && @.in == 'query')].schema
+    update:
+      properties:
+        number:
+          type: string
+          description: Matches calls whose customer has this phone number.
+        name:
+          type: string
+          description: Matches calls whose customer has this name.
+        externalId:
+          type: string
+          description: Matches calls whose customer has this external ID.
+        extension:
+          type: string
+          description: Matches calls whose customer has this extension.
+  - target: $.paths['/v2/call'].get.parameters[?(@.name == 'assistantOverrides' && @.in == 'query')]
+    update:
+      style: deepObject
+      explode: true
+  - target: $.paths['/v2/call'].get.parameters[?(@.name == 'assistantOverrides' && @.in == 'query')].schema
+    update:
+      properties:
+        variableValues:
+          type: object
+          additionalProperties:
+            type: string
+          description: >-
+            Matches calls whose assistant overrides set these template
+            variables to these values.
+  - target: $.paths['/v2/call'].get.parameters[?(@.name == 'cursor' && @.in == 'query')]
+    update:
+      description: >-
+        Opaque cursor for keyset pagination. Pass `metadata.nextCursor` from
+        the previous page to fetch the next one. Honored only for the default
+        `createdAt` sort; `duration` and `cost` sorts use `page`.
+  # GET /v2/assistant always sorts by creation time and ignores `sortBy`.
+  - target: $.paths['/v2/assistant'].get.parameters[?(@.name == 'sortBy' && @.in == 'query')]
+    remove: true
