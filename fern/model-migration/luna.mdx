@@ -1,0 +1,103 @@
+---
+title: 4.1 → 5.6/6 Luna Tips
+subtitle: The prompt habits that help 5.6 and 6 Luna, and the settings we recommend.
+description: Prompt guidance for moving a Vapi assistant from GPT-4.1 to gpt-5.6-luna or gpt-6-luna, with recommended settings, the behaviors to plan for, and the prompt changes that helped in our tests.
+slug: model-migration/luna
+---
+
+<Note>
+Last updated November 2026. This guidance will change as the models evolve, so check this page again before each migration.
+</Note>
+
+This page is a starting point. It covers the main patterns we saw when we tested 5.6 and 6 Luna against GPT-4.1 on several real assistants. Your assistant may behave differently in ways our tests didn't show, so test your own key scenarios before you switch.
+
+To compare Luna with the other models you can move to, see [Migrating from GPT-4.1](/model-migration).
+
+## Recommended settings
+
+Set these fields inside your assistant's existing `model` object, and keep its other fields, such as `messages` and `tools`, as they are.
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-6-luna",
+    "reasoningEffort": "low",
+    "serviceTier": "fast"
+  }
+}
+```
+
+For 5.6 Luna, set `model` to `gpt-5.6-luna` and keep the other settings the same.
+
+## Prompt habits
+
+We ran GPT-4.1, 5.6 Luna and 6 Luna on the same simulated calls across several real assistants. These are tendencies, not things that happen on every call, ordered by how much they're likely to affect your calls. Each habit applies to both versions; a note names the version where they differ.
+
+### Point each branch to your closing steps
+
+- **What we saw:** Both versions follow the instruction for the step they're on, so a step that ends with its own last line, such as "confirm and close the call", can close the call there and skip closing steps written elsewhere, such as a closing question or a link to send. GPT-4.1 kept those general rules in mind for the whole call. If this matters for your calls, Sapien or 6.1 Terra may suit them better.
+- **For your prompt:** To help reduce this, you can write the closing steps once and replace each branch's "close the call" with a pointer that names the next step, such as "Then send the link and follow # Closing."
+- **On 6 Luna:** On some assistants it ended the call while the caller still had an open request, or handed the call back instead of closing it. Write the closing steps before the end tool.
+- **On 5.6 Luna:** Write the exceptions once too, and use the pointer in declined offers as well.
+
+### Write complete tool descriptions
+
+- **What we saw:** Both versions give tool and parameter descriptions more weight than GPT-4.1 did, and a description that disagrees with the prompt can win. They can call a finish tool whose description invites it, even when the prompt says never to call it.
+- **For your prompt:** Give every tool and parameter a complete description that agrees with the prompt, for example "Payment type. Always ARBITRARY: the amount is whatever the caller chose." This worked in our tests.
+- **On 6 Luna:** It also gives parameter options and the text in tool results more weight, so keep each script in one place, not repeated in a tool result.
+
+### Write exactly what you mean
+
+- **What we saw:** Both versions read the prompt's words and conditions more literally than GPT-4.1.
+- **For your prompt:** To help reduce this, you can check that every status and label the prompt checks matches what your tools actually return, for example name every status that can take a payment ("OPEN or LATE"), not just one.
+- **On 6 Luna:** If the prompt says to act on accounts marked "OPEN", an account marked "LATE" falls outside that rule.
+- **On 5.6 Luna:** An optional "you can offer" may be skipped and a missing rule answered by the letter, where GPT-4.1 worked out what was meant. Write each step the way you want it read, for example "offer the link" rather than "you can offer the link" when it's required.
+
+### Aim for good prompt coverage
+
+- **What we saw:** Neither version invents answers the way GPT-4.1 sometimes did. When the prompt doesn't cover a situation, both can take the broadest option your setup gives them, which can mean more transfers, callbacks or escalations than the call needed.
+- **For your prompt:** Aim for good coverage of the workflows a call can go down, writing what to say or do, for example "Asking to speed up a refund doesn't qualify: give the expected date."
+- **On 6 Luna:** It sometimes escalated routine requests. On a scheduling assistant it sent some routine calls, such as a caller booking a visit for a few weeks of knee pain, to its emergency route. Also write when not to escalate, for example "Address changes aren't a reason to transfer: repeat the email." This worked in our tests.
+- **On 5.6 Luna:** Test that nearby requests still reach a person. If this matters for your calls, 5.6 Terra may suit them better.
+
+### Pair each line with its tool call
+
+- **What we saw:** Both versions can call a tool, such as a lookup or a transfer, without saying anything first, which the caller hears as silence. If this matters for your calls, Terra may suit them better.
+- **For your prompt:** To help reduce this, you can make sure each tool call has its line said before the tool runs. The way to do it differs by version.
+- **On 6 Luna:** On one assistant, at the end of a call it also said goodbye without calling the end-call tool, or ended the call without a word. Put the line in a lookup's start message, for example "One second here, while I pull up your account.", and test that the transfer line and any safety sentence come before the transfer connects.
+- **On 5.6 Luna:** Around transfers, texts and ending the call, it can also say it's connecting the caller without calling the tool. It stops talking after a transfer or end-call tool and rarely claims an action no tool confirmed. Tie the line and the tool call together in one instruction, for example "Say 'Let me transfer you to billing.' and call `transfer_call` in the same response.", and keep transfer wording in refusal lines.
+
+### Attach only the tools you need
+
+- **What we saw:** Both versions run the lookups and verification steps the prompt requires, which GPT-4.1 often skipped. They can also call attached tools the prompt never mentions.
+- **For your prompt:** To help reduce this, you can attach only the tools the assistant actually needs, for example detach a `finish` tool your prompt says never to call.
+- **On 6 Luna:** Then test calls that take payments on your own assistant.
+
+### Write in the warmth you want
+
+- **What we saw:** Both versions sound plainer than GPT-4.1, with shorter turns and less enthusiasm.
+- **For your prompt:** When the assistant can't do what was asked, have it explain why, offer one alternative and say what happens next.
+- **On 6 Luna:** It uses almost no exclamation marks or filler, and on some assistants it added less sympathy of its own and relied on lines the prompt writes for it. Write acknowledgments into the prompt for the moments that matter, such as bad news or a caller in distress.
+- **On 5.6 Luna:** Callers on one assistant found it colder until the prompt wrote in reasons, alternatives and next steps. On one assistant, it followed a rule that limits acknowledgments, which GPT-4.1 often ignored, so loosen or narrow rules that ban acknowledgments, rather than relying on a general line like "be warm".
+
+### Mark lines that must be said exactly
+
+- **What we saw:** Both versions can say sample lines word for word, but trim or reword a longer required script to fit other rules in the prompt.
+- **For your prompt:** To help reduce this, you can mark lines that must be said exactly with "Say exactly:" and exempt them from rules that would cut or rewrite them.
+- **On 6 Luna:** It says short sample lines word for word more often than GPT-4.1. Also give two or three different labeled examples. On 6 Luna, this worked in our tests.
+- **On 5.6 Luna:** Calls can start to sound the same. For lines that should vary, describe what they should contain.
+
+### Plan for tool failures
+
+- **What we saw:** Both versions keep to the steps and checks the prompt writes more closely than GPT-4.1.
+- **For your prompt:** Write a fallback line for each tool failure that matters, ending with the next step as a question, for example "No payment was made. Would you like me to text you a secure link?" This worked in our tests.
+- **On 6 Luna:** It keeps the guardrails and checks the prompt requires, where GPT-4.1 sometimes bent them for simple requests. It doesn't claim an action succeeded when a tool failed.
+- **On 5.6 Luna:** It keeps counted steps, such as "transfer on the third request", more closely than GPT-4.1, though not always exactly. When a tool fails and the prompt has no recovery step, it can stop or send the caller elsewhere instead of improvising.
+
+### Write the next step after each answer
+
+- **What we saw:** Both versions answer what the caller asked and then wait, and rarely ask "anything else?" unless the current step tells them to, where GPT-4.1 often offered the next step on its own.
+- **For your prompt:** To help reduce this, you can write the next step after each kind of answer and each tool result, for example "After a successful payment, ask whether there's anything else you can help with."
+- **On 6 Luna:** This worked in our tests.
+- **On 5.6 Luna:** It waits for the caller to lead, one of the tendencies we saw most often, and rarely offers a link unless the current step tells it to.

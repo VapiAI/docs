@@ -1,0 +1,103 @@
+---
+title: 4.1 → 5.6/6.1 Terra Tips
+subtitle: The prompt habits that help 5.6 and 6.1 Terra, and the settings we recommend.
+description: Prompt guidance for moving a Vapi assistant from GPT-4.1 to gpt-5.6-terra or gpt-6.1-terra, with recommended settings, the behaviors to plan for, and the prompt changes that helped in our tests.
+slug: model-migration/terra
+---
+
+<Note>
+Last updated November 2026. This guidance will change as the models evolve, so check this page again before each migration.
+</Note>
+
+This page is a starting point. It covers the main patterns we saw when we tested 5.6 and 6.1 Terra against GPT-4.1 on several real assistants. Your assistant may behave differently in ways our tests didn't show, so test your own key scenarios before you switch.
+
+To compare Terra with the other models you can move to, see [Migrating from GPT-4.1](/model-migration).
+
+## Recommended settings
+
+Set these fields inside your assistant's existing `model` object, and keep its other fields, such as `messages` and `tools`, as they are.
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "gpt-6.1-terra",
+    "reasoningEffort": "low",
+    "serviceTier": "fast"
+  }
+}
+```
+
+For 5.6 Terra, set `model` to `gpt-5.6-terra` and keep the other settings the same.
+
+## Prompt habits
+
+We ran GPT-4.1, 5.6 Terra and 6.1 Terra on the same simulated calls across several real assistants. These are tendencies, not things that happen on every call, ordered by how much they're likely to affect your calls. Each habit applies to both versions; a note names the version where they differ.
+
+### Match names and triggers exactly
+
+- **What we saw:** Both versions take the prompt's names and trigger words more literally than GPT-4.1. When a rule switched languages only if the caller asked for Spanish, it could keep answering in English to a caller who simply spoke Spanish.
+- **For your prompt:** Describe triggers by meaning, for example "if the caller's first message is in Spanish or asks for Spanish", and check that every name in the prompt matches your configuration. This worked in our tests for language switches.
+- **On 6.1 Terra:** It also matches field names and labels exactly as the prompt writes them, so a prompt that checked a `verified` field while the tool returned `"state": "VERIFIED"` led it to treat verified callers as unverified, and a list of urgent keywords applied to every mention of those words. Name each tool-result field exactly as the tool returns it, where the decision is made. This worked in our tests.
+
+### Say where each closing step applies
+
+- **What we saw:** Both versions handle closing steps written in one place, such as a closing question, a survey or a link to send, differently from GPT-4.1, but in opposite directions.
+- **For your prompt:** Write each closing step once, say exactly where it applies and where it doesn't, and point the branches that use it there, for example "Then send the link and follow # Closing."
+- **On 6.1 Terra:** It can apply a global closing step in every branch, even where it doesn't fit, such as offering a survey after a transfer, where GPT-4.1 usually skipped it. State each step's scope where it's written, and tie the order to the end-call tool, for example "Call `end_call` only after the caller answers the survey question." This worked in our tests.
+- **On 5.6 Terra:** It follows the instruction for the step it's on, so a step that ends with "confirm and close the call" can close the call there and skip global steps written elsewhere. GPT-4.1 kept those general rules in mind for the whole call. To help reduce this, you can replace each branch's "close the call", failures included, with a pointer like the one above.
+
+### Aim for good prompt coverage
+
+- **What we saw:** Neither version invents answers the way GPT-4.1 sometimes did. When the prompt doesn't cover a situation, each falls back differently, as noted below.
+- **For your prompt:** Aim for good coverage of the workflows a call can go down, writing what to say or do, for example "Asking to speed up a refund doesn't qualify: give the expected date."
+- **On 6.1 Terra:** It can say it isn't sure, sometimes with no next step, or offer a person sooner than GPT-4.1 did. Test that nearby requests still reach a person.
+- **On 5.6 Terra:** It can hold back and take the broadest option your setup gives it, which on some assistants meant more transfers or callbacks than the call needed. Write what to say or do beside its rule. This worked in our tests.
+
+### Write complete tool descriptions
+
+- **What we saw:** Both versions give tool and parameter descriptions more weight than GPT-4.1 did.
+- **For your prompt:** Give every tool and parameter a complete description that agrees with the prompt, for example "The phone number from # Applicant on File, exactly as written there, including the leading +1." This worked in our tests.
+- **On 6.1 Terra:** It also weighs the text in tool results. When a tool returns text meant for the caller, it can read it out right away and then say the prompt's version too. Keep each script in one place, at a step every call passes, for example "Right after the name check, before any transfer, say the notice." This worked in our tests.
+- **On 5.6 Terra:** A description that disagrees with the prompt can win. On one assistant it called a finish tool whose description said to use it when the conversation was complete, even though the prompt said never to call it.
+
+### Plan for tool failures
+
+- **What we saw:** Both versions follow written steps strictly and in order, more than GPT-4.1, and keep counted steps, such as "transfer on the third request", exactly.
+- **For your prompt:** Write a fallback line and next step for each tool failure that matters, for example "No payment was made. Would you like me to text you a secure link?" This worked in our tests.
+- **On 6.1 Terra:** It doesn't claim an action succeeded when a tool failed. Put the fallback in the step that calls the tool, for example "If it fails, say you couldn't set it up just now, then send the link."
+- **On 5.6 Terra:** When a tool fails and the prompt has no recovery step, it can stop or send the caller elsewhere instead of improvising, and when the prompt had one, such as "retry once, then read this line", it followed it. End the fallback line with the next step as a question, as in the example above.
+
+### Plan for warmth
+
+- **What we saw:** Both versions sound plainer than GPT-4.1, with shorter turns and little enthusiasm or filler.
+- **For your prompt:** Loosen or narrow rules that ban acknowledgments, and when the assistant can't do what was asked, have it explain why, offer one alternative and say what happens next.
+- **On 6.1 Terra:** It adds a short acknowledgment of bad news more often than GPT-4.1 did, and follows rules that limit acknowledgments exactly.
+- **On 5.6 Terra:** It can sound colder unless the prompt writes in the warmth you want. On one assistant, it followed a rule that limits acknowledgments, which GPT-4.1 often ignored. Write in those steps rather than relying on a general line like "be warm".
+
+### Attach only the tools you need
+
+- **What we saw:** Both versions look things up more than GPT-4.1, and can call attached tools the prompt never mentions.
+- **For your prompt:** Attach only the tools the assistant actually needs, for example detach a `finish` tool your prompt says never to call. This worked in our tests.
+- **On 6.1 Terra:** It sometimes looks things up even when the question doesn't need it, where GPT-4.1 often answered from memory. When you list questions that need no lookup, name the ones that still do, for example "A PIN reset needs no lookup; card arrival still does." This worked in our tests.
+- **On 5.6 Terra:** It runs the lookups and verification steps the prompt requires, which GPT-4.1 often skipped.
+
+### Mark lines that must be said exactly
+
+- **What we saw:** Both versions say sample lines from the prompt word for word more often than GPT-4.1.
+- **For your prompt:** Mark lines that must be said exactly with "Say exactly:", and make sure no other rule contradicts or rewrites them. This worked in our tests.
+- **On 6.1 Terra:** It can reword a required script to fit a general rule, such as a rule to say numbers as words, so exempt marked lines from rules like that. For a line that should vary, describe it, don't quote it.
+- **On 5.6 Terra:** Calls can start to sound the same, so label examples clearly and give two or three different ones.
+
+### Write the next step after each answer
+
+- **What we saw:** Both versions answer what the caller asked and then wait unless a step in the prompt says what comes next, where GPT-4.1 often offered the next step on its own.
+- **For your prompt:** Write the next step after each kind of answer and each tool result, for example "After a successful payment, ask whether there's anything else you can help with." This worked in our tests.
+- **On 5.6 Terra:** It rarely asks "anything else?" or offers a link unless the current step tells it to.
+
+### Pair each line with its tool call
+
+- **What we saw:** Both versions can call a tool without saying anything first, which the caller hears as silence.
+- **For your prompt:** Tie the line and the tool call together in one instruction, for example "Say 'Let me transfer you to billing.' and call `transfer_call` in the same response." This worked in our tests.
+- **On 6.1 Terra:** It usually says its line before a transfer, but on some assistants it called a tool before saying anything. We didn't see it claim an action that no tool confirmed.
+- **On 5.6 Terra:** This happens around transfers and texts, and most often for the first lookup in a call, so also script the line before a call's first lookup. It stops talking after a transfer or end-call tool and rarely claims an action no tool confirmed.
