@@ -45,7 +45,7 @@ You can configure your Azure OpenAI credentials in the Vapi dashboard. Select **
 | Setting | Description | Required |
 |---------|-------------|----------|
 | **Provider** | Select "Azure OpenAI" | ✅ |
-| **Models** | List of model deployment names (must match Vapi's supported models) | ✅ |
+| **Models** | List of supported Vapi model IDs | ✅ |
 | **Region** | Azure region where your OpenAI resource is deployed | ✅ |
 | **OpenAI Endpoint** | Base Azure OpenAI endpoint URL (e.g., `https://your-resource.openai.azure.com`) | ✅ |
 | **OpenAI Key** | API key for your Azure OpenAI resource | ✅ |
@@ -55,19 +55,36 @@ You can configure your Azure OpenAI credentials in the Vapi dashboard. Select **
 
 ### Model and Deployment Names
 
-Your Azure deployment name must match one of Vapi's supported model IDs. Custom deployment names are not supported.
+Your credential's `models` must use Vapi's supported model IDs. By default, Vapi uses each model ID as the Azure deployment name. To use a custom name, set `deployments` through the credential API:
 
-For example, if you want to use GPT 5.6 Sol, your Azure deployment must be named exactly `gpt-5.6-sol-2026-07-09`, not a custom name like `my-custom-gpt`.
+```json
+{
+  "provider": "azure-openai",
+  "models": ["gpt-5.6-sol-2026-07-09"],
+  "deployments": [
+    {"model": "gpt-5.6-sol-2026-07-09", "name": "my-custom-gpt"}
+  ]
+}
+```
+
+This is a credential configuration excerpt; include your region, endpoint and key when creating the credential. The dashboard preserves saved mappings but cannot edit deployment names.
+
+Once `deployments` has any entries, include one for every model in `models`, even when its deployment name equals the model ID. Names must be 1–64 letters, digits, hyphens, underscores or periods, starting with a letter or digit. Omit the field to use model IDs as deployment names on a new credential. To clear existing mappings, update the credential with `"deployments": []`; omitting the field on an update keeps saved mappings.
+
+If multiple keys cover the same region and model, set `credentialIds` on the assistant to select the intended key. Otherwise, Vapi uses the first matching key.
 
 ### Supported Models
 
-Vapi currently accepts the following Azure OpenAI deployment names. Your Azure deployment name must match the Model ID exactly.
+Use these model IDs in the credential's `models` list. Deployment names can match the IDs or use the mappings above.
 
 | Model | Model ID |
 | --- | --- |
+| GPT 6 Luna | `gpt-6-luna` |
+| GPT 6 Luna (2026-09-22) | `gpt-6-luna-2026-09-22` |
 | GPT 5.6 Sol (2026-07-09) | `gpt-5.6-sol-2026-07-09` |
 | GPT 5.6 Terra (2026-07-09) | `gpt-5.6-terra-2026-07-09` |
 | GPT 5.6 Luna (2026-07-09) | `gpt-5.6-luna-2026-07-09` |
+| GPT 5.5 | `gpt-5.5` |
 | GPT 5.4 | `gpt-5.4` |
 | GPT 5.4 Mini | `gpt-5.4-mini` |
 | GPT 5.4 Mini (2026-03-17) | `gpt-5.4-mini-2026-03-17` |
@@ -102,15 +119,28 @@ Vapi currently supports these region-qualified model IDs:
 
 | Model | Region-qualified model IDs |
 | --- | --- |
+| GPT 6 Luna | `gpt-6-luna:australiaeast` |
 | GPT 5.6 Sol | `gpt-5.6-sol:westus3` |
 | GPT 5.6 Terra | `gpt-5.6-terra:westus3` |
-| GPT 5.6 Luna | `gpt-5.6-luna:westus3` |
+| GPT 5.6 Luna | `gpt-5.6-luna:australiaeast`<br />`gpt-5.6-luna:westus3` |
 | GPT 5.4 | `gpt-5.4:eastus2`<br />`gpt-5.4:swedencentral` |
 | GPT 5.4 Mini | `gpt-5.4-mini:australiaeast`<br />`gpt-5.4-mini:eastus2`<br />`gpt-5.4-mini:swedencentral` |
 | GPT 5.2 | `gpt-5.2:eastus2`<br />`gpt-5.2:swedencentral` |
 | GPT 5 | `gpt-5:canadaeast`<br />`gpt-5:eastus`<br />`gpt-5:eastus2`<br />`gpt-5:germanywestcentral`<br />`gpt-5:polandcentral`<br />`gpt-5:spaincentral`<br />`gpt-5:swedencentral`<br />`gpt-5:westeurope` |
 | GPT 5 Mini | `gpt-5-mini:eastus2`<br />`gpt-5-mini:germanywestcentral`<br />`gpt-5-mini:polandcentral`<br />`gpt-5-mini:spaincentral`<br />`gpt-5-mini:swedencentral`<br />`gpt-5-mini:westeurope` |
 | GPT 5 Nano | `gpt-5-nano:eastus2`<br />`gpt-5-nano:swedencentral` |
+
+### UK South BYOK routes
+
+UK South routes require your own Azure OpenAI credential with `region: "uk"` and the matching model in `models`. Vapi does not provide managed UK deployments or `:uk` model pins. Use an unqualified assistant model ID, such as `gpt-6-luna`, with `model.provider: "openai"`, and select the key with the assistant's `credentialIds`.
+
+These UK routes support Chat Completions only, not the Responses API:
+
+- `gpt-6-luna`
+- `gpt-5.6-sol-2026-07-09`, `gpt-5.6-terra-2026-07-09`, `gpt-5.6-luna-2026-07-09`
+- `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
+
+The IDs above are credential model IDs; for GPT 5.6 assistant models, use the corresponding unqualified name, such as `gpt-5.6-luna`. Custom deployment names still use `deployments` mappings.
 
 ### Supported Regions
 
@@ -178,11 +208,11 @@ The `OCP-APIM-Subscription-Key` field is optional and can be left blank in most 
   </Step>
 
   <Step title="Verify Deployment Names">
-    Ensure your model deployments use names that exactly match Vapi's supported model list. If needed, create new deployments with the correct names.
+    Select the supported model IDs served by your deployments. If a deployment's name differs from its model ID, add a `deployments` mapping through the credential API.
   </Step>
 
   <Step title="Configure in Vapi Dashboard">
-    Select **Integrations** in the sidebar. Under **Model Providers**, select **Azure OpenAI** and add your configuration.
+    Select **Integrations** in the sidebar. Under **Model Providers**, select **Azure OpenAI** and add your configuration. Use the credential API to set custom deployment names.
   </Step>
 
   <Step title="Test Configuration">
@@ -224,11 +254,11 @@ The `OCP-APIM-Subscription-Key` field is optional and can be left blank in most 
 
 ### Common Error: "Resource not found"
 - **Cause**: Incorrect endpoint URL or model deployment name
-- **Solution**: Verify the endpoint URL format and ensure deployment names match exactly
+- **Solution**: Verify the base endpoint URL and ensure each `deployments` mapping names the deployment exactly as Azure shows it. Without mappings, deployment names must equal the selected model IDs.
 
 ### Common Error: "No model specified in request"
-- **Cause**: Deployment name doesn't match the selected model in Vapi
-- **Solution**: Create a deployment with the exact model name as expected by Vapi
+- **Cause**: The selected model has no matching deployment configuration
+- **Solution**: Check the credential's `models` and `deployments`. Map each selected model to its Azure deployment name, or use matching model and deployment names without mappings.
 
 ### Common Error: "Couldn't Validate Azure OpenAI Credential"
 - **Cause**: Invalid API key, incorrect endpoint, or network restrictions
